@@ -1292,6 +1292,19 @@
           </div>
         </div>
 
+        <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+          <label class="input-label">{{ t('admin.accounts.failureSchedulingStrategy.title') }}</label>
+          <select v-model="failureSchedulingStrategy" class="input">
+            <option :value="FAILURE_SCHEDULING_STRATEGY_DEFAULT">
+              {{ t('admin.accounts.failureSchedulingStrategy.default') }}
+            </option>
+            <option :value="FAILURE_SCHEDULING_STRATEGY_DISABLE_UNTIL_TEST_PASS">
+              {{ t('admin.accounts.failureSchedulingStrategy.disableUntilTestPass') }}
+            </option>
+          </select>
+          <p class="input-hint">{{ t('admin.accounts.failureSchedulingStrategy.hint') }}</p>
+        </div>
+
         <!-- Custom Error Codes Section -->
         <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <div class="mb-3 flex items-center justify-between">
@@ -3135,7 +3148,14 @@ import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
-import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
+import {
+  FAILURE_SCHEDULING_STRATEGY_DEFAULT,
+  FAILURE_SCHEDULING_STRATEGY_DISABLE_UNTIL_TEST_PASS,
+  FAILURE_SCHEDULING_STRATEGY_KEY,
+  FAILURE_STRATEGY_UNSCHEDULED_KEY,
+  VERTEX_LOCATION_OPTIONS,
+  type FailureSchedulingStrategy
+} from '@/constants/account'
 import {
   OPENAI_WS_MODE_CTX_POOL,
   OPENAI_WS_MODE_OFF,
@@ -3277,6 +3297,7 @@ const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(true)
+const failureSchedulingStrategy = ref<FailureSchedulingStrategy>(FAILURE_SCHEDULING_STRATEGY_DEFAULT)
 const openaiPassthroughEnabled = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
@@ -3341,6 +3362,17 @@ function buildAntigravityExtra(): Record<string, unknown> | undefined {
   const extra: Record<string, unknown> = {}
   if (mixedScheduling.value) extra.mixed_scheduling = true
   if (allowOverages.value) extra.allow_overages = true
+  return applyFailureSchedulingStrategy(extra)
+}
+
+const applyFailureSchedulingStrategy = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
+  const extra: Record<string, unknown> = { ...(base || {}) }
+  delete extra[FAILURE_STRATEGY_UNSCHEDULED_KEY]
+  if (failureSchedulingStrategy.value === FAILURE_SCHEDULING_STRATEGY_DISABLE_UNTIL_TEST_PASS) {
+    extra[FAILURE_SCHEDULING_STRATEGY_KEY] = FAILURE_SCHEDULING_STRATEGY_DISABLE_UNTIL_TEST_PASS
+  } else {
+    delete extra[FAILURE_SCHEDULING_STRATEGY_KEY]
+  }
   return Object.keys(extra).length > 0 ? extra : undefined
 }
 
@@ -4040,6 +4072,7 @@ const resetForm = () => {
   customErrorCodeInput.value = null
   interceptWarmupRequests.value = false
   autoPauseOnExpired.value = true
+  failureSchedulingStrategy.value = FAILURE_SCHEDULING_STRATEGY_DEFAULT
   openaiPassthroughEnabled.value = false
   openAICompactMode.value = 'auto'
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
@@ -4439,7 +4472,7 @@ const handleSubmit = async () => {
   await doCreateAccount({
     ...form,
     group_ids: form.group_ids,
-    extra,
+    extra: applyFailureSchedulingStrategy(extra),
     auto_pause_on_expired: autoPauseOnExpired.value
   })
 }
@@ -4496,9 +4529,9 @@ const createAccountAndFinish = async (
     return
   }
   // Inject quota limits for apikey/bedrock accounts
-  let finalExtra = extra
+  let finalExtra = applyFailureSchedulingStrategy(extra)
   if (type === 'apikey' || type === 'bedrock') {
-    const quotaExtra: Record<string, unknown> = { ...(extra || {}) }
+    const quotaExtra: Record<string, unknown> = { ...(finalExtra || {}) }
     if (editQuotaLimit.value != null && editQuotaLimit.value > 0) {
       quotaExtra.quota_limit = editQuotaLimit.value
     }
@@ -4608,7 +4641,7 @@ const handleOpenAIExchange = async (authCode: string) => {
         platform: 'openai',
         type: 'oauth',
         credentials,
-        extra,
+        extra: applyFailureSchedulingStrategy(extra),
         proxy_id: form.proxy_id,
         concurrency: form.concurrency,
         load_factor: form.load_factor ?? undefined,
@@ -4695,7 +4728,7 @@ const handleOpenAIImportCodexSession = async (content: string) => {
       expires_at: form.expires_at,
       auto_pause_on_expired: autoPauseOnExpired.value,
       credential_extras: Object.keys(credentialExtras).length > 0 ? credentialExtras : undefined,
-      extra,
+      extra: applyFailureSchedulingStrategy(extra),
       update_existing: true
     })
 
@@ -4812,7 +4845,7 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
             platform: 'openai',
             type: 'oauth',
             credentials,
-            extra,
+            extra: applyFailureSchedulingStrategy(extra),
             proxy_id: form.proxy_id,
             concurrency: form.concurrency,
             load_factor: form.load_factor ?? undefined,
@@ -4910,7 +4943,7 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
           platform: 'antigravity',
           type: 'oauth',
           credentials,
-          extra: {},
+          extra: applyFailureSchedulingStrategy({}),
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
@@ -5251,7 +5284,7 @@ const handleCookieAuth = async (sessionKey: string) => {
           platform: form.platform,
           type: addMethod.value, // Use addMethod as type: 'oauth' or 'setup-token'
           credentials,
-          extra,
+          extra: applyFailureSchedulingStrategy(extra),
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,

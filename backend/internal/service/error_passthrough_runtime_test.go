@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -167,6 +168,46 @@ func TestOpenAIHandleErrorResponse_AppliesRuleFor422(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "upstream_error", errField["type"])
 	assert.Equal(t, "OpenAI上游失败", errField["message"])
+}
+
+func TestOpenAIHandleErrorResponse_StrictFailureSchedulingPreemptsCustomErrorCodeSkip(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+
+	repo := &errorPolicyRepoStub{}
+	rateLimitSvc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	svc := &OpenAIGatewayService{rateLimitService: rateLimitSvc}
+	respBody := []byte(`{"error":{"message":"Cloudflare timeout"}}`)
+	resp := &http.Response{
+		StatusCode: 524,
+		Body:       io.NopCloser(bytes.NewReader(respBody)),
+		Header:     http.Header{},
+	}
+	account := &Account{
+		ID:       24,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"custom_error_codes_enabled": true,
+			"custom_error_codes":         []any{float64(429)},
+		},
+		Extra: map[string]any{
+			accountFailureSchedulingStrategyKey: AccountFailureSchedulingStrategyDisableUntilTestPass,
+		},
+	}
+
+	_, err := svc.handleErrorResponse(context.Background(), resp, c, account, nil)
+
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, 524, failoverErr.StatusCode)
+	require.Empty(t, rec.Body.String())
+	require.False(t, account.Schedulable)
+	require.Equal(t, 1, repo.setSchedulableCalls)
+	require.Len(t, repo.updateExtraCalls, 1)
+	require.Contains(t, repo.updateExtraCalls[0], accountFailureStrategyUnscheduledKey)
 }
 
 func TestGeminiWriteGeminiMappedError_AppliesRuleFor422(t *testing.T) {

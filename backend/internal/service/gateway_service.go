@@ -41,6 +41,37 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type preResponseKeepaliveStopper interface {
+	Stop() bool
+}
+
+type preResponseKeepaliveBeforeResponseStopper interface {
+	StopBeforeResponse() bool
+}
+
+type PreResponseKeepaliveContextKey struct{}
+
+func StopPreResponseKeepaliveFromContext(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	stopper, _ := ctx.Value(PreResponseKeepaliveContextKey{}).(preResponseKeepaliveStopper)
+	if stopper == nil {
+		return false
+	}
+	return stopper.Stop()
+}
+
+func StopPreResponseKeepaliveBeforeResponseFromContext(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	if stopper, _ := ctx.Value(PreResponseKeepaliveContextKey{}).(preResponseKeepaliveBeforeResponseStopper); stopper != nil {
+		return stopper.StopBeforeResponse()
+	}
+	return StopPreResponseKeepaliveFromContext(ctx)
+}
+
 const (
 	claudeAPIURL            = "https://api.anthropic.com/v1/messages?beta=true"
 	claudeAPICountTokensURL = "https://api.anthropic.com/v1/messages/count_tokens?beta=true"
@@ -531,6 +562,18 @@ func (s *GatewayService) TempUnscheduleRetryableError(ctx context.Context, accou
 	case http.StatusBadGateway:
 		tempUnscheduleEmptyResponse(ctx, s.accountRepo, accountID, "[handler]")
 	}
+}
+
+func (s *GatewayService) HandleUpstreamFailoverError(ctx context.Context, accountID int64, failoverErr *UpstreamFailoverError) bool {
+	if s == nil || s.rateLimitService == nil || accountID <= 0 || failoverErr == nil {
+		return false
+	}
+	account, err := s.accountRepo.GetByID(ctx, accountID)
+	if err != nil {
+		slog.Warn("strict_failure_failover_get_account_failed", "account_id", accountID, "error", err)
+		return false
+	}
+	return s.rateLimitService.HandleUpstreamFailoverError(ctx, account, failoverErr)
 }
 
 // GatewayService handles API gateway operations
@@ -4538,6 +4581,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 
 		// 发送请求
 		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, tlsProfile)
+		StopPreResponseKeepaliveBeforeResponseFromContext(ctx)
 		if err != nil {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
@@ -5028,6 +5072,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 		}
 
 		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+		StopPreResponseKeepaliveBeforeResponseFromContext(ctx)
 		if err != nil {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
@@ -5357,6 +5402,21 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 		intervalCh = intervalTicker.C
 	}
 
+	keepaliveInterval := time.Duration(0)
+	if s.cfg != nil && s.cfg.Gateway.StreamKeepaliveInterval > 0 {
+		keepaliveInterval = time.Duration(s.cfg.Gateway.StreamKeepaliveInterval) * time.Second
+	}
+	var keepaliveTicker *time.Ticker
+	if keepaliveInterval > 0 {
+		keepaliveTicker = time.NewTicker(keepaliveInterval)
+		defer keepaliveTicker.Stop()
+	}
+	var keepaliveCh <-chan time.Time
+	if keepaliveTicker != nil {
+		keepaliveCh = keepaliveTicker.C
+	}
+	lastDownstreamWriteAt := time.Now()
+
 	for {
 		select {
 		case ev, ok := <-events:
@@ -5422,6 +5482,7 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 				} else if line == "" {
 					// 按 SSE 事件边界刷出，减少每行 flush 带来的 syscall 开销。
 					flusher.Flush()
+					lastDownstreamWriteAt = time.Now()
 				}
 			}
 
@@ -5438,6 +5499,21 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 				s.rateLimitService.HandleStreamTimeout(ctx, account, model)
 			}
 			return &streamingResult{usage: usage, firstTokenMs: firstTokenMs}, fmt.Errorf("stream data interval timeout")
+
+		case <-keepaliveCh:
+			if clientDisconnected {
+				continue
+			}
+			if time.Since(lastDownstreamWriteAt) < keepaliveInterval {
+				continue
+			}
+			if _, err := io.WriteString(w, "event: ping\ndata: {\"type\":\"ping\"}\n\n"); err != nil {
+				clientDisconnected = true
+				logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Client disconnected during keepalive ping, continue draining upstream for usage: account=%d", account.ID)
+				continue
+			}
+			flusher.Flush()
+			lastDownstreamWriteAt = time.Now()
 		}
 	}
 }
@@ -5744,6 +5820,7 @@ func (s *GatewayService) executeBedrockUpstream(
 		}
 
 		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, nil)
+		StopPreResponseKeepaliveBeforeResponseFromContext(ctx)
 		if err != nil {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
@@ -7523,7 +7600,7 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 			}
 			// SSE ping 事件：Anthropic 原生格式，客户端会正确处理，
 			// 同时保持连接活跃防止 Cloudflare Tunnel 等代理断开
-			if _, werr := fmt.Fprint(w, "event: ping\ndata: {\"type\": \"ping\"}\n\n"); werr != nil {
+			if _, werr := fmt.Fprint(w, "event: ping\ndata: {\"type\":\"ping\"}\n\n"); werr != nil {
 				clientDisconnected = true
 				logger.LegacyPrintf("service.gateway", "Client disconnected during keepalive ping, continuing to drain upstream for billing")
 				continue

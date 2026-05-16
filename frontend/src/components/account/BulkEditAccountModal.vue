@@ -346,6 +346,48 @@
         </div>
       </div>
 
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between">
+          <div>
+            <label
+              id="bulk-edit-failure-scheduling-label"
+              class="input-label mb-0"
+              for="bulk-edit-failure-scheduling-enabled"
+            >
+              {{ t('admin.accounts.failureSchedulingStrategy.title') }}
+            </label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.failureSchedulingStrategy.hint') }}
+            </p>
+          </div>
+          <input
+            v-model="enableFailureSchedulingStrategy"
+            id="bulk-edit-failure-scheduling-enabled"
+            type="checkbox"
+            aria-controls="bulk-edit-failure-scheduling-body"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </div>
+        <div
+          id="bulk-edit-failure-scheduling-body"
+          :class="!enableFailureSchedulingStrategy && 'pointer-events-none opacity-50'"
+          role="group"
+          aria-labelledby="bulk-edit-failure-scheduling-label"
+        >
+          <select v-model="failureSchedulingStrategy" class="input">
+            <option :value="FAILURE_SCHEDULING_STRATEGY_DEFAULT">
+              {{ t('admin.accounts.failureSchedulingStrategy.default') }}
+            </option>
+            <option :value="FAILURE_SCHEDULING_STRATEGY_DISABLE_UNTIL_TEST_PASS">
+              {{ t('admin.accounts.failureSchedulingStrategy.disableUntilTestPass') }}
+            </option>
+          </select>
+          <p class="input-hint">
+            {{ t('admin.accounts.failureSchedulingStrategy.bulkHint') }}
+          </p>
+        </div>
+      </div>
+
       <!-- Custom error codes -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
@@ -1113,6 +1155,13 @@ import {
   resolveOpenAIWSModeConcurrencyHintKey
 } from '@/utils/openaiWsMode'
 import type { OpenAIWSMode } from '@/utils/openaiWsMode'
+import {
+  FAILURE_SCHEDULING_STRATEGY_DEFAULT,
+  FAILURE_SCHEDULING_STRATEGY_DISABLE_UNTIL_TEST_PASS,
+  FAILURE_SCHEDULING_STRATEGY_KEY,
+  FAILURE_STRATEGY_UNSCHEDULED_KEY,
+  type FailureSchedulingStrategy
+} from '@/constants/account'
 interface Props {
   show: boolean
   accountIds: number[]
@@ -1222,6 +1271,7 @@ const enableCodexCLIOnly = ref(false)
 const enableOpenAICompactMode = ref(false)
 const enableOpenAICompactModelMapping = ref(false)
 const enableRpmLimit = ref(false)
+const enableFailureSchedulingStrategy = ref(false)
 
 // State - field values
 const submitting = ref(false)
@@ -1253,6 +1303,7 @@ const bulkBaseRpm = ref<number | null>(null)
 const bulkRpmStrategy = ref<'tiered' | 'sticky_exempt'>('tiered')
 const bulkRpmStickyBuffer = ref<number | null>(null)
 const userMsgQueueMode = ref<string | null>(null)
+const failureSchedulingStrategy = ref<FailureSchedulingStrategy>(FAILURE_SCHEDULING_STRATEGY_DEFAULT)
 const umqModeOptions = computed(() => [
   { value: '', label: t('admin.accounts.quotaControl.rpmLimit.umqModeOff') },
   { value: 'throttle', label: t('admin.accounts.quotaControl.rpmLimit.umqModeThrottle') },
@@ -1501,6 +1552,16 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     extra.openai_compact_mode = openAICompactMode.value
   }
 
+  if (enableFailureSchedulingStrategy.value) {
+    const extra = ensureExtra()
+    if (failureSchedulingStrategy.value === FAILURE_SCHEDULING_STRATEGY_DISABLE_UNTIL_TEST_PASS) {
+      extra[FAILURE_SCHEDULING_STRATEGY_KEY] = FAILURE_SCHEDULING_STRATEGY_DISABLE_UNTIL_TEST_PASS
+    } else {
+      extra[FAILURE_SCHEDULING_STRATEGY_KEY] = null
+      extra[FAILURE_STRATEGY_UNSCHEDULED_KEY] = null
+    }
+  }
+
   if (enableOpenAICompactModelMapping.value) {
     credentials.compact_model_mapping = buildOpenAICompactModelMapping() ?? {}
     credentialsChanged = true
@@ -1605,6 +1666,7 @@ const handleSubmit = async () => {
     enableOpenAICompactMode.value ||
     enableOpenAICompactModelMapping.value ||
     enableRpmLimit.value ||
+    enableFailureSchedulingStrategy.value ||
     userMsgQueueMode.value !== null
 
   if (!hasAnyFieldEnabled) {
@@ -1707,6 +1769,7 @@ watch(
       enableOpenAICompactMode.value = false
       enableOpenAICompactModelMapping.value = false
       enableRpmLimit.value = false
+      enableFailureSchedulingStrategy.value = false
 
       // Reset all values
       baseUrl.value = ''
@@ -1734,6 +1797,7 @@ watch(
       bulkRpmStrategy.value = 'tiered'
       bulkRpmStickyBuffer.value = null
       userMsgQueueMode.value = null
+      failureSchedulingStrategy.value = FAILURE_SCHEDULING_STRATEGY_DEFAULT
 
       // Reset mixed channel warning state
       showMixedChannelWarning.value = false

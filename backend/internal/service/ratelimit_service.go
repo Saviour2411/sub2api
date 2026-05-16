@@ -66,6 +66,8 @@ const (
 	openAI403CounterWindowMinutes   = 180
 )
 
+const failureSchedulingUpdateTimeout = 5 * time.Second
+
 // NewRateLimitService 创建RateLimitService实例
 func NewRateLimitService(accountRepo AccountRepository, usageRepo UsageLogRepository, cfg *config.Config, geminiQuotaService *GeminiQuotaService, tempUnschedCache TempUnschedCache) *RateLimitService {
 	return &RateLimitService{
@@ -130,10 +132,19 @@ func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Accoun
 // HandleUpstreamError 处理上游错误响应，标记账号状态
 // 返回是否应该停止该账号的调度
 func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte) (shouldDisable bool) {
+	if s == nil || account == nil {
+		return false
+	}
+
+	strictFailureScheduling := s.ShouldDisableSchedulingOnUpstreamError(ctx, account)
 	customErrorCodesEnabled := account.IsCustomErrorCodesEnabled()
 
 	// 池模式默认不标记本地账号状态；仅当用户显式配置自定义错误码时按本地策略处理。
 	if account.IsPoolMode() && !customErrorCodesEnabled {
+		if strictFailureScheduling {
+			s.disableSchedulingUntilTestPass(ctx, account, statusCode, "pool mode upstream error")
+			return true
+		}
 		slog.Info("pool_mode_error_skipped", "account_id", account.ID, "status_code", statusCode)
 		return false
 	}
@@ -141,8 +152,17 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	// apikey 类型账号：检查自定义错误码配置
 	// 如果启用且错误码不在列表中，则不处理（不停止调度、不标记限流/过载）
 	if !account.ShouldHandleErrorCode(statusCode) {
+		if strictFailureScheduling {
+			s.disableSchedulingUntilTestPass(ctx, account, statusCode, "upstream error code skipped by custom policy")
+			return true
+		}
 		slog.Info("account_error_code_skipped", "account_id", account.ID, "status_code", statusCode)
 		return false
+	}
+
+	if strictFailureScheduling {
+		s.disableSchedulingUntilTestPass(ctx, account, statusCode, "upstream error")
+		return true
 	}
 
 	// 先尝试临时不可调度规则（401除外）
@@ -293,6 +313,75 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	}
 
 	return shouldDisable
+}
+
+func (s *RateLimitService) HandleUpstreamFailoverError(ctx context.Context, account *Account, failoverErr *UpstreamFailoverError) bool {
+	if s == nil || account == nil || failoverErr == nil || !s.ShouldDisableSchedulingOnUpstreamError(ctx, account) {
+		return false
+	}
+	statusCode := failoverErr.StatusCode
+	if statusCode <= 0 {
+		statusCode = http.StatusBadGateway
+	}
+	s.disableSchedulingUntilTestPass(ctx, account, statusCode, "upstream failover error")
+	return true
+}
+
+func (s *RateLimitService) HandleStrictFailureScheduling(ctx context.Context, account *Account, statusCode int, reason string) bool {
+	if s == nil || account == nil || !s.ShouldDisableSchedulingOnUpstreamError(ctx, account) {
+		return false
+	}
+	if statusCode <= 0 {
+		statusCode = http.StatusBadGateway
+	}
+	s.disableSchedulingUntilTestPass(ctx, account, statusCode, reason)
+	return true
+}
+
+func (s *RateLimitService) ShouldDisableSchedulingOnUpstreamError(ctx context.Context, account *Account) bool {
+	if account == nil {
+		return false
+	}
+	if account.ShouldDisableSchedulingOnUpstreamError() {
+		return true
+	}
+	if s == nil || s.accountRepo == nil || account.ID <= 0 {
+		return false
+	}
+	readCtx, cancel := failureSchedulingDBContext(ctx)
+	defer cancel()
+	freshAccount, err := s.accountRepo.GetByID(readCtx, account.ID)
+	if err != nil {
+		slog.Warn("failure_strategy_get_account_failed", "account_id", account.ID, "error", err)
+		return false
+	}
+	if freshAccount == nil || !freshAccount.ShouldDisableSchedulingOnUpstreamError() {
+		return false
+	}
+	account.Extra = mergeFailureStrategyExtra(account.Extra, freshAccount.Extra)
+	return true
+}
+
+func mergeFailureStrategyExtra(base, fresh map[string]any) map[string]any {
+	if len(base) == 0 && len(fresh) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(base)+len(fresh))
+	for key, value := range base {
+		out[key] = value
+	}
+	for key, value := range fresh {
+		out[key] = value
+	}
+	return out
+}
+
+func failureSchedulingDBContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	base := context.Background()
+	if ctx != nil {
+		base = context.WithoutCancel(ctx)
+	}
+	return context.WithTimeout(base, failureSchedulingUpdateTimeout)
 }
 
 // PreCheckUsage proactively checks local quota before dispatching a request.
@@ -1421,6 +1510,31 @@ func (s *RateLimitService) ResetOpenAI403Counter(ctx context.Context, accountID 
 	}
 }
 
+func (s *RateLimitService) disableSchedulingUntilTestPass(ctx context.Context, account *Account, statusCode int, reason string) {
+	if s == nil || s.accountRepo == nil || account == nil || account.ID <= 0 {
+		return
+	}
+	updateCtx, cancel := failureSchedulingDBContext(ctx)
+	defer cancel()
+
+	marker := BuildFailureStrategyUnscheduledMarker(statusCode, reason, time.Now())
+	if err := s.accountRepo.UpdateExtra(updateCtx, account.ID, map[string]any{
+		accountFailureStrategyUnscheduledKey: marker,
+	}); err != nil {
+		slog.Warn("failure_strategy_marker_update_failed", "account_id", account.ID, "status_code", statusCode, "error", err)
+	}
+	if err := s.accountRepo.SetSchedulable(updateCtx, account.ID, false); err != nil {
+		slog.Warn("failure_strategy_set_unschedulable_failed", "account_id", account.ID, "status_code", statusCode, "error", err)
+		return
+	}
+	account.Schedulable = false
+	if account.Extra == nil {
+		account.Extra = make(map[string]any)
+	}
+	account.Extra[accountFailureStrategyUnscheduledKey] = marker
+	slog.Warn("failure_strategy_account_unscheduled", "account_id", account.ID, "status_code", statusCode, "reason", reason)
+}
+
 // RecoverAccountState 按需恢复账号的可恢复运行时状态。
 func (s *RateLimitService) RecoverAccountState(ctx context.Context, accountID int64, options AccountRecoveryOptions) (*SuccessfulTestRecoveryResult, error) {
 	account, err := s.accountRepo.GetByID(ctx, accountID)
@@ -1444,6 +1558,20 @@ func (s *RateLimitService) RecoverAccountState(ctx context.Context, accountID in
 	if hasRecoverableRuntimeState(account) {
 		if err := s.ClearRateLimit(ctx, accountID); err != nil {
 			return nil, err
+		}
+		result.ClearedRateLimit = true
+	}
+	if account.HasFailureStrategyUnscheduledMarker() {
+		if err := s.accountRepo.UpdateExtra(ctx, accountID, map[string]any{
+			accountFailureStrategyUnscheduledKey: nil,
+		}); err != nil {
+			return nil, err
+		}
+		if !account.Schedulable {
+			if err := s.accountRepo.SetSchedulable(ctx, accountID, true); err != nil {
+				return nil, err
+			}
+			account.Schedulable = true
 		}
 		result.ClearedRateLimit = true
 	}

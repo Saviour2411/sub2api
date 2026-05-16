@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -276,8 +277,33 @@ func TestWaitForSlotWithPingTimeout_TimeoutAndStreamPing(t *testing.T) {
 		require.ErrorAs(t, err, &cErr)
 		require.True(t, cErr.IsTimeout)
 		require.True(t, streamStarted)
-		require.Contains(t, rec.Body.String(), ":\n\n")
+		require.Contains(t, rec.Body.String(), ": keepalive\n\n")
 	})
+}
+
+func TestPreResponseStreamKeepalive_OpenAIComment(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, rec := newHelperTestContext(http.MethodPost, "/v1/responses")
+
+	keepalive := newPreResponseStreamKeepalive(c, true, true, SSEPingFormatComment, 5*time.Millisecond, 5*time.Millisecond)
+	require.NotNil(t, keepalive)
+	require.Eventually(t, func() bool {
+		return strings.Contains(rec.Body.String(), ": keepalive\n\n")
+	}, 80*time.Millisecond, 5*time.Millisecond)
+	require.True(t, keepalive.StopBeforeResponse())
+	require.True(t, keepalive.Wrote())
+}
+
+func TestPreResponseStreamKeepalive_ClaudePing(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, rec := newHelperTestContext(http.MethodPost, "/v1/messages")
+
+	keepalive := newPreResponseStreamKeepalive(c, true, true, SSEPingFormatClaude, 5*time.Millisecond, 5*time.Millisecond)
+	require.NotNil(t, keepalive)
+	require.Eventually(t, func() bool {
+		return strings.Contains(rec.Body.String(), "event: ping\ndata: {\"type\":\"ping\"}\n\n")
+	}, 80*time.Millisecond, 5*time.Millisecond)
+	require.True(t, keepalive.StopBeforeResponse())
 }
 
 func TestWaitForSlotWithPingTimeout_AcquireError(t *testing.T) {

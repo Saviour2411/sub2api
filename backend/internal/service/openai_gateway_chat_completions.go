@@ -223,6 +223,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		proxyURL = account.Proxy.URL()
 	}
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+	StopPreResponseKeepaliveBeforeResponseFromContext(ctx)
 	if err != nil {
 		safeErr := sanitizeUpstreamErrorMessage(err.Error())
 		setOpsUpstreamError(c, 0, safeErr, "")
@@ -671,7 +672,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				continue
 			}
 			// Send SSE comment as keepalive
-			if _, err := fmt.Fprint(c.Writer, ":\n\n"); err != nil {
+			if _, err := fmt.Fprint(c.Writer, ": keepalive\n\n"); err != nil {
 				logger.L().Info("openai chat_completions stream: client disconnected during keepalive",
 					zap.String("request_id", requestID),
 				)

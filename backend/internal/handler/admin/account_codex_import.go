@@ -537,12 +537,22 @@ func normalizeCodexImportEntry(entry codexImportEntry) (*codexImportAccount, err
 			[]string{"tokens", "expiresAt"},
 			[]string{"expires_at"},
 			[]string{"expiresAt"},
+			[]string{"expired"},
 		); ok {
 			if tokenExpiresAt.Unix() <= now.Unix()-codexImportClockSkewSeconds {
 				return nil, fmt.Errorf("access_token 已过期: %s", tokenExpiresAt.Format(time.RFC3339))
 			}
 			item.TokenExpiresAt = &tokenExpiresAt
 			item.Credentials["expires_at"] = tokenExpiresAt.Format(time.RFC3339)
+		}
+		if websockets, ok := codexBoolAt(raw, []string{"websockets"}); ok {
+			if websockets {
+				item.Extra["openai_oauth_responses_websockets_v2_mode"] = service.OpenAIWSIngressModeCtxPool
+				item.Extra["openai_oauth_responses_websockets_v2_enabled"] = true
+			} else {
+				item.Extra["openai_oauth_responses_websockets_v2_mode"] = service.OpenAIWSIngressModeOff
+				item.Extra["openai_oauth_responses_websockets_v2_enabled"] = false
+			}
 		}
 		copyCodexExtraString(raw, item.Extra, "user_image", []string{"user", "image"})
 		copyCodexExtraString(raw, item.Extra, "user_picture", []string{"user", "picture"})
@@ -959,6 +969,35 @@ func codexTimeAt(obj map[string]any, path []string) (time.Time, bool) {
 		return time.Time{}, false
 	}
 	return parseCodexTimeValue(value)
+}
+
+func codexBoolAt(obj map[string]any, path []string) (bool, bool) {
+	value, ok := codexPathValue(obj, path)
+	if !ok {
+		return false, false
+	}
+	switch v := value.(type) {
+	case bool:
+		return v, true
+	case string:
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "true", "1", "yes", "on":
+			return true, true
+		case "false", "0", "no", "off":
+			return false, true
+		}
+	case json.Number:
+		if n, err := v.Int64(); err == nil {
+			return n != 0, true
+		}
+	case float64:
+		return v != 0, true
+	case int:
+		return v != 0, true
+	case int64:
+		return v != 0, true
+	}
+	return false, false
 }
 
 func codexPathValue(obj map[string]any, path []string) (any, bool) {

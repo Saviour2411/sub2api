@@ -348,6 +348,12 @@ gateway:
   # Stream keepalive interval (seconds), 0=disable
   # 流式 keepalive 间隔（秒），0=禁用
   stream_keepalive_interval: 10
+  # Pre-response stream keepalive, used to keep CDN connections alive while waiting for upstream response headers
+  # 预响应流式心跳：等待上游响应头期间提前写 SSE 心跳，用于避免 CDN 长时间无字节返回而断开
+  pre_response_stream_keepalive_enabled: false
+  # First pre-response keepalive delay (seconds), valid range 5-110 when enabled
+  # 首次预响应心跳延迟（秒），启用时有效范围 5-110
+  pre_response_stream_keepalive_initial_delay: 80
   # Image stream data interval timeout (seconds), 0=disable; independent from ordinary text streams
   # 图片流数据间隔超时（秒），0=禁用；独立于普通文本流式
   image_stream_data_interval_timeout: 900

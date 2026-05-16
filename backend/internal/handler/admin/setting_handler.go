@@ -199,6 +199,11 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		CustomEndpoints:                        dto.ParseCustomEndpoints(settings.CustomEndpoints),
 		DefaultConcurrency:                     settings.DefaultConcurrency,
 		DefaultBalance:                         settings.DefaultBalance,
+		DailyCheckinEnabled:                    settings.DailyCheckinEnabled,
+		DailyCheckinRewardMode:                 settings.DailyCheckinRewardMode,
+		DailyCheckinRewardAmount:               settings.DailyCheckinRewardAmount,
+		DailyCheckinRewardMin:                  settings.DailyCheckinRewardMin,
+		DailyCheckinRewardMax:                  settings.DailyCheckinRewardMax,
 		RiskControlEnabled:                     settings.RiskControlEnabled,
 		AffiliateRebateRate:                    settings.AffiliateRebateRate,
 		AffiliateRebateFreezeHours:             settings.AffiliateRebateFreezeHours,
@@ -227,6 +232,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		EnableAnthropicCacheTTL1hInjection:     settings.EnableAnthropicCacheTTL1hInjection,
 		RewriteMessageCacheControl:             settings.RewriteMessageCacheControl,
 		AntigravityUserAgentVersion:            settings.AntigravityUserAgentVersion,
+		PreResponseStreamKeepaliveEnabled:      settings.PreResponseStreamKeepaliveEnabled,
+		PreResponseStreamKeepaliveInitialDelay: settings.PreResponseStreamKeepaliveInitialDelay,
 		WebSearchEmulationEnabled:              settings.WebSearchEmulationEnabled,
 		PaymentVisibleMethodAlipaySource:       settings.PaymentVisibleMethodAlipaySource,
 		PaymentVisibleMethodWxpaySource:        settings.PaymentVisibleMethodWxpaySource,
@@ -448,6 +455,11 @@ type UpdateSettingsRequest struct {
 	// 默认配置
 	DefaultConcurrency                       int                               `json:"default_concurrency"`
 	DefaultBalance                           float64                           `json:"default_balance"`
+	DailyCheckinEnabled                      bool                              `json:"daily_checkin_enabled"`
+	DailyCheckinRewardMode                   string                            `json:"daily_checkin_reward_mode"`
+	DailyCheckinRewardAmount                 float64                           `json:"daily_checkin_reward_amount"`
+	DailyCheckinRewardMin                    float64                           `json:"daily_checkin_reward_min"`
+	DailyCheckinRewardMax                    float64                           `json:"daily_checkin_reward_max"`
 	AffiliateRebateRate                      *float64                          `json:"affiliate_rebate_rate"`
 	AffiliateRebateFreezeHours               *int                              `json:"affiliate_rebate_freeze_hours"`
 	AffiliateRebateDurationDays              *int                              `json:"affiliate_rebate_duration_days"`
@@ -513,12 +525,14 @@ type UpdateSettingsRequest struct {
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
 
 	// Gateway forwarding behavior
-	EnableFingerprintUnification       *bool   `json:"enable_fingerprint_unification"`
-	EnableMetadataPassthrough          *bool   `json:"enable_metadata_passthrough"`
-	EnableCCHSigning                   *bool   `json:"enable_cch_signing"`
-	EnableAnthropicCacheTTL1hInjection *bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
-	RewriteMessageCacheControl         *bool   `json:"rewrite_message_cache_control"`
-	AntigravityUserAgentVersion        *string `json:"antigravity_user_agent_version"`
+	EnableFingerprintUnification           *bool   `json:"enable_fingerprint_unification"`
+	EnableMetadataPassthrough              *bool   `json:"enable_metadata_passthrough"`
+	EnableCCHSigning                       *bool   `json:"enable_cch_signing"`
+	EnableAnthropicCacheTTL1hInjection     *bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
+	RewriteMessageCacheControl             *bool   `json:"rewrite_message_cache_control"`
+	AntigravityUserAgentVersion            *string `json:"antigravity_user_agent_version"`
+	PreResponseStreamKeepaliveEnabled      *bool   `json:"pre_response_stream_keepalive_enabled"`
+	PreResponseStreamKeepaliveInitialDelay *int    `json:"pre_response_stream_keepalive_initial_delay"`
 
 	// Payment visible method routing
 	PaymentVisibleMethodAlipaySource  *string `json:"payment_visible_method_alipay_source"`
@@ -1270,6 +1284,32 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			return
 		}
 	}
+	req.DailyCheckinRewardMode = strings.ToLower(strings.TrimSpace(req.DailyCheckinRewardMode))
+	if req.DailyCheckinRewardMode == "" {
+		req.DailyCheckinRewardMode = "fixed"
+	}
+	if req.DailyCheckinRewardMode != "fixed" && req.DailyCheckinRewardMode != "range" {
+		response.Error(c, http.StatusBadRequest, "daily_checkin_reward_mode must be fixed or range")
+		return
+	}
+	if req.DailyCheckinRewardAmount < 0 || req.DailyCheckinRewardMin < 0 || req.DailyCheckinRewardMax < 0 {
+		response.Error(c, http.StatusBadRequest, "daily check-in reward values must be greater than or equal to 0")
+		return
+	}
+	if req.DailyCheckinRewardMode == "fixed" && req.DailyCheckinEnabled && req.DailyCheckinRewardAmount <= 0 {
+		response.Error(c, http.StatusBadRequest, "daily_checkin_reward_amount must be greater than 0 when daily check-in is enabled")
+		return
+	}
+	if req.DailyCheckinRewardMode == "range" {
+		if req.DailyCheckinRewardMax < req.DailyCheckinRewardMin {
+			response.Error(c, http.StatusBadRequest, "daily_checkin_reward_max must be greater than or equal to daily_checkin_reward_min")
+			return
+		}
+		if req.DailyCheckinEnabled && req.DailyCheckinRewardMax <= 0 {
+			response.Error(c, http.StatusBadRequest, "daily_checkin_reward_max must be greater than 0 when daily check-in is enabled")
+			return
+		}
+	}
 
 	settings := &service.SystemSettings{
 		RegistrationEnabled:              req.RegistrationEnabled,
@@ -1362,6 +1402,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CustomEndpoints:                  customEndpointsJSON,
 		DefaultConcurrency:               req.DefaultConcurrency,
 		DefaultBalance:                   req.DefaultBalance,
+		DailyCheckinEnabled:              req.DailyCheckinEnabled,
+		DailyCheckinRewardMode:           req.DailyCheckinRewardMode,
+		DailyCheckinRewardAmount:         req.DailyCheckinRewardAmount,
+		DailyCheckinRewardMin:            req.DailyCheckinRewardMin,
+		DailyCheckinRewardMax:            req.DailyCheckinRewardMax,
 		AffiliateRebateRate:              affiliateRebateRate,
 		AffiliateRebateFreezeHours:       affiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:      affiliateRebateDurationDays,
@@ -1438,6 +1483,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.AntigravityUserAgentVersion
 			}
 			return previousSettings.AntigravityUserAgentVersion
+		}(),
+		PreResponseStreamKeepaliveEnabled: func() bool {
+			if req.PreResponseStreamKeepaliveEnabled != nil {
+				return *req.PreResponseStreamKeepaliveEnabled
+			}
+			return previousSettings.PreResponseStreamKeepaliveEnabled
+		}(),
+		PreResponseStreamKeepaliveInitialDelay: func() int {
+			if req.PreResponseStreamKeepaliveInitialDelay != nil {
+				return *req.PreResponseStreamKeepaliveInitialDelay
+			}
+			return previousSettings.PreResponseStreamKeepaliveInitialDelay
 		}(),
 		PaymentVisibleMethodAlipaySource: func() string {
 			if req.PaymentVisibleMethodAlipaySource != nil {
@@ -1746,6 +1803,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CustomEndpoints:                        dto.ParseCustomEndpoints(updatedSettings.CustomEndpoints),
 		DefaultConcurrency:                     updatedSettings.DefaultConcurrency,
 		DefaultBalance:                         updatedSettings.DefaultBalance,
+		DailyCheckinEnabled:                    updatedSettings.DailyCheckinEnabled,
+		DailyCheckinRewardMode:                 updatedSettings.DailyCheckinRewardMode,
+		DailyCheckinRewardAmount:               updatedSettings.DailyCheckinRewardAmount,
+		DailyCheckinRewardMin:                  updatedSettings.DailyCheckinRewardMin,
+		DailyCheckinRewardMax:                  updatedSettings.DailyCheckinRewardMax,
 		AffiliateRebateRate:                    updatedSettings.AffiliateRebateRate,
 		AffiliateRebateFreezeHours:             updatedSettings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            updatedSettings.AffiliateRebateDurationDays,
@@ -1773,6 +1835,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		EnableAnthropicCacheTTL1hInjection:     updatedSettings.EnableAnthropicCacheTTL1hInjection,
 		RewriteMessageCacheControl:             updatedSettings.RewriteMessageCacheControl,
 		AntigravityUserAgentVersion:            updatedSettings.AntigravityUserAgentVersion,
+		PreResponseStreamKeepaliveEnabled:      updatedSettings.PreResponseStreamKeepaliveEnabled,
+		PreResponseStreamKeepaliveInitialDelay: updatedSettings.PreResponseStreamKeepaliveInitialDelay,
 		PaymentVisibleMethodAlipaySource:       updatedSettings.PaymentVisibleMethodAlipaySource,
 		PaymentVisibleMethodWxpaySource:        updatedSettings.PaymentVisibleMethodWxpaySource,
 		PaymentVisibleMethodAlipayEnabled:      updatedSettings.PaymentVisibleMethodAlipayEnabled,
@@ -2079,6 +2143,21 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.DefaultBalance != after.DefaultBalance {
 		changed = append(changed, "default_balance")
 	}
+	if before.DailyCheckinEnabled != after.DailyCheckinEnabled {
+		changed = append(changed, "daily_checkin_enabled")
+	}
+	if before.DailyCheckinRewardMode != after.DailyCheckinRewardMode {
+		changed = append(changed, "daily_checkin_reward_mode")
+	}
+	if before.DailyCheckinRewardAmount != after.DailyCheckinRewardAmount {
+		changed = append(changed, "daily_checkin_reward_amount")
+	}
+	if before.DailyCheckinRewardMin != after.DailyCheckinRewardMin {
+		changed = append(changed, "daily_checkin_reward_min")
+	}
+	if before.DailyCheckinRewardMax != after.DailyCheckinRewardMax {
+		changed = append(changed, "daily_checkin_reward_max")
+	}
 	if before.AffiliateRebateRate != after.AffiliateRebateRate {
 		changed = append(changed, "affiliate_rebate_rate")
 	}
@@ -2174,6 +2253,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.AntigravityUserAgentVersion != after.AntigravityUserAgentVersion {
 		changed = append(changed, "antigravity_user_agent_version")
+	}
+	if before.PreResponseStreamKeepaliveEnabled != after.PreResponseStreamKeepaliveEnabled {
+		changed = append(changed, "pre_response_stream_keepalive_enabled")
+	}
+	if before.PreResponseStreamKeepaliveInitialDelay != after.PreResponseStreamKeepaliveInitialDelay {
+		changed = append(changed, "pre_response_stream_keepalive_initial_delay")
 	}
 	if before.PaymentVisibleMethodAlipaySource != after.PaymentVisibleMethodAlipaySource {
 		changed = append(changed, "payment_visible_method_alipay_source")

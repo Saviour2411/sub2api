@@ -220,11 +220,17 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 
 		// 5. Forward request
 		writerSizeBeforeForward := c.Writer.Size()
+		preResponseKeepalive := startPreResponseStreamKeepalive(c, h.settingService, reqStream, SSEPingFormatComment)
 		forwardBody := body
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
-		result, err := h.gatewayService.ForwardAsResponses(c.Request.Context(), c, account, forwardBody, parsedReq)
+		forwardCtx := withPreResponseKeepalive(c.Request.Context(), preResponseKeepalive)
+		result, err := h.gatewayService.ForwardAsResponses(forwardCtx, c, account, forwardBody, parsedReq)
+		preResponseStarted := stopPreResponseKeepaliveFromContext(forwardCtx)
+		if preResponseStarted {
+			streamStarted = true
+		}
 
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
@@ -235,7 +241,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 			if errors.As(err, &failoverErr) {
 				// Can't failover if streaming content already sent
 				if c.Writer.Size() != writerSizeBeforeForward {
-					h.handleResponsesFailoverExhausted(c, failoverErr, true)
+					h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed", true)
 					return
 				}
 				action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, failoverErr)
@@ -243,7 +249,11 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 				case FailoverContinue:
 					continue
 				case FailoverExhausted:
-					h.handleResponsesFailoverExhausted(c, fs.LastFailoverErr, streamStarted)
+					if preResponseStarted {
+						h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed", true)
+					} else {
+						h.handleResponsesFailoverExhausted(c, fs.LastFailoverErr, streamStarted)
+					}
 					return
 				case FailoverCanceled:
 					return
@@ -302,7 +312,8 @@ func (h *GatewayHandler) responsesErrorResponse(c *gin.Context, status int, code
 // handleResponsesFailoverExhausted writes a failover-exhausted error in Responses format.
 func (h *GatewayHandler) handleResponsesFailoverExhausted(c *gin.Context, lastErr *service.UpstreamFailoverError, streamStarted bool) {
 	if streamStarted {
-		return // Can't write error after stream started
+		h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed", true)
+		return
 	}
 	statusCode := http.StatusBadGateway
 	if lastErr != nil && lastErr.StatusCode > 0 {

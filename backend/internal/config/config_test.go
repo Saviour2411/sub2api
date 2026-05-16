@@ -1263,6 +1263,19 @@ func TestValidateConfigErrors(t *testing.T) {
 			wantErr: "gateway.stream_keepalive_interval",
 		},
 		{
+			name: "gateway pre response keepalive initial delay range",
+			mutate: func(c *Config) {
+				c.Gateway.PreResponseStreamKeepaliveEnabled = true
+				c.Gateway.PreResponseStreamKeepaliveInitialDelay = 4
+			},
+			wantErr: "gateway.pre_response_stream_keepalive_initial_delay",
+		},
+		{
+			name:    "gateway pre response keepalive initial delay negative",
+			mutate:  func(c *Config) { c.Gateway.PreResponseStreamKeepaliveInitialDelay = -1 },
+			wantErr: "gateway.pre_response_stream_keepalive_initial_delay must be non-negative",
+		},
+		{
 			name:    "gateway openai ws oauth max conns factor",
 			mutate:  func(c *Config) { c.Gateway.OpenAIWS.OAuthMaxConnsFactor = 0 },
 			wantErr: "gateway.openai_ws.oauth_max_conns_factor",
@@ -1806,6 +1819,12 @@ func TestLoad_DefaultGatewayImageStreamConfig(t *testing.T) {
 	}
 	if cfg.Gateway.StreamKeepaliveInterval != 10 {
 		t.Fatalf("stream_keepalive_interval = %d, want 10", cfg.Gateway.StreamKeepaliveInterval)
+	}
+	if cfg.Gateway.PreResponseStreamKeepaliveEnabled {
+		t.Fatalf("pre_response_stream_keepalive_enabled = true, want false")
+	}
+	if cfg.Gateway.PreResponseStreamKeepaliveInitialDelay != 80 {
+		t.Fatalf("pre_response_stream_keepalive_initial_delay = %d, want 80", cfg.Gateway.PreResponseStreamKeepaliveInitialDelay)
 	}
 	if cfg.Gateway.ImageStreamDataIntervalTimeout != 900 {
 		t.Fatalf("image_stream_data_interval_timeout = %d, want 900", cfg.Gateway.ImageStreamDataIntervalTimeout)

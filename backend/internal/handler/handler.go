@@ -45,6 +45,7 @@ type Handlers struct {
 	APIKey           *APIKeyHandler
 	Usage            *UsageHandler
 	Redeem           *RedeemHandler
+	DailyCheckin     *DailyCheckinHandler
 	Subscription     *SubscriptionHandler
 	Announcement     *AnnouncementHandler
 	ChannelMonitor   *ChannelMonitorUserHandler

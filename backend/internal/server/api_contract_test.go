@@ -747,6 +747,11 @@ func TestAPIContracts(t *testing.T) {
 					"force_email_on_third_party_signup": false,
 					"default_concurrency": 5,
 					"default_balance": 1.25,
+					"daily_checkin_enabled": false,
+					"daily_checkin_reward_mode": "fixed",
+					"daily_checkin_reward_amount": 1,
+					"daily_checkin_reward_min": 1,
+					"daily_checkin_reward_max": 3,
 					"affiliate_rebate_rate": 20,
 					"affiliate_rebate_freeze_hours": 0,
 					"affiliate_rebate_duration_days": 0,
@@ -965,6 +970,11 @@ func TestAPIContracts(t *testing.T) {
 					"custom_endpoints": [],
 					"default_concurrency": 0,
 					"default_balance": 0,
+					"daily_checkin_enabled": false,
+					"daily_checkin_reward_mode": "fixed",
+					"daily_checkin_reward_amount": 1,
+					"daily_checkin_reward_min": 1,
+					"daily_checkin_reward_max": 3,
 					"affiliate_rebate_rate": 20,
 					"affiliate_rebate_freeze_hours": 0,
 					"affiliate_rebate_duration_days": 0,
@@ -1192,6 +1202,8 @@ func newContractDeps(t *testing.T) *contractDeps {
 
 	settingRepo := newStubSettingRepo()
 	settingService := service.NewSettingService(settingRepo, cfg)
+	dailyCheckinService := service.NewDailyCheckinService(nil, settingService, nil, nil)
+	dailyCheckinHandler := handler.NewDailyCheckinHandler(dailyCheckinService)
 
 	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil)
@@ -1243,6 +1255,8 @@ func newContractDeps(t *testing.T) *contractDeps {
 	v1Redeem := v1.Group("")
 	v1Redeem.Use(jwtAuth)
 	v1Redeem.GET("/redeem/history", redeemHandler.GetHistory)
+	v1Redeem.GET("/user/checkin/status", dailyCheckinHandler.GetStatus)
+	v1Redeem.POST("/user/checkin", dailyCheckinHandler.Checkin)
 
 	v1Admin := v1.Group("/admin")
 	v1Admin.Use(adminAuth)

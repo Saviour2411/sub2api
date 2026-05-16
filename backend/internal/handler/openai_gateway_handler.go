@@ -37,6 +37,7 @@ type OpenAIGatewayHandler struct {
 	imageLimiter             *imageConcurrencyLimiter
 	maxAccountSwitches       int
 	cfg                      *config.Config
+	settingService           *service.SettingService
 }
 
 func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedModel string) string {
@@ -56,6 +57,7 @@ func NewOpenAIGatewayHandler(
 	errorPassthroughService *service.ErrorPassthroughService,
 	contentModerationService *service.ContentModerationService,
 	cfg *config.Config,
+	settingService *service.SettingService,
 ) *OpenAIGatewayHandler {
 	pingInterval := time.Duration(0)
 	maxAccountSwitches := 3
@@ -76,6 +78,7 @@ func NewOpenAIGatewayHandler(
 		imageLimiter:             &imageConcurrencyLimiter{},
 		maxAccountSwitches:       maxAccountSwitches,
 		cfg:                      cfg,
+		settingService:           settingService,
 	}
 }
 
@@ -321,6 +324,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		if !acquired {
 			return
 		}
+		preResponseKeepalive := startPreResponseStreamKeepalive(c, h.settingService, reqStream, SSEPingFormatComment)
 
 		// Forward request
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
@@ -330,7 +334,12 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
-		result, err := h.gatewayService.Forward(c.Request.Context(), c, account, forwardBody)
+		forwardCtx := withPreResponseKeepalive(c.Request.Context(), preResponseKeepalive)
+		result, err := h.gatewayService.Forward(forwardCtx, c, account, forwardBody)
+		preResponseStarted := stopPreResponseKeepaliveFromContext(forwardCtx)
+		if preResponseStarted {
+			streamStarted = true
+		}
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
@@ -355,8 +364,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
 					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
+					strictFailureUnscheduled := h.gatewayService.HandleUpstreamFailoverError(c.Request.Context(), account, failoverErr)
 					// 池模式：同账号重试
-					if failoverErr.RetryableOnSameAccount {
+					if failoverErr.RetryableOnSameAccount && !strictFailureUnscheduled {
 						retryLimit := account.GetPoolModeRetryCount()
 						if sameAccountRetryCount[account.ID] < retryLimit {
 							sameAccountRetryCount[account.ID]++
@@ -378,7 +388,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					failedAccountIDs[account.ID] = struct{}{}
 					lastFailoverErr = failoverErr
 					if switchCount >= maxAccountSwitches {
-						h.handleFailoverExhausted(c, failoverErr, streamStarted)
+						if preResponseStarted {
+							h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed", true)
+						} else {
+							h.handleFailoverExhausted(c, failoverErr, streamStarted)
+						}
 						return
 					}
 					switchCount++
@@ -703,6 +717,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		if !acquired {
 			return
 		}
+		preResponseKeepalive := startPreResponseStreamKeepalive(c, h.settingService, reqStream, SSEPingFormatClaude)
 
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
@@ -713,7 +728,12 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		if channelMappingMsg.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMappingMsg.MappedModel)
 		}
-		result, err := h.gatewayService.ForwardAsAnthropic(c.Request.Context(), c, account, forwardBody, promptCacheKey, defaultMappedModel)
+		forwardCtx := withPreResponseKeepalive(c.Request.Context(), preResponseKeepalive)
+		result, err := h.gatewayService.ForwardAsAnthropic(forwardCtx, c, account, forwardBody, promptCacheKey, defaultMappedModel)
+		preResponseStarted := stopPreResponseKeepaliveFromContext(forwardCtx)
+		if preResponseStarted {
+			streamStarted = true
+		}
 
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		if accountReleaseFunc != nil {
@@ -739,8 +759,9 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
 					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
+					strictFailureUnscheduled := h.gatewayService.HandleUpstreamFailoverError(c.Request.Context(), account, failoverErr)
 					// 池模式：同账号重试
-					if failoverErr.RetryableOnSameAccount {
+					if failoverErr.RetryableOnSameAccount && !strictFailureUnscheduled {
 						retryLimit := account.GetPoolModeRetryCount()
 						if sameAccountRetryCount[account.ID] < retryLimit {
 							sameAccountRetryCount[account.ID]++
@@ -762,7 +783,11 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					failedAccountIDs[account.ID] = struct{}{}
 					lastFailoverErr = failoverErr
 					if switchCount >= maxAccountSwitches {
-						h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
+						if preResponseStarted {
+							h.anthropicStreamingAwareError(c, http.StatusBadGateway, "api_error", "Upstream request failed", true)
+						} else {
+							h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
+						}
 						return
 					}
 					switchCount++
@@ -1662,8 +1687,7 @@ func (h *OpenAIGatewayHandler) handleStreamingAwareError(c *gin.Context, status 
 		// Stream already started, send error as SSE event then close
 		flusher, ok := c.Writer.(http.Flusher)
 		if ok {
-			// SSE 错误事件固定 schema，使用 Quote 直拼可避免额外 Marshal 分配。
-			errorEvent := "event: error\ndata: " + `{"error":{"type":` + strconv.Quote(errType) + `,"message":` + strconv.Quote(message) + `}}` + "\n\n"
+			errorEvent := openAIStreamFailedEvent(message)
 			if _, err := fmt.Fprint(c.Writer, errorEvent); err != nil {
 				_ = c.Error(err)
 			}

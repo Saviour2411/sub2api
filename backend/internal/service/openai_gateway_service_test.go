@@ -1188,7 +1188,44 @@ func TestOpenAIStreamingPreambleKeepaliveUsesDownstreamIdle(t *testing.T) {
 	_ = pr.Close()
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Contains(t, rec.Body.String(), ":\n\n")
+	require.Contains(t, rec.Body.String(), ": keepalive\n\n")
+	require.Contains(t, rec.Body.String(), "response.completed")
+}
+
+func TestOpenAIStreamingPassthroughKeepaliveDuringIdle(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			StreamDataIntervalTimeout: 0,
+			StreamKeepaliveInterval:   1,
+			MaxLineSize:               defaultMaxLineSize,
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: cfg}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       pr,
+		Header:     http.Header{},
+	}
+
+	go func() {
+		defer func() { _ = pw.Close() }()
+		time.Sleep(1200 * time.Millisecond)
+		_, _ = pw.Write([]byte("data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n"))
+		_, _ = pw.Write([]byte("data: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":1,\"output_tokens\":2}}}\n\n"))
+	}()
+
+	result, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"}, time.Now(), "model", "model")
+	_ = pr.Close()
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Contains(t, rec.Body.String(), ": keepalive\n\n")
 	require.Contains(t, rec.Body.String(), "response.completed")
 }
 

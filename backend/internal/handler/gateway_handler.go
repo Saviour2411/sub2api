@@ -751,10 +751,16 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			}
 			// 记录 Forward 前已写入字节数，Forward 后若增加则说明 SSE 内容已发，禁止 failover
 			writerSizeBeforeForward := c.Writer.Size()
+			preResponseKeepalive := startPreResponseStreamKeepalive(c, h.settingService, reqStream, SSEPingFormatClaude)
+			requestCtx = withPreResponseKeepalive(requestCtx, preResponseKeepalive)
 			if account.Platform == service.PlatformAntigravity && account.Type != service.AccountTypeAPIKey {
 				result, err = h.antigravityGatewayService.Forward(requestCtx, c, account, body, hasBoundSession)
 			} else {
 				result, err = h.gatewayService.Forward(requestCtx, c, account, parsedReq)
+			}
+			preResponseStarted := stopPreResponseKeepaliveFromContext(requestCtx)
+			if preResponseStarted {
+				streamStarted = true
 			}
 
 			// 兜底释放串行锁（正常情况已通过回调提前释放）
@@ -833,7 +839,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					case FailoverContinue:
 						continue
 					case FailoverExhausted:
-						h.handleFailoverExhausted(c, fs.LastFailoverErr, account.Platform, streamStarted)
+						if preResponseStarted {
+							h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed", true)
+						} else {
+							h.handleFailoverExhausted(c, fs.LastFailoverErr, account.Platform, streamStarted)
+						}
 						return
 					case FailoverCanceled:
 						return

@@ -311,6 +311,13 @@ var defaultOpenAICodexSnapshotPersistThrottle = newAccountWriteThrottle(openAICo
 // support but no compatible account is available.
 var ErrNoAvailableCompactAccounts = errors.New("no available OpenAI accounts support /responses/compact")
 
+func (s *OpenAIGatewayService) HandleUpstreamFailoverError(ctx context.Context, account *Account, failoverErr *UpstreamFailoverError) bool {
+	if s == nil || s.rateLimitService == nil {
+		return false
+	}
+	return s.rateLimitService.HandleUpstreamFailoverError(ctx, account, failoverErr)
+}
+
 // OpenAIGatewayService handles OpenAI API gateway operations
 type OpenAIGatewayService struct {
 	accountRepo           AccountRepository
@@ -2698,6 +2705,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		// Send request
 		upstreamStart := time.Now()
 		resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+		StopPreResponseKeepaliveBeforeResponseFromContext(ctx)
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		if err != nil {
 			// Ensure the client receives an error response (handlers assume Forward writes on non-failover errors).
@@ -2991,6 +2999,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 
 	upstreamStart := time.Now()
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+	StopPreResponseKeepaliveBeforeResponseFromContext(ctx)
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 	if err != nil {
 		safeErr := sanitizeUpstreamErrorMessage(err.Error())
@@ -3516,6 +3525,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	clientOutputStarted := false
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 	pendingLines := make([]string, 0, 8)
+	lastDownstreamWriteAt := time.Now()
 	writePendingLines := func() bool {
 		for _, pending := range pendingLines {
 			if _, err := fmt.Fprintln(w, pending); err != nil {
@@ -3542,64 +3552,230 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		return &openaiStreamingResultPassthrough{usage: usage, firstTokenMs: firstTokenMs, imageCount: imageCounter.Count()}
 	}
 
-	for scanner.Scan() {
-		line := scanner.Text()
-		lineStartsClientOutput := false
-		forceFlushFailedEvent := false
-		if data, ok := extractOpenAISSEDataLine(line); ok {
-			dataBytes := []byte(data)
-			trimmedData := strings.TrimSpace(data)
-			if needModelReplace && strings.Contains(data, mappedModel) {
-				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
-				if replacedData, replaced := extractOpenAISSEDataLine(line); replaced {
-					dataBytes = []byte(replacedData)
-					trimmedData = strings.TrimSpace(replacedData)
+	streamInterval := time.Duration(0)
+	if s.cfg != nil && s.cfg.Gateway.StreamDataIntervalTimeout > 0 {
+		streamInterval = time.Duration(s.cfg.Gateway.StreamDataIntervalTimeout) * time.Second
+	}
+	keepaliveInterval := time.Duration(0)
+	if s.cfg != nil && s.cfg.Gateway.StreamKeepaliveInterval > 0 {
+		keepaliveInterval = time.Duration(s.cfg.Gateway.StreamKeepaliveInterval) * time.Second
+	}
+	if streamInterval <= 0 && keepaliveInterval <= 0 {
+		for scanner.Scan() {
+			line := scanner.Text()
+			lineStartsClientOutput := false
+			forceFlushFailedEvent := false
+			if data, ok := extractOpenAISSEDataLine(line); ok {
+				dataBytes := []byte(data)
+				trimmedData := strings.TrimSpace(data)
+				if needModelReplace && strings.Contains(data, mappedModel) {
+					line = s.replaceModelInSSELine(line, mappedModel, originalModel)
+					if replacedData, replaced := extractOpenAISSEDataLine(line); replaced {
+						dataBytes = []byte(replacedData)
+						trimmedData = strings.TrimSpace(replacedData)
+					}
 				}
-			}
-			eventType := strings.TrimSpace(gjson.Get(trimmedData, "type").String())
-			if eventType == "response.failed" {
-				failedMessage = extractOpenAISSEErrorMessage(dataBytes)
-				if !openAIStreamClientOutputStarted(c, clientOutputStarted) && openAIStreamFailedEventShouldFailover(dataBytes, failedMessage) {
-					return resultWithUsage(),
-						s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, dataBytes, failedMessage)
+				eventType := strings.TrimSpace(gjson.Get(trimmedData, "type").String())
+				if eventType == "response.failed" {
+					failedMessage = extractOpenAISSEErrorMessage(dataBytes)
+					if !openAIStreamClientOutputStarted(c, clientOutputStarted) && openAIStreamFailedEventShouldFailover(dataBytes, failedMessage) {
+						return resultWithUsage(),
+							s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, dataBytes, failedMessage)
+					}
+					forceFlushFailedEvent = true
+					sawFailedEvent = true
 				}
-				forceFlushFailedEvent = true
-				sawFailedEvent = true
+				if trimmedData == "[DONE]" {
+					sawDone = true
+				}
+				if openAIStreamEventIsTerminal(trimmedData) {
+					sawTerminalEvent = true
+				}
+				imageCounter.AddSSEData(dataBytes)
+				lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
+				if firstTokenMs == nil && lineStartsClientOutput && trimmedData != "[DONE]" {
+					ms := int(time.Since(startTime).Milliseconds())
+					firstTokenMs = &ms
+				}
+				s.parseSSEUsageBytes(dataBytes, usage)
 			}
-			if trimmedData == "[DONE]" {
-				sawDone = true
-			}
-			if openAIStreamEventIsTerminal(trimmedData) {
-				sawTerminalEvent = true
-			}
-			imageCounter.AddSSEData(dataBytes)
-			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
-			if firstTokenMs == nil && lineStartsClientOutput && trimmedData != "[DONE]" {
-				ms := int(time.Since(startTime).Milliseconds())
-				firstTokenMs = &ms
-			}
-			s.parseSSEUsageBytes(dataBytes, usage)
-		}
 
-		if !clientDisconnected {
-			if !clientOutputStarted && !lineStartsClientOutput {
-				pendingLines = append(pendingLines, line)
-				continue
-			}
-			if !clientOutputStarted && len(pendingLines) > 0 {
-				if !writePendingLines() {
+			if !clientDisconnected {
+				if !clientOutputStarted && !lineStartsClientOutput {
+					pendingLines = append(pendingLines, line)
 					continue
 				}
+				if !clientOutputStarted && len(pendingLines) > 0 {
+					if !writePendingLines() {
+						continue
+					}
+				}
+				if _, err := fmt.Fprintln(w, line); err != nil {
+					clientDisconnected = true
+					logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
+				} else {
+					clientOutputStarted = true
+					flusher.Flush()
+					lastDownstreamWriteAt = time.Now()
+				}
 			}
-			if _, err := fmt.Fprintln(w, line); err != nil {
-				clientDisconnected = true
-				logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
-			} else {
-				clientOutputStarted = true
+		}
+	} else {
+		type scanEvent struct {
+			line string
+			err  error
+		}
+		events := make(chan scanEvent, 16)
+		done := make(chan struct{})
+		sendEvent := func(ev scanEvent) bool {
+			select {
+			case events <- ev:
+				return true
+			case <-done:
+				return false
+			}
+		}
+		var lastReadAt int64
+		atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
+		go func() {
+			defer close(events)
+			for scanner.Scan() {
+				atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
+				if !sendEvent(scanEvent{line: scanner.Text()}) {
+					return
+				}
+			}
+			if err := scanner.Err(); err != nil {
+				_ = sendEvent(scanEvent{err: err})
+			}
+		}()
+		defer close(done)
+
+		var intervalTicker *time.Ticker
+		if streamInterval > 0 {
+			intervalTicker = time.NewTicker(streamInterval)
+			defer intervalTicker.Stop()
+		}
+		var intervalCh <-chan time.Time
+		if intervalTicker != nil {
+			intervalCh = intervalTicker.C
+		}
+
+		var keepaliveTicker *time.Ticker
+		if keepaliveInterval > 0 {
+			keepaliveTicker = time.NewTicker(keepaliveInterval)
+			defer keepaliveTicker.Stop()
+		}
+		var keepaliveCh <-chan time.Time
+		if keepaliveTicker != nil {
+			keepaliveCh = keepaliveTicker.C
+		}
+
+		for {
+			select {
+			case ev, ok := <-events:
+				if !ok {
+					goto scanDone
+				}
+				if ev.err != nil {
+					goto scanDone
+				}
+				line := ev.line
+				lineStartsClientOutput := false
+				forceFlushFailedEvent := false
+				if data, ok := extractOpenAISSEDataLine(line); ok {
+					dataBytes := []byte(data)
+					trimmedData := strings.TrimSpace(data)
+					if needModelReplace && strings.Contains(data, mappedModel) {
+						line = s.replaceModelInSSELine(line, mappedModel, originalModel)
+						if replacedData, replaced := extractOpenAISSEDataLine(line); replaced {
+							dataBytes = []byte(replacedData)
+							trimmedData = strings.TrimSpace(replacedData)
+						}
+					}
+					eventType := strings.TrimSpace(gjson.Get(trimmedData, "type").String())
+					if eventType == "response.failed" {
+						failedMessage = extractOpenAISSEErrorMessage(dataBytes)
+						if !openAIStreamClientOutputStarted(c, clientOutputStarted) && openAIStreamFailedEventShouldFailover(dataBytes, failedMessage) {
+							return resultWithUsage(),
+								s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, dataBytes, failedMessage)
+						}
+						forceFlushFailedEvent = true
+						sawFailedEvent = true
+					}
+					if trimmedData == "[DONE]" {
+						sawDone = true
+					}
+					if openAIStreamEventIsTerminal(trimmedData) {
+						sawTerminalEvent = true
+					}
+					imageCounter.AddSSEData(dataBytes)
+					lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
+					if firstTokenMs == nil && lineStartsClientOutput && trimmedData != "[DONE]" {
+						ms := int(time.Since(startTime).Milliseconds())
+						firstTokenMs = &ms
+					}
+					s.parseSSEUsageBytes(dataBytes, usage)
+				}
+
+				if !clientDisconnected {
+					if !clientOutputStarted && !lineStartsClientOutput {
+						pendingLines = append(pendingLines, line)
+						continue
+					}
+					if !clientOutputStarted && len(pendingLines) > 0 {
+						if !writePendingLines() {
+							continue
+						}
+					}
+					if _, err := fmt.Fprintln(w, line); err != nil {
+						clientDisconnected = true
+						logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
+					} else {
+						clientOutputStarted = true
+						flusher.Flush()
+						lastDownstreamWriteAt = time.Now()
+					}
+				}
+
+			case <-intervalCh:
+				lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
+				if time.Since(lastRead) < streamInterval {
+					continue
+				}
+				if clientDisconnected {
+					return resultWithUsage(), fmt.Errorf("stream usage incomplete after timeout")
+				}
+				logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Stream data interval timeout: account=%d model=%s interval=%s", account.ID, originalModel, streamInterval)
+				if s.rateLimitService != nil {
+					s.rateLimitService.HandleStreamTimeout(ctx, account, originalModel)
+				}
+				if _, err := fmt.Fprint(w, "data: {\"type\":\"error\",\"sequence_number\":0,\"error\":{\"type\":\"upstream_error\",\"message\":\"stream_timeout\",\"code\":\"stream_timeout\"}}\n\n"); err != nil {
+					clientDisconnected = true
+				} else {
+					flusher.Flush()
+				}
+				return resultWithUsage(), fmt.Errorf("stream data interval timeout")
+
+			case <-keepaliveCh:
+				if clientDisconnected {
+					continue
+				}
+				if time.Since(lastDownstreamWriteAt) < keepaliveInterval {
+					continue
+				}
+				if _, err := fmt.Fprint(w, ": keepalive\n\n"); err != nil {
+					clientDisconnected = true
+					logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during keepalive, continue draining upstream for usage: account=%d", account.ID)
+					continue
+				}
 				flusher.Flush()
+				lastDownstreamWriteAt = time.Now()
 			}
 		}
 	}
+
+scanDone:
 	if err := scanner.Err(); err != nil {
 		if sawTerminalEvent && !sawFailedEvent {
 			return resultWithUsage(), nil
@@ -3951,6 +4127,28 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		)
 	}
 
+	strictFailureUnscheduled := false
+	if s.rateLimitService != nil {
+		strictFailureUnscheduled = s.rateLimitService.HandleStrictFailureScheduling(ctx, account, resp.StatusCode, "upstream error")
+	}
+	if strictFailureUnscheduled {
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			Platform:           account.Platform,
+			AccountID:          account.ID,
+			AccountName:        account.Name,
+			UpstreamStatusCode: resp.StatusCode,
+			UpstreamRequestID:  resp.Header.Get("x-request-id"),
+			Kind:               "failover",
+			Message:            upstreamMsg,
+			Detail:             upstreamDetail,
+		})
+		return nil, &UpstreamFailoverError{
+			StatusCode:             resp.StatusCode,
+			ResponseBody:           body,
+			RetryableOnSameAccount: account.IsPoolMode() && isPoolModeRetryableStatus(resp.StatusCode),
+		}
+	}
+
 	if status, errType, errMsg, matched := applyErrorPassthroughRule(
 		c,
 		PlatformOpenAI,
@@ -4098,6 +4296,28 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 		upstreamDetail = truncateString(string(body), maxBytes)
 	}
 	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
+
+	strictFailureUnscheduled := false
+	if s.rateLimitService != nil {
+		strictFailureUnscheduled = s.rateLimitService.HandleStrictFailureScheduling(c.Request.Context(), account, resp.StatusCode, "upstream error")
+	}
+	if strictFailureUnscheduled {
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			Platform:           account.Platform,
+			AccountID:          account.ID,
+			AccountName:        account.Name,
+			UpstreamStatusCode: resp.StatusCode,
+			UpstreamRequestID:  resp.Header.Get("x-request-id"),
+			Kind:               "failover",
+			Message:            upstreamMsg,
+			Detail:             upstreamDetail,
+		})
+		return nil, &UpstreamFailoverError{
+			StatusCode:             resp.StatusCode,
+			ResponseBody:           body,
+			RetryableOnSameAccount: account.IsPoolMode() && isPoolModeRetryableStatus(resp.StatusCode),
+		}
+	}
 
 	// Apply error passthrough rules
 	if status, errType, errMsg, matched := applyErrorPassthroughRule(
@@ -4546,7 +4766,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			if time.Since(lastDownstreamWriteAt) < keepaliveInterval {
 				continue
 			}
-			if _, err := bufferedWriter.WriteString(":\n\n"); err != nil {
+			if _, err := bufferedWriter.WriteString(": keepalive\n\n"); err != nil {
 				clientDisconnected = true
 				logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
 				continue

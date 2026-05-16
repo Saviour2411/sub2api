@@ -2816,6 +2816,86 @@
               </div>
 
               <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                <div class="flex items-center justify-between gap-4">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">
+                      {{ t("admin.settings.defaults.dailyCheckinEnabled") }}
+                    </label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.defaults.dailyCheckinEnabledHint") }}
+                    </p>
+                  </div>
+                  <Toggle v-model="form.daily_checkin_enabled" />
+                </div>
+
+                <div
+                  v-if="form.daily_checkin_enabled"
+                  class="mt-5 grid grid-cols-1 gap-6 md:grid-cols-3"
+                >
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t("admin.settings.defaults.dailyCheckinRewardMode") }}
+                    </label>
+                    <select v-model="form.daily_checkin_reward_mode" class="input">
+                      <option value="fixed">
+                        {{ t("admin.settings.defaults.dailyCheckinRewardModeFixed") }}
+                      </option>
+                      <option value="range">
+                        {{ t("admin.settings.defaults.dailyCheckinRewardModeRange") }}
+                      </option>
+                    </select>
+                  </div>
+                  <div v-if="form.daily_checkin_reward_mode !== 'range'">
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t("admin.settings.defaults.dailyCheckinRewardAmount") }}
+                    </label>
+                    <input
+                      v-model.number="form.daily_checkin_reward_amount"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      class="input"
+                      placeholder="1.00"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.defaults.dailyCheckinRewardAmountHint") }}
+                    </p>
+                  </div>
+                  <template v-else>
+                    <div>
+                      <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {{ t("admin.settings.defaults.dailyCheckinRewardMin") }}
+                      </label>
+                      <input
+                        v-model.number="form.daily_checkin_reward_min"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        class="input"
+                        placeholder="1.00"
+                      />
+                    </div>
+                    <div>
+                      <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {{ t("admin.settings.defaults.dailyCheckinRewardMax") }}
+                      </label>
+                      <input
+                        v-model.number="form.daily_checkin_reward_max"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        class="input"
+                        placeholder="3.00"
+                      />
+                      <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                        {{ t("admin.settings.defaults.dailyCheckinRewardRangeHint") }}
+                      </p>
+                    </div>
+                  </template>
+                </div>
+              </div>
+
+              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
                 <div class="mb-3 flex items-center justify-between">
                   <div>
                     <label class="font-medium text-gray-900 dark:text-white">
@@ -3402,6 +3482,36 @@
                   </p>
                 </div>
                 <Toggle v-model="form.enable_cch_signing" />
+              </div>
+
+              <!-- 预响应流式心跳 -->
+              <div class="flex items-start justify-between gap-6">
+                <div class="min-w-0">
+                  <label
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.gatewayForwarding.preResponseKeepalive") }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      t(
+                        "admin.settings.gatewayForwarding.preResponseKeepaliveHint",
+                      )
+                    }}
+                  </p>
+                </div>
+                <div class="flex shrink-0 items-center gap-3">
+                  <input
+                    v-model.number="form.pre_response_stream_keepalive_initial_delay"
+                    type="number"
+                    min="5"
+                    max="110"
+                    step="1"
+                    class="input w-28 text-right font-mono text-sm"
+                    :disabled="!form.pre_response_stream_keepalive_enabled"
+                  />
+                  <Toggle v-model="form.pre_response_stream_keepalive_enabled" />
+                </div>
               </div>
 
               <!-- Anthropic Cache TTL 1h Injection -->
@@ -6445,6 +6555,11 @@ const form = reactive<SettingsForm>({
   login_agreement_updated_at: "2026-03-31",
   login_agreement_documents: defaultLoginAgreementDocuments(),
   default_balance: 0,
+  daily_checkin_enabled: false,
+  daily_checkin_reward_mode: "fixed",
+  daily_checkin_reward_amount: 1,
+  daily_checkin_reward_min: 1,
+  daily_checkin_reward_max: 3,
   affiliate_rebate_rate: 20,
   affiliate_rebate_freeze_hours: 0,
   affiliate_rebate_duration_days: 0,
@@ -6602,6 +6717,8 @@ const form = reactive<SettingsForm>({
   enable_anthropic_cache_ttl_1h_injection: false,
   rewrite_message_cache_control: false,
   antigravity_user_agent_version: "",
+  pre_response_stream_keepalive_enabled: false,
+  pre_response_stream_keepalive_initial_delay: 80,
   // Balance & quota notification
   balance_low_notify_enabled: false,
   balance_low_notify_threshold: 0,
@@ -7432,6 +7549,26 @@ async function saveSettings() {
 
     form.table_default_page_size = normalizedTableDefaultPageSize;
     form.table_page_size_options = normalizedTablePageSizeOptions;
+    const checkinMode = form.daily_checkin_reward_mode === "range" ? "range" : "fixed";
+    const checkinAmount = Math.max(0, Number(form.daily_checkin_reward_amount) || 0);
+    const checkinMin = Math.max(0, Number(form.daily_checkin_reward_min) || 0);
+    const checkinMax = Math.max(0, Number(form.daily_checkin_reward_max) || 0);
+    if (form.daily_checkin_enabled) {
+      if (checkinMode === "fixed" && checkinAmount <= 0) {
+        appStore.showError(t("admin.settings.defaults.dailyCheckinFixedInvalid"));
+        return;
+      }
+      if (checkinMode === "range") {
+        if (checkinMax < checkinMin) {
+          appStore.showError(t("admin.settings.defaults.dailyCheckinRangeInvalid"));
+          return;
+        }
+        if (checkinMax <= 0) {
+          appStore.showError(t("admin.settings.defaults.dailyCheckinRangeMaxInvalid"));
+          return;
+        }
+      }
+    }
 
     const normalizedLoginAgreementDocuments =
       normalizeLoginAgreementDocumentsForSave();
@@ -7553,6 +7690,11 @@ async function saveSettings() {
       login_agreement_updated_at: form.login_agreement_updated_at,
       login_agreement_documents: form.login_agreement_documents,
       default_balance: form.default_balance,
+      daily_checkin_enabled: form.daily_checkin_enabled,
+      daily_checkin_reward_mode: checkinMode,
+      daily_checkin_reward_amount: checkinAmount,
+      daily_checkin_reward_min: checkinMin,
+      daily_checkin_reward_max: checkinMax,
       affiliate_rebate_rate: Math.min(
         100,
         Math.max(0, Number(form.affiliate_rebate_rate) || 0),
@@ -7675,6 +7817,10 @@ async function saveSettings() {
       rewrite_message_cache_control: form.rewrite_message_cache_control,
       antigravity_user_agent_version:
         form.antigravity_user_agent_version?.trim() || "",
+      pre_response_stream_keepalive_enabled:
+        form.pre_response_stream_keepalive_enabled,
+      pre_response_stream_keepalive_initial_delay:
+        Number(form.pre_response_stream_keepalive_initial_delay) || 80,
       // Payment configuration
       payment_enabled: form.payment_enabled,
       risk_control_enabled: form.risk_control_enabled,

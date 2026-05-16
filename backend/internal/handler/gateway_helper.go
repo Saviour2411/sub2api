@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -132,11 +133,11 @@ type SSEPingFormat string
 
 const (
 	// SSEPingFormatClaude is the Claude/Anthropic SSE ping format
-	SSEPingFormatClaude SSEPingFormat = "data: {\"type\": \"ping\"}\n\n"
+	SSEPingFormatClaude SSEPingFormat = "event: ping\ndata: {\"type\":\"ping\"}\n\n"
 	// SSEPingFormatNone indicates no ping should be sent (e.g., OpenAI has no ping spec)
 	SSEPingFormatNone SSEPingFormat = ""
 	// SSEPingFormatComment is an SSE comment ping for OpenAI/Codex CLI clients
-	SSEPingFormatComment SSEPingFormat = ":\n\n"
+	SSEPingFormatComment SSEPingFormat = ": keepalive\n\n"
 )
 
 // ConcurrencyError represents a concurrency limit error with context
@@ -157,6 +158,150 @@ type ConcurrencyHelper struct {
 	concurrencyService *service.ConcurrencyService
 	pingFormat         SSEPingFormat
 	pingInterval       time.Duration
+}
+
+type preResponseStreamKeepalive struct {
+	done         chan struct{}
+	stopOnce     sync.Once
+	mu           sync.Mutex
+	wrote        bool
+	streamFormat SSEPingFormat
+}
+
+func withPreResponseKeepalive(ctx context.Context, keepalive *preResponseStreamKeepalive) context.Context {
+	if keepalive == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, service.PreResponseKeepaliveContextKey{}, keepalive)
+}
+
+func stopPreResponseKeepaliveFromContext(ctx context.Context) bool {
+	return service.StopPreResponseKeepaliveFromContext(ctx)
+}
+
+func newPreResponseStreamKeepalive(
+	c *gin.Context,
+	enabled bool,
+	isStream bool,
+	streamFormat SSEPingFormat,
+	initialDelay time.Duration,
+	interval time.Duration,
+) *preResponseStreamKeepalive {
+	if !enabled || !isStream || streamFormat == "" || c == nil || c.Writer == nil {
+		return nil
+	}
+	if initialDelay <= 0 || interval <= 0 {
+		return nil
+	}
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		return nil
+	}
+
+	ka := &preResponseStreamKeepalive{
+		done:         make(chan struct{}),
+		streamFormat: streamFormat,
+	}
+	go ka.run(c, flusher, initialDelay, interval)
+	return ka
+}
+
+func (k *preResponseStreamKeepalive) run(c *gin.Context, flusher http.Flusher, initialDelay, interval time.Duration) {
+	timer := time.NewTimer(initialDelay)
+	defer timer.Stop()
+
+	for {
+		select {
+		case <-k.done:
+			return
+		case <-timer.C:
+			if !k.write(c, flusher) {
+				return
+			}
+			timer.Reset(interval)
+		}
+	}
+}
+
+func (k *preResponseStreamKeepalive) write(c *gin.Context, flusher http.Flusher) bool {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if c == nil || c.Writer == nil || c.Request == nil {
+		return false
+	}
+	select {
+	case <-c.Request.Context().Done():
+		return false
+	default:
+	}
+	if c.Writer.Written() && !k.wrote {
+		return false
+	}
+	if !c.Writer.Written() {
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("X-Accel-Buffering", "no")
+	}
+	if _, err := fmt.Fprint(c.Writer, string(k.streamFormat)); err != nil {
+		return false
+	}
+	k.wrote = true
+	flusher.Flush()
+	return true
+}
+
+func (k *preResponseStreamKeepalive) StopBeforeResponse() bool {
+	if k == nil {
+		return false
+	}
+	k.stopOnce.Do(func() {
+		close(k.done)
+	})
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	return k.wrote
+}
+
+func (k *preResponseStreamKeepalive) Stop() bool {
+	if k == nil {
+		return false
+	}
+	k.stopOnce.Do(func() {
+		close(k.done)
+	})
+	k.mu.Lock()
+	wrote := k.wrote
+	k.mu.Unlock()
+	return wrote
+}
+
+func (k *preResponseStreamKeepalive) Wrote() bool {
+	if k == nil {
+		return false
+	}
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	return k.wrote
+}
+
+func startPreResponseStreamKeepalive(c *gin.Context, settingService *service.SettingService, isStream bool, streamFormat SSEPingFormat) *preResponseStreamKeepalive {
+	if c == nil || c.Request == nil || settingService == nil || !settingService.IsPreResponseStreamKeepaliveEnabled(c.Request.Context()) {
+		return nil
+	}
+	initialDelay := time.Duration(settingService.GetPreResponseStreamKeepaliveInitialDelay(c.Request.Context())) * time.Second
+	interval := 10 * time.Second
+	return newPreResponseStreamKeepalive(c, true, isStream, streamFormat, initialDelay, interval)
+}
+
+func openAIStreamFailedEvent(message string) string {
+	now := time.Now().Unix()
+	payload := `{"type":"response.failed","sequence_number":1,"response":{"id":"resp_sub2api_error","object":"response","created_at":` +
+		strconv.FormatInt(now, 10) +
+		`,"status":"failed","error":{"code":"server_error","message":` +
+		strconv.Quote(message) +
+		`},"output":[],"usage":null,"metadata":{}}}`
+	return "event: response.failed\ndata: " + payload + "\n\n"
 }
 
 // NewConcurrencyHelper creates a new ConcurrencyHelper

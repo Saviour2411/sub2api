@@ -218,7 +218,8 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
 					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
-					if failoverErr.RetryableOnSameAccount {
+					strictFailureUnscheduled := h.gatewayService.HandleUpstreamFailoverError(c.Request.Context(), account, failoverErr)
+					if failoverErr.RetryableOnSameAccount && !strictFailureUnscheduled {
 						retryLimit := account.GetPoolModeRetryCount()
 						if sameAccountRetryCount[account.ID] < retryLimit {
 							sameAccountRetryCount[account.ID]++

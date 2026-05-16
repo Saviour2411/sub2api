@@ -89,6 +89,8 @@ type cachedGatewayForwardingSettings struct {
 	cchSigning                   bool
 	anthropicCacheTTL1hInjection bool
 	rewriteMessageCacheControl   bool
+	preResponseKeepaliveEnabled  bool
+	preResponseKeepaliveDelay    int
 	expiresAt                    int64 // unix nano
 }
 
@@ -1571,6 +1573,17 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
 	updates[SettingKeyDefaultBalance] = strconv.FormatFloat(settings.DefaultBalance, 'f', 8, 64)
+	checkinMode, checkinAmount, checkinMin, checkinMax := normalizeDailyCheckinSettings(
+		settings.DailyCheckinRewardMode,
+		settings.DailyCheckinRewardAmount,
+		settings.DailyCheckinRewardMin,
+		settings.DailyCheckinRewardMax,
+	)
+	updates[SettingKeyDailyCheckinEnabled] = strconv.FormatBool(settings.DailyCheckinEnabled)
+	updates[SettingKeyDailyCheckinMode] = checkinMode
+	updates[SettingKeyDailyCheckinAmount] = strconv.FormatFloat(checkinAmount, 'f', 8, 64)
+	updates[SettingKeyDailyCheckinMin] = strconv.FormatFloat(checkinMin, 'f', 8, 64)
+	updates[SettingKeyDailyCheckinMax] = strconv.FormatFloat(checkinMax, 'f', 8, 64)
 	settings.AffiliateRebateRate = clampAffiliateRebateRate(settings.AffiliateRebateRate)
 	updates[SettingKeyAffiliateRebateRate] = strconv.FormatFloat(settings.AffiliateRebateRate, 'f', 8, 64)
 	if settings.AffiliateRebateFreezeHours < 0 {
@@ -1649,6 +1662,12 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyEnableAnthropicCacheTTL1hInjection] = strconv.FormatBool(settings.EnableAnthropicCacheTTL1hInjection)
 	updates[SettingKeyRewriteMessageCacheControl] = strconv.FormatBool(settings.RewriteMessageCacheControl)
 	updates[SettingKeyAntigravityUserAgentVersion] = antigravity.NormalizeUserAgentVersion(settings.AntigravityUserAgentVersion)
+	settings.PreResponseStreamKeepaliveInitialDelay = normalizePreResponseStreamKeepaliveInitialDelay(
+		settings.PreResponseStreamKeepaliveInitialDelay,
+		s.defaultPreResponseStreamKeepaliveInitialDelay(),
+	)
+	updates[SettingKeyPreResponseStreamKeepaliveEnabled] = strconv.FormatBool(settings.PreResponseStreamKeepaliveEnabled)
+	updates[SettingKeyPreResponseStreamKeepaliveInitialDelay] = strconv.Itoa(settings.PreResponseStreamKeepaliveInitialDelay)
 	updates[SettingPaymentVisibleMethodAlipaySource] = settings.PaymentVisibleMethodAlipaySource
 	updates[SettingPaymentVisibleMethodWxpaySource] = settings.PaymentVisibleMethodWxpaySource
 	updates[SettingPaymentVisibleMethodAlipayEnabled] = strconv.FormatBool(settings.PaymentVisibleMethodAlipayEnabled)
@@ -1718,6 +1737,8 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 		cchSigning:                   settings.EnableCCHSigning,
 		anthropicCacheTTL1hInjection: settings.EnableAnthropicCacheTTL1hInjection,
 		rewriteMessageCacheControl:   settings.RewriteMessageCacheControl,
+		preResponseKeepaliveEnabled:  settings.PreResponseStreamKeepaliveEnabled,
+		preResponseKeepaliveDelay:    normalizePreResponseStreamKeepaliveInitialDelay(settings.PreResponseStreamKeepaliveInitialDelay, s.defaultPreResponseStreamKeepaliveInitialDelay()),
 		expiresAt:                    time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
 	})
 	s.antigravityUAVersionSF.Forget("antigravity_user_agent_version")
@@ -1741,6 +1762,47 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 
 func (s *SettingService) defaultRewriteMessageCacheControl() bool {
 	return false
+}
+
+func (s *SettingService) defaultPreResponseStreamKeepaliveEnabled() bool {
+	return s != nil && s.cfg != nil && s.cfg.Gateway.PreResponseStreamKeepaliveEnabled
+}
+
+func (s *SettingService) defaultPreResponseStreamKeepaliveInitialDelay() int {
+	if s != nil && s.cfg != nil && s.cfg.Gateway.PreResponseStreamKeepaliveInitialDelay > 0 {
+		return s.cfg.Gateway.PreResponseStreamKeepaliveInitialDelay
+	}
+	return 80
+}
+
+func normalizePreResponseStreamKeepaliveInitialDelay(raw any, fallback int) int {
+	if fallback <= 0 {
+		fallback = 80
+	}
+	var value int
+	switch v := raw.(type) {
+	case int:
+		value = v
+	case string:
+		trimmed := strings.TrimSpace(v)
+		if trimmed == "" {
+			return fallback
+		}
+		parsed, err := strconv.Atoi(trimmed)
+		if err != nil {
+			return fallback
+		}
+		value = parsed
+	default:
+		return fallback
+	}
+	if value < 5 {
+		return 5
+	}
+	if value > 110 {
+		return 110
+	}
+	return value
 }
 
 func (s *SettingService) validateDefaultSubscriptionGroups(ctx context.Context, items []DefaultSubscriptionSetting) error {
@@ -1894,18 +1956,21 @@ func (s *SettingService) IsBackendModeEnabled(ctx context.Context) bool {
 }
 
 type gatewayForwardingSettingsResult struct {
-	fp, mp, cch, cacheTTL1h, rewriteMessageCacheControl bool
+	fp, mp, cch, cacheTTL1h, rewriteMessageCacheControl, preResponseKeepaliveEnabled bool
+	preResponseKeepaliveDelay                                                        int
 }
 
 func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context) gatewayForwardingSettingsResult {
 	if cached, ok := gatewayForwardingCache.Load().(*cachedGatewayForwardingSettings); ok && cached != nil {
 		if time.Now().UnixNano() < cached.expiresAt {
 			return gatewayForwardingSettingsResult{
-				fp:                         cached.fingerprintUnification,
-				mp:                         cached.metadataPassthrough,
-				cch:                        cached.cchSigning,
-				cacheTTL1h:                 cached.anthropicCacheTTL1hInjection,
-				rewriteMessageCacheControl: cached.rewriteMessageCacheControl,
+				fp:                          cached.fingerprintUnification,
+				mp:                          cached.metadataPassthrough,
+				cch:                         cached.cchSigning,
+				cacheTTL1h:                  cached.anthropicCacheTTL1hInjection,
+				rewriteMessageCacheControl:  cached.rewriteMessageCacheControl,
+				preResponseKeepaliveEnabled: cached.preResponseKeepaliveEnabled,
+				preResponseKeepaliveDelay:   cached.preResponseKeepaliveDelay,
 			}
 		}
 	}
@@ -1913,11 +1978,13 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 		if cached, ok := gatewayForwardingCache.Load().(*cachedGatewayForwardingSettings); ok && cached != nil {
 			if time.Now().UnixNano() < cached.expiresAt {
 				return gatewayForwardingSettingsResult{
-					fp:                         cached.fingerprintUnification,
-					mp:                         cached.metadataPassthrough,
-					cch:                        cached.cchSigning,
-					cacheTTL1h:                 cached.anthropicCacheTTL1hInjection,
-					rewriteMessageCacheControl: cached.rewriteMessageCacheControl,
+					fp:                          cached.fingerprintUnification,
+					mp:                          cached.metadataPassthrough,
+					cch:                         cached.cchSigning,
+					cacheTTL1h:                  cached.anthropicCacheTTL1hInjection,
+					rewriteMessageCacheControl:  cached.rewriteMessageCacheControl,
+					preResponseKeepaliveEnabled: cached.preResponseKeepaliveEnabled,
+					preResponseKeepaliveDelay:   cached.preResponseKeepaliveDelay,
 				}, nil
 			}
 		}
@@ -1929,6 +1996,8 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			SettingKeyEnableCCHSigning,
 			SettingKeyEnableAnthropicCacheTTL1hInjection,
 			SettingKeyRewriteMessageCacheControl,
+			SettingKeyPreResponseStreamKeepaliveEnabled,
+			SettingKeyPreResponseStreamKeepaliveInitialDelay,
 		})
 		if err != nil {
 			slog.Warn("failed to get gateway forwarding settings", "error", err)
@@ -1938,9 +2007,16 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 				cchSigning:                   false,
 				anthropicCacheTTL1hInjection: false,
 				rewriteMessageCacheControl:   s.defaultRewriteMessageCacheControl(),
+				preResponseKeepaliveEnabled:  s.defaultPreResponseStreamKeepaliveEnabled(),
+				preResponseKeepaliveDelay:    s.defaultPreResponseStreamKeepaliveInitialDelay(),
 				expiresAt:                    time.Now().Add(gatewayForwardingErrorTTL).UnixNano(),
 			})
-			return gatewayForwardingSettingsResult{fp: true, rewriteMessageCacheControl: s.defaultRewriteMessageCacheControl()}, nil
+			return gatewayForwardingSettingsResult{
+				fp:                          true,
+				rewriteMessageCacheControl:  s.defaultRewriteMessageCacheControl(),
+				preResponseKeepaliveEnabled: s.defaultPreResponseStreamKeepaliveEnabled(),
+				preResponseKeepaliveDelay:   s.defaultPreResponseStreamKeepaliveInitialDelay(),
+			}, nil
 		}
 		fp := true
 		if v, ok := values[SettingKeyEnableFingerprintUnification]; ok && v != "" {
@@ -1953,26 +2029,42 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 		if v, ok := values[SettingKeyRewriteMessageCacheControl]; ok && v != "" {
 			rewriteMessageCacheControl = v == "true"
 		}
+		preResponseEnabled := s.defaultPreResponseStreamKeepaliveEnabled()
+		if v, ok := values[SettingKeyPreResponseStreamKeepaliveEnabled]; ok && v != "" {
+			preResponseEnabled = v == "true"
+		}
+		preResponseDelay := normalizePreResponseStreamKeepaliveInitialDelay(
+			values[SettingKeyPreResponseStreamKeepaliveInitialDelay],
+			s.defaultPreResponseStreamKeepaliveInitialDelay(),
+		)
 		gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
 			fingerprintUnification:       fp,
 			metadataPassthrough:          mp,
 			cchSigning:                   cch,
 			anthropicCacheTTL1hInjection: cacheTTL1h,
 			rewriteMessageCacheControl:   rewriteMessageCacheControl,
+			preResponseKeepaliveEnabled:  preResponseEnabled,
+			preResponseKeepaliveDelay:    preResponseDelay,
 			expiresAt:                    time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
 		})
 		return gatewayForwardingSettingsResult{
-			fp:                         fp,
-			mp:                         mp,
-			cch:                        cch,
-			cacheTTL1h:                 cacheTTL1h,
-			rewriteMessageCacheControl: rewriteMessageCacheControl,
+			fp:                          fp,
+			mp:                          mp,
+			cch:                         cch,
+			cacheTTL1h:                  cacheTTL1h,
+			rewriteMessageCacheControl:  rewriteMessageCacheControl,
+			preResponseKeepaliveEnabled: preResponseEnabled,
+			preResponseKeepaliveDelay:   preResponseDelay,
 		}, nil
 	})
 	if r, ok := val.(gatewayForwardingSettingsResult); ok {
 		return r
 	}
-	return gatewayForwardingSettingsResult{fp: true}
+	return gatewayForwardingSettingsResult{
+		fp:                          true,
+		preResponseKeepaliveEnabled: s.defaultPreResponseStreamKeepaliveEnabled(),
+		preResponseKeepaliveDelay:   s.defaultPreResponseStreamKeepaliveInitialDelay(),
+	}
 }
 
 // GetGatewayForwardingSettings returns cached gateway forwarding settings.
@@ -1991,6 +2083,16 @@ func (s *SettingService) IsAnthropicCacheTTL1hInjectionEnabled(ctx context.Conte
 // IsRewriteMessageCacheControlEnabled 检查是否启用 messages cache_control 改写。
 func (s *SettingService) IsRewriteMessageCacheControlEnabled(ctx context.Context) bool {
 	return s.getGatewayForwardingSettingsCached(ctx).rewriteMessageCacheControl
+}
+
+// IsPreResponseStreamKeepaliveEnabled 检查是否启用预响应流式心跳。
+func (s *SettingService) IsPreResponseStreamKeepaliveEnabled(ctx context.Context) bool {
+	return s.getGatewayForwardingSettingsCached(ctx).preResponseKeepaliveEnabled
+}
+
+// GetPreResponseStreamKeepaliveInitialDelay 获取预响应流式心跳首次延迟秒数。
+func (s *SettingService) GetPreResponseStreamKeepaliveInitialDelay(ctx context.Context) int {
+	return s.getGatewayForwardingSettingsCached(ctx).preResponseKeepaliveDelay
 }
 
 // IsEmailVerifyEnabled 检查是否开启邮件验证
@@ -2382,6 +2484,11 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOIDCConnectUserInfoUsernamePath:          "",
 		SettingKeyDefaultConcurrency:                       strconv.Itoa(s.cfg.Default.UserConcurrency),
 		SettingKeyDefaultBalance:                           strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
+		SettingKeyDailyCheckinEnabled:                      "false",
+		SettingKeyDailyCheckinMode:                         "fixed",
+		SettingKeyDailyCheckinAmount:                       "1.00000000",
+		SettingKeyDailyCheckinMin:                          "1.00000000",
+		SettingKeyDailyCheckinMax:                          "3.00000000",
 		SettingKeyAffiliateRebateRate:                      strconv.FormatFloat(AffiliateRebateRateDefault, 'f', 8, 64),
 		SettingKeyAffiliateRebateFreezeHours:               strconv.Itoa(AffiliateRebateFreezeHoursDefault),
 		SettingKeyAffiliateRebateDurationDays:              strconv.Itoa(AffiliateRebateDurationDaysDefault),
@@ -2455,15 +2562,17 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyMaxClaudeCodeVersion: "",
 
 		// 分组隔离（默认不允许未分组 Key 调度）
-		SettingKeyAllowUngroupedKeyScheduling:        "false",
-		SettingKeyEnableAnthropicCacheTTL1hInjection: "false",
-		SettingKeyRewriteMessageCacheControl:         strconv.FormatBool(s.defaultRewriteMessageCacheControl()),
-		SettingKeyAntigravityUserAgentVersion:        "",
-		SettingPaymentVisibleMethodAlipaySource:      "",
-		SettingPaymentVisibleMethodWxpaySource:       "",
-		SettingPaymentVisibleMethodAlipayEnabled:     "false",
-		SettingPaymentVisibleMethodWxpayEnabled:      "false",
-		openAIAdvancedSchedulerSettingKey:            "false",
+		SettingKeyAllowUngroupedKeyScheduling:            "false",
+		SettingKeyEnableAnthropicCacheTTL1hInjection:     "false",
+		SettingKeyRewriteMessageCacheControl:             strconv.FormatBool(s.defaultRewriteMessageCacheControl()),
+		SettingKeyAntigravityUserAgentVersion:            "",
+		SettingKeyPreResponseStreamKeepaliveEnabled:      strconv.FormatBool(s.defaultPreResponseStreamKeepaliveEnabled()),
+		SettingKeyPreResponseStreamKeepaliveInitialDelay: strconv.Itoa(s.defaultPreResponseStreamKeepaliveInitialDelay()),
+		SettingPaymentVisibleMethodAlipaySource:          "",
+		SettingPaymentVisibleMethodWxpaySource:           "",
+		SettingPaymentVisibleMethodAlipayEnabled:         "false",
+		SettingPaymentVisibleMethodWxpayEnabled:          "false",
+		openAIAdvancedSchedulerSettingKey:                "false",
 	}
 
 	return s.settingRepo.SetMultiple(ctx, defaults)
@@ -2541,6 +2650,16 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	} else {
 		result.DefaultBalance = s.cfg.Default.UserBalance
 	}
+	checkinAmount := parseFloatSetting(settings[SettingKeyDailyCheckinAmount], 1)
+	checkinMin := parseFloatSetting(settings[SettingKeyDailyCheckinMin], 1)
+	checkinMax := parseFloatSetting(settings[SettingKeyDailyCheckinMax], 3)
+	result.DailyCheckinRewardMode, result.DailyCheckinRewardAmount, result.DailyCheckinRewardMin, result.DailyCheckinRewardMax = normalizeDailyCheckinSettings(
+		settings[SettingKeyDailyCheckinMode],
+		checkinAmount,
+		checkinMin,
+		checkinMax,
+	)
+	result.DailyCheckinEnabled = settings[SettingKeyDailyCheckinEnabled] == "true"
 	if rebateRate, err := strconv.ParseFloat(settings[SettingKeyAffiliateRebateRate], 64); err == nil {
 		result.AffiliateRebateRate = clampAffiliateRebateRate(rebateRate)
 	} else {
@@ -2841,6 +2960,14 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.RewriteMessageCacheControl = s.defaultRewriteMessageCacheControl()
 	}
 	result.AntigravityUserAgentVersion = antigravity.NormalizeUserAgentVersion(settings[SettingKeyAntigravityUserAgentVersion])
+	result.PreResponseStreamKeepaliveEnabled = s.defaultPreResponseStreamKeepaliveEnabled()
+	if v, ok := settings[SettingKeyPreResponseStreamKeepaliveEnabled]; ok && v != "" {
+		result.PreResponseStreamKeepaliveEnabled = v == "true"
+	}
+	result.PreResponseStreamKeepaliveInitialDelay = normalizePreResponseStreamKeepaliveInitialDelay(
+		settings[SettingKeyPreResponseStreamKeepaliveInitialDelay],
+		s.defaultPreResponseStreamKeepaliveInitialDelay(),
+	)
 
 	// Web search emulation: quick enabled check from the JSON config
 	if raw := settings[SettingKeyWebSearchEmulationConfig]; raw != "" {
@@ -2885,6 +3012,31 @@ func clampAffiliateRebateRate(value float64) float64 {
 		return AffiliateRebateRateMax
 	}
 	return value
+}
+
+func parseFloatSetting(raw string, fallback float64) float64 {
+	value, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return fallback
+	}
+	return value
+}
+
+func normalizeDailyCheckinSettings(mode string, amount, minAmount, maxAmount float64) (string, float64, float64, float64) {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode != "range" {
+		mode = "fixed"
+	}
+	if amount < 0 {
+		amount = 0
+	}
+	if minAmount < 0 {
+		minAmount = 0
+	}
+	if maxAmount < minAmount {
+		maxAmount = minAmount
+	}
+	return mode, amount, minAmount, maxAmount
 }
 
 func isFalseSettingValue(value string) bool {

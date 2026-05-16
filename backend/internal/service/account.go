@@ -16,6 +16,16 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
+const (
+	AccountFailureSchedulingStrategyDefault              = "default"
+	AccountFailureSchedulingStrategyDisableUntilTestPass = "disable_until_test_pass"
+	accountFailureSchedulingStrategyKey                  = "failure_scheduling_strategy"
+	accountFailureStrategyUnscheduledKey                 = "failure_strategy_unscheduled"
+	accountFailureStrategyUnscheduledAtKey               = "at"
+	accountFailureStrategyUnscheduledStatusCodeKey       = "status_code"
+	accountFailureStrategyUnscheduledReasonKey           = "reason"
+)
+
 type Account struct {
 	ID          int64
 	Name        string
@@ -132,6 +142,71 @@ func (a *Account) IsRateLimited() bool {
 		return false
 	}
 	return time.Now().Before(*a.RateLimitResetAt)
+}
+
+func (a *Account) FailureSchedulingStrategy() string {
+	if a == nil || len(a.Extra) == 0 {
+		return AccountFailureSchedulingStrategyDefault
+	}
+	strategy, _ := a.Extra[accountFailureSchedulingStrategyKey].(string)
+	strategy = strings.TrimSpace(strategy)
+	switch strategy {
+	case AccountFailureSchedulingStrategyDisableUntilTestPass:
+		return strategy
+	default:
+		return AccountFailureSchedulingStrategyDefault
+	}
+}
+
+func (a *Account) ShouldDisableSchedulingOnUpstreamError() bool {
+	return a.FailureSchedulingStrategy() == AccountFailureSchedulingStrategyDisableUntilTestPass
+}
+
+func (a *Account) HasFailureStrategyUnscheduledMarker() bool {
+	if a == nil || len(a.Extra) == 0 {
+		return false
+	}
+	marker, ok := a.Extra[accountFailureStrategyUnscheduledKey]
+	if !ok || marker == nil {
+		return false
+	}
+	switch v := marker.(type) {
+	case map[string]any:
+		return len(v) > 0
+	case map[string]string:
+		return len(v) > 0
+	default:
+		return true
+	}
+}
+
+func BuildFailureStrategyUnscheduledMarker(statusCode int, reason string, now time.Time) map[string]any {
+	if now.IsZero() {
+		now = time.Now()
+	}
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = "upstream error"
+	}
+	return map[string]any{
+		accountFailureStrategyUnscheduledAtKey:         now.UTC().Format(time.RFC3339),
+		accountFailureStrategyUnscheduledStatusCodeKey: statusCode,
+		accountFailureStrategyUnscheduledReasonKey:     reason,
+	}
+}
+
+func ClearFailureStrategyUnscheduledMarker(extra map[string]any) map[string]any {
+	if extra == nil {
+		return map[string]any{}
+	}
+	out := make(map[string]any, len(extra))
+	for key, value := range extra {
+		if key == accountFailureStrategyUnscheduledKey {
+			continue
+		}
+		out[key] = value
+	}
+	return out
 }
 
 func (a *Account) IsOverloaded() bool {

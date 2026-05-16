@@ -168,6 +168,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		if !acquired {
 			return
 		}
+		preResponseKeepalive := startPreResponseStreamKeepalive(c, h.settingService, reqStream, SSEPingFormatComment)
 
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
@@ -176,7 +177,12 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
-		result, err := h.gatewayService.ForwardAsChatCompletions(c.Request.Context(), c, account, forwardBody, promptCacheKey, "")
+		forwardCtx := withPreResponseKeepalive(c.Request.Context(), preResponseKeepalive)
+		result, err := h.gatewayService.ForwardAsChatCompletions(forwardCtx, c, account, forwardBody, promptCacheKey, "")
+		preResponseStarted := stopPreResponseKeepaliveFromContext(forwardCtx)
+		if preResponseStarted {
+			streamStarted = true
+		}
 
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		if accountReleaseFunc != nil {
@@ -202,8 +208,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
 					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
+					strictFailureUnscheduled := h.gatewayService.HandleUpstreamFailoverError(c.Request.Context(), account, failoverErr)
 					// Pool mode: retry on the same account
-					if failoverErr.RetryableOnSameAccount {
+					if failoverErr.RetryableOnSameAccount && !strictFailureUnscheduled {
 						retryLimit := account.GetPoolModeRetryCount()
 						if sameAccountRetryCount[account.ID] < retryLimit {
 							sameAccountRetryCount[account.ID]++
@@ -225,7 +232,11 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 					failedAccountIDs[account.ID] = struct{}{}
 					lastFailoverErr = failoverErr
 					if switchCount >= maxAccountSwitches {
-						h.handleFailoverExhausted(c, failoverErr, streamStarted)
+						if preResponseStarted {
+							h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed", true)
+						} else {
+							h.handleFailoverExhausted(c, failoverErr, streamStarted)
+						}
 						return
 					}
 					switchCount++

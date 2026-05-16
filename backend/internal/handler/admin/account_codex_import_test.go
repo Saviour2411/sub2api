@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
 func TestParseCodexSessionImportEntriesSupportsRawTokenJSONAndArray(t *testing.T) {
@@ -139,6 +141,74 @@ func TestNormalizeCodexSessionJSONExtractsCredentialsAndIgnoresSessionToken(t *t
 	}
 	if item.TokenExpiresAt == nil {
 		t.Fatalf("TokenExpiresAt should be parsed from accessToken")
+	}
+}
+
+func TestNormalizeCodexSessionJSONSupportsCLIProxyAPIFormat(t *testing.T) {
+	expired := time.Now().Add(time.Hour).UTC()
+	accessToken := buildCodexImportTestJWT(t, time.Now().Add(2*time.Hour), map[string]any{
+		"email": "claim@example.com",
+	})
+	raw := map[string]any{
+		"type":          "codex",
+		"access_token":  accessToken,
+		"refresh_token": "refresh-token",
+		"id_token":      buildCodexImportTestJWT(t, time.Now().Add(2*time.Hour), map[string]any{}),
+		"email":         "cliproxy@example.com",
+		"account_id":    "acct-cliproxy",
+		"expired":       expired.UnixMilli(),
+		"last_refresh":  time.Now().UnixMilli(),
+		"disabled":      true,
+		"websockets":    true,
+	}
+
+	item, err := normalizeCodexImportEntry(codexImportEntry{Index: 1, Value: raw})
+	if err != nil {
+		t.Fatalf("normalizeCodexImportEntry error = %v", err)
+	}
+
+	if item.Credentials["access_token"] != accessToken {
+		t.Fatalf("access_token not stored")
+	}
+	if item.Credentials["refresh_token"] != "refresh-token" {
+		t.Fatalf("refresh_token = %v, want refresh-token", item.Credentials["refresh_token"])
+	}
+	if item.Credentials["email"] != "cliproxy@example.com" {
+		t.Fatalf("email = %v, want cliproxy@example.com", item.Credentials["email"])
+	}
+	if item.Credentials["chatgpt_account_id"] != "acct-cliproxy" {
+		t.Fatalf("chatgpt_account_id = %v, want acct-cliproxy", item.Credentials["chatgpt_account_id"])
+	}
+	if item.Credentials["expires_at"] != expired.Format(time.RFC3339) {
+		t.Fatalf("expires_at = %v, want %s", item.Credentials["expires_at"], expired.Format(time.RFC3339))
+	}
+	if item.Extra["openai_oauth_responses_websockets_v2_mode"] != service.OpenAIWSIngressModeCtxPool {
+		t.Fatalf("websockets mode = %v, want %s", item.Extra["openai_oauth_responses_websockets_v2_mode"], service.OpenAIWSIngressModeCtxPool)
+	}
+	if item.Extra["openai_oauth_responses_websockets_v2_enabled"] != true {
+		t.Fatalf("websockets enabled = %v, want true", item.Extra["openai_oauth_responses_websockets_v2_enabled"])
+	}
+	if _, ok := item.Extra["disabled"]; ok {
+		t.Fatalf("disabled should be ignored")
+	}
+}
+
+func TestNormalizeCodexSessionJSONMapsDisabledWebsocketsToOff(t *testing.T) {
+	accessToken := buildCodexImportTestJWT(t, time.Now().Add(time.Hour), map[string]any{})
+	raw := map[string]any{
+		"access_token": accessToken,
+		"websockets":   false,
+	}
+
+	item, err := normalizeCodexImportEntry(codexImportEntry{Index: 1, Value: raw})
+	if err != nil {
+		t.Fatalf("normalizeCodexImportEntry error = %v", err)
+	}
+	if item.Extra["openai_oauth_responses_websockets_v2_mode"] != service.OpenAIWSIngressModeOff {
+		t.Fatalf("websockets mode = %v, want %s", item.Extra["openai_oauth_responses_websockets_v2_mode"], service.OpenAIWSIngressModeOff)
+	}
+	if item.Extra["openai_oauth_responses_websockets_v2_enabled"] != false {
+		t.Fatalf("websockets enabled = %v, want false", item.Extra["openai_oauth_responses_websockets_v2_enabled"])
 	}
 }
 

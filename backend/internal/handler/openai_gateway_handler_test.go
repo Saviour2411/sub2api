@@ -26,32 +26,26 @@ import (
 func TestOpenAIHandleStreamingAwareError_JSONEscaping(t *testing.T) {
 	tests := []struct {
 		name    string
-		errType string
 		message string
 	}{
 		{
 			name:    "包含双引号的消息",
-			errType: "server_error",
 			message: `upstream returned "invalid" response`,
 		},
 		{
 			name:    "包含反斜杠的消息",
-			errType: "server_error",
 			message: `path C:\Users\test\file.txt not found`,
 		},
 		{
 			name:    "包含双引号和反斜杠的消息",
-			errType: "upstream_error",
 			message: `error parsing "key\value": unexpected token`,
 		},
 		{
 			name:    "包含换行符的消息",
-			errType: "server_error",
 			message: "line1\nline2\ttab",
 		},
 		{
 			name:    "普通消息",
-			errType: "upstream_error",
 			message: "Upstream service temporarily unavailable",
 		},
 	}
@@ -64,12 +58,12 @@ func TestOpenAIHandleStreamingAwareError_JSONEscaping(t *testing.T) {
 			c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
 
 			h := &OpenAIGatewayHandler{}
-			h.handleStreamingAwareError(c, http.StatusBadGateway, tt.errType, tt.message, true)
+			h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", tt.message, true)
 
 			body := w.Body.String()
 
-			// 验证 SSE 格式：event: error\ndata: {JSON}\n\n
-			assert.True(t, strings.HasPrefix(body, "event: error\n"), "应以 'event: error\\n' 开头")
+			// 验证 OpenAI Responses 流式错误格式：event: response.failed\ndata: {JSON}\n\n
+			assert.True(t, strings.HasPrefix(body, "event: response.failed\n"), "应以 'event: response.failed\\n' 开头")
 			assert.True(t, strings.HasSuffix(body, "\n\n"), "应以 '\\n\\n' 结尾")
 
 			// 提取 data 部分
@@ -84,11 +78,12 @@ func TestOpenAIHandleStreamingAwareError_JSONEscaping(t *testing.T) {
 			err := json.Unmarshal([]byte(jsonStr), &parsed)
 			require.NoError(t, err, "JSON 应能被成功解析，原始 JSON: %s", jsonStr)
 
-			// 验证结构
-			errorObj, ok := parsed["error"].(map[string]any)
-			require.True(t, ok, "应包含 error 对象")
-			assert.Equal(t, tt.errType, errorObj["type"])
-			assert.Equal(t, tt.message, errorObj["message"])
+			// 验证结构。流式响应已经开始后，错误需要按 Responses 协议放在 response.failed 事件里。
+			assert.Equal(t, "response.failed", gjson.Get(jsonStr, "type").String())
+			assert.Equal(t, "failed", gjson.Get(jsonStr, "response.status").String())
+			assert.Equal(t, "server_error", gjson.Get(jsonStr, "response.error.code").String())
+			assert.Equal(t, tt.message, gjson.Get(jsonStr, "response.error.message").String())
+			assert.Contains(t, parsed, "response")
 		})
 	}
 }
@@ -130,6 +125,22 @@ func TestOpenAIHandleStreamingAwareError_NonStreaming(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "upstream_error", errorObj["type"])
 	assert.Equal(t, "test error", errorObj["message"])
+}
+
+func TestOpenAIHandleStreamingAwareError_StreamUsesResponseFailed(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+	h := &OpenAIGatewayHandler{}
+	h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "test error", true)
+
+	body := w.Body.String()
+	require.Contains(t, body, "event: response.failed")
+	require.Contains(t, body, `"type":"response.failed"`)
+	require.Contains(t, body, `"status":"failed"`)
+	require.Contains(t, body, `"message":"test error"`)
 }
 
 func TestReadRequestBodyWithPrealloc(t *testing.T) {

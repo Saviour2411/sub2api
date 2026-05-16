@@ -124,6 +124,11 @@ type SystemSettings struct {
 
 	DefaultConcurrency           int                          `json:"default_concurrency"`
 	DefaultBalance               float64                      `json:"default_balance"`
+	DailyCheckinEnabled          bool                         `json:"daily_checkin_enabled"`
+	DailyCheckinRewardMode       string                       `json:"daily_checkin_reward_mode"`
+	DailyCheckinRewardAmount     float64                      `json:"daily_checkin_reward_amount"`
+	DailyCheckinRewardMin        float64                      `json:"daily_checkin_reward_min"`
+	DailyCheckinRewardMax        float64                      `json:"daily_checkin_reward_max"`
 	AffiliateRebateRate          float64                      `json:"affiliate_rebate_rate"`
 	AffiliateRebateFreezeHours   int                          `json:"affiliate_rebate_freeze_hours"`
 	AffiliateRebateDurationDays  int                          `json:"affiliate_rebate_duration_days"`
@@ -158,12 +163,14 @@ type SystemSettings struct {
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
 
 	// Gateway forwarding behavior
-	EnableFingerprintUnification       bool   `json:"enable_fingerprint_unification"`
-	EnableMetadataPassthrough          bool   `json:"enable_metadata_passthrough"`
-	EnableCCHSigning                   bool   `json:"enable_cch_signing"`
-	EnableAnthropicCacheTTL1hInjection bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
-	RewriteMessageCacheControl         bool   `json:"rewrite_message_cache_control"`
-	AntigravityUserAgentVersion        string `json:"antigravity_user_agent_version"`
+	EnableFingerprintUnification           bool   `json:"enable_fingerprint_unification"`
+	EnableMetadataPassthrough              bool   `json:"enable_metadata_passthrough"`
+	EnableCCHSigning                       bool   `json:"enable_cch_signing"`
+	EnableAnthropicCacheTTL1hInjection     bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
+	RewriteMessageCacheControl             bool   `json:"rewrite_message_cache_control"`
+	AntigravityUserAgentVersion            string `json:"antigravity_user_agent_version"`
+	PreResponseStreamKeepaliveEnabled      bool   `json:"pre_response_stream_keepalive_enabled"`
+	PreResponseStreamKeepaliveInitialDelay int    `json:"pre_response_stream_keepalive_initial_delay"`
 
 	// Web Search Emulation
 	WebSearchEmulationEnabled bool `json:"web_search_emulation_enabled"`

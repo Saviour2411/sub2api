@@ -14,6 +14,15 @@ export const QUOTA_RESET_MODE_ROLLING = 'rolling' as const
 export const QUOTA_RESET_MODE_FIXED = 'fixed' as const
 export type QuotaResetMode = typeof QUOTA_RESET_MODE_ROLLING | typeof QUOTA_RESET_MODE_FIXED
 
+/** 账号上游失败后的调度策略；值需与后端 account.go 常量保持一致 */
+export const FAILURE_SCHEDULING_STRATEGY_KEY = 'failure_scheduling_strategy' as const
+export const FAILURE_SCHEDULING_STRATEGY_DEFAULT = 'default' as const
+export const FAILURE_SCHEDULING_STRATEGY_DISABLE_UNTIL_TEST_PASS = 'disable_until_test_pass' as const
+export const FAILURE_STRATEGY_UNSCHEDULED_KEY = 'failure_strategy_unscheduled' as const
+export type FailureSchedulingStrategy =
+  | typeof FAILURE_SCHEDULING_STRATEGY_DEFAULT
+  | typeof FAILURE_SCHEDULING_STRATEGY_DISABLE_UNTIL_TEST_PASS
+
 /** Vertex AI location options for Service Account accounts */
 export const VERTEX_LOCATION_OPTIONS = [
   {

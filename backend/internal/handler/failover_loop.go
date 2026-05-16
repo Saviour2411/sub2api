@@ -16,6 +16,10 @@ type TempUnscheduler interface {
 	TempUnscheduleRetryableError(ctx context.Context, accountID int64, failoverErr *service.UpstreamFailoverError)
 }
 
+type FailoverStrictScheduler interface {
+	HandleUpstreamFailoverError(ctx context.Context, accountID int64, failoverErr *service.UpstreamFailoverError) bool
+}
+
 // FailoverAction 表示 failover 错误处理后的下一步动作
 type FailoverAction int
 
@@ -76,8 +80,13 @@ func (s *FailoverState) HandleFailoverError(
 		s.ForceCacheBilling = true
 	}
 
+	strictFailureUnscheduled := false
+	if strictScheduler, ok := gatewayService.(FailoverStrictScheduler); ok {
+		strictFailureUnscheduled = strictScheduler.HandleUpstreamFailoverError(ctx, accountID, failoverErr)
+	}
+
 	// 同账号重试：对 RetryableOnSameAccount 的临时性错误，先在同一账号上重试
-	if failoverErr.RetryableOnSameAccount && s.SameAccountRetryCount[accountID] < maxSameAccountRetries {
+	if failoverErr.RetryableOnSameAccount && !strictFailureUnscheduled && s.SameAccountRetryCount[accountID] < maxSameAccountRetries {
 		s.SameAccountRetryCount[accountID]++
 		logger.FromContext(ctx).Warn("gateway.failover_same_account_retry",
 			zap.Int64("account_id", accountID),
@@ -92,7 +101,7 @@ func (s *FailoverState) HandleFailoverError(
 	}
 
 	// 同账号重试用尽，执行临时封禁
-	if failoverErr.RetryableOnSameAccount {
+	if failoverErr.RetryableOnSameAccount && !strictFailureUnscheduled {
 		gatewayService.TempUnscheduleRetryableError(ctx, accountID, failoverErr)
 	}
 

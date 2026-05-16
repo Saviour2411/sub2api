@@ -1066,6 +1066,7 @@ export default {
     historyWillAppear: '您的兑换历史将显示在这里',
     balanceAddedRedeem: '余额充值（兑换）',
     balanceAddedAffiliate: '余额充值（返利转入）',
+    balanceAddedDailyCheckin: '每日签到奖励',
     balanceAddedAdmin: '余额充值（管理员）',
     balanceDeductedAdmin: '余额扣除（管理员）',
     concurrencyAddedRedeem: '并发增加（兑换）',
@@ -1123,6 +1124,16 @@ export default {
     passwordTooShort: '密码至少需要 8 个字符',
     passwordChangeSuccess: '密码修改成功',
     passwordChangeFailed: '密码修改失败',
+    checkin: {
+      checkInNow: '每日签到',
+      checkedInToday: '今日已签到',
+      checkingIn: '签到中...',
+      loading: '加载中...',
+      rewardAmount: '今日签到奖励：{amount}',
+      success: '签到成功，获得 {amount} 余额',
+      failed: '签到失败',
+      unavailable: '签到功能暂不可用'
+    },
     // TOTP 2FA
     totp: {
       title: '双因素认证 (2FA)',
@@ -2863,7 +2874,7 @@ export default {
       dataExported: '数据导出成功',
       dataExportFailed: '数据导出失败',
       dataImportTitle: '导入数据',
-      dataImportHint: '上传导出的 JSON 文件以批量导入账号与代理。',
+      dataImportHint: '上传导出的 JSON 文件以批量导入账号与代理；也支持 CLIProxyAPI/Codex 账号 JSON。',
       dataImportWarning: '导入将创建新账号与代理，分组需手工绑定；请确认已有数据不会冲突。',
       dataImportFile: '数据文件',
       dataImportButton: '开始导入',
@@ -2873,9 +2884,12 @@ export default {
       dataImportFailed: '数据导入失败',
       dataImportResult: '导入结果',
       dataImportResultSummary: '代理创建 {proxy_created}，复用 {proxy_reused}，失败 {proxy_failed}；账号创建 {account_created}，失败 {account_failed}',
+      codexImportResultSummary: '共 {total} 条，创建 {created}，更新 {updated}，跳过 {skipped}，失败 {failed}',
       dataImportErrors: '失败详情',
       dataImportSuccess: '导入完成：账号 {account_created}，失败 {account_failed}',
       dataImportCompletedWithErrors: '导入完成但有错误：账号失败 {account_failed}，代理失败 {proxy_failed}',
+      codexImportSuccess: 'Codex 账号导入完成：创建 {created}，更新 {updated}，跳过 {skipped}',
+      codexImportCompletedWithErrors: 'Codex 账号导入完成但有错误：失败 {failed}',
       syncFromCrsTitle: '从 CRS 同步账号',
       syncFromCrsDesc:
         '将 claude-relay-service（CRS）中的账号同步到当前系统（不会在浏览器侧直接请求 CRS）。',
@@ -2929,6 +2943,13 @@ export default {
       schedulableEnabled: '调度已开启',
       schedulableDisabled: '调度已关闭',
       failedToToggleSchedulable: '切换调度状态失败',
+      failureSchedulingStrategy: {
+        title: '失败调度策略',
+        default: '默认策略',
+        disableUntilTestPass: '上游报错后停调度，测试通过后恢复',
+        hint: '默认策略保持原有处理；严格策略会在调用上游报错时关闭该账号调度，账号测试成功后自动恢复。',
+        bulkHint: '批量切回默认策略时，会同时清理严格策略自动停调度标记。'
+      },
       groupCountTotal: '共 {count} 个分组',
       columns: {
         name: '名称',
@@ -5465,7 +5486,20 @@ export default {
         defaultSubscriptionsEmpty: '未配置默认订阅。新用户不会自动获得订阅套餐。',
         defaultSubscriptionsDuplicate: '默认订阅存在重复分组：{groupId}。每个分组只能出现一次。',
         subscriptionGroup: '订阅分组',
-        subscriptionValidityDays: '有效期（天）'
+        subscriptionValidityDays: '有效期（天）',
+        dailyCheckinEnabled: '启用每日签到',
+        dailyCheckinEnabledHint: '开启后，普通用户可在个人资料页每天领取一次余额奖励',
+        dailyCheckinRewardMode: '签到奖励模式',
+        dailyCheckinRewardModeFixed: '固定额度',
+        dailyCheckinRewardModeRange: '随机范围',
+        dailyCheckinRewardAmount: '固定奖励额度',
+        dailyCheckinRewardAmountHint: '每次签到获得的固定余额额度',
+        dailyCheckinRewardMin: '最小奖励额度',
+        dailyCheckinRewardMax: '最大奖励额度',
+        dailyCheckinRewardRangeHint: '系统会在最小和最大额度之间随机发放，精确到 0.01',
+        dailyCheckinFixedInvalid: '开启每日签到时，固定奖励额度必须大于 0',
+        dailyCheckinRangeInvalid: '每日签到最大奖励额度必须大于等于最小奖励额度',
+        dailyCheckinRangeMaxInvalid: '开启每日签到时，最大奖励额度必须大于 0'
       },
       claudeCode: {
         title: 'Claude Code 设置',
@@ -5492,6 +5526,8 @@ export default {
         metadataPassthroughHint: '透传客户端原始 metadata.user_id，不进行重写。可能提高上游缓存命中率。',
         cchSigning: 'CCH 签名',
         cchSigningHint: '对转发请求的 billing header 进行 CCH 哈希签名。关闭时保留原始占位符。',
+        preResponseKeepalive: '预响应流式心跳',
+        preResponseKeepaliveHint: '等待上游响应头期间提前发送 SSE 心跳，避免 Cloudflare 524。启用后首次延迟必须在 5 到 110 秒之间，建议保持在 80 秒左右。',
         anthropicCacheTTL1hInjection: 'Anthropic 缓存 TTL 注入',
         anthropicCacheTTL1hInjectionHint: '开启后，对 Anthropic OAuth/Setup Token 请求体中已有的 ephemeral 缓存块强制写入 1h；响应 usage 默认按 5m 回写计费，账号级 TTL 计费设置优先。',
         rewriteMessageCacheControl: '改写消息缓存断点',

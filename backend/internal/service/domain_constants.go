@@ -56,6 +56,7 @@ const (
 	RedeemTypeSubscription     = domain.RedeemTypeSubscription
 	RedeemTypeInvitation       = domain.RedeemTypeInvitation
 	RedeemTypeAffiliateBalance = "affiliate_balance"
+	RedeemTypeDailyCheckin     = "daily_checkin_balance"
 )
 
 // PromoCode status constants
@@ -212,6 +213,11 @@ const (
 	SettingKeyDefaultBalance       = "default_balance"        // 新用户默认余额
 	SettingKeyDefaultSubscriptions = "default_subscriptions"  // 新用户默认订阅列表（JSON）
 	SettingKeyDefaultUserRPMLimit  = "default_user_rpm_limit" // 新用户默认 RPM 限制（0 = 不限制）
+	SettingKeyDailyCheckinEnabled  = "daily_checkin_enabled"  // 是否启用每日签到
+	SettingKeyDailyCheckinMode     = "daily_checkin_reward_mode"
+	SettingKeyDailyCheckinAmount   = "daily_checkin_reward_amount"
+	SettingKeyDailyCheckinMin      = "daily_checkin_reward_min"
+	SettingKeyDailyCheckinMax      = "daily_checkin_reward_max"
 
 	// 第三方认证来源默认授予配置
 	SettingKeyAuthSourceDefaultEmailBalance            = "auth_source_default_email_balance"
@@ -374,6 +380,10 @@ const (
 	SettingKeyRewriteMessageCacheControl = "rewrite_message_cache_control"
 	// SettingKeyAntigravityUserAgentVersion Antigravity 上游 User-Agent 版本号（空值使用环境变量/默认值）
 	SettingKeyAntigravityUserAgentVersion = "antigravity_user_agent_version"
+	// SettingKeyPreResponseStreamKeepaliveEnabled 是否等待上游响应头期间提前发送流式心跳（默认读取环境配置）
+	SettingKeyPreResponseStreamKeepaliveEnabled = "pre_response_stream_keepalive_enabled"
+	// SettingKeyPreResponseStreamKeepaliveInitialDelay 首次预响应流式心跳延迟秒数（默认读取环境配置）
+	SettingKeyPreResponseStreamKeepaliveInitialDelay = "pre_response_stream_keepalive_initial_delay"
 
 	// Balance Low Notification
 	SettingKeyBalanceLowNotifyEnabled     = "balance_low_notify_enabled"      // 全局开关

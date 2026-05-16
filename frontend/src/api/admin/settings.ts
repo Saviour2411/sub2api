@@ -325,6 +325,11 @@ export interface SystemSettings {
   login_agreement_documents: LoginAgreementDocument[];
   // Default settings
   default_balance: number;
+  daily_checkin_enabled: boolean;
+  daily_checkin_reward_mode: "fixed" | "range" | string;
+  daily_checkin_reward_amount: number;
+  daily_checkin_reward_min: number;
+  daily_checkin_reward_max: number;
   affiliate_rebate_rate: number;
   affiliate_rebate_freeze_hours: number;
   affiliate_rebate_duration_days: number;
@@ -479,6 +484,8 @@ export interface SystemSettings {
   enable_anthropic_cache_ttl_1h_injection: boolean;
   rewrite_message_cache_control: boolean;
   antigravity_user_agent_version: string;
+  pre_response_stream_keepalive_enabled: boolean;
+  pre_response_stream_keepalive_initial_delay: number;
   web_search_emulation_enabled?: boolean;
 
   // Payment configuration
@@ -544,6 +551,11 @@ export interface UpdateSettingsRequest {
   login_agreement_updated_at?: string;
   login_agreement_documents?: LoginAgreementDocument[];
   default_balance?: number;
+  daily_checkin_enabled?: boolean;
+  daily_checkin_reward_mode?: "fixed" | "range" | string;
+  daily_checkin_reward_amount?: number;
+  daily_checkin_reward_min?: number;
+  daily_checkin_reward_max?: number;
   affiliate_rebate_rate?: number;
   affiliate_rebate_freeze_hours?: number;
   affiliate_rebate_duration_days?: number;
@@ -677,6 +689,8 @@ export interface UpdateSettingsRequest {
   enable_anthropic_cache_ttl_1h_injection?: boolean;
   rewrite_message_cache_control?: boolean;
   antigravity_user_agent_version?: string;
+  pre_response_stream_keepalive_enabled?: boolean;
+  pre_response_stream_keepalive_initial_delay?: number;
   // Payment configuration
   payment_enabled?: boolean;
   risk_control_enabled?: boolean;

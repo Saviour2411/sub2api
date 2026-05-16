@@ -1062,6 +1062,7 @@ export default {
     historyWillAppear: 'Your redemption history will appear here',
     balanceAddedRedeem: 'Balance Added (Redeem)',
     balanceAddedAffiliate: 'Balance Added (Affiliate Transfer)',
+    balanceAddedDailyCheckin: 'Daily Check-in Reward',
     balanceAddedAdmin: 'Balance Added (Admin)',
     balanceDeductedAdmin: 'Balance Deducted (Admin)',
     concurrencyAddedRedeem: 'Concurrency Added (Redeem)',
@@ -1119,6 +1120,16 @@ export default {
     passwordTooShort: 'Password must be at least 8 characters long',
     passwordChangeSuccess: 'Password changed successfully',
     passwordChangeFailed: 'Failed to change password',
+    checkin: {
+      checkInNow: 'Daily Check-in',
+      checkedInToday: 'Checked in today',
+      checkingIn: 'Checking in...',
+      loading: 'Loading...',
+      rewardAmount: "Today's reward: {amount}",
+      success: 'Check-in successful. You received {amount} balance',
+      failed: 'Check-in failed',
+      unavailable: 'Daily check-in is currently unavailable'
+    },
     // TOTP 2FA
     totp: {
       title: 'Two-Factor Authentication (2FA)',
@@ -2787,7 +2798,7 @@ export default {
       dataExported: 'Data exported successfully',
       dataExportFailed: 'Failed to export data',
       dataImportTitle: 'Import Data',
-      dataImportHint: 'Upload the exported JSON file to import accounts and proxies.',
+      dataImportHint: 'Upload the exported JSON file to import accounts and proxies. CLIProxyAPI/Codex account JSON is also supported.',
       dataImportWarning: 'Import will create new accounts/proxies; groups must be bound manually. Ensure existing data does not conflict.',
       dataImportFile: 'Data file',
       dataImportButton: 'Start Import',
@@ -2797,9 +2808,12 @@ export default {
       dataImportFailed: 'Data import failed',
       dataImportResult: 'Import Result',
       dataImportResultSummary: 'Proxies created {proxy_created}, reused {proxy_reused}, failed {proxy_failed}; Accounts created {account_created}, failed {account_failed}',
+      codexImportResultSummary: 'Total {total}, created {created}, updated {updated}, skipped {skipped}, failed {failed}',
       dataImportErrors: 'Error Details',
       dataImportSuccess: 'Import completed: accounts {account_created}, failed {account_failed}',
       dataImportCompletedWithErrors: 'Import completed with errors: account failed {account_failed}, proxy failed {proxy_failed}',
+      codexImportSuccess: 'Codex account import completed: created {created}, updated {updated}, skipped {skipped}',
+      codexImportCompletedWithErrors: 'Codex account import completed with errors: failed {failed}',
       syncFromCrsTitle: 'Sync Accounts from CRS',
       syncFromCrsDesc:
         'Sync accounts from claude-relay-service (CRS) into this system (CRS is called server-to-server).',
@@ -2852,6 +2866,13 @@ export default {
       schedulableEnabled: 'Scheduling enabled',
       schedulableDisabled: 'Scheduling disabled',
       failedToToggleSchedulable: 'Failed to toggle scheduling status',
+      failureSchedulingStrategy: {
+        title: 'Failure Scheduling Strategy',
+        default: 'Default strategy',
+        disableUntilTestPass: 'Disable on upstream error until test passes',
+        hint: 'Default keeps existing behavior. Strict strategy disables this account on upstream errors and restores it after a successful account test.',
+        bulkHint: 'Switching back to default in bulk also clears the strict-strategy auto-disable marker.'
+      },
       groupCountTotal: '{count} groups total',
       platforms: {
         anthropic: 'Anthropic',
@@ -5304,7 +5325,20 @@ export default {
         defaultSubscriptionsDuplicate:
           'Duplicate subscription group: {groupId}. Each group can only appear once.',
         subscriptionGroup: 'Subscription Group',
-        subscriptionValidityDays: 'Validity (days)'
+        subscriptionValidityDays: 'Validity (days)',
+        dailyCheckinEnabled: 'Enable Daily Check-in',
+        dailyCheckinEnabledHint: 'Allow regular users to claim one balance reward per day from their profile page',
+        dailyCheckinRewardMode: 'Check-in Reward Mode',
+        dailyCheckinRewardModeFixed: 'Fixed Amount',
+        dailyCheckinRewardModeRange: 'Random Range',
+        dailyCheckinRewardAmount: 'Fixed Reward Amount',
+        dailyCheckinRewardAmountHint: 'Balance amount granted for each successful check-in',
+        dailyCheckinRewardMin: 'Minimum Reward',
+        dailyCheckinRewardMax: 'Maximum Reward',
+        dailyCheckinRewardRangeHint: 'The system grants a random amount in this range, rounded to 0.01',
+        dailyCheckinFixedInvalid: 'Fixed reward amount must be greater than 0 when daily check-in is enabled',
+        dailyCheckinRangeInvalid: 'Maximum reward must be greater than or equal to minimum reward',
+        dailyCheckinRangeMaxInvalid: 'Maximum reward must be greater than 0 when daily check-in is enabled'
       },
       claudeCode: {
         title: 'Claude Code Settings',
@@ -5333,6 +5367,8 @@ export default {
         metadataPassthroughHint: 'Pass through client\'s original metadata.user_id without rewriting. May improve upstream cache hit rates.',
         cchSigning: 'CCH Signing',
         cchSigningHint: 'Sign the billing header in forwarded requests with CCH hash. When disabled, the placeholder is preserved.',
+        preResponseKeepalive: 'Pre-response keepalive',
+        preResponseKeepaliveHint: 'Send SSE keepalive frames while waiting for upstream response headers to help avoid Cloudflare 524. When enabled, the first delay must be between 5 and 110 seconds, and 80 seconds is a good default.',
         anthropicCacheTTL1hInjection: 'Anthropic Cache TTL Injection',
         anthropicCacheTTL1hInjectionHint: 'When enabled, existing ephemeral cache_control blocks in Anthropic OAuth/Setup Token request bodies are forced to 1h; response usage is billed back as 5m by default, with account-level TTL billing override taking priority.',
         rewriteMessageCacheControl: 'Rewrite Message Cache Breakpoints',

@@ -16,7 +16,9 @@ import (
 
 // mockTempUnscheduler 记录 TempUnscheduleRetryableError 的调用信息。
 type mockTempUnscheduler struct {
-	calls []tempUnscheduleCall
+	calls                []tempUnscheduleCall
+	strictUnscheduledIDs []int64
+	strictResult         bool
 }
 
 type tempUnscheduleCall struct {
@@ -26,6 +28,11 @@ type tempUnscheduleCall struct {
 
 func (m *mockTempUnscheduler) TempUnscheduleRetryableError(_ context.Context, accountID int64, failoverErr *service.UpstreamFailoverError) {
 	m.calls = append(m.calls, tempUnscheduleCall{accountID: accountID, failoverErr: failoverErr})
+}
+
+func (m *mockTempUnscheduler) HandleUpstreamFailoverError(_ context.Context, accountID int64, _ *service.UpstreamFailoverError) bool {
+	m.strictUnscheduledIDs = append(m.strictUnscheduledIDs, accountID)
+	return m.strictResult
 }
 
 // ---------------------------------------------------------------------------
@@ -362,6 +369,21 @@ func TestHandleFailoverError_SameAccountRetry(t *testing.T) {
 		require.Equal(t, FailoverContinue, action)
 		require.Len(t, mock.calls, 2, "第二次耗尽也应调用 TempUnschedule")
 	})
+}
+
+func TestHandleFailoverError_StrictFailureSchedulingSkipsSameAccountRetry(t *testing.T) {
+	mock := &mockTempUnscheduler{strictResult: true}
+	fs := NewFailoverState(3, false)
+	err := newTestFailoverErr(502, true, false)
+
+	action := fs.HandleFailoverError(context.Background(), mock, 42, "openai", err)
+
+	require.Equal(t, FailoverContinue, action)
+	require.Equal(t, []int64{42}, mock.strictUnscheduledIDs)
+	require.Empty(t, mock.calls)
+	require.Zero(t, fs.SameAccountRetryCount[42])
+	require.Contains(t, fs.FailedAccountIDs, int64(42))
+	require.Equal(t, 1, fs.SwitchCount)
 }
 
 // ---------------------------------------------------------------------------

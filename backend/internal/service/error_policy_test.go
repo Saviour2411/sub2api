@@ -264,6 +264,87 @@ func TestHandleUpstreamError_PoolModeCustomErrorCodesOverride(t *testing.T) {
 	})
 }
 
+func TestHandleUpstreamError_StrictFailureSchedulingDisablesOnAnyHandledUpstreamError(t *testing.T) {
+	repo := &errorPolicyRepoStub{}
+	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	account := &Account{
+		ID:       32,
+		Type:     AccountTypeAPIKey,
+		Platform: PlatformOpenAI,
+		Extra: map[string]any{
+			accountFailureSchedulingStrategyKey: AccountFailureSchedulingStrategyDisableUntilTestPass,
+		},
+	}
+
+	shouldDisable := svc.HandleUpstreamError(context.Background(), account, 400, http.Header{}, []byte(`{"error":"bad request"}`))
+
+	require.True(t, shouldDisable)
+	require.False(t, account.Schedulable)
+	require.Equal(t, 1, repo.setSchedulableCalls)
+	require.Len(t, repo.updateExtraCalls, 1)
+	require.Contains(t, repo.updateExtraCalls[0], accountFailureStrategyUnscheduledKey)
+	require.Equal(t, 0, repo.setErrCalls)
+}
+
+func TestHandleUpstreamError_StrictFailureSchedulingOverridesPoolModeSkip(t *testing.T) {
+	repo := &errorPolicyRepoStub{}
+	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	account := &Account{
+		ID:       33,
+		Type:     AccountTypeAPIKey,
+		Platform: PlatformOpenAI,
+		Credentials: map[string]any{
+			"pool_mode": true,
+		},
+		Extra: map[string]any{
+			accountFailureSchedulingStrategyKey: AccountFailureSchedulingStrategyDisableUntilTestPass,
+		},
+	}
+
+	shouldDisable := svc.HandleUpstreamError(context.Background(), account, 503, http.Header{}, []byte("unavailable"))
+
+	require.True(t, shouldDisable)
+	require.False(t, account.Schedulable)
+	require.Equal(t, 1, repo.setSchedulableCalls)
+	require.Len(t, repo.updateExtraCalls, 1)
+	require.Equal(t, 0, repo.setErrCalls)
+}
+
+func TestHandleUpstreamError_StrictFailureSchedulingUsesFreshAccountStrategy(t *testing.T) {
+	repo := &errorPolicyRepoStub{
+		accountByID: map[int64]*Account{
+			34: {
+				ID:       34,
+				Type:     AccountTypeAPIKey,
+				Platform: PlatformOpenAI,
+				Extra: map[string]any{
+					accountFailureSchedulingStrategyKey: AccountFailureSchedulingStrategyDisableUntilTestPass,
+				},
+			},
+		},
+	}
+	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	account := &Account{
+		ID:       34,
+		Type:     AccountTypeAPIKey,
+		Platform: PlatformOpenAI,
+		Credentials: map[string]any{
+			"custom_error_codes_enabled": true,
+			"custom_error_codes":         []any{float64(429)},
+		},
+	}
+
+	shouldDisable := svc.HandleUpstreamError(context.Background(), account, 524, http.Header{}, []byte("timeout"))
+
+	require.True(t, shouldDisable)
+	require.False(t, account.Schedulable)
+	require.Equal(t, AccountFailureSchedulingStrategyDisableUntilTestPass, account.Extra[accountFailureSchedulingStrategyKey])
+	require.Equal(t, 1, repo.setSchedulableCalls)
+	require.Len(t, repo.updateExtraCalls, 1)
+	require.Contains(t, repo.updateExtraCalls[0], accountFailureStrategyUnscheduledKey)
+	require.Equal(t, 0, repo.setErrCalls)
+}
+
 // ---------------------------------------------------------------------------
 // TestApplyErrorPolicy — 4 table-driven cases for the wrapper method
 // ---------------------------------------------------------------------------
@@ -395,9 +476,12 @@ func TestApplyErrorPolicy(t *testing.T) {
 
 type errorPolicyRepoStub struct {
 	mockAccountRepoForGemini
-	tempCalls    int
-	setErrCalls  int
-	lastErrorMsg string
+	tempCalls           int
+	setErrCalls         int
+	setSchedulableCalls int
+	updateExtraCalls    []map[string]any
+	lastErrorMsg        string
+	accountByID         map[int64]*Account
 }
 
 func (r *errorPolicyRepoStub) SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error {
@@ -409,4 +493,25 @@ func (r *errorPolicyRepoStub) SetError(ctx context.Context, id int64, errorMsg s
 	r.setErrCalls++
 	r.lastErrorMsg = errorMsg
 	return nil
+}
+
+func (r *errorPolicyRepoStub) SetSchedulable(ctx context.Context, id int64, schedulable bool) error {
+	r.setSchedulableCalls++
+	return nil
+}
+
+func (r *errorPolicyRepoStub) UpdateExtra(ctx context.Context, id int64, updates map[string]any) error {
+	r.updateExtraCalls = append(r.updateExtraCalls, updates)
+	return nil
+}
+
+func (r *errorPolicyRepoStub) GetByID(ctx context.Context, id int64) (*Account, error) {
+	if r.accountByID == nil {
+		return nil, ErrAccountNotFound
+	}
+	account, ok := r.accountByID[id]
+	if !ok {
+		return nil, ErrAccountNotFound
+	}
+	return account, nil
 }

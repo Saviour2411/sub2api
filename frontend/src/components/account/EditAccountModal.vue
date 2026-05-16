@@ -1287,6 +1287,19 @@
         <p class="input-hint">{{ t('admin.accounts.expiresAtHint') }}</p>
       </div>
 
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <label class="input-label">{{ t('admin.accounts.failureSchedulingStrategy.title') }}</label>
+        <select v-model="failureSchedulingStrategy" class="input">
+          <option :value="FAILURE_SCHEDULING_STRATEGY_DEFAULT">
+            {{ t('admin.accounts.failureSchedulingStrategy.default') }}
+          </option>
+          <option :value="FAILURE_SCHEDULING_STRATEGY_DISABLE_UNTIL_TEST_PASS">
+            {{ t('admin.accounts.failureSchedulingStrategy.disableUntilTestPass') }}
+          </option>
+        </select>
+        <p class="input-hint">{{ t('admin.accounts.failureSchedulingStrategy.hint') }}</p>
+      </div>
+
       <!-- OpenAI 自动透传开关（OAuth/API Key） -->
       <div
         v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'apikey')"
@@ -2194,7 +2207,14 @@ import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
 import { formatDateTime, formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
-import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
+import {
+  FAILURE_SCHEDULING_STRATEGY_DEFAULT,
+  FAILURE_SCHEDULING_STRATEGY_DISABLE_UNTIL_TEST_PASS,
+  FAILURE_SCHEDULING_STRATEGY_KEY,
+  FAILURE_STRATEGY_UNSCHEDULED_KEY,
+  VERTEX_LOCATION_OPTIONS,
+  type FailureSchedulingStrategy
+} from '@/constants/account'
 import {
   OPENAI_WS_MODE_CTX_POOL,
   OPENAI_WS_MODE_OFF,
@@ -2283,6 +2303,7 @@ const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(false)
+const failureSchedulingStrategy = ref<FailureSchedulingStrategy>(FAILURE_SCHEDULING_STRATEGY_DEFAULT)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 const allowOverages = ref(false) // For antigravity accounts: enable AI Credits overages
 const antigravityModelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
@@ -2527,6 +2548,25 @@ const expiresAtInput = computed({
   }
 })
 
+const applyFailureSchedulingStrategy = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
+  const extra: Record<string, unknown> = { ...(base || {}) }
+  if (failureSchedulingStrategy.value === FAILURE_SCHEDULING_STRATEGY_DISABLE_UNTIL_TEST_PASS) {
+    extra[FAILURE_SCHEDULING_STRATEGY_KEY] = FAILURE_SCHEDULING_STRATEGY_DISABLE_UNTIL_TEST_PASS
+  } else {
+    delete extra[FAILURE_SCHEDULING_STRATEGY_KEY]
+    delete extra[FAILURE_STRATEGY_UNSCHEDULED_KEY]
+  }
+  return extra
+}
+
+const resolveFailureSchedulingStrategy = (
+  extra?: Record<string, unknown> | null
+): FailureSchedulingStrategy => (
+  extra?.[FAILURE_SCHEDULING_STRATEGY_KEY] === FAILURE_SCHEDULING_STRATEGY_DISABLE_UNTIL_TEST_PASS
+    ? FAILURE_SCHEDULING_STRATEGY_DISABLE_UNTIL_TEST_PASS
+    : FAILURE_SCHEDULING_STRATEGY_DEFAULT
+)
+
 // Watchers
 const normalizePoolModeRetryCount = (value: number) => {
   if (!Number.isFinite(value)) {
@@ -2578,6 +2618,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   const extra = newAccount.extra as Record<string, unknown> | undefined
   mixedScheduling.value = extra?.mixed_scheduling === true
   allowOverages.value = extra?.allow_overages === true
+  failureSchedulingStrategy.value = resolveFailureSchedulingStrategy(extra)
 
   // Load OpenAI passthrough toggle (OpenAI OAuth/API Key)
   openaiPassthroughEnabled.value = false
@@ -3795,6 +3836,15 @@ const handleSubmit = async () => {
       // Quota notify config
       writeQuotaNotifyToExtra(newExtra, 'update')
       updatePayload.extra = newExtra
+    }
+
+    const currentFailureSchedulingStrategy = resolveFailureSchedulingStrategy(
+      props.account.extra as Record<string, unknown> | undefined
+    )
+    if (updatePayload.extra || failureSchedulingStrategy.value !== currentFailureSchedulingStrategy) {
+      updatePayload.extra = applyFailureSchedulingStrategy(
+        ((updatePayload.extra as Record<string, unknown>) || (props.account.extra as Record<string, unknown>) || {})
+      )
     }
 
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {

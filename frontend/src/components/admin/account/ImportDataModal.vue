@@ -48,7 +48,7 @@
           {{ t('admin.accounts.dataImportResult') }}
         </div>
         <div class="text-sm text-gray-700 dark:text-dark-300">
-          {{ t('admin.accounts.dataImportResultSummary', result) }}
+          {{ resultSummary }}
         </div>
 
         <div v-if="errorItems.length" class="mt-2">
@@ -59,7 +59,7 @@
             class="mt-2 max-h-48 overflow-auto rounded-lg bg-gray-50 p-3 font-mono text-xs dark:bg-dark-800"
           >
             <div v-for="(item, idx) in errorItems" :key="idx" class="whitespace-pre-wrap">
-              {{ item.kind }} {{ item.name || item.proxy_key || '-' }} — {{ item.message }}
+              {{ formatErrorItem(item) }}
             </div>
           </div>
         </div>
@@ -90,7 +90,13 @@ import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import { adminAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
-import type { AdminDataImportResult } from '@/types'
+import type {
+  AdminDataImportError,
+  AdminDataImportResult,
+  AdminDataPayload,
+  CodexSessionImportMessage,
+  CodexSessionImportResult,
+} from '@/types'
 
 interface Props {
   show: boolean
@@ -109,12 +115,32 @@ const appStore = useAppStore()
 
 const importing = ref(false)
 const file = ref<File | null>(null)
-const result = ref<AdminDataImportResult | null>(null)
+const result = ref<ImportResult | null>(null)
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const fileName = computed(() => file.value?.name || '')
 
-const errorItems = computed(() => result.value?.errors || [])
+type ImportResult =
+  | {
+      type: 'data'
+      payload: AdminDataImportResult
+    }
+  | {
+      type: 'codex'
+      payload: CodexSessionImportResult
+    }
+
+type ImportErrorItem = AdminDataImportError | CodexSessionImportMessage
+
+const errorItems = computed<ImportErrorItem[]>(() => result.value?.payload.errors || [])
+
+const resultSummary = computed(() => {
+  if (!result.value) return ''
+  if (result.value.type === 'codex') {
+    return t('admin.accounts.codexImportResultSummary', result.value.payload)
+  }
+  return t('admin.accounts.dataImportResultSummary', result.value.payload)
+})
 
 watch(
   () => props.show,
@@ -161,6 +187,105 @@ const readFileAsText = async (sourceFile: File): Promise<string> => {
   })
 }
 
+const isObject = (value: unknown): value is Record<string, unknown> => {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+const getNestedValue = (value: Record<string, unknown>, path: string[]): unknown => {
+  let current: unknown = value
+  for (const key of path) {
+    if (!isObject(current)) return undefined
+    current = current[key]
+  }
+  return current
+}
+
+const hasNonEmptyStringAt = (value: Record<string, unknown>, path: string[]): boolean => {
+  const candidate = getNestedValue(value, path)
+  return typeof candidate === 'string' && candidate.trim() !== ''
+}
+
+const isCodexImportEntry = (value: unknown): boolean => {
+  if (!isObject(value)) return false
+  if (value.type === 'codex') return true
+
+  return [
+    ['access_token'],
+    ['accessToken'],
+    ['refresh_token'],
+    ['refreshToken'],
+    ['id_token'],
+    ['idToken'],
+    ['tokens', 'access_token'],
+    ['tokens', 'accessToken'],
+  ].some((path) => hasNonEmptyStringAt(value, path))
+}
+
+const isCodexImportPayload = (value: unknown): boolean => {
+  if (Array.isArray(value)) {
+    return value.length > 0 && value.every((item) => isCodexImportEntry(item))
+  }
+  return isCodexImportEntry(value)
+}
+
+const formatErrorItem = (item: ImportErrorItem): string => {
+  if ('kind' in item) {
+    return `${item.kind} ${item.name || item.proxy_key || '-'} - ${item.message}`
+  }
+  return `#${item.index} ${item.name || '-'} - ${item.message}`
+}
+
+const handleCodexImport = async (text: string) => {
+  const res = await adminAPI.accounts.importCodexSession({
+    content: text,
+    update_existing: true,
+    skip_default_group_bind: true
+  })
+  result.value = {
+    type: 'codex',
+    payload: res
+  }
+
+  const msgParams: Record<string, unknown> = {
+    total: res.total,
+    created: res.created,
+    updated: res.updated,
+    skipped: res.skipped,
+    failed: res.failed,
+  }
+  if (res.failed > 0) {
+    appStore.showError(t('admin.accounts.codexImportCompletedWithErrors', msgParams))
+  } else {
+    appStore.showSuccess(t('admin.accounts.codexImportSuccess', msgParams))
+    emit('imported')
+  }
+}
+
+const handleDataImport = async (dataPayload: unknown) => {
+  const res = await adminAPI.accounts.importData({
+    data: dataPayload as AdminDataPayload,
+    skip_default_group_bind: true
+  })
+  result.value = {
+    type: 'data',
+    payload: res
+  }
+
+  const msgParams: Record<string, unknown> = {
+    account_created: res.account_created,
+    account_failed: res.account_failed,
+    proxy_created: res.proxy_created,
+    proxy_reused: res.proxy_reused,
+    proxy_failed: res.proxy_failed,
+  }
+  if (res.account_failed > 0 || res.proxy_failed > 0) {
+    appStore.showError(t('admin.accounts.dataImportCompletedWithErrors', msgParams))
+  } else {
+    appStore.showSuccess(t('admin.accounts.dataImportSuccess', msgParams))
+    emit('imported')
+  }
+}
+
 const handleImport = async () => {
   if (!file.value) {
     appStore.showError(t('admin.accounts.dataImportSelectFile'))
@@ -172,25 +297,10 @@ const handleImport = async () => {
     const text = await readFileAsText(file.value)
     const dataPayload = JSON.parse(text)
 
-    const res = await adminAPI.accounts.importData({
-      data: dataPayload,
-      skip_default_group_bind: true
-    })
-
-    result.value = res
-
-    const msgParams: Record<string, unknown> = {
-      account_created: res.account_created,
-      account_failed: res.account_failed,
-      proxy_created: res.proxy_created,
-      proxy_reused: res.proxy_reused,
-      proxy_failed: res.proxy_failed,
-    }
-    if (res.account_failed > 0 || res.proxy_failed > 0) {
-      appStore.showError(t('admin.accounts.dataImportCompletedWithErrors', msgParams))
+    if (isCodexImportPayload(dataPayload)) {
+      await handleCodexImport(text)
     } else {
-      appStore.showSuccess(t('admin.accounts.dataImportSuccess', msgParams))
-      emit('imported')
+      await handleDataImport(dataPayload)
     }
   } catch (error: any) {
     if (error instanceof SyntaxError) {
