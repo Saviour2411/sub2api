@@ -3591,140 +3591,152 @@
                   }}
                 </p>
               </div>
+            </div>
+          </div>
 
-              <!-- 2xx 响应语义错误识别 -->
-              <div class="border-t border-gray-100 pt-5 dark:border-dark-700">
-                <div class="flex items-start justify-between gap-6">
-                  <div class="min-w-0">
-                    <label
-                      class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                    >
-                      {{ t("admin.settings.gatewayForwarding.semanticErrorDetection") }}
-                    </label>
-                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                      {{ t("admin.settings.gatewayForwarding.semanticErrorDetectionHint") }}
-                    </p>
-                  </div>
-                  <Toggle v-model="form.semantic_error_detection_enabled" />
+          <!-- 2xx 响应语义错误识别 -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.semanticErrorDetection.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.semanticErrorDetection.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div class="flex items-start justify-between gap-6">
+                <div class="min-w-0">
+                  <label
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.semanticErrorDetection.enabled") }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.semanticErrorDetection.enabledHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.semantic_error_detection_enabled" />
+              </div>
+
+              <div class="grid gap-4 lg:grid-cols-[220px_1fr]">
+                <div>
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.semanticErrorDetection.maxChars") }}
+                  </label>
+                  <input
+                    v-model.number="form.semantic_error_match_max_chars"
+                    type="number"
+                    min="128"
+                    max="65536"
+                    step="128"
+                    class="input w-full font-mono text-sm"
+                    :disabled="!form.semantic_error_detection_enabled"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.semanticErrorDetection.maxCharsHint") }}
+                  </p>
                 </div>
 
-                <div class="mt-4 grid gap-4 lg:grid-cols-[220px_1fr]">
-                  <div>
-                    <label
-                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                <div class="space-y-3">
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {{ t("admin.settings.semanticErrorDetection.rules") }}
+                      </h3>
+                      <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                        {{ t("admin.settings.semanticErrorDetection.rulesHint") }}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm shrink-0"
+                      @click="addSemanticErrorRule"
                     >
-                      {{ t("admin.settings.gatewayForwarding.semanticErrorMaxChars") }}
-                    </label>
-                    <input
-                      v-model.number="form.semantic_error_match_max_chars"
-                      type="number"
-                      min="128"
-                      max="65536"
-                      step="128"
-                      class="input w-full font-mono text-sm"
-                      :disabled="!form.semantic_error_detection_enabled"
-                    />
-                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                      {{ t("admin.settings.gatewayForwarding.semanticErrorMaxCharsHint") }}
-                    </p>
+                      <Icon name="plus" size="sm" class="mr-1" />
+                      {{ t("common.add") }}
+                    </button>
                   </div>
 
-                  <div class="space-y-3">
-                    <div class="flex items-center justify-between gap-3">
-                      <div>
-                        <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                          {{ t("admin.settings.gatewayForwarding.semanticErrorRules") }}
-                        </h3>
-                        <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                          {{ t("admin.settings.gatewayForwarding.semanticErrorRulesHint") }}
-                        </p>
+                  <div
+                    v-if="form.semantic_error_rules.length === 0"
+                    class="rounded-md border border-dashed border-gray-200 px-4 py-5 text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400"
+                  >
+                    {{ t("admin.settings.semanticErrorDetection.rulesEmpty") }}
+                  </div>
+
+                  <div
+                    v-for="(rule, index) in form.semantic_error_rules"
+                    :key="index"
+                    class="rounded-md border border-gray-200 p-4 dark:border-dark-600"
+                  >
+                    <div class="mb-3 flex items-start justify-between gap-3">
+                      <div class="grid min-w-0 flex-1 gap-3 md:grid-cols-[1fr_150px_110px]">
+                        <input
+                          v-model="rule.name"
+                          type="text"
+                          class="input text-sm"
+                          :placeholder="t('admin.settings.semanticErrorDetection.ruleName')"
+                        />
+                        <Select
+                          v-model="rule.match_type"
+                          :options="semanticErrorMatchTypeOptions"
+                        />
+                        <input
+                          v-model.number="rule.priority"
+                          type="number"
+                          class="input font-mono text-sm"
+                          :placeholder="t('admin.settings.semanticErrorDetection.priority')"
+                        />
                       </div>
-                      <button
-                        type="button"
-                        class="btn btn-secondary btn-sm shrink-0"
-                        @click="addSemanticErrorRule"
-                      >
-                        <Icon name="plus" size="sm" class="mr-1" />
-                        {{ t("common.add") }}
-                      </button>
-                    </div>
-
-                    <div
-                      v-if="form.semantic_error_rules.length === 0"
-                      class="rounded-md border border-dashed border-gray-200 px-4 py-5 text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400"
-                    >
-                      {{ t("admin.settings.gatewayForwarding.semanticErrorRulesEmpty") }}
-                    </div>
-
-                    <div
-                      v-for="(rule, index) in form.semantic_error_rules"
-                      :key="index"
-                      class="rounded-md border border-gray-200 p-4 dark:border-dark-600"
-                    >
-                      <div class="mb-3 flex items-start justify-between gap-3">
-                        <div class="grid min-w-0 flex-1 gap-3 md:grid-cols-[1fr_150px_110px]">
-                          <input
-                            v-model="rule.name"
-                            type="text"
-                            class="input text-sm"
-                            :placeholder="t('admin.settings.gatewayForwarding.semanticErrorRuleName')"
-                          />
-                          <Select
-                            v-model="rule.match_type"
-                            :options="semanticErrorMatchTypeOptions"
-                          />
-                          <input
-                            v-model.number="rule.priority"
-                            type="number"
-                            class="input font-mono text-sm"
-                            :placeholder="t('admin.settings.gatewayForwarding.semanticErrorPriority')"
-                          />
-                        </div>
-                        <div class="flex shrink-0 items-center gap-2">
-                          <Toggle v-model="rule.enabled" />
-                          <button
-                            type="button"
-                            class="rounded-md p-2 text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
-                            @click="removeSemanticErrorRule(index)"
-                          >
-                            <Icon name="trash" size="sm" />
-                          </button>
-                        </div>
-                      </div>
-
-                      <div class="mb-3 flex flex-wrap gap-2">
-                        <label
-                          v-for="platform in semanticErrorPlatformOptions"
-                          :key="platform.value"
-                          class="inline-flex items-center gap-2 rounded-md border border-gray-200 px-2.5 py-1.5 text-xs text-gray-600 dark:border-dark-600 dark:text-gray-300"
+                      <div class="flex shrink-0 items-center gap-2">
+                        <Toggle v-model="rule.enabled" />
+                        <button
+                          type="button"
+                          class="rounded-md p-2 text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                          @click="removeSemanticErrorRule(index)"
                         >
-                          <input
-                            type="checkbox"
-                            class="h-3.5 w-3.5 rounded border-gray-300"
-                            :checked="rule.platforms.includes(platform.value)"
-                            @change="toggleSemanticErrorRulePlatform(rule, platform.value)"
-                          />
-                          {{ platform.label }}
-                        </label>
-                        <span class="px-1.5 py-1.5 text-xs text-gray-400">
-                          {{ t("admin.settings.gatewayForwarding.semanticErrorPlatformsEmpty") }}
-                        </span>
+                          <Icon name="trash" size="sm" />
+                        </button>
                       </div>
+                    </div>
 
-                      <div class="grid gap-3 lg:grid-cols-2">
-                        <textarea
-                          v-model="rule.pattern"
-                          rows="3"
-                          class="input min-h-[84px] text-sm"
-                          :placeholder="t('admin.settings.gatewayForwarding.semanticErrorPattern')"
+                    <div class="mb-3 flex flex-wrap gap-2">
+                      <label
+                        v-for="platform in semanticErrorPlatformOptions"
+                        :key="platform.value"
+                        class="inline-flex items-center gap-2 rounded-md border border-gray-200 px-2.5 py-1.5 text-xs text-gray-600 dark:border-dark-600 dark:text-gray-300"
+                      >
+                        <input
+                          type="checkbox"
+                          class="h-3.5 w-3.5 rounded border-gray-300"
+                          :checked="rule.platforms.includes(platform.value)"
+                          @change="toggleSemanticErrorRulePlatform(rule, platform.value)"
                         />
-                        <textarea
-                          v-model="rule.custom_message"
-                          rows="3"
-                          class="input min-h-[84px] text-sm"
-                          :placeholder="t('admin.settings.gatewayForwarding.semanticErrorCustomMessage')"
-                        />
-                      </div>
+                        {{ platform.label }}
+                      </label>
+                      <span class="px-1.5 py-1.5 text-xs text-gray-400">
+                        {{ t("admin.settings.semanticErrorDetection.platformsEmpty") }}
+                      </span>
+                    </div>
+
+                    <div class="grid gap-3 lg:grid-cols-2">
+                      <textarea
+                        v-model="rule.pattern"
+                        rows="3"
+                        class="input min-h-[84px] text-sm"
+                        :placeholder="t('admin.settings.semanticErrorDetection.pattern')"
+                      />
+                      <textarea
+                        v-model="rule.custom_message"
+                        rows="3"
+                        class="input min-h-[84px] text-sm"
+                        :placeholder="t('admin.settings.semanticErrorDetection.customMessage')"
+                      />
                     </div>
                   </div>
                 </div>
@@ -7523,7 +7535,7 @@ function normalizeSemanticErrorRulesForSave(): SemanticErrorRule[] | null {
   for (const rule of filteredRules) {
     if (!rule.name || !rule.pattern || !rule.custom_message) {
       appStore.showError(
-        t("admin.settings.gatewayForwarding.semanticErrorRuleRequired"),
+        t("admin.settings.semanticErrorDetection.ruleRequired"),
       );
       return null;
     }
@@ -7532,7 +7544,7 @@ function normalizeSemanticErrorRulesForSave(): SemanticErrorRule[] | null {
         new RegExp(rule.pattern);
       } catch {
         appStore.showError(
-          t("admin.settings.gatewayForwarding.semanticErrorRegexInvalid", {
+          t("admin.settings.semanticErrorDetection.regexInvalid", {
             name: rule.name,
           }),
         );

@@ -183,7 +183,7 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.sub2api.yml up -d
 
 ### 2xx 响应语义错误识别
 
-当前本地分支在 `系统设置 -> 网关服务 -> 请求转发行为` 新增“2xx 语义错误识别”。
+当前本地分支在 `系统设置 -> 网关服务 -> 2xx 语义错误识别` 新增独立配置卡片。
 
 用途：
 
