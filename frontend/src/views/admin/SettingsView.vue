@@ -7494,6 +7494,46 @@ function createSemanticErrorRule(): SemanticErrorRule {
   };
 }
 
+function normalizeSemanticErrorRulesForForm(
+  rules: unknown,
+): SemanticErrorRule[] {
+  if (!Array.isArray(rules)) {
+    return [];
+  }
+
+  return rules
+    .map((rule) => {
+      if (!rule || typeof rule !== "object") {
+        return null;
+      }
+      const item = rule as Partial<SemanticErrorRule> & {
+        platforms?: unknown;
+      };
+
+      return {
+        enabled: item.enabled !== false,
+        name: typeof item.name === "string" ? item.name : "",
+        platforms: Array.isArray(item.platforms)
+          ? item.platforms.filter(
+              (platform): platform is SemanticErrorPlatform =>
+                platform === "anthropic" ||
+                platform === "openai" ||
+                platform === "gemini" ||
+                platform === "antigravity",
+            )
+          : [],
+        match_type: item.match_type === "regex" ? "regex" : "contains",
+        pattern: typeof item.pattern === "string" ? item.pattern : "",
+        custom_message:
+          typeof item.custom_message === "string" ? item.custom_message : "",
+        priority: Number.isFinite(Number(item.priority))
+          ? Math.floor(Number(item.priority))
+          : 100,
+      } satisfies SemanticErrorRule;
+    })
+    .filter((rule): rule is SemanticErrorRule => rule !== null);
+}
+
 function addSemanticErrorRule() {
   form.semantic_error_rules.push(createSemanticErrorRule());
 }
@@ -7585,6 +7625,9 @@ async function loadSettings() {
             content_md: doc.content_md || "",
           }))
         : defaultLoginAgreementDocuments();
+    form.semantic_error_rules = normalizeSemanticErrorRulesForForm(
+      settings.semantic_error_rules,
+    );
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(settings));
     form.backend_mode_enabled = settings.backend_mode_enabled;
     form.default_subscriptions = normalizeDefaultSubscriptionSettings(
@@ -8164,6 +8207,9 @@ async function saveSettings() {
         (form as Record<string, unknown>)[key] = value;
       }
     }
+    form.semantic_error_rules = normalizeSemanticErrorRulesForForm(
+      updated.semantic_error_rules,
+    );
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(updated));
     registrationEmailSuffixWhitelistTags.value =
       normalizeRegistrationEmailSuffixDomains(

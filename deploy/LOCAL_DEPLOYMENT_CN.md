@@ -204,6 +204,10 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.sub2api.yml up -d
   - `custom_message`：命中后返回给客户端的内容。
   - `priority`：数字越小越先匹配。
 
+页面兼容性：
+
+- 设置页加载和保存回填时会对 `semantic_error_rules` 做前端归一化，确保 `platforms`、`match_type`、`priority` 等字段缺失或异常时不会导致页面白屏。
+
 性能策略：
 
 - 非流式响应：仅当响应字符数不超过阈值时匹配；超过阈值直接放行。
