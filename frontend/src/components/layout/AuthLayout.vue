@@ -1,27 +1,20 @@
 <template>
-  <div class="relative flex min-h-screen items-center justify-center overflow-hidden p-4">
+  <div class="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#edf4fc] p-4 dark:bg-[#080d15]">
     <!-- Background -->
     <div
-      class="absolute inset-0 bg-gradient-to-br from-gray-50 via-primary-50/30 to-gray-100 dark:from-dark-950 dark:via-dark-900 dark:to-dark-950"
+      class="absolute inset-0 bg-cover bg-center opacity-92 dark:opacity-55"
+      style="background-image: url('/theme/staly.png')"
     ></div>
+    <div class="absolute inset-0 bg-[linear-gradient(90deg,rgba(247,250,255,0.92)_0%,rgba(247,250,255,0.78)_38%,rgba(247,250,255,0.2)_78%,rgba(247,250,255,0.52)_100%)] dark:bg-[linear-gradient(90deg,rgba(8,13,21,0.94)_0%,rgba(8,13,21,0.78)_38%,rgba(8,13,21,0.22)_76%,rgba(8,13,21,0.7)_100%)]"></div>
 
     <!-- Decorative Elements -->
     <div class="pointer-events-none absolute inset-0 overflow-hidden">
-      <!-- Gradient Orbs -->
       <div
-        class="absolute -right-40 -top-40 h-80 w-80 rounded-full bg-primary-400/20 blur-3xl"
+        class="absolute inset-0 bg-[linear-gradient(rgba(23,152,242,0.075)_1px,transparent_1px),linear-gradient(90deg,rgba(23,152,242,0.055)_1px,transparent_1px)] bg-[size:52px_52px]"
       ></div>
-      <div
-        class="absolute -bottom-40 -left-40 h-80 w-80 rounded-full bg-primary-500/15 blur-3xl"
-      ></div>
-      <div
-        class="absolute left-1/2 top-1/2 h-96 w-96 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary-300/10 blur-3xl"
-      ></div>
-
-      <!-- Grid Pattern -->
-      <div
-        class="absolute inset-0 bg-[linear-gradient(rgba(20,184,166,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(20,184,166,0.03)_1px,transparent_1px)] bg-[size:64px_64px]"
-      ></div>
+      <div class="absolute left-[8%] top-0 h-full w-px bg-gradient-to-b from-transparent via-primary-400/40 to-transparent"></div>
+      <div class="absolute bottom-12 left-0 h-px w-2/3 bg-gradient-to-r from-transparent via-primary-400/40 to-transparent"></div>
+      <div class="absolute right-10 top-10 h-28 w-28 border border-primary-300/30 [clip-path:polygon(18%_0,100%_0,100%_72%,72%_100%,0_100%,0_18%)]"></div>
     </div>
 
     <!-- Content Container -->
@@ -31,21 +24,21 @@
         <!-- Custom Logo or Default Logo -->
         <template v-if="settingsLoaded">
           <div
-            class="mb-4 inline-flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl shadow-lg shadow-primary-500/30"
+            class="mb-4 inline-flex h-16 w-16 items-center justify-center overflow-hidden rounded-lg border border-primary-200/95 bg-white/95 shadow-lg shadow-primary-500/25 backdrop-blur-xl dark:border-primary-400/30 dark:bg-[#0f1724]/75"
           >
             <img :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
           </div>
           <h1 class="text-gradient mb-2 text-3xl font-bold">
             {{ siteName }}
           </h1>
-          <p class="text-sm text-gray-500 dark:text-dark-400">
+          <p class="text-sm font-medium text-slate-500 dark:text-slate-400">
             {{ siteSubtitle }}
           </p>
         </template>
       </div>
 
       <!-- Card Container -->
-      <div class="card-glass rounded-2xl p-8 shadow-glass">
+      <div class="card-glass mecha-panel rounded-lg p-8 shadow-glass">
         <slot />
       </div>
 
@@ -55,7 +48,7 @@
       </div>
 
       <!-- Copyright -->
-      <div class="mt-8 text-center text-xs text-gray-400 dark:text-dark-500">
+      <div class="mt-8 text-center text-xs text-slate-500 dark:text-slate-500">
         &copy; {{ currentYear }} {{ siteName }}. All rights reserved.
       </div>
     </div>
@@ -83,6 +76,6 @@ onMounted(() => {
 
 <style scoped>
 .text-gradient {
-  @apply bg-gradient-to-r from-primary-600 to-primary-500 bg-clip-text text-transparent;
+  @apply bg-gradient-to-r from-primary-700 via-primary-500 to-orange-500 bg-clip-text text-transparent dark:from-primary-200 dark:via-primary-400 dark:to-orange-300;
 }
 </style>

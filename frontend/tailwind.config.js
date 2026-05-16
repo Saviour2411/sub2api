@@ -5,33 +5,33 @@ export default {
   theme: {
     extend: {
       colors: {
-        // 主色调 - Teal/Cyan 青色系
+        // 主色调 - 机甲冷蓝
         primary: {
-          50: '#f0fdfa',
-          100: '#ccfbf1',
-          200: '#99f6e4',
-          300: '#5eead4',
-          400: '#2dd4bf',
-          500: '#14b8a6',
-          600: '#0d9488',
-          700: '#0f766e',
-          800: '#115e59',
-          900: '#134e4a',
-          950: '#042f2e'
+          50: '#eff8ff',
+          100: '#dbeeff',
+          200: '#bee2ff',
+          300: '#86ceff',
+          400: '#4bb5ff',
+          500: '#1798f2',
+          600: '#0878d0',
+          700: '#075ea9',
+          800: '#0a4f8b',
+          900: '#0e426f',
+          950: '#092943'
         },
-        // 辅助色 - 深蓝灰
+        // 辅助色 - 装甲石墨
         accent: {
-          50: '#f8fafc',
-          100: '#f1f5f9',
-          200: '#e2e8f0',
-          300: '#cbd5e1',
-          400: '#94a3b8',
-          500: '#64748b',
-          600: '#475569',
-          700: '#334155',
-          800: '#1e293b',
-          900: '#0f172a',
-          950: '#020617'
+          50: '#f7f9fc',
+          100: '#e9eef5',
+          200: '#d4deea',
+          300: '#adbed3',
+          400: '#7f98b3',
+          500: '#5f7895',
+          600: '#4a6078',
+          700: '#3f5064',
+          800: '#25303e',
+          900: '#151c26',
+          950: '#090f18'
         },
         // 深色模式背景
         dark: {
@@ -67,20 +67,20 @@ export default {
       boxShadow: {
         glass: '0 8px 32px rgba(0, 0, 0, 0.08)',
         'glass-sm': '0 4px 16px rgba(0, 0, 0, 0.06)',
-        glow: '0 0 20px rgba(20, 184, 166, 0.25)',
-        'glow-lg': '0 0 40px rgba(20, 184, 166, 0.35)',
+        glow: '0 0 20px rgba(23, 152, 242, 0.28)',
+        'glow-lg': '0 0 42px rgba(23, 152, 242, 0.38)',
         card: '0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06)',
-        'card-hover': '0 10px 40px rgba(0, 0, 0, 0.08)',
-        'inner-glow': 'inset 0 1px 0 rgba(255, 255, 255, 0.1)'
+        'card-hover': '0 12px 38px rgba(8, 47, 88, 0.12)',
+        'inner-glow': 'inset 0 1px 0 rgba(255, 255, 255, 0.16)'
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-        'gradient-primary': 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)',
-        'gradient-dark': 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+        'gradient-primary': 'linear-gradient(135deg, #35b8ff 0%, #0878d0 58%, #0b4c8a 100%)',
+        'gradient-dark': 'linear-gradient(135deg, #172131 0%, #090f18 100%)',
         'gradient-glass':
-          'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+          'linear-gradient(135deg, rgba(255,255,255,0.78) 0%, rgba(235,245,255,0.46) 100%)',
         'mesh-gradient':
-          'radial-gradient(at 40% 20%, rgba(20, 184, 166, 0.12) 0px, transparent 50%), radial-gradient(at 80% 0%, rgba(6, 182, 212, 0.08) 0px, transparent 50%), radial-gradient(at 0% 50%, rgba(20, 184, 166, 0.08) 0px, transparent 50%)'
+          'linear-gradient(135deg, rgba(246,249,255,0.95) 0%, rgba(230,240,252,0.92) 46%, rgba(244,248,255,0.96) 100%), radial-gradient(at 76% 4%, rgba(23, 152, 242, 0.18) 0px, transparent 42%), radial-gradient(at 12% 82%, rgba(255, 111, 56, 0.08) 0px, transparent 38%)'
       },
       animation: {
         'fade-in': 'fadeIn 0.3s ease-out',
