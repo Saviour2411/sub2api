@@ -174,6 +174,13 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.sub2api.yml up -d
 
 升级部署前仍建议先备份 PostgreSQL 数据目录或执行数据库 dump。
 
+## 本地定制功能记录
+
+当前本地分支包含以下账号管理定制：
+
+- 新增账号时，默认选中“上游报错后停止调度，测试通过后恢复”策略。
+- 编辑 API Key、上游或 Bedrock API Key 模式账号时，页面会显示已保存 API Key 的只读查看区，支持显示/隐藏和复制；替换输入框仍保持“留空不修改”的行为。
+
 ## Cloudflare 524 与流式心跳
 
 当前本地分支新增“预响应流式心跳”能力，用于 Cloudflare 橙云代理下的长时间上游等待场景。

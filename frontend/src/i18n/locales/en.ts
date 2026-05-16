@@ -3407,11 +3407,19 @@ export default {
       bedrockApiKeyLeaveEmpty: 'Leave empty to keep current key',
       apiKeyIsRequired: 'API Key is required',
       leaveEmptyToKeep: 'Leave empty to keep current key',
+      currentApiKey: 'Current API Key',
+      currentApiKeyHint: 'Shows the saved key. The input below only replaces it; leaving it empty keeps the current key.',
+      newApiKey: 'Replace API Key',
+      showApiKey: 'Show API Key',
+      hideApiKey: 'Hide API Key',
+      copyApiKey: 'Copy API Key',
+      apiKeyCopied: 'API Key copied',
       // Upstream type
       upstream: {
         baseUrl: 'Upstream Base URL',
         baseUrlHint: 'The address of the upstream Antigravity service, e.g., https://cloudcode-pa.googleapis.com',
         apiKey: 'Upstream API Key',
+        newApiKey: 'Replace upstream API Key',
         apiKeyHint: 'API Key for the upstream service',
         pleaseEnterBaseUrl: 'Please enter upstream Base URL',
         pleaseEnterApiKey: 'Please enter upstream API Key'

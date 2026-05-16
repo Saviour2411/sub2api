@@ -3297,7 +3297,9 @@ const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(true)
-const failureSchedulingStrategy = ref<FailureSchedulingStrategy>(FAILURE_SCHEDULING_STRATEGY_DEFAULT)
+const failureSchedulingStrategy = ref<FailureSchedulingStrategy>(
+  FAILURE_SCHEDULING_STRATEGY_DISABLE_UNTIL_TEST_PASS
+)
 const openaiPassthroughEnabled = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
@@ -4072,7 +4074,7 @@ const resetForm = () => {
   customErrorCodeInput.value = null
   interceptWarmupRequests.value = false
   autoPauseOnExpired.value = true
-  failureSchedulingStrategy.value = FAILURE_SCHEDULING_STRATEGY_DEFAULT
+  failureSchedulingStrategy.value = FAILURE_SCHEDULING_STRATEGY_DISABLE_UNTIL_TEST_PASS
   openaiPassthroughEnabled.value = false
   openAICompactMode.value = 'auto'
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF

@@ -47,7 +47,37 @@
           <p class="input-hint">{{ baseUrlHint }}</p>
         </div>
         <div>
-          <label class="input-label">{{ t('admin.accounts.apiKey') }}</label>
+          <label class="input-label">{{ t('admin.accounts.currentApiKey') }}</label>
+          <div class="flex gap-2">
+            <input
+              :value="currentApiKey"
+              :type="showCurrentApiKey ? 'text' : 'password'"
+              readonly
+              class="input min-w-0 flex-1 font-mono"
+            />
+            <button
+              type="button"
+              @click="showCurrentApiKey = !showCurrentApiKey"
+              class="rounded-lg border border-gray-300 px-3 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-600 dark:text-gray-300 dark:hover:bg-dark-700"
+              :disabled="!currentApiKey"
+              :title="showCurrentApiKey ? t('admin.accounts.hideApiKey') : t('admin.accounts.showApiKey')"
+            >
+              <Icon :name="showCurrentApiKey ? 'eyeOff' : 'eye'" size="sm" />
+            </button>
+            <button
+              type="button"
+              @click="copyCurrentApiKey"
+              class="rounded-lg border border-gray-300 px-3 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-600 dark:text-gray-300 dark:hover:bg-dark-700"
+              :disabled="!currentApiKey"
+              :title="t('admin.accounts.copyApiKey')"
+            >
+              <Icon name="copy" size="sm" />
+            </button>
+          </div>
+          <p class="input-hint">{{ t('admin.accounts.currentApiKeyHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.newApiKey') }}</label>
           <input
             v-model="editApiKey"
             type="password"
@@ -556,7 +586,37 @@
           <p class="input-hint">{{ t('admin.accounts.upstream.baseUrlHint') }}</p>
         </div>
         <div>
-          <label class="input-label">{{ t('admin.accounts.upstream.apiKey') }}</label>
+          <label class="input-label">{{ t('admin.accounts.currentApiKey') }}</label>
+          <div class="flex gap-2">
+            <input
+              :value="currentApiKey"
+              :type="showCurrentApiKey ? 'text' : 'password'"
+              readonly
+              class="input min-w-0 flex-1 font-mono"
+            />
+            <button
+              type="button"
+              @click="showCurrentApiKey = !showCurrentApiKey"
+              class="rounded-lg border border-gray-300 px-3 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-600 dark:text-gray-300 dark:hover:bg-dark-700"
+              :disabled="!currentApiKey"
+              :title="showCurrentApiKey ? t('admin.accounts.hideApiKey') : t('admin.accounts.showApiKey')"
+            >
+              <Icon :name="showCurrentApiKey ? 'eyeOff' : 'eye'" size="sm" />
+            </button>
+            <button
+              type="button"
+              @click="copyCurrentApiKey"
+              class="rounded-lg border border-gray-300 px-3 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-600 dark:text-gray-300 dark:hover:bg-dark-700"
+              :disabled="!currentApiKey"
+              :title="t('admin.accounts.copyApiKey')"
+            >
+              <Icon name="copy" size="sm" />
+            </button>
+          </div>
+          <p class="input-hint">{{ t('admin.accounts.currentApiKeyHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.upstream.newApiKey') }}</label>
           <input
             v-model="editApiKey"
             type="password"
@@ -818,6 +878,36 @@
         </template>
 
         <!-- API Key field -->
+        <div v-if="isBedrockAPIKeyMode">
+          <label class="input-label">{{ t('admin.accounts.currentApiKey') }}</label>
+          <div class="flex gap-2">
+            <input
+              :value="currentApiKey"
+              :type="showCurrentApiKey ? 'text' : 'password'"
+              readonly
+              class="input min-w-0 flex-1 font-mono"
+            />
+            <button
+              type="button"
+              @click="showCurrentApiKey = !showCurrentApiKey"
+              class="rounded-lg border border-gray-300 px-3 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-600 dark:text-gray-300 dark:hover:bg-dark-700"
+              :disabled="!currentApiKey"
+              :title="showCurrentApiKey ? t('admin.accounts.hideApiKey') : t('admin.accounts.showApiKey')"
+            >
+              <Icon :name="showCurrentApiKey ? 'eyeOff' : 'eye'" size="sm" />
+            </button>
+            <button
+              type="button"
+              @click="copyCurrentApiKey"
+              class="rounded-lg border border-gray-300 px-3 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-600 dark:text-gray-300 dark:hover:bg-dark-700"
+              :disabled="!currentApiKey"
+              :title="t('admin.accounts.copyApiKey')"
+            >
+              <Icon name="copy" size="sm" />
+            </button>
+          </div>
+          <p class="input-hint">{{ t('admin.accounts.currentApiKeyHint') }}</p>
+        </div>
         <div v-if="isBedrockAPIKeyMode">
           <label class="input-label">{{ t('admin.accounts.bedrockApiKeyInput') }}</label>
           <input
@@ -2194,6 +2284,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
+import { useClipboard } from '@/composables/useClipboard'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import type { Account, Proxy, AdminGroup, CheckMixedChannelResponse, OpenAICompactMode } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -2247,6 +2338,7 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
+const { copyToClipboard } = useClipboard()
 
 // Platform-specific hint for Base URL
 const baseUrlHint = computed(() => {
@@ -2276,6 +2368,7 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
+const showCurrentApiKey = ref(false)
 // Bedrock credentials
 const editBedrockAccessKeyId = ref('')
 const editBedrockSecretAccessKey = ref('')
@@ -2509,6 +2602,16 @@ const defaultBaseUrl = computed(() => {
   if (props.account?.platform === 'gemini') return 'https://generativelanguage.googleapis.com'
   return 'https://api.anthropic.com'
 })
+
+const currentApiKey = computed(() => {
+  const value = (props.account?.credentials as Record<string, unknown> | undefined)?.api_key
+  return typeof value === 'string' ? value : ''
+})
+
+const copyCurrentApiKey = async () => {
+  if (!currentApiKey.value) return
+  await copyToClipboard(currentApiKey.value, t('admin.accounts.apiKeyCopied'))
+}
 
 const mixedChannelWarningMessageText = computed(() => {
   if (mixedChannelWarningDetails.value) {
@@ -2908,6 +3011,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     selectedErrorCodes.value = []
   }
   editApiKey.value = ''
+  showCurrentApiKey.value = false
 }
 
 async function loadTLSProfiles() {
