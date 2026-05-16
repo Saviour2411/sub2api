@@ -163,14 +163,17 @@ type SystemSettings struct {
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
 
 	// Gateway forwarding behavior
-	EnableFingerprintUnification           bool   `json:"enable_fingerprint_unification"`
-	EnableMetadataPassthrough              bool   `json:"enable_metadata_passthrough"`
-	EnableCCHSigning                       bool   `json:"enable_cch_signing"`
-	EnableAnthropicCacheTTL1hInjection     bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
-	RewriteMessageCacheControl             bool   `json:"rewrite_message_cache_control"`
-	AntigravityUserAgentVersion            string `json:"antigravity_user_agent_version"`
-	PreResponseStreamKeepaliveEnabled      bool   `json:"pre_response_stream_keepalive_enabled"`
-	PreResponseStreamKeepaliveInitialDelay int    `json:"pre_response_stream_keepalive_initial_delay"`
+	EnableFingerprintUnification           bool                `json:"enable_fingerprint_unification"`
+	EnableMetadataPassthrough              bool                `json:"enable_metadata_passthrough"`
+	EnableCCHSigning                       bool                `json:"enable_cch_signing"`
+	EnableAnthropicCacheTTL1hInjection     bool                `json:"enable_anthropic_cache_ttl_1h_injection"`
+	RewriteMessageCacheControl             bool                `json:"rewrite_message_cache_control"`
+	AntigravityUserAgentVersion            string              `json:"antigravity_user_agent_version"`
+	PreResponseStreamKeepaliveEnabled      bool                `json:"pre_response_stream_keepalive_enabled"`
+	PreResponseStreamKeepaliveInitialDelay int                 `json:"pre_response_stream_keepalive_initial_delay"`
+	SemanticErrorDetectionEnabled          bool                `json:"semantic_error_detection_enabled"`
+	SemanticErrorMatchMaxChars             int                 `json:"semantic_error_match_max_chars"`
+	SemanticErrorRules                     []SemanticErrorRule `json:"semantic_error_rules"`
 
 	// Web Search Emulation
 	WebSearchEmulationEnabled bool `json:"web_search_emulation_enabled"`
@@ -230,6 +233,16 @@ type SystemSettings struct {
 
 	// OpenAI fast/flex policy
 	OpenAIFastPolicySettings *OpenAIFastPolicySettings `json:"openai_fast_policy_settings,omitempty"`
+}
+
+type SemanticErrorRule struct {
+	Enabled       bool     `json:"enabled"`
+	Name          string   `json:"name"`
+	Platforms     []string `json:"platforms"`
+	MatchType     string   `json:"match_type"`
+	Pattern       string   `json:"pattern"`
+	CustomMessage string   `json:"custom_message"`
+	Priority      int      `json:"priority"`
 }
 
 type DefaultSubscriptionSetting struct {

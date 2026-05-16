@@ -3591,6 +3591,144 @@
                   }}
                 </p>
               </div>
+
+              <!-- 2xx 响应语义错误识别 -->
+              <div class="border-t border-gray-100 pt-5 dark:border-dark-700">
+                <div class="flex items-start justify-between gap-6">
+                  <div class="min-w-0">
+                    <label
+                      class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.gatewayForwarding.semanticErrorDetection") }}
+                    </label>
+                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.gatewayForwarding.semanticErrorDetectionHint") }}
+                    </p>
+                  </div>
+                  <Toggle v-model="form.semantic_error_detection_enabled" />
+                </div>
+
+                <div class="mt-4 grid gap-4 lg:grid-cols-[220px_1fr]">
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.gatewayForwarding.semanticErrorMaxChars") }}
+                    </label>
+                    <input
+                      v-model.number="form.semantic_error_match_max_chars"
+                      type="number"
+                      min="128"
+                      max="65536"
+                      step="128"
+                      class="input w-full font-mono text-sm"
+                      :disabled="!form.semantic_error_detection_enabled"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.gatewayForwarding.semanticErrorMaxCharsHint") }}
+                    </p>
+                  </div>
+
+                  <div class="space-y-3">
+                    <div class="flex items-center justify-between gap-3">
+                      <div>
+                        <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {{ t("admin.settings.gatewayForwarding.semanticErrorRules") }}
+                        </h3>
+                        <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                          {{ t("admin.settings.gatewayForwarding.semanticErrorRulesHint") }}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        class="btn btn-secondary btn-sm shrink-0"
+                        @click="addSemanticErrorRule"
+                      >
+                        <Icon name="plus" size="sm" class="mr-1" />
+                        {{ t("common.add") }}
+                      </button>
+                    </div>
+
+                    <div
+                      v-if="form.semantic_error_rules.length === 0"
+                      class="rounded-md border border-dashed border-gray-200 px-4 py-5 text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.gatewayForwarding.semanticErrorRulesEmpty") }}
+                    </div>
+
+                    <div
+                      v-for="(rule, index) in form.semantic_error_rules"
+                      :key="index"
+                      class="rounded-md border border-gray-200 p-4 dark:border-dark-600"
+                    >
+                      <div class="mb-3 flex items-start justify-between gap-3">
+                        <div class="grid min-w-0 flex-1 gap-3 md:grid-cols-[1fr_150px_110px]">
+                          <input
+                            v-model="rule.name"
+                            type="text"
+                            class="input text-sm"
+                            :placeholder="t('admin.settings.gatewayForwarding.semanticErrorRuleName')"
+                          />
+                          <Select
+                            v-model="rule.match_type"
+                            :options="semanticErrorMatchTypeOptions"
+                          />
+                          <input
+                            v-model.number="rule.priority"
+                            type="number"
+                            class="input font-mono text-sm"
+                            :placeholder="t('admin.settings.gatewayForwarding.semanticErrorPriority')"
+                          />
+                        </div>
+                        <div class="flex shrink-0 items-center gap-2">
+                          <Toggle v-model="rule.enabled" />
+                          <button
+                            type="button"
+                            class="rounded-md p-2 text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                            @click="removeSemanticErrorRule(index)"
+                          >
+                            <Icon name="trash" size="sm" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div class="mb-3 flex flex-wrap gap-2">
+                        <label
+                          v-for="platform in semanticErrorPlatformOptions"
+                          :key="platform.value"
+                          class="inline-flex items-center gap-2 rounded-md border border-gray-200 px-2.5 py-1.5 text-xs text-gray-600 dark:border-dark-600 dark:text-gray-300"
+                        >
+                          <input
+                            type="checkbox"
+                            class="h-3.5 w-3.5 rounded border-gray-300"
+                            :checked="rule.platforms.includes(platform.value)"
+                            @change="toggleSemanticErrorRulePlatform(rule, platform.value)"
+                          />
+                          {{ platform.label }}
+                        </label>
+                        <span class="px-1.5 py-1.5 text-xs text-gray-400">
+                          {{ t("admin.settings.gatewayForwarding.semanticErrorPlatformsEmpty") }}
+                        </span>
+                      </div>
+
+                      <div class="grid gap-3 lg:grid-cols-2">
+                        <textarea
+                          v-model="rule.pattern"
+                          rows="3"
+                          class="input min-h-[84px] text-sm"
+                          :placeholder="t('admin.settings.gatewayForwarding.semanticErrorPattern')"
+                        />
+                        <textarea
+                          v-model="rule.custom_message"
+                          rows="3"
+                          class="input min-h-[84px] text-sm"
+                          :placeholder="t('admin.settings.gatewayForwarding.semanticErrorCustomMessage')"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
           <!-- Web Search Emulation -->
@@ -6248,6 +6386,8 @@ import type {
   UpdateSettingsRequest,
   DefaultSubscriptionSetting,
   OpenAIFastPolicyRule,
+  SemanticErrorPlatform,
+  SemanticErrorRule,
   WeChatConnectMode,
   WebSearchEmulationConfig,
   WebSearchProviderConfig,
@@ -6719,6 +6859,9 @@ const form = reactive<SettingsForm>({
   antigravity_user_agent_version: "",
   pre_response_stream_keepalive_enabled: false,
   pre_response_stream_keepalive_initial_delay: 80,
+  semantic_error_detection_enabled: false,
+  semantic_error_match_max_chars: 4096,
+  semantic_error_rules: [] as SemanticErrorRule[],
   // Balance & quota notification
   balance_low_notify_enabled: false,
   balance_low_notify_threshold: 0,
@@ -6737,6 +6880,20 @@ const form = reactive<SettingsForm>({
 const authSourceDefaults = reactive<AuthSourceDefaultsState>(
   buildAuthSourceDefaultsState({}),
 );
+
+const semanticErrorMatchTypeOptions = computed(() => [
+  { value: "contains", label: localText("包含文本", "Contains") },
+  { value: "regex", label: localText("正则匹配", "Regex") },
+]);
+
+const semanticErrorPlatformOptions = computed<
+  { value: SemanticErrorPlatform; label: string }[]
+>(() => [
+  { value: "anthropic", label: "Anthropic" },
+  { value: "openai", label: "OpenAI" },
+  { value: "gemini", label: "Gemini" },
+  { value: "antigravity", label: "Antigravity" },
+]);
 
 const authSourceDefaultsMeta = computed(() => [
   {
@@ -7313,6 +7470,83 @@ function parseTablePageSizeOptionsInput(raw: string): number[] | null {
   return deduped;
 }
 
+function createSemanticErrorRule(): SemanticErrorRule {
+  return {
+    enabled: true,
+    name: "",
+    platforms: [],
+    match_type: "contains",
+    pattern: "",
+    custom_message: "",
+    priority: 100,
+  };
+}
+
+function addSemanticErrorRule() {
+  form.semantic_error_rules.push(createSemanticErrorRule());
+}
+
+function removeSemanticErrorRule(index: number) {
+  form.semantic_error_rules.splice(index, 1);
+}
+
+function toggleSemanticErrorRulePlatform(
+  rule: SemanticErrorRule,
+  platform: SemanticErrorPlatform,
+) {
+  const idx = rule.platforms.indexOf(platform);
+  if (idx >= 0) {
+    rule.platforms.splice(idx, 1);
+    return;
+  }
+  rule.platforms.push(platform);
+}
+
+function normalizeSemanticErrorRulesForSave(): SemanticErrorRule[] | null {
+  const rules: SemanticErrorRule[] = form.semantic_error_rules.map((rule) => ({
+    enabled: rule.enabled !== false,
+    name: rule.name.trim(),
+    platforms: Array.from(
+      new Set((rule.platforms || []).filter(Boolean)),
+    ) as SemanticErrorPlatform[],
+    match_type: rule.match_type === "regex" ? "regex" : "contains",
+    pattern: rule.pattern.trim(),
+    custom_message: rule.custom_message.trim(),
+    priority: Number.isFinite(Number(rule.priority))
+      ? Math.floor(Number(rule.priority))
+      : 100,
+  }));
+  const filteredRules = rules.filter(
+    (rule) => rule.name || rule.pattern || rule.custom_message,
+  );
+
+  for (const rule of filteredRules) {
+    if (!rule.name || !rule.pattern || !rule.custom_message) {
+      appStore.showError(
+        t("admin.settings.gatewayForwarding.semanticErrorRuleRequired"),
+      );
+      return null;
+    }
+    if (rule.match_type === "regex") {
+      try {
+        new RegExp(rule.pattern);
+      } catch {
+        appStore.showError(
+          t("admin.settings.gatewayForwarding.semanticErrorRegexInvalid", {
+            name: rule.name,
+          }),
+        );
+        return null;
+      }
+    }
+  }
+
+  filteredRules.sort(
+    (a, b) => a.priority - b.priority || a.name.localeCompare(b.name),
+  );
+  return filteredRules;
+}
+
 async function loadSettings() {
   loading.value = true;
   loadFailed.value = false;
@@ -7644,6 +7878,11 @@ async function saveSettings() {
       }
     }
 
+    const normalizedSemanticErrorRules = normalizeSemanticErrorRulesForSave();
+    if (normalizedSemanticErrorRules === null) {
+      return;
+    }
+
     if (form.wechat_connect_mp_enabled && form.wechat_connect_mobile_enabled) {
       appStore.showError(
         localText(
@@ -7821,6 +8060,13 @@ async function saveSettings() {
         form.pre_response_stream_keepalive_enabled,
       pre_response_stream_keepalive_initial_delay:
         Number(form.pre_response_stream_keepalive_initial_delay) || 80,
+      semantic_error_detection_enabled:
+        form.semantic_error_detection_enabled,
+      semantic_error_match_max_chars: Math.min(
+        65536,
+        Math.max(128, Number(form.semantic_error_match_max_chars) || 4096),
+      ),
+      semantic_error_rules: normalizedSemanticErrorRules,
       // Payment configuration
       payment_enabled: form.payment_enabled,
       risk_control_enabled: form.risk_control_enabled,

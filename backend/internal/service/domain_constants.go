@@ -384,6 +384,12 @@ const (
 	SettingKeyPreResponseStreamKeepaliveEnabled = "pre_response_stream_keepalive_enabled"
 	// SettingKeyPreResponseStreamKeepaliveInitialDelay 首次预响应流式心跳延迟秒数（默认读取环境配置）
 	SettingKeyPreResponseStreamKeepaliveInitialDelay = "pre_response_stream_keepalive_initial_delay"
+	// SettingKeySemanticErrorDetectionEnabled 是否启用 2xx 响应语义错误识别。
+	SettingKeySemanticErrorDetectionEnabled = "semantic_error_detection_enabled"
+	// SettingKeySemanticErrorMatchMaxChars 语义错误匹配字符阈值。
+	SettingKeySemanticErrorMatchMaxChars = "semantic_error_match_max_chars"
+	// SettingKeySemanticErrorRules 语义错误匹配规则 JSON。
+	SettingKeySemanticErrorRules = "semantic_error_rules"
 
 	// Balance Low Notification
 	SettingKeyBalanceLowNotifyEnabled     = "balance_low_notify_enabled"      // 全局开关

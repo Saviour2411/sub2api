@@ -4504,7 +4504,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			return
 		}
 		errorEventSent = true
-		payload := `{"type":"error","sequence_number":0,"error":{"type":"upstream_error","message":` + strconv.Quote(reason) + `,"code":` + strconv.Quote(reason) + `}}`
+		payload := `{"type":"error","sequence_number":0,"error":{"type":"upstream_error","message":` + strconv.Quote(reason) + `,"code":"upstream_error"}}`
 		if err := flushBuffered(); err != nil {
 			clientDisconnected = true
 			return
@@ -4522,10 +4522,49 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	}
 
 	needModelReplace := originalModel != mappedModel
+	var semanticDetector *semanticErrorPrefixDetector
+	semanticChecking := false
+	semanticBufferedStream := strings.Builder{}
+	if s.settingService != nil {
+		cfg := s.settingService.GetSemanticErrorConfig(ctx)
+		platform := ""
+		if account != nil {
+			platform = account.Platform
+		}
+		semanticDetector = newSemanticErrorPrefixDetector(cfg, platform)
+		semanticChecking = semanticDetector.Enabled()
+	}
+	flushSemanticBuffered := func() {
+		if semanticBufferedStream.Len() == 0 || clientDisconnected {
+			semanticBufferedStream.Reset()
+			return
+		}
+		if _, err := bufferedWriter.WriteString(semanticBufferedStream.String()); err != nil {
+			clientDisconnected = true
+			logger.LegacyPrintf("service.openai_gateway", "Client disconnected during semantic buffer flush, continuing to drain upstream for billing")
+		} else if err := flushBuffered(); err != nil {
+			clientDisconnected = true
+			logger.LegacyPrintf("service.openai_gateway", "Client disconnected during semantic buffer flush, continuing to drain upstream for billing")
+		} else {
+			clientOutputStarted = true
+			lastDownstreamWriteAt = time.Now()
+		}
+		semanticBufferedStream.Reset()
+	}
 	resultWithUsage := func() *openaiStreamingResult {
 		return &openaiStreamingResult{usage: usage, firstTokenMs: firstTokenMs, imageCount: imageCounter.Count()}
 	}
 	finalizeStream := func() (*openaiStreamingResult, error) {
+		if semanticChecking {
+			if match := semanticDetector.MatchIfComplete(); match != nil {
+				recordSemanticErrorOps(c, account, match, []byte(semanticBufferedStream.String()), upstreamRequestID)
+				handleSemanticErrorScheduling(s.rateLimitService, ctx, account, match)
+				sendErrorEvent(match.CustomMessage)
+				return resultWithUsage(), fmt.Errorf("upstream semantic error: %s", match.RuleName)
+			}
+			semanticChecking = false
+			flushSemanticBuffered()
+		}
 		if !sawTerminalEvent {
 			if !openAIStreamClientOutputStarted(c, clientOutputStarted) {
 				return resultWithUsage(), s.newOpenAIStreamFailoverError(
@@ -4631,24 +4670,33 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 
 			// 写入客户端（客户端断开后继续 drain 上游）
 			if !clientDisconnected {
-				shouldFlush := queueDrained && (clientOutputStarted || startsClientOutput)
-				if firstTokenMs == nil && startsClientOutput {
-					// 保证首个 token 事件尽快出站，避免影响 TTFT。
-					shouldFlush = true
-				}
-				if _, err := bufferedWriter.WriteString(line); err != nil {
-					clientDisconnected = true
-					logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
-				} else if _, err := bufferedWriter.WriteString("\n"); err != nil {
-					clientDisconnected = true
-					logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
-				} else if shouldFlush {
-					if err := flushBuffered(); err != nil {
+				if semanticChecking {
+					chunk := line + "\n"
+					semanticBufferedStream.WriteString(chunk)
+					if semanticDetector.Observe(chunk) {
+						semanticChecking = false
+						flushSemanticBuffered()
+					}
+				} else {
+					shouldFlush := queueDrained && (clientOutputStarted || startsClientOutput)
+					if firstTokenMs == nil && startsClientOutput {
+						// 保证首个 token 事件尽快出站，避免影响 TTFT。
+						shouldFlush = true
+					}
+					if _, err := bufferedWriter.WriteString(line); err != nil {
 						clientDisconnected = true
-						logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming flush, continuing to drain upstream for billing")
-					} else {
-						clientOutputStarted = true
-						lastDownstreamWriteAt = time.Now()
+						logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
+					} else if _, err := bufferedWriter.WriteString("\n"); err != nil {
+						clientDisconnected = true
+						logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
+					} else if shouldFlush {
+						if err := flushBuffered(); err != nil {
+							clientDisconnected = true
+							logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming flush, continuing to drain upstream for billing")
+						} else {
+							clientOutputStarted = true
+							lastDownstreamWriteAt = time.Now()
+						}
 					}
 				}
 			}
@@ -4664,6 +4712,15 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 
 		// Forward non-data lines as-is
 		if !clientDisconnected {
+			if semanticChecking {
+				chunk := line + "\n"
+				semanticBufferedStream.WriteString(chunk)
+				if semanticDetector.Observe(chunk) {
+					semanticChecking = false
+					flushSemanticBuffered()
+				}
+				return
+			}
 			if _, err := bufferedWriter.WriteString(line); err != nil {
 				clientDisconnected = true
 				logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
@@ -4888,6 +4945,15 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
 		return nil, err
+	}
+	if s.settingService != nil {
+		if match := s.settingService.MatchSemanticError(ctx, account.Platform, body); match != nil {
+			recordSemanticErrorOps(c, account, match, body, resp.Header.Get("x-request-id"))
+			handleSemanticErrorScheduling(s.rateLimitService, ctx, account, match)
+			responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+			writeOpenAISemanticErrorJSON(c, match.CustomMessage)
+			return nil, fmt.Errorf("upstream semantic error: %s", match.RuleName)
+		}
 	}
 
 	// Detect SSE responses for ALL account types via Content-Type header.

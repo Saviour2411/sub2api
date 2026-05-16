@@ -181,6 +181,9 @@ type SystemSettings struct {
 	AntigravityUserAgentVersion            string // Antigravity 上游 User-Agent 版本号；空值使用配置/默认值
 	PreResponseStreamKeepaliveEnabled      bool   // 等待上游响应头期间是否提前发送流式心跳
 	PreResponseStreamKeepaliveInitialDelay int    // 首次预响应流式心跳延迟秒数
+	SemanticErrorDetectionEnabled          bool   // 是否启用 2xx 响应语义错误识别
+	SemanticErrorMatchMaxChars             int    // 响应字符数阈值，超过则不匹配
+	SemanticErrorRules                     []SemanticErrorRule
 
 	// Web Search Emulation
 	WebSearchEmulationEnabled bool // 是否启用 web search 模拟
@@ -202,6 +205,16 @@ type SystemSettings struct {
 	// Account quota notification
 	AccountQuotaNotifyEnabled bool
 	AccountQuotaNotifyEmails  []NotifyEmailEntry
+}
+
+type SemanticErrorRule struct {
+	Enabled       bool     `json:"enabled"`
+	Name          string   `json:"name"`
+	Platforms     []string `json:"platforms"`
+	MatchType     string   `json:"match_type"`
+	Pattern       string   `json:"pattern"`
+	CustomMessage string   `json:"custom_message"`
+	Priority      int      `json:"priority"`
 }
 
 type DefaultSubscriptionSetting struct {

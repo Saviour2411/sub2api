@@ -181,6 +181,58 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.sub2api.yml up -d
 - 新增账号时，默认选中“上游报错后停止调度，测试通过后恢复”策略。
 - 编辑 API Key、上游或 Bedrock API Key 模式账号时，页面会显示已保存 API Key 的只读查看区，支持显示/隐藏和复制；替换输入框仍保持“留空不修改”的行为。
 
+### 2xx 响应语义错误识别
+
+当前本地分支在 `系统设置 -> 网关服务 -> 请求转发行为` 新增“2xx 语义错误识别”。
+
+用途：
+
+- 处理上游返回 HTTP 2xx，但响应内容实际是错误语义的场景。
+- 命中规则后不透传原始上游语义，统一返回管理员配置的自定义错误内容。
+- 如果命中的账号已开启“上游报错后停止调度，测试通过后恢复”策略，会自动设置 `schedulable=false`，后续手动测试或定时测试通过后再恢复。
+
+规则配置：
+
+- `semantic_error_detection_enabled`：全局开关，默认关闭。
+- `semantic_error_match_max_chars`：匹配阈值，默认 `4096`，范围 `128-65536`。
+- `semantic_error_rules`：JSON 规则数组。
+  - `enabled`：规则开关。
+  - `name`：规则名称。
+  - `platforms`：平台过滤，空数组表示全平台；支持 `anthropic`、`openai`、`gemini`、`antigravity`。
+  - `match_type`：`contains` 或 `regex`。
+  - `pattern`：文本或正则表达式。
+  - `custom_message`：命中后返回给客户端的内容。
+  - `priority`：数字越小越先匹配。
+
+性能策略：
+
+- 非流式响应：仅当响应字符数不超过阈值时匹配；超过阈值直接放行。
+- 流式响应：只缓存上游开头不超过阈值的小段内容；如果流在阈值内结束则匹配，命中后返回协议兼容错误事件；如果达到阈值仍未结束，立即放行缓存并停止匹配。
+- `contains` 匹配使用大小写不敏感逻辑；`regex` 使用 Go 正则表达式并在保存设置时校验。
+
+协议返回：
+
+- OpenAI/Chat Completions：返回 `{"error":{"type":"upstream_error","message":"自定义内容"}}`，流式返回 SSE error chunk。
+- Anthropic/Claude：返回 `{"type":"error","error":{"type":"upstream_error","message":"自定义内容"}}`，流式返回 Anthropic SSE error 事件。
+
+相关文件：
+
+- `backend/internal/service/semantic_error.go`
+- `backend/internal/service/semantic_error_test.go`
+- `backend/internal/service/setting_service.go`
+- `backend/internal/service/gateway_service.go`
+- `backend/internal/service/openai_gateway_service.go`
+- `backend/internal/service/openai_gateway_chat_completions.go`
+- `backend/internal/service/openai_gateway_chat_completions_raw.go`
+- `backend/internal/handler/admin/setting_handler.go`
+- `backend/internal/handler/dto/settings.go`
+- `frontend/src/views/admin/SettingsView.vue`
+- `frontend/src/api/admin/settings.ts`
+- `frontend/src/i18n/locales/zh.ts`
+- `frontend/src/i18n/locales/en.ts`
+
+同步上游时注意：该功能未新增数据库迁移，复用 `settings` 表保存配置；若上游改动设置页面、网关响应处理、OpenAI Chat Completions 转换或错误监控上下文，需要优先检查上述文件的冲突。
+
 ## Cloudflare 524 与流式心跳
 
 当前本地分支新增“预响应流式心跳”能力，用于 Cloudflare 橙云代理下的长时间上游等待场景。

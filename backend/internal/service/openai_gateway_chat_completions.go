@@ -283,9 +283,9 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	var result *OpenAIForwardResult
 	var handleErr error
 	if clientStream {
-		result, handleErr = s.handleChatStreamingResponse(resp, c, originalModel, billingModel, upstreamModel, includeUsage, startTime)
+		result, handleErr = s.handleChatStreamingResponse(ctx, resp, c, account, originalModel, billingModel, upstreamModel, includeUsage, startTime)
 	} else {
-		result, handleErr = s.handleChatBufferedStreamingResponse(resp, c, originalModel, billingModel, upstreamModel, startTime)
+		result, handleErr = s.handleChatBufferedStreamingResponse(ctx, resp, c, account, originalModel, billingModel, upstreamModel, startTime)
 	}
 
 	// Propagate ServiceTier and ReasoningEffort to result for billing
@@ -359,8 +359,10 @@ func (s *OpenAIGatewayService) handleChatCompletionsErrorResponse(
 // upstream, finds the terminal event, converts to a Chat Completions JSON
 // response, and writes it to the client.
 func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
+	ctx context.Context,
 	resp *http.Response,
 	c *gin.Context,
+	account *Account,
 	originalModel string,
 	billingModel string,
 	upstreamModel string,
@@ -371,6 +373,16 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	finalResponse, usage, acc, err := s.readOpenAICompatBufferedTerminal(resp, "openai chat_completions buffered", requestID)
 	if err != nil {
 		return nil, err
+	}
+	if s.settingService != nil && finalResponse != nil {
+		semanticBody, _ := json.Marshal(finalResponse)
+		if match := s.settingService.MatchSemanticError(ctx, account.Platform, semanticBody); match != nil {
+			recordSemanticErrorOps(c, account, match, semanticBody, requestID)
+			handleSemanticErrorScheduling(s.rateLimitService, ctx, account, match)
+			responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+			writeChatCompletionsError(c, semanticErrorResponseStatus, "upstream_error", match.CustomMessage)
+			return nil, fmt.Errorf("upstream semantic error: %s", match.RuleName)
+		}
 	}
 
 	if finalResponse == nil {
@@ -403,8 +415,10 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 // handleChatStreamingResponse reads Responses SSE events from upstream,
 // converts each to Chat Completions SSE chunks, and writes them to the client.
 func (s *OpenAIGatewayService) handleChatStreamingResponse(
+	ctx context.Context,
 	resp *http.Response,
 	c *gin.Context,
+	account *Account,
 	originalModel string,
 	billingModel string,
 	upstreamModel string,
@@ -430,6 +444,33 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	var firstTokenMs *int
 	firstChunk := true
 	clientDisconnected := false
+	var semanticDetector *semanticErrorPrefixDetector
+	semanticChecking := false
+	semanticBufferedSSE := strings.Builder{}
+	if s.settingService != nil {
+		cfg := s.settingService.GetSemanticErrorConfig(ctx)
+		platform := ""
+		if account != nil {
+			platform = account.Platform
+		}
+		semanticDetector = newSemanticErrorPrefixDetector(cfg, platform)
+		semanticChecking = semanticDetector.Enabled()
+	}
+	flushSemanticSSE := func() {
+		if semanticBufferedSSE.Len() == 0 || clientDisconnected {
+			semanticBufferedSSE.Reset()
+			return
+		}
+		if _, err := fmt.Fprint(c.Writer, semanticBufferedSSE.String()); err != nil {
+			clientDisconnected = true
+			logger.L().Info("openai chat_completions stream: client disconnected during semantic buffer flush",
+				zap.String("request_id", requestID),
+			)
+		} else {
+			c.Writer.Flush()
+		}
+		semanticBufferedSSE.Reset()
+	}
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -498,6 +539,14 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 					)
 					continue
 				}
+				if semanticChecking {
+					semanticBufferedSSE.WriteString(sse)
+					if semanticDetector.Observe(sse) {
+						semanticChecking = false
+						flushSemanticSSE()
+					}
+					continue
+				}
 				if _, err := fmt.Fprint(c.Writer, sse); err != nil {
 					clientDisconnected = true
 					logger.L().Info("openai chat_completions stream: client disconnected, continuing to drain upstream for billing",
@@ -507,13 +556,29 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				}
 			}
 		}
-		if len(chunks) > 0 && !clientDisconnected {
+		if len(chunks) > 0 && !clientDisconnected && !semanticChecking {
 			c.Writer.Flush()
 		}
 		return isTerminalEvent
 	}
 
 	finalizeStream := func() (*OpenAIForwardResult, error) {
+		if semanticChecking {
+			if match := semanticDetector.MatchIfComplete(); match != nil {
+				recordSemanticErrorOps(c, account, match, []byte(semanticBufferedSSE.String()), requestID)
+				handleSemanticErrorScheduling(s.rateLimitService, ctx, account, match)
+				if !clientDisconnected {
+					if _, err := fmt.Fprint(c.Writer, chatCompletionsSemanticErrorSSE(match.CustomMessage)); err != nil {
+						clientDisconnected = true
+					} else {
+						c.Writer.Flush()
+					}
+				}
+				return resultWithUsage(), fmt.Errorf("upstream semantic error: %s", match.RuleName)
+			}
+			semanticChecking = false
+			flushSemanticSSE()
+		}
 		if finalChunks := apicompat.FinalizeResponsesChatStream(state); len(finalChunks) > 0 && !clientDisconnected {
 			for _, chunk := range finalChunks {
 				sse, err := apicompat.ChatChunkToSSE(chunk)

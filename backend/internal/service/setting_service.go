@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"math"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -91,6 +92,7 @@ type cachedGatewayForwardingSettings struct {
 	rewriteMessageCacheControl   bool
 	preResponseKeepaliveEnabled  bool
 	preResponseKeepaliveDelay    int
+	semanticErrorConfig          SemanticErrorConfig
 	expiresAt                    int64 // unix nano
 }
 
@@ -100,6 +102,42 @@ var gatewayForwardingSF singleflight.Group
 const gatewayForwardingCacheTTL = 60 * time.Second
 const gatewayForwardingErrorTTL = 5 * time.Second
 const gatewayForwardingDBTimeout = 5 * time.Second
+
+const (
+	defaultSemanticErrorMatchMaxChars = 4096
+	minSemanticErrorMatchMaxChars     = 128
+	maxSemanticErrorMatchMaxChars     = 65536
+)
+
+type SemanticErrorConfig struct {
+	Enabled       bool
+	MatchMaxChars int
+	Rules         []CompiledSemanticErrorRule
+}
+
+type CompiledSemanticErrorRule struct {
+	Enabled       bool
+	Name          string
+	Platforms     []string
+	MatchType     string
+	Pattern       string
+	CustomMessage string
+	Priority      int
+	regex         *regexp.Regexp
+}
+
+type SemanticErrorMatch struct {
+	RuleName      string
+	CustomMessage string
+}
+
+func defaultSemanticErrorConfig() SemanticErrorConfig {
+	return SemanticErrorConfig{
+		Enabled:       false,
+		MatchMaxChars: defaultSemanticErrorMatchMaxChars,
+		Rules:         nil,
+	}
+}
 
 // cachedAntigravityUserAgentVersion 缓存 Antigravity UA 版本号（进程内缓存，60s TTL）
 type cachedAntigravityUserAgentVersion struct {
@@ -1668,6 +1706,18 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	)
 	updates[SettingKeyPreResponseStreamKeepaliveEnabled] = strconv.FormatBool(settings.PreResponseStreamKeepaliveEnabled)
 	updates[SettingKeyPreResponseStreamKeepaliveInitialDelay] = strconv.Itoa(settings.PreResponseStreamKeepaliveInitialDelay)
+	if err := ValidateSemanticErrorRules(settings.SemanticErrorRules); err != nil {
+		return nil, err
+	}
+	settings.SemanticErrorMatchMaxChars = normalizeSemanticErrorMatchMaxChars(settings.SemanticErrorMatchMaxChars)
+	settings.SemanticErrorRules = normalizeSemanticErrorRules(settings.SemanticErrorRules)
+	semanticErrorRulesJSON, err := json.Marshal(settings.SemanticErrorRules)
+	if err != nil {
+		return nil, fmt.Errorf("marshal semantic error rules: %w", err)
+	}
+	updates[SettingKeySemanticErrorDetectionEnabled] = strconv.FormatBool(settings.SemanticErrorDetectionEnabled)
+	updates[SettingKeySemanticErrorMatchMaxChars] = strconv.Itoa(settings.SemanticErrorMatchMaxChars)
+	updates[SettingKeySemanticErrorRules] = string(semanticErrorRulesJSON)
 	updates[SettingPaymentVisibleMethodAlipaySource] = settings.PaymentVisibleMethodAlipaySource
 	updates[SettingPaymentVisibleMethodWxpaySource] = settings.PaymentVisibleMethodWxpaySource
 	updates[SettingPaymentVisibleMethodAlipayEnabled] = strconv.FormatBool(settings.PaymentVisibleMethodAlipayEnabled)
@@ -1739,7 +1789,12 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 		rewriteMessageCacheControl:   settings.RewriteMessageCacheControl,
 		preResponseKeepaliveEnabled:  settings.PreResponseStreamKeepaliveEnabled,
 		preResponseKeepaliveDelay:    normalizePreResponseStreamKeepaliveInitialDelay(settings.PreResponseStreamKeepaliveInitialDelay, s.defaultPreResponseStreamKeepaliveInitialDelay()),
-		expiresAt:                    time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
+		semanticErrorConfig: SemanticErrorConfig{
+			Enabled:       settings.SemanticErrorDetectionEnabled,
+			MatchMaxChars: normalizeSemanticErrorMatchMaxChars(settings.SemanticErrorMatchMaxChars),
+			Rules:         compileSemanticErrorRules(settings.SemanticErrorRules),
+		},
+		expiresAt: time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
 	})
 	s.antigravityUAVersionSF.Forget("antigravity_user_agent_version")
 	antigravityUserAgentVersion := antigravity.NormalizeUserAgentVersion(settings.AntigravityUserAgentVersion)
@@ -1803,6 +1858,154 @@ func normalizePreResponseStreamKeepaliveInitialDelay(raw any, fallback int) int 
 		return 110
 	}
 	return value
+}
+
+func normalizeSemanticErrorMatchMaxChars(raw any) int {
+	value := defaultSemanticErrorMatchMaxChars
+	switch v := raw.(type) {
+	case int:
+		value = v
+	case string:
+		trimmed := strings.TrimSpace(v)
+		if trimmed != "" {
+			if parsed, err := strconv.Atoi(trimmed); err == nil {
+				value = parsed
+			}
+		}
+	}
+	if value < minSemanticErrorMatchMaxChars {
+		return minSemanticErrorMatchMaxChars
+	}
+	if value > maxSemanticErrorMatchMaxChars {
+		return maxSemanticErrorMatchMaxChars
+	}
+	return value
+}
+
+func normalizeSemanticErrorRules(rules []SemanticErrorRule) []SemanticErrorRule {
+	out := make([]SemanticErrorRule, 0, len(rules))
+	for _, rule := range rules {
+		name := strings.TrimSpace(rule.Name)
+		pattern := strings.TrimSpace(rule.Pattern)
+		message := strings.TrimSpace(rule.CustomMessage)
+		if name == "" || pattern == "" || message == "" {
+			continue
+		}
+		matchType := strings.ToLower(strings.TrimSpace(rule.MatchType))
+		if matchType != "regex" {
+			matchType = "contains"
+		}
+		platforms := normalizeSemanticErrorPlatforms(rule.Platforms)
+		out = append(out, SemanticErrorRule{
+			Enabled:       rule.Enabled,
+			Name:          name,
+			Platforms:     platforms,
+			MatchType:     matchType,
+			Pattern:       pattern,
+			CustomMessage: message,
+			Priority:      rule.Priority,
+		})
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Priority == out[j].Priority {
+			return out[i].Name < out[j].Name
+		}
+		return out[i].Priority < out[j].Priority
+	})
+	return out
+}
+
+func ValidateSemanticErrorRules(rules []SemanticErrorRule) error {
+	for _, rule := range rules {
+		name := strings.TrimSpace(rule.Name)
+		pattern := strings.TrimSpace(rule.Pattern)
+		message := strings.TrimSpace(rule.CustomMessage)
+		if name == "" && pattern == "" && message == "" {
+			continue
+		}
+		if name == "" {
+			return infraerrors.BadRequest("INVALID_SEMANTIC_ERROR_RULE", "semantic error rule name is required")
+		}
+		if pattern == "" {
+			return infraerrors.BadRequest("INVALID_SEMANTIC_ERROR_RULE", "semantic error rule pattern is required")
+		}
+		if message == "" {
+			return infraerrors.BadRequest("INVALID_SEMANTIC_ERROR_RULE", "semantic error rule custom_message is required")
+		}
+		matchType := strings.ToLower(strings.TrimSpace(rule.MatchType))
+		if matchType != "" && matchType != "contains" && matchType != "regex" {
+			return infraerrors.BadRequest("INVALID_SEMANTIC_ERROR_RULE", "semantic error rule match_type must be contains or regex")
+		}
+		if matchType == "regex" {
+			if _, err := regexp.Compile(pattern); err != nil {
+				return infraerrors.BadRequest("INVALID_SEMANTIC_ERROR_RULE", fmt.Sprintf("semantic error rule %q regex invalid: %v", name, err))
+			}
+		}
+	}
+	return nil
+}
+
+func normalizeSemanticErrorPlatforms(values []string) []string {
+	allowed := map[string]struct{}{
+		PlatformAnthropic:   {},
+		PlatformOpenAI:      {},
+		PlatformGemini:      {},
+		PlatformAntigravity: {},
+	}
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		platform := strings.ToLower(strings.TrimSpace(value))
+		if _, ok := allowed[platform]; !ok {
+			continue
+		}
+		if _, ok := seen[platform]; ok {
+			continue
+		}
+		seen[platform] = struct{}{}
+		out = append(out, platform)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func compileSemanticErrorRules(rules []SemanticErrorRule) []CompiledSemanticErrorRule {
+	normalized := normalizeSemanticErrorRules(rules)
+	out := make([]CompiledSemanticErrorRule, 0, len(normalized))
+	for _, rule := range normalized {
+		compiled := CompiledSemanticErrorRule{
+			Enabled:       rule.Enabled,
+			Name:          rule.Name,
+			Platforms:     rule.Platforms,
+			MatchType:     rule.MatchType,
+			Pattern:       rule.Pattern,
+			CustomMessage: rule.CustomMessage,
+			Priority:      rule.Priority,
+		}
+		if compiled.MatchType == "regex" {
+			re, err := regexp.Compile(compiled.Pattern)
+			if err != nil {
+				slog.Warn("semantic_error_rule_regex_invalid", "rule", compiled.Name, "error", err)
+				continue
+			}
+			compiled.regex = re
+		}
+		out = append(out, compiled)
+	}
+	return out
+}
+
+func parseSemanticErrorRules(raw string) []SemanticErrorRule {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var rules []SemanticErrorRule
+	if err := json.Unmarshal([]byte(raw), &rules); err != nil {
+		slog.Warn("semantic_error_rules_parse_failed", "error", err)
+		return nil
+	}
+	return normalizeSemanticErrorRules(rules)
 }
 
 func (s *SettingService) validateDefaultSubscriptionGroups(ctx context.Context, items []DefaultSubscriptionSetting) error {
@@ -1958,6 +2161,7 @@ func (s *SettingService) IsBackendModeEnabled(ctx context.Context) bool {
 type gatewayForwardingSettingsResult struct {
 	fp, mp, cch, cacheTTL1h, rewriteMessageCacheControl, preResponseKeepaliveEnabled bool
 	preResponseKeepaliveDelay                                                        int
+	semanticErrorConfig                                                              SemanticErrorConfig
 }
 
 func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context) gatewayForwardingSettingsResult {
@@ -1971,6 +2175,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 				rewriteMessageCacheControl:  cached.rewriteMessageCacheControl,
 				preResponseKeepaliveEnabled: cached.preResponseKeepaliveEnabled,
 				preResponseKeepaliveDelay:   cached.preResponseKeepaliveDelay,
+				semanticErrorConfig:         cached.semanticErrorConfig,
 			}
 		}
 	}
@@ -1985,6 +2190,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 					rewriteMessageCacheControl:  cached.rewriteMessageCacheControl,
 					preResponseKeepaliveEnabled: cached.preResponseKeepaliveEnabled,
 					preResponseKeepaliveDelay:   cached.preResponseKeepaliveDelay,
+					semanticErrorConfig:         cached.semanticErrorConfig,
 				}, nil
 			}
 		}
@@ -1998,8 +2204,12 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			SettingKeyRewriteMessageCacheControl,
 			SettingKeyPreResponseStreamKeepaliveEnabled,
 			SettingKeyPreResponseStreamKeepaliveInitialDelay,
+			SettingKeySemanticErrorDetectionEnabled,
+			SettingKeySemanticErrorMatchMaxChars,
+			SettingKeySemanticErrorRules,
 		})
 		if err != nil {
+			semanticCfg := defaultSemanticErrorConfig()
 			slog.Warn("failed to get gateway forwarding settings", "error", err)
 			gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
 				fingerprintUnification:       true,
@@ -2009,6 +2219,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 				rewriteMessageCacheControl:   s.defaultRewriteMessageCacheControl(),
 				preResponseKeepaliveEnabled:  s.defaultPreResponseStreamKeepaliveEnabled(),
 				preResponseKeepaliveDelay:    s.defaultPreResponseStreamKeepaliveInitialDelay(),
+				semanticErrorConfig:          semanticCfg,
 				expiresAt:                    time.Now().Add(gatewayForwardingErrorTTL).UnixNano(),
 			})
 			return gatewayForwardingSettingsResult{
@@ -2016,6 +2227,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 				rewriteMessageCacheControl:  s.defaultRewriteMessageCacheControl(),
 				preResponseKeepaliveEnabled: s.defaultPreResponseStreamKeepaliveEnabled(),
 				preResponseKeepaliveDelay:   s.defaultPreResponseStreamKeepaliveInitialDelay(),
+				semanticErrorConfig:         semanticCfg,
 			}, nil
 		}
 		fp := true
@@ -2037,6 +2249,11 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			values[SettingKeyPreResponseStreamKeepaliveInitialDelay],
 			s.defaultPreResponseStreamKeepaliveInitialDelay(),
 		)
+		semanticCfg := SemanticErrorConfig{
+			Enabled:       values[SettingKeySemanticErrorDetectionEnabled] == "true",
+			MatchMaxChars: normalizeSemanticErrorMatchMaxChars(values[SettingKeySemanticErrorMatchMaxChars]),
+			Rules:         compileSemanticErrorRules(parseSemanticErrorRules(values[SettingKeySemanticErrorRules])),
+		}
 		gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
 			fingerprintUnification:       fp,
 			metadataPassthrough:          mp,
@@ -2045,6 +2262,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			rewriteMessageCacheControl:   rewriteMessageCacheControl,
 			preResponseKeepaliveEnabled:  preResponseEnabled,
 			preResponseKeepaliveDelay:    preResponseDelay,
+			semanticErrorConfig:          semanticCfg,
 			expiresAt:                    time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
 		})
 		return gatewayForwardingSettingsResult{
@@ -2055,6 +2273,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			rewriteMessageCacheControl:  rewriteMessageCacheControl,
 			preResponseKeepaliveEnabled: preResponseEnabled,
 			preResponseKeepaliveDelay:   preResponseDelay,
+			semanticErrorConfig:         semanticCfg,
 		}, nil
 	})
 	if r, ok := val.(gatewayForwardingSettingsResult); ok {
@@ -2064,6 +2283,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 		fp:                          true,
 		preResponseKeepaliveEnabled: s.defaultPreResponseStreamKeepaliveEnabled(),
 		preResponseKeepaliveDelay:   s.defaultPreResponseStreamKeepaliveInitialDelay(),
+		semanticErrorConfig:         defaultSemanticErrorConfig(),
 	}
 }
 
@@ -2093,6 +2313,20 @@ func (s *SettingService) IsPreResponseStreamKeepaliveEnabled(ctx context.Context
 // GetPreResponseStreamKeepaliveInitialDelay 获取预响应流式心跳首次延迟秒数。
 func (s *SettingService) GetPreResponseStreamKeepaliveInitialDelay(ctx context.Context) int {
 	return s.getGatewayForwardingSettingsCached(ctx).preResponseKeepaliveDelay
+}
+
+// GetSemanticErrorConfig 获取 2xx 响应语义错误识别配置。
+func (s *SettingService) GetSemanticErrorConfig(ctx context.Context) SemanticErrorConfig {
+	cfg := s.getGatewayForwardingSettingsCached(ctx).semanticErrorConfig
+	if cfg.MatchMaxChars <= 0 {
+		cfg.MatchMaxChars = defaultSemanticErrorMatchMaxChars
+	}
+	return cfg
+}
+
+// MatchSemanticError 在响应体不超过阈值时匹配 2xx 语义错误规则。
+func (s *SettingService) MatchSemanticError(ctx context.Context, platform string, body []byte) *SemanticErrorMatch {
+	return matchSemanticError(s.GetSemanticErrorConfig(ctx), platform, body)
 }
 
 // IsEmailVerifyEnabled 检查是否开启邮件验证
@@ -2568,6 +2802,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyAntigravityUserAgentVersion:            "",
 		SettingKeyPreResponseStreamKeepaliveEnabled:      strconv.FormatBool(s.defaultPreResponseStreamKeepaliveEnabled()),
 		SettingKeyPreResponseStreamKeepaliveInitialDelay: strconv.Itoa(s.defaultPreResponseStreamKeepaliveInitialDelay()),
+		SettingKeySemanticErrorDetectionEnabled:          "false",
+		SettingKeySemanticErrorMatchMaxChars:             strconv.Itoa(defaultSemanticErrorMatchMaxChars),
+		SettingKeySemanticErrorRules:                     "[]",
 		SettingPaymentVisibleMethodAlipaySource:          "",
 		SettingPaymentVisibleMethodWxpaySource:           "",
 		SettingPaymentVisibleMethodAlipayEnabled:         "false",
@@ -2968,6 +3205,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		settings[SettingKeyPreResponseStreamKeepaliveInitialDelay],
 		s.defaultPreResponseStreamKeepaliveInitialDelay(),
 	)
+	result.SemanticErrorDetectionEnabled = settings[SettingKeySemanticErrorDetectionEnabled] == "true"
+	result.SemanticErrorMatchMaxChars = normalizeSemanticErrorMatchMaxChars(settings[SettingKeySemanticErrorMatchMaxChars])
+	result.SemanticErrorRules = parseSemanticErrorRules(settings[SettingKeySemanticErrorRules])
 
 	// Web search emulation: quick enabled check from the JSON config
 	if raw := settings[SettingKeyWebSearchEmulationConfig]; raw != "" {

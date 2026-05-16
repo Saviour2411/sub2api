@@ -7351,6 +7351,18 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 	needModelReplace := originalModel != mappedModel
 	clientDisconnected := false // 客户端断开标志，断开后继续读取上游以获取完整usage
 	sawTerminalEvent := false
+	var semanticDetector *semanticErrorPrefixDetector
+	semanticChecking := false
+	semanticBufferedBlocks := make([]string, 0, 8)
+	if s.settingService != nil {
+		cfg := s.settingService.GetSemanticErrorConfig(ctx)
+		platform := ""
+		if account != nil {
+			platform = account.Platform
+		}
+		semanticDetector = newSemanticErrorPrefixDetector(cfg, platform)
+		semanticChecking = semanticDetector.Enabled()
+	}
 
 	pendingEventLines := make([]string, 0, 4)
 
@@ -7483,6 +7495,30 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 		select {
 		case ev, ok := <-events:
 			if !ok {
+				if semanticChecking {
+					if match := semanticDetector.MatchIfComplete(); match != nil {
+						recordSemanticErrorOps(c, account, match, []byte(strings.Join(semanticBufferedBlocks, "")), resp.Header.Get("x-request-id"))
+						handleSemanticErrorScheduling(s.rateLimitService, ctx, account, match)
+						if !clientDisconnected {
+							sendErrorEvent("upstream_error", match.CustomMessage)
+						}
+						return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, fmt.Errorf("upstream semantic error: %s", match.RuleName)
+					}
+					semanticChecking = false
+					for _, bufferedBlock := range semanticBufferedBlocks {
+						if !clientDisconnected {
+							restored := reverseToolNamesIfPresent(c, []byte(bufferedBlock))
+							if _, werr := fmt.Fprint(w, string(restored)); werr != nil {
+								clientDisconnected = true
+								logger.LegacyPrintf("service.gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
+								break
+							}
+							flusher.Flush()
+							lastDataAt = time.Now()
+						}
+					}
+					semanticBufferedBlocks = nil
+				}
 				// 上游完成，返回结果
 				if !sawTerminalEvent {
 					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, fmt.Errorf("stream usage incomplete: missing terminal event")
@@ -7550,6 +7586,35 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 				}
 
 				for _, block := range outputBlocks {
+					if semanticChecking {
+						semanticBufferedBlocks = append(semanticBufferedBlocks, block)
+						if semanticDetector.Observe(block) {
+							semanticChecking = false
+							for _, bufferedBlock := range semanticBufferedBlocks {
+								if !clientDisconnected {
+									restored := reverseToolNamesIfPresent(c, []byte(bufferedBlock))
+									if _, werr := fmt.Fprint(w, string(restored)); werr != nil {
+										clientDisconnected = true
+										logger.LegacyPrintf("service.gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
+										break
+									}
+									flusher.Flush()
+									lastDataAt = time.Now()
+								}
+							}
+							semanticBufferedBlocks = nil
+						}
+						if data != "" {
+							if firstTokenMs == nil && data != "[DONE]" {
+								ms := int(time.Since(startTime).Milliseconds())
+								firstTokenMs = &ms
+							}
+							if usagePatch != nil {
+								mergeSSEUsagePatch(usage, usagePatch)
+							}
+						}
+						continue
+					}
 					if !clientDisconnected {
 						restored := reverseToolNamesIfPresent(c, []byte(block))
 						if _, werr := fmt.Fprint(w, string(restored)); werr != nil {
@@ -7850,6 +7915,15 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, anthropicTooLargeError)
 	if err != nil {
 		return nil, err
+	}
+	if s.settingService != nil {
+		if match := s.settingService.MatchSemanticError(ctx, account.Platform, body); match != nil {
+			recordSemanticErrorOps(c, account, match, body, resp.Header.Get("x-request-id"))
+			handleSemanticErrorScheduling(s.rateLimitService, ctx, account, match)
+			responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+			writeAnthropicSemanticErrorJSON(c, match.CustomMessage)
+			return nil, fmt.Errorf("upstream semantic error: %s", match.RuleName)
+		}
 	}
 
 	// 解析usage

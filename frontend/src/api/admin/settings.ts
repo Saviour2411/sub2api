@@ -44,6 +44,22 @@ export type PaymentVisibleMethodSource =
   | "official_wxpay"
   | "easypay_wxpay";
 export type WeChatConnectMode = "open" | "mp" | "mobile";
+export type SemanticErrorMatchType = "contains" | "regex";
+export type SemanticErrorPlatform =
+  | "anthropic"
+  | "openai"
+  | "gemini"
+  | "antigravity";
+
+export interface SemanticErrorRule {
+  enabled: boolean;
+  name: string;
+  platforms: SemanticErrorPlatform[];
+  match_type: SemanticErrorMatchType;
+  pattern: string;
+  custom_message: string;
+  priority: number;
+}
 
 export interface PaymentVisibleMethodSourceOption {
   value: PaymentVisibleMethodSource;
@@ -486,6 +502,9 @@ export interface SystemSettings {
   antigravity_user_agent_version: string;
   pre_response_stream_keepalive_enabled: boolean;
   pre_response_stream_keepalive_initial_delay: number;
+  semantic_error_detection_enabled: boolean;
+  semantic_error_match_max_chars: number;
+  semantic_error_rules: SemanticErrorRule[];
   web_search_emulation_enabled?: boolean;
 
   // Payment configuration
@@ -691,6 +710,9 @@ export interface UpdateSettingsRequest {
   antigravity_user_agent_version?: string;
   pre_response_stream_keepalive_enabled?: boolean;
   pre_response_stream_keepalive_initial_delay?: number;
+  semantic_error_detection_enabled?: boolean;
+  semantic_error_match_max_chars?: number;
+  semantic_error_rules?: SemanticErrorRule[];
   // Payment configuration
   payment_enabled?: boolean;
   risk_control_enabled?: boolean;

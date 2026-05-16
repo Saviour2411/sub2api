@@ -52,6 +52,22 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+func semanticErrorRulesToDTO(rules []service.SemanticErrorRule) []dto.SemanticErrorRule {
+	out := make([]dto.SemanticErrorRule, 0, len(rules))
+	for _, rule := range rules {
+		out = append(out, dto.SemanticErrorRule{
+			Enabled:       rule.Enabled,
+			Name:          rule.Name,
+			Platforms:     append([]string(nil), rule.Platforms...),
+			MatchType:     rule.MatchType,
+			Pattern:       rule.Pattern,
+			CustomMessage: rule.CustomMessage,
+			Priority:      rule.Priority,
+		})
+	}
+	return out
+}
+
 // SettingHandler 系统设置处理器
 type SettingHandler struct {
 	settingService       *service.SettingService
@@ -234,6 +250,9 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		AntigravityUserAgentVersion:            settings.AntigravityUserAgentVersion,
 		PreResponseStreamKeepaliveEnabled:      settings.PreResponseStreamKeepaliveEnabled,
 		PreResponseStreamKeepaliveInitialDelay: settings.PreResponseStreamKeepaliveInitialDelay,
+		SemanticErrorDetectionEnabled:          settings.SemanticErrorDetectionEnabled,
+		SemanticErrorMatchMaxChars:             settings.SemanticErrorMatchMaxChars,
+		SemanticErrorRules:                     semanticErrorRulesToDTO(settings.SemanticErrorRules),
 		WebSearchEmulationEnabled:              settings.WebSearchEmulationEnabled,
 		PaymentVisibleMethodAlipaySource:       settings.PaymentVisibleMethodAlipaySource,
 		PaymentVisibleMethodWxpaySource:        settings.PaymentVisibleMethodWxpaySource,
@@ -525,14 +544,17 @@ type UpdateSettingsRequest struct {
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
 
 	// Gateway forwarding behavior
-	EnableFingerprintUnification           *bool   `json:"enable_fingerprint_unification"`
-	EnableMetadataPassthrough              *bool   `json:"enable_metadata_passthrough"`
-	EnableCCHSigning                       *bool   `json:"enable_cch_signing"`
-	EnableAnthropicCacheTTL1hInjection     *bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
-	RewriteMessageCacheControl             *bool   `json:"rewrite_message_cache_control"`
-	AntigravityUserAgentVersion            *string `json:"antigravity_user_agent_version"`
-	PreResponseStreamKeepaliveEnabled      *bool   `json:"pre_response_stream_keepalive_enabled"`
-	PreResponseStreamKeepaliveInitialDelay *int    `json:"pre_response_stream_keepalive_initial_delay"`
+	EnableFingerprintUnification           *bool                        `json:"enable_fingerprint_unification"`
+	EnableMetadataPassthrough              *bool                        `json:"enable_metadata_passthrough"`
+	EnableCCHSigning                       *bool                        `json:"enable_cch_signing"`
+	EnableAnthropicCacheTTL1hInjection     *bool                        `json:"enable_anthropic_cache_ttl_1h_injection"`
+	RewriteMessageCacheControl             *bool                        `json:"rewrite_message_cache_control"`
+	AntigravityUserAgentVersion            *string                      `json:"antigravity_user_agent_version"`
+	PreResponseStreamKeepaliveEnabled      *bool                        `json:"pre_response_stream_keepalive_enabled"`
+	PreResponseStreamKeepaliveInitialDelay *int                         `json:"pre_response_stream_keepalive_initial_delay"`
+	SemanticErrorDetectionEnabled          *bool                        `json:"semantic_error_detection_enabled"`
+	SemanticErrorMatchMaxChars             *int                         `json:"semantic_error_match_max_chars"`
+	SemanticErrorRules                     *[]service.SemanticErrorRule `json:"semantic_error_rules"`
 
 	// Payment visible method routing
 	PaymentVisibleMethodAlipaySource  *string `json:"payment_visible_method_alipay_source"`
@@ -1496,6 +1518,24 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.PreResponseStreamKeepaliveInitialDelay
 		}(),
+		SemanticErrorDetectionEnabled: func() bool {
+			if req.SemanticErrorDetectionEnabled != nil {
+				return *req.SemanticErrorDetectionEnabled
+			}
+			return previousSettings.SemanticErrorDetectionEnabled
+		}(),
+		SemanticErrorMatchMaxChars: func() int {
+			if req.SemanticErrorMatchMaxChars != nil {
+				return *req.SemanticErrorMatchMaxChars
+			}
+			return previousSettings.SemanticErrorMatchMaxChars
+		}(),
+		SemanticErrorRules: func() []service.SemanticErrorRule {
+			if req.SemanticErrorRules != nil {
+				return *req.SemanticErrorRules
+			}
+			return previousSettings.SemanticErrorRules
+		}(),
 		PaymentVisibleMethodAlipaySource: func() string {
 			if req.PaymentVisibleMethodAlipaySource != nil {
 				return strings.TrimSpace(*req.PaymentVisibleMethodAlipaySource)
@@ -1837,6 +1877,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AntigravityUserAgentVersion:            updatedSettings.AntigravityUserAgentVersion,
 		PreResponseStreamKeepaliveEnabled:      updatedSettings.PreResponseStreamKeepaliveEnabled,
 		PreResponseStreamKeepaliveInitialDelay: updatedSettings.PreResponseStreamKeepaliveInitialDelay,
+		SemanticErrorDetectionEnabled:          updatedSettings.SemanticErrorDetectionEnabled,
+		SemanticErrorMatchMaxChars:             updatedSettings.SemanticErrorMatchMaxChars,
+		SemanticErrorRules:                     semanticErrorRulesToDTO(updatedSettings.SemanticErrorRules),
 		PaymentVisibleMethodAlipaySource:       updatedSettings.PaymentVisibleMethodAlipaySource,
 		PaymentVisibleMethodWxpaySource:        updatedSettings.PaymentVisibleMethodWxpaySource,
 		PaymentVisibleMethodAlipayEnabled:      updatedSettings.PaymentVisibleMethodAlipayEnabled,
@@ -2260,6 +2303,15 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.PreResponseStreamKeepaliveInitialDelay != after.PreResponseStreamKeepaliveInitialDelay {
 		changed = append(changed, "pre_response_stream_keepalive_initial_delay")
 	}
+	if before.SemanticErrorDetectionEnabled != after.SemanticErrorDetectionEnabled {
+		changed = append(changed, "semantic_error_detection_enabled")
+	}
+	if before.SemanticErrorMatchMaxChars != after.SemanticErrorMatchMaxChars {
+		changed = append(changed, "semantic_error_match_max_chars")
+	}
+	if !equalSemanticErrorRules(before.SemanticErrorRules, after.SemanticErrorRules) {
+		changed = append(changed, "semantic_error_rules")
+	}
 	if before.PaymentVisibleMethodAlipaySource != after.PaymentVisibleMethodAlipaySource {
 		changed = append(changed, "payment_visible_method_alipay_source")
 	}
@@ -2466,6 +2518,24 @@ func equalStringSlice(a, b []string) bool {
 	}
 	for i := range a {
 		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func equalSemanticErrorRules(a, b []service.SemanticErrorRule) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Enabled != b[i].Enabled ||
+			a[i].Name != b[i].Name ||
+			a[i].MatchType != b[i].MatchType ||
+			a[i].Pattern != b[i].Pattern ||
+			a[i].CustomMessage != b[i].CustomMessage ||
+			a[i].Priority != b[i].Priority ||
+			!equalStringSlice(a[i].Platforms, b[i].Platforms) {
 			return false
 		}
 	}
