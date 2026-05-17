@@ -12,7 +12,7 @@
 
     <!-- 滚动区域：表格 -->
     <div class="layout-section-scrollable">
-      <div class="card table-scroll-container">
+      <div class="card mecha-panel table-scroll-container">
         <slot name="table" />
       </div>
     </div>
@@ -60,10 +60,11 @@ onUnmounted(() => {
 
 /* 表格滚动容器 - 增强版表体滚动方案 */
 .table-scroll-container {
-  @apply flex h-full flex-col overflow-hidden rounded-lg border border-slate-200/95 bg-white/95 shadow-sm dark:border-primary-500/20 dark:bg-[#0f1724]/95;
+  @apply flex h-full flex-col overflow-hidden rounded-md border border-slate-200/95 bg-white/95 shadow-sm dark:border-primary-400/25 dark:bg-[#07111d]/95;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.72),
-    0 12px 32px rgba(8, 47, 88, 0.06);
+    inset 0 -1px 0 rgba(75, 181, 255, 0.1),
+    0 16px 42px rgba(8, 47, 88, 0.1);
 }
 
 .table-scroll-container :deep(.table-wrapper) {
@@ -79,7 +80,7 @@ onUnmounted(() => {
 }
 
 .table-scroll-container :deep(thead) {
-  @apply bg-slate-50/90 backdrop-blur-sm dark:bg-[#121d2b]/90;
+  @apply bg-slate-50/90 backdrop-blur-sm dark:bg-[#0d1827]/90;
 }
 
 .table-scroll-container :deep(tbody) {
@@ -87,11 +88,20 @@ onUnmounted(() => {
 }
 
 .table-scroll-container :deep(th) {
-  @apply border-b border-slate-200 px-5 py-4 text-left text-sm font-semibold text-slate-600 dark:border-primary-500/20 dark:text-slate-300;
+  @apply border-b border-slate-200 px-5 py-4 text-left text-sm font-bold text-slate-600 dark:border-primary-400/25 dark:text-slate-300;
+  box-shadow: inset 0 -1px 0 rgba(75, 181, 255, 0.1);
 }
 
 .table-scroll-container :deep(td) {
   @apply border-b border-slate-100/95 px-5 py-4 text-sm text-slate-700 dark:border-white/5 dark:text-slate-300;
+}
+
+.table-scroll-container :deep(tbody tr) {
+  @apply transition-colors duration-150;
+}
+
+.table-scroll-container :deep(tbody tr:hover) {
+  @apply bg-primary-50/70 dark:bg-primary-500/10;
 }
 
 /* 移动端：恢复正常滚动 */

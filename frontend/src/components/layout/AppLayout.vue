@@ -1,10 +1,13 @@
 <template>
-  <div class="min-h-screen bg-[#f3f7fc] text-slate-900 dark:bg-[#080d15] dark:text-slate-100">
+  <div class="mecha-app-shell min-h-screen bg-[#edf3fa] text-slate-900 dark:bg-[#040912] dark:text-slate-100">
     <!-- Background Decoration -->
     <div class="pointer-events-none fixed inset-0 bg-mesh-gradient"></div>
-    <div class="pointer-events-none fixed inset-0 opacity-70 dark:opacity-45">
-      <div class="absolute inset-0 bg-[linear-gradient(115deg,transparent_0%,transparent_48%,rgba(23,152,242,0.08)_48.2%,transparent_49.2%,transparent_72%,rgba(255,111,56,0.06)_72.2%,transparent_73%)]"></div>
-      <div class="absolute right-0 top-0 h-32 w-[48vw] bg-[linear-gradient(135deg,rgba(255,255,255,0.72),rgba(75,181,255,0.12),transparent)] dark:bg-[linear-gradient(135deg,rgba(75,181,255,0.08),transparent)]"></div>
+    <div class="pointer-events-none fixed inset-0 opacity-90 dark:opacity-60">
+      <div class="hud-grid absolute inset-0"></div>
+      <div class="absolute inset-0 bg-[linear-gradient(115deg,transparent_0%,transparent_42%,rgba(23,152,242,0.12)_42.2%,transparent_43.1%,transparent_72%,rgba(255,111,56,0.09)_72.2%,transparent_73%)]"></div>
+      <div class="absolute right-0 top-0 h-40 w-[52vw] bg-[linear-gradient(135deg,rgba(255,255,255,0.74),rgba(75,181,255,0.16),transparent)] dark:bg-[linear-gradient(135deg,rgba(75,181,255,0.1),transparent)]"></div>
+      <div class="absolute bottom-8 left-0 h-px w-[68vw] bg-gradient-to-r from-transparent via-primary-300/70 to-transparent"></div>
+      <div class="absolute right-6 top-24 hidden h-28 w-28 border border-primary-300/35 [clip-path:polygon(18%_0,100%_0,100%_72%,72%_100%,0_100%,0_18%)] dark:border-primary-300/20 xl:block"></div>
     </div>
 
     <!-- Sidebar -->

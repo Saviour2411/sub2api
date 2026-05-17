@@ -9,7 +9,7 @@
     <!-- Logo/Brand -->
     <div class="sidebar-header" :class="{ 'sidebar-header-collapsed': sidebarCollapsed }">
       <!-- Custom Logo or Default Logo -->
-      <div class="sidebar-logo flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg border border-primary-200/70 bg-white/95 shadow-glow dark:border-primary-400/25 dark:bg-[#111a28]">
+      <div class="sidebar-logo armor-cut flex h-9 w-9 items-center justify-center overflow-hidden border border-primary-200/70 bg-white/95 shadow-glow dark:border-primary-400/30 dark:bg-[#0b1420]">
         <img v-if="settingsLoaded" :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
       </div>
       <div class="sidebar-brand" :class="{ 'sidebar-brand-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
@@ -140,7 +140,7 @@
     </nav>
 
     <!-- Bottom Section -->
-    <div class="mt-auto border-t border-slate-200/70 p-3 dark:border-primary-500/20">
+    <div class="mt-auto border-t border-slate-200/70 p-3 dark:border-primary-400/22">
       <!-- Theme Toggle -->
       <button
         @click="toggleTheme"

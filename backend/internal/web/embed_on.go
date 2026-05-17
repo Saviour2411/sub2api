@@ -103,6 +103,8 @@ func (s *FrontendServer) Middleware() gin.HandlerFunc {
 			return
 		}
 
+		setStaticCacheHeaders(c, cleanPath)
+
 		// Try local override first
 		if s.tryServeOverride(c, cleanPath) {
 			return
@@ -111,6 +113,16 @@ func (s *FrontendServer) Middleware() gin.HandlerFunc {
 		// Serve static files normally
 		s.fileServer.ServeHTTP(c.Writer, c.Request)
 		c.Abort()
+	}
+}
+
+func setStaticCacheHeaders(c *gin.Context, cleanPath string) {
+	if strings.HasPrefix(cleanPath, "assets/") {
+		c.Header("Cache-Control", "public, max-age=31536000, immutable")
+		return
+	}
+	if strings.HasPrefix(cleanPath, "theme/") {
+		c.Header("Cache-Control", "public, max-age=2592000")
 	}
 }
 

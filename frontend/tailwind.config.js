@@ -65,12 +65,12 @@ export default {
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace']
       },
       boxShadow: {
-        glass: '0 8px 32px rgba(0, 0, 0, 0.08)',
-        'glass-sm': '0 4px 16px rgba(0, 0, 0, 0.06)',
-        glow: '0 0 20px rgba(23, 152, 242, 0.28)',
-        'glow-lg': '0 0 42px rgba(23, 152, 242, 0.38)',
+        glass: '0 16px 48px rgba(8, 47, 88, 0.12)',
+        'glass-sm': '0 8px 22px rgba(8, 47, 88, 0.08)',
+        glow: '0 0 24px rgba(23, 152, 242, 0.34)',
+        'glow-lg': '0 0 54px rgba(23, 152, 242, 0.44)',
         card: '0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06)',
-        'card-hover': '0 12px 38px rgba(8, 47, 88, 0.12)',
+        'card-hover': '0 18px 46px rgba(8, 47, 88, 0.16)',
         'inner-glow': 'inset 0 1px 0 rgba(255, 255, 255, 0.16)'
       },
       backgroundImage: {
@@ -80,7 +80,7 @@ export default {
         'gradient-glass':
           'linear-gradient(135deg, rgba(255,255,255,0.78) 0%, rgba(235,245,255,0.46) 100%)',
         'mesh-gradient':
-          'linear-gradient(135deg, rgba(246,249,255,0.95) 0%, rgba(230,240,252,0.92) 46%, rgba(244,248,255,0.96) 100%), radial-gradient(at 76% 4%, rgba(23, 152, 242, 0.18) 0px, transparent 42%), radial-gradient(at 12% 82%, rgba(255, 111, 56, 0.08) 0px, transparent 38%)'
+          'linear-gradient(135deg, rgba(246,249,255,0.96) 0%, rgba(221,234,248,0.92) 46%, rgba(244,248,255,0.96) 100%), radial-gradient(at 80% 4%, rgba(23, 152, 242, 0.22) 0px, transparent 42%), radial-gradient(at 10% 86%, rgba(255, 111, 56, 0.12) 0px, transparent 38%), linear-gradient(115deg, transparent 0 46%, rgba(23,152,242,0.08) 46.2% 47%, transparent 47.2% 100%)'
       },
       animation: {
         'fade-in': 'fadeIn 0.3s ease-out',
