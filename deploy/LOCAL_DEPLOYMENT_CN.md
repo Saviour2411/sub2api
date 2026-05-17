@@ -54,7 +54,7 @@
   - 认证页：优先使用 WebP 压缩主题图，叠加斜切装甲面板、HUD 网格、扫描线和冷蓝/橙色能量线。
   - 登录后布局：`AppLayout`、顶部栏、侧边栏、表格页容器统一使用冷蓝、钢铁灰、装甲切角、边角发光和数据终端风格。
   - 公共组件：按钮、输入框、卡片、表格、下拉框、开关、弹窗、Toast、空状态等通过全局样式统一。
-  - 首屏兜底：`frontend/index.html` 内置轻量加载占位，前端启动、路由资源加载和 Vue 运行时错误都会显示可见错误面板，避免新浏览器首次访问登录/注册页时出现纯白页面。
+  - 首屏兜底：`frontend/index.html` 内置轻量加载占位，前端启动失败时显示可见错误面板；Vue 挂载后不再手动替换 `#app` 根节点，避免浏览器扩展或运行时缓存引用失效导致新会话长时间空白。
   - CSP Worker：默认 CSP 包含 `worker-src 'self' blob:`，避免浏览器或前端依赖创建 blob Worker 时被回退到 `script-src` 拦截。
   - 静态缓存：后端对 `/assets/` 输出 `public, max-age=31536000, immutable`，对 `/theme/` 输出 `public, max-age=2592000`；HTML 仍保持 `no-cache`。
 - 运维注意：
@@ -419,6 +419,7 @@ CLIProxyAPI/Codex 导入行为：
 - 通过全局设计系统覆盖卡片、表格、侧边栏、顶部栏、弹窗、按钮、输入框、徽章、移动端表格卡片等基础 UI。
 - 浅色主题不是暗色主题的简单反色，采用白色装甲面板、石墨结构线、青色 HUD 边缘和橙色状态切角，重点保证表格、侧栏、弹窗、输入框在日间环境下的对比度和层次。
 - 登录页继续使用已优化的 `/theme/staly-login.webp` 与 `/theme/staly-login-mobile.webp`，避免直接加载根目录未跟踪的原始大图 `staly.png`。
+- 系统设置里的站点 Logo 会被注入 HTML 初始配置；不要配置大体积 base64 data URL，否则新浏览器首次打开登录/注册页会先下载较大的 HTML，表现为首屏加载变慢。
 - 本地 pnpm 缓存目录 `frontend/.pnpm-store/`、`frontend/.pnpm-home/` 已加入 `.gitignore` 与 `.dockerignore`，不要提交依赖缓存，也不要带入 Docker 构建上下文。
 
 相关文件：

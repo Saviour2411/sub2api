@@ -36,10 +36,6 @@ async function bootstrap() {
   const app = createApp(App)
   const pinia = createPinia()
   app.use(pinia)
-  app.config.errorHandler = (error) => {
-    console.error('Vue runtime error:', error)
-    renderBootstrapError('页面渲染失败', '浏览器执行页面脚本时发生错误，请刷新页面重试。')
-  }
 
   // Initialize settings from injected config BEFORE mounting (prevents flash)
   // This must happen after pinia is installed but before router and i18n
