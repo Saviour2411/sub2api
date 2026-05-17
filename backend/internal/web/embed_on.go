@@ -97,6 +97,10 @@ func (s *FrontendServer) Middleware() gin.HandlerFunc {
 			cleanPath = "index.html"
 		}
 
+		if cleanPath != "index.html" && !s.fileExists(cleanPath) && shouldReturnMissingStatic(c, cleanPath) {
+			return
+		}
+
 		// For index.html or SPA routes, serve with injected settings
 		if cleanPath == "index.html" || !s.fileExists(cleanPath) {
 			s.serveIndexHTML(c)
@@ -124,6 +128,27 @@ func setStaticCacheHeaders(c *gin.Context, cleanPath string) {
 	if strings.HasPrefix(cleanPath, "theme/") {
 		c.Header("Cache-Control", "public, max-age=2592000")
 	}
+}
+
+func shouldReturnMissingStatic(c *gin.Context, cleanPath string) bool {
+	if !isStaticAssetPath(cleanPath) {
+		return false
+	}
+
+	// 缺失的 chunk/样式/图片不能回退到 index.html，否则浏览器会把 HTML 当作 JS/CSS 加载并白屏。
+	c.Header("Cache-Control", "no-store")
+	c.String(http.StatusNotFound, "Static asset not found")
+	c.Abort()
+	return true
+}
+
+func isStaticAssetPath(cleanPath string) bool {
+	if strings.HasPrefix(cleanPath, "assets/") || strings.HasPrefix(cleanPath, "theme/") {
+		return true
+	}
+
+	base := filepath.Base(cleanPath)
+	return strings.Contains(base, ".")
 }
 
 func (s *FrontendServer) fileExists(path string) bool {
@@ -286,6 +311,10 @@ func ServeEmbeddedFrontend() gin.HandlerFunc {
 			}
 			fileServer.ServeHTTP(c.Writer, c.Request)
 			c.Abort()
+			return
+		}
+
+		if shouldReturnMissingStatic(c, cleanPath) {
 			return
 		}
 

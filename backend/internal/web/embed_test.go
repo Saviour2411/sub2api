@@ -580,6 +580,48 @@ func TestHasEmbeddedFrontend(t *testing.T) {
 	})
 }
 
+func TestFrontendServer_MissingStaticAssets(t *testing.T) {
+	t.Run("returns_404_for_missing_asset_chunk", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]string{"test": "value"},
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		router := gin.New()
+		router.Use(server.Middleware())
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/assets/LoginView-old.js", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		assert.Equal(t, "no-store", w.Header().Get("Cache-Control"))
+		assert.NotContains(t, w.Body.String(), "<!doctype html>")
+	})
+
+	t.Run("still_serves_index_for_spa_routes", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]string{"test": "value"},
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		router := gin.New()
+		router.Use(server.Middleware())
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/login", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
+		assert.Contains(t, w.Body.String(), "<!doctype html>")
+	})
+}
+
 // Tests for legacy ServeEmbeddedFrontend function
 func TestServeEmbeddedFrontend(t *testing.T) {
 	t.Run("serves_static_files", func(t *testing.T) {
@@ -629,6 +671,21 @@ func TestServeEmbeddedFrontend(t *testing.T) {
 				assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
 			})
 		}
+	})
+
+	t.Run("returns_404_for_missing_asset_chunk", func(t *testing.T) {
+		middleware := ServeEmbeddedFrontend()
+
+		router := gin.New()
+		router.Use(middleware)
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/assets/LoginView-old.js", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		assert.Equal(t, "no-store", w.Header().Get("Cache-Control"))
+		assert.NotContains(t, w.Body.String(), "<!doctype html>")
 	})
 
 	t.Run("skips_api_routes", func(t *testing.T) {
