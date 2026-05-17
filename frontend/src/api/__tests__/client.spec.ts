@@ -61,6 +61,28 @@ describe('API Client', () => {
       expect(config.headers.get('Authorization')).toBeFalsy()
     })
 
+    it('localStorage 读取被阻止时仍可发起请求', async () => {
+      const getItemSpy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+        throw new DOMException('Blocked', 'SecurityError')
+      })
+      const adapter = vi.fn().mockResolvedValue({
+        status: 200,
+        data: { code: 0, data: {} },
+        headers: {},
+        config: {},
+        statusText: 'OK',
+      })
+      apiClient.defaults.adapter = adapter
+
+      try {
+        await apiClient.get('/test')
+        const config = adapter.mock.calls[0][0]
+        expect(config.headers.get('Authorization')).toBeFalsy()
+      } finally {
+        getItemSpy.mockRestore()
+      }
+    })
+
     it('GET 请求自动附加 timezone 参数', async () => {
       const adapter = vi.fn().mockResolvedValue({
         status: 200,

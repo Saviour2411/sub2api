@@ -311,7 +311,6 @@ import Icon from '@/components/icons/Icon.vue'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
 import { useAuthStore, useAppStore } from '@/stores'
 import {
-  getPublicSettings,
   isWeChatWebOAuthEnabled,
   validatePromoCode,
   validateInvitationCode
@@ -326,6 +325,7 @@ import {
   loadAffiliateReferralCode,
   resolveAffiliateReferralCode
 } from '@/utils/oauthAffiliate'
+import { safeLocalStorage, safeSessionStorage } from '@/utils/browserStorage'
 import type { LoginAgreementDocument } from '@/types'
 
 const { t, locale } = useI18n()
@@ -453,24 +453,29 @@ onMounted(async () => {
   syncAffiliateReferralCode()
 
   try {
-    const settings = await getPublicSettings()
-    registrationEnabled.value = settings.registration_enabled
-    emailVerifyEnabled.value = settings.email_verify_enabled
-    promoCodeEnabled.value = settings.promo_code_enabled
-    invitationCodeEnabled.value = settings.invitation_code_enabled
-    turnstileEnabled.value = settings.turnstile_enabled
-    turnstileSiteKey.value = settings.turnstile_site_key || ''
-    siteName.value = settings.site_name || 'Sub2API'
-    linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled
-    wechatOAuthEnabled.value = isWeChatWebOAuthEnabled(settings)
-    oidcOAuthEnabled.value = settings.oidc_oauth_enabled
-    oidcOAuthProviderName.value = settings.oidc_oauth_provider_name || 'OIDC'
-    githubOAuthEnabled.value = settings.github_oauth_enabled
-    googleOAuthEnabled.value = settings.google_oauth_enabled
-    registrationEmailSuffixWhitelist.value = normalizeRegistrationEmailSuffixWhitelist(
-      settings.registration_email_suffix_whitelist || []
-    )
-    applyLoginAgreementSettings(settings)
+    const settings = await appStore.fetchPublicSettings()
+    if (settings) {
+      registrationEnabled.value = settings.registration_enabled
+      emailVerifyEnabled.value = settings.email_verify_enabled
+      promoCodeEnabled.value = settings.promo_code_enabled
+      invitationCodeEnabled.value = settings.invitation_code_enabled
+      turnstileEnabled.value = settings.turnstile_enabled
+      turnstileSiteKey.value = settings.turnstile_site_key || ''
+      siteName.value = settings.site_name || 'Sub2API'
+      linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled
+      wechatOAuthEnabled.value = isWeChatWebOAuthEnabled(settings)
+      oidcOAuthEnabled.value = settings.oidc_oauth_enabled
+      oidcOAuthProviderName.value = settings.oidc_oauth_provider_name || 'OIDC'
+      githubOAuthEnabled.value = settings.github_oauth_enabled
+      googleOAuthEnabled.value = settings.google_oauth_enabled
+      registrationEmailSuffixWhitelist.value = normalizeRegistrationEmailSuffixWhitelist(
+        settings.registration_email_suffix_whitelist || []
+      )
+      applyLoginAgreementSettings(settings)
+    } else {
+      loginAgreementEnabled.value = false
+      agreementAccepted.value = true
+    }
 
     // Read promo code from URL parameter only if promo code is enabled
     if (promoCodeEnabled.value) {
@@ -537,7 +542,7 @@ function hasAcceptedLoginAgreement(revision: string): boolean {
     return false
   }
   try {
-    const raw = localStorage.getItem(LOGIN_AGREEMENT_STORAGE_KEY)
+    const raw = safeLocalStorage.getItem(LOGIN_AGREEMENT_STORAGE_KEY)
     if (!raw) {
       return false
     }
@@ -550,7 +555,7 @@ function hasAcceptedLoginAgreement(revision: string): boolean {
 
 function acceptLoginAgreement(): void {
   if (loginAgreementRevision.value) {
-    localStorage.setItem(
+    safeLocalStorage.setItem(
       LOGIN_AGREEMENT_STORAGE_KEY,
       JSON.stringify({
         revision: loginAgreementRevision.value,
@@ -563,7 +568,7 @@ function acceptLoginAgreement(): void {
 }
 
 function rejectLoginAgreement(): void {
-  localStorage.removeItem(LOGIN_AGREEMENT_STORAGE_KEY)
+  safeLocalStorage.removeItem(LOGIN_AGREEMENT_STORAGE_KEY)
   agreementAccepted.value = false
   showAgreementModal.value = false
   appStore.showWarning('未同意最新条款前，无法注册或使用快捷登录。')
@@ -860,7 +865,7 @@ async function handleRegister(): Promise<void> {
     // If email verification is enabled, redirect to verification page
     if (emailVerifyEnabled.value) {
       // Store registration data in sessionStorage
-      sessionStorage.setItem(
+      const stored = safeSessionStorage.setItem(
         'register_data',
         JSON.stringify({
           email: formData.email,
@@ -871,6 +876,11 @@ async function handleRegister(): Promise<void> {
           ...(affCode ? { aff_code: affCode } : {})
         })
       )
+      if (!stored) {
+        errorMessage.value = t('auth.registrationFailed')
+        appStore.showError(errorMessage.value)
+        return
+      }
 
       // Navigate to email verification page
       await router.push('/email-verify')

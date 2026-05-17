@@ -155,7 +155,6 @@ import TurnstileWidget from '@/components/TurnstileWidget.vue'
 import { useAuthStore, useAppStore } from '@/stores'
 import {
   persistOAuthTokenContext,
-  getPublicSettings,
   isOAuthLoginCompletion,
   type PendingOAuthSendVerifyCodeResponse,
   sendPendingOAuthVerifyCode,
@@ -172,6 +171,7 @@ import {
   loadAffiliateReferralCode,
   oauthAffiliatePayload
 } from '@/utils/oauthAffiliate'
+import { safeSessionStorage } from '@/utils/browserStorage'
 
 const { t, locale } = useI18n()
 
@@ -257,7 +257,7 @@ onMounted(async () => {
   const activePendingSession = authStore.pendingAuthSession as PendingAuthSessionSummary | null
 
   // Load registration data from sessionStorage
-  const registerDataStr = sessionStorage.getItem('register_data')
+  const registerDataStr = safeSessionStorage.getItem('register_data')
   if (registerDataStr) {
     try {
       const registerData = JSON.parse(registerDataStr)
@@ -290,13 +290,15 @@ onMounted(async () => {
 
   // Load public settings
   try {
-    const settings = await getPublicSettings()
-    turnstileEnabled.value = settings.turnstile_enabled
-    turnstileSiteKey.value = settings.turnstile_site_key || ''
-    siteName.value = settings.site_name || 'Sub2API'
-    registrationEmailSuffixWhitelist.value = normalizeRegistrationEmailSuffixWhitelist(
-      settings.registration_email_suffix_whitelist || []
-    )
+    const settings = await appStore.fetchPublicSettings()
+    if (settings) {
+      turnstileEnabled.value = settings.turnstile_enabled
+      turnstileSiteKey.value = settings.turnstile_site_key || ''
+      siteName.value = settings.site_name || 'Sub2API'
+      registrationEmailSuffixWhitelist.value = normalizeRegistrationEmailSuffixWhitelist(
+        settings.registration_email_suffix_whitelist || []
+      )
+    }
   } catch (error) {
     console.error('Failed to load public settings:', error)
   }
@@ -419,7 +421,7 @@ async function sendCode(): Promise<void> {
       ? getPendingOAuthSendCodeSessionResponse(response as PendingOAuthSendVerifyCodeResponse)
       : null
     if (pendingSendCodeSession) {
-      sessionStorage.removeItem('register_data')
+      safeSessionStorage.removeItem('register_data')
       persistPendingOAuthSession(
         pendingSendCodeSession.provider || pendingProvider.value,
         pendingSendCodeSession.redirect,
@@ -512,7 +514,7 @@ async function handleVerify(): Promise<void> {
         }
       )
       if (isPendingOAuthSessionResponse(data)) {
-        sessionStorage.removeItem('register_data')
+        safeSessionStorage.removeItem('register_data')
         persistPendingOAuthSession(data.provider || pendingProvider.value, data.redirect)
         await router.push(resolvePendingOAuthCallbackRoute(data.provider || pendingProvider.value))
         return
@@ -538,7 +540,7 @@ async function handleVerify(): Promise<void> {
     }
 
     // Clear session data
-    sessionStorage.removeItem('register_data')
+    safeSessionStorage.removeItem('register_data')
     clearAllAffiliateReferralCodes()
 
     // Show success toast
@@ -559,7 +561,7 @@ async function handleVerify(): Promise<void> {
 
 function handleBack(): void {
   // Clear session data
-  sessionStorage.removeItem('register_data')
+  safeSessionStorage.removeItem('register_data')
 
   // Go back to registration
   router.push('/register')

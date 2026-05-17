@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from './client'
+import { safeLocalStorage } from '@/utils/browserStorage'
 import type {
   LoginRequest,
   RegisterRequest,
@@ -32,14 +33,14 @@ export function isTotp2FARequired(response: LoginResponse): response is TotpLogi
  * Store authentication token in localStorage
  */
 export function setAuthToken(token: string): void {
-  localStorage.setItem('auth_token', token)
+  safeLocalStorage.setItem('auth_token', token)
 }
 
 /**
  * Store refresh token in localStorage
  */
 export function setRefreshToken(token: string): void {
-  localStorage.setItem('refresh_token', token)
+  safeLocalStorage.setItem('refresh_token', token)
 }
 
 /**
@@ -48,28 +49,28 @@ export function setRefreshToken(token: string): void {
  */
 export function setTokenExpiresAt(expiresIn: number): void {
   const expiresAt = Date.now() + expiresIn * 1000
-  localStorage.setItem('token_expires_at', String(expiresAt))
+  safeLocalStorage.setItem('token_expires_at', String(expiresAt))
 }
 
 /**
  * Get authentication token from localStorage
  */
 export function getAuthToken(): string | null {
-  return localStorage.getItem('auth_token')
+  return safeLocalStorage.getItem('auth_token')
 }
 
 /**
  * Get refresh token from localStorage
  */
 export function getRefreshToken(): string | null {
-  return localStorage.getItem('refresh_token')
+  return safeLocalStorage.getItem('refresh_token')
 }
 
 /**
  * Get token expiration timestamp from localStorage
  */
 export function getTokenExpiresAt(): number | null {
-  const value = localStorage.getItem('token_expires_at')
+  const value = safeLocalStorage.getItem('token_expires_at')
   return value ? parseInt(value, 10) : null
 }
 
@@ -77,10 +78,10 @@ export function getTokenExpiresAt(): number | null {
  * Clear authentication token from localStorage
  */
 export function clearAuthToken(): void {
-  localStorage.removeItem('auth_token')
-  localStorage.removeItem('refresh_token')
-  localStorage.removeItem('auth_user')
-  localStorage.removeItem('token_expires_at')
+  safeLocalStorage.removeItem('auth_token')
+  safeLocalStorage.removeItem('refresh_token')
+  safeLocalStorage.removeItem('auth_user')
+  safeLocalStorage.removeItem('token_expires_at')
 }
 
 /**
@@ -100,7 +101,7 @@ export async function login(credentials: LoginRequest): Promise<LoginResponse> {
     if (data.expires_in) {
       setTokenExpiresAt(data.expires_in)
     }
-    localStorage.setItem('auth_user', JSON.stringify(data.user))
+    safeLocalStorage.setItem('auth_user', JSON.stringify(data.user))
   }
 
   return data
@@ -122,7 +123,7 @@ export async function login2FA(request: TotpLogin2FARequest): Promise<AuthRespon
   if (data.expires_in) {
     setTokenExpiresAt(data.expires_in)
   }
-  localStorage.setItem('auth_user', JSON.stringify(data.user))
+  safeLocalStorage.setItem('auth_user', JSON.stringify(data.user))
 
   return data
 }
@@ -143,7 +144,7 @@ export async function register(userData: RegisterRequest): Promise<AuthResponse>
   if (data.expires_in) {
     setTokenExpiresAt(data.expires_in)
   }
-  localStorage.setItem('auth_user', JSON.stringify(data.user))
+  safeLocalStorage.setItem('auth_user', JSON.stringify(data.user))
 
   return data
 }

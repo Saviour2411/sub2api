@@ -206,9 +206,10 @@ import TotpLoginModal from '@/components/auth/TotpLoginModal.vue'
 import Icon from '@/components/icons/Icon.vue'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
 import { useAuthStore, useAppStore } from '@/stores'
-import { getPublicSettings, isTotp2FARequired, isWeChatWebOAuthEnabled } from '@/api/auth'
+import { isTotp2FARequired, isWeChatWebOAuthEnabled } from '@/api/auth'
 import type { LoginAgreementDocument, TotpLoginResponse } from '@/types'
 import { extractI18nErrorMessage } from '@/utils/apiError'
+import { safeLocalStorage, safeSessionStorage } from '@/utils/browserStorage'
 import { clearAllAffiliateReferralCodes } from '@/utils/oauthAffiliate'
 
 const { t } = useI18n()
@@ -298,28 +299,33 @@ watch(validationToastMessage, (value, previousValue) => {
 // ==================== Lifecycle ====================
 
 onMounted(async () => {
-  const expiredFlag = sessionStorage.getItem('auth_expired')
+  const expiredFlag = safeSessionStorage.getItem('auth_expired')
   if (expiredFlag) {
-    sessionStorage.removeItem('auth_expired')
+    safeSessionStorage.removeItem('auth_expired')
     const message = t('auth.reloginRequired')
     errorMessage.value = message
     appStore.showWarning(message)
   }
 
   try {
-    const settings = await getPublicSettings()
-    turnstileEnabled.value = settings.turnstile_enabled
-    turnstileSiteKey.value = settings.turnstile_site_key || ''
-    linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled
-    wechatOAuthEnabled.value = isWeChatWebOAuthEnabled(settings)
-    backendModeEnabled.value = settings.backend_mode_enabled
-    oidcOAuthEnabled.value = settings.oidc_oauth_enabled
-    oidcOAuthProviderName.value = settings.oidc_oauth_provider_name || 'OIDC'
-    githubOAuthEnabled.value = settings.github_oauth_enabled
-    googleOAuthEnabled.value = settings.google_oauth_enabled
-    backendModeEnabled.value = settings.backend_mode_enabled
-    passwordResetEnabled.value = settings.password_reset_enabled
-    applyLoginAgreementSettings(settings)
+    const settings = await appStore.fetchPublicSettings()
+    if (settings) {
+      turnstileEnabled.value = settings.turnstile_enabled
+      turnstileSiteKey.value = settings.turnstile_site_key || ''
+      linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled
+      wechatOAuthEnabled.value = isWeChatWebOAuthEnabled(settings)
+      backendModeEnabled.value = settings.backend_mode_enabled
+      oidcOAuthEnabled.value = settings.oidc_oauth_enabled
+      oidcOAuthProviderName.value = settings.oidc_oauth_provider_name || 'OIDC'
+      githubOAuthEnabled.value = settings.github_oauth_enabled
+      googleOAuthEnabled.value = settings.google_oauth_enabled
+      backendModeEnabled.value = settings.backend_mode_enabled
+      passwordResetEnabled.value = settings.password_reset_enabled
+      applyLoginAgreementSettings(settings)
+    } else {
+      loginAgreementEnabled.value = false
+      agreementAccepted.value = true
+    }
   } catch (error) {
     console.error('Failed to load public settings:', error)
     loginAgreementEnabled.value = false
@@ -359,7 +365,7 @@ function hasAcceptedLoginAgreement(revision: string): boolean {
     return false
   }
   try {
-    const raw = localStorage.getItem(LOGIN_AGREEMENT_STORAGE_KEY)
+    const raw = safeLocalStorage.getItem(LOGIN_AGREEMENT_STORAGE_KEY)
     if (!raw) {
       return false
     }
@@ -372,7 +378,7 @@ function hasAcceptedLoginAgreement(revision: string): boolean {
 
 function acceptLoginAgreement(): void {
   if (loginAgreementRevision.value) {
-    localStorage.setItem(
+    safeLocalStorage.setItem(
       LOGIN_AGREEMENT_STORAGE_KEY,
       JSON.stringify({
         revision: loginAgreementRevision.value,
@@ -385,7 +391,7 @@ function acceptLoginAgreement(): void {
 }
 
 function rejectLoginAgreement(): void {
-  localStorage.removeItem(LOGIN_AGREEMENT_STORAGE_KEY)
+  safeLocalStorage.removeItem(LOGIN_AGREEMENT_STORAGE_KEY)
   agreementAccepted.value = false
   showAgreementModal.value = false
   appStore.showWarning('未同意最新条款前，无法输入账号密码或使用快捷登录。')

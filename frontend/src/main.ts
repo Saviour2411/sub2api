@@ -4,6 +4,7 @@ import App from './App.vue'
 import router from './router'
 import i18n, { initI18n } from './i18n'
 import { useAppStore } from '@/stores/app'
+import { safeLocalStorage } from '@/utils/browserStorage'
 import './style.css'
 
 function renderBootstrapError(title = '页面加载失败', detail = '请刷新页面重试，或清理浏览器缓存后再次访问。') {
@@ -24,7 +25,7 @@ function renderBootstrapError(title = '页面加载失败', detail = '请刷新�
 }
 
 function initThemeClass() {
-  const savedTheme = localStorage.getItem('theme')
+  const savedTheme = safeLocalStorage.getItem('theme')
   const shouldUseDark = savedTheme === 'light' ? false : true
   document.documentElement.classList.toggle('dark', shouldUseDark)
 }

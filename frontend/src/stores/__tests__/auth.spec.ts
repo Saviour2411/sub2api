@@ -185,6 +185,22 @@ describe('useAuthStore', () => {
       expect(store.isAuthenticated).toBe(false)
     })
 
+    it('localStorage 被浏览器阻止时保持未认证状态且不抛错', () => {
+      const getItemSpy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+        throw new DOMException('Blocked', 'SecurityError')
+      })
+
+      try {
+        const store = useAuthStore()
+        expect(() => store.checkAuth()).not.toThrow()
+        expect(store.token).toBeNull()
+        expect(store.user).toBeNull()
+        expect(store.isAuthenticated).toBe(false)
+      } finally {
+        getItemSpy.mockRestore()
+      }
+    })
+
     it('localStorage 中用户数据损坏时清除状态', () => {
       localStorage.setItem('auth_token', 'saved-token')
       localStorage.setItem('auth_user', 'invalid-json{{{')

@@ -9,6 +9,7 @@ import { useAppStore } from '@/stores/app'
 import { useAdminSettingsStore } from '@/stores/adminSettings'
 import { useNavigationLoadingState } from '@/composables/useNavigationLoading'
 import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
+import { safeSessionStorage } from '@/utils/browserStorage'
 import { resolveDocumentTitle } from './title'
 
 /**
@@ -856,12 +857,12 @@ router.onError((error) => {
   if (isChunkLoadError) {
     // Avoid infinite reload loop by checking sessionStorage
     const reloadKey = 'chunk_reload_attempted'
-    const lastReload = sessionStorage.getItem(reloadKey)
+    const lastReload = safeSessionStorage.getItem(reloadKey)
     const now = Date.now()
 
     // Allow reload if never attempted or more than 10 seconds ago
     if (!lastReload || now - parseInt(lastReload) > 10000) {
-      sessionStorage.setItem(reloadKey, now.toString())
+      safeSessionStorage.setItem(reloadKey, now.toString())
       console.warn('Chunk load error detected, reloading page to fetch latest version...')
       window.location.reload()
     } else {

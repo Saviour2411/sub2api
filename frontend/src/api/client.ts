@@ -6,6 +6,7 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
 import type { ApiResponse } from '@/types'
 import { getLocale } from '@/i18n'
+import { safeLocalStorage, safeSessionStorage } from '@/utils/browserStorage'
 
 // ==================== Axios Instance Configuration ====================
 
@@ -56,7 +57,7 @@ const getUserTimezone = (): string => {
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     // Attach token from localStorage
-    const token = localStorage.getItem('auth_token')
+    const token = safeLocalStorage.getItem('auth_token')
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -126,7 +127,7 @@ apiClient.interceptors.response.use(
       // from ops pages to avoid broken UI states.
       if (status === 404 && apiData.message === 'Ops monitoring is disabled') {
         try {
-          localStorage.setItem('ops_monitoring_enabled_cached', 'false')
+          safeLocalStorage.setItem('ops_monitoring_enabled_cached', 'false')
         } catch {
           // ignore localStorage failures
         }
@@ -151,7 +152,7 @@ apiClient.interceptors.response.use(
       // 401: Try to refresh the token if we have a refresh token
       // This handles TOKEN_EXPIRED, INVALID_TOKEN, TOKEN_REVOKED, etc.
       if (status === 401 && !originalRequest._retry) {
-        const refreshToken = localStorage.getItem('refresh_token')
+        const refreshToken = safeLocalStorage.getItem('refresh_token')
         const isAuthEndpoint =
           url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh')
 
@@ -201,9 +202,9 @@ apiClient.interceptors.response.use(
               const { access_token, refresh_token: newRefreshToken, expires_in } = refreshData.data
 
               // Update tokens in localStorage (convert expires_in to timestamp)
-              localStorage.setItem('auth_token', access_token)
-              localStorage.setItem('refresh_token', newRefreshToken)
-              localStorage.setItem('token_expires_at', String(Date.now() + expires_in * 1000))
+              safeLocalStorage.setItem('auth_token', access_token)
+              safeLocalStorage.setItem('refresh_token', newRefreshToken)
+              safeLocalStorage.setItem('token_expires_at', String(Date.now() + expires_in * 1000))
 
               // Notify subscribers with new token
               onTokenRefreshed(access_token)
@@ -225,11 +226,11 @@ apiClient.interceptors.response.use(
             isRefreshing = false
 
             // Clear tokens and redirect to login
-            localStorage.removeItem('auth_token')
-            localStorage.removeItem('refresh_token')
-            localStorage.removeItem('auth_user')
-            localStorage.removeItem('token_expires_at')
-            sessionStorage.setItem('auth_expired', '1')
+            safeLocalStorage.removeItem('auth_token')
+            safeLocalStorage.removeItem('refresh_token')
+            safeLocalStorage.removeItem('auth_user')
+            safeLocalStorage.removeItem('token_expires_at')
+            safeSessionStorage.setItem('auth_expired', '1')
 
             if (!window.location.pathname.includes('/login')) {
               window.location.href = '/login'
@@ -244,7 +245,7 @@ apiClient.interceptors.response.use(
         }
 
         // No refresh token or is auth endpoint - clear auth and redirect
-        const hasToken = !!localStorage.getItem('auth_token')
+        const hasToken = !!safeLocalStorage.getItem('auth_token')
         const headers = error.config?.headers as Record<string, unknown> | undefined
         const authHeader = headers?.Authorization ?? headers?.authorization
         const sentAuth =
@@ -256,12 +257,12 @@ apiClient.interceptors.response.use(
 
         const shouldRedirectForAuthExpiry = (hasToken || sentAuth) && !isAuthEndpoint
 
-        localStorage.removeItem('auth_token')
-        localStorage.removeItem('refresh_token')
-        localStorage.removeItem('auth_user')
-        localStorage.removeItem('token_expires_at')
+        safeLocalStorage.removeItem('auth_token')
+        safeLocalStorage.removeItem('refresh_token')
+        safeLocalStorage.removeItem('auth_user')
+        safeLocalStorage.removeItem('token_expires_at')
         if (shouldRedirectForAuthExpiry) {
-          sessionStorage.setItem('auth_expired', '1')
+          safeSessionStorage.setItem('auth_expired', '1')
         }
         // 只有当前请求明确带了登录态时才跳转，避免公开页面上的普通 401 造成注册页白屏/跳转。
         if (shouldRedirectForAuthExpiry && !window.location.pathname.includes('/login')) {
