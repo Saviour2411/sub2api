@@ -68,7 +68,7 @@
       </div>
 
       <!-- Row: Visual Analysis (baseline 3-up grid) -->
-      <div v-if="opsEnabled && showDeferredOpsPanels && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6 md:grid-cols-3">
+      <div v-if="opsEnabled && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6 md:grid-cols-3">
         <OpsLatencyChart :latency-data="latencyHistogram" :loading="loadingLatency" />
         <OpsErrorDistributionChart
           :data="errorDistribution"
@@ -85,7 +85,7 @@
       </div>
 
       <!-- Row: OpenAI Token Stats -->
-      <div v-if="opsEnabled && showDeferredOpsPanels && showOpenAITokenStats && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6">
+      <div v-if="opsEnabled && showOpenAITokenStats && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6">
         <OpsOpenAITokenStatsCard
           :platform-filter="platform"
           :group-id-filter="groupId"
@@ -94,25 +94,24 @@
       </div>
 
       <!-- Alert Events -->
-      <OpsAlertEventsCard v-if="opsEnabled && showDeferredOpsPanels && showAlertEvents && !(loading && !hasLoadedOnce)" />
+      <OpsAlertEventsCard v-if="opsEnabled && showAlertEvents && !(loading && !hasLoadedOnce)" />
 
       <!-- System Logs -->
       <OpsSystemLogTable
-        v-if="opsEnabled && showDeferredOpsPanels && !(loading && !hasLoadedOnce)"
+        v-if="opsEnabled && !(loading && !hasLoadedOnce)"
         :platform-filter="platform"
         :refresh-token="dashboardRefreshToken"
       />
 
       <!-- Settings Dialog (hidden in fullscreen mode) -->
       <template v-if="!isFullscreen">
-        <OpsSettingsDialog v-if="showSettingsDialog" :show="showSettingsDialog" @close="showSettingsDialog = false" @saved="onSettingsSaved" />
+        <OpsSettingsDialog :show="showSettingsDialog" @close="showSettingsDialog = false" @saved="onSettingsSaved" />
 
-        <BaseDialog v-if="showAlertRulesCard" :show="showAlertRulesCard" :title="t('admin.ops.alertRules.title')" width="extra-wide" @close="showAlertRulesCard = false">
+        <BaseDialog :show="showAlertRulesCard" :title="t('admin.ops.alertRules.title')" width="extra-wide" @close="showAlertRulesCard = false">
           <OpsAlertRulesCard />
         </BaseDialog>
 
         <OpsErrorDetailsModal
-          v-if="showErrorDetails"
           :show="showErrorDetails"
           :time-range="timeRange"
           :platform="platform"
@@ -122,10 +121,9 @@
           @openErrorDetail="openError"
         />
 
-        <OpsErrorDetailModal v-if="showErrorModal" v-model:show="showErrorModal" :error-id="selectedErrorId" :error-type="errorDetailsType" />
+        <OpsErrorDetailModal v-model:show="showErrorModal" :error-id="selectedErrorId" :error-type="errorDetailsType" />
 
         <OpsRequestDetailsModal
-          v-if="showRequestDetails"
           v-model="showRequestDetails"
           :time-range="timeRange"
           :preset="requestDetailsPreset"
@@ -139,7 +137,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useDebounceFn, useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -158,21 +156,19 @@ import { useAdminSettingsStore, useAppStore } from '@/stores'
 import OpsDashboardHeader from './components/OpsDashboardHeader.vue'
 import OpsDashboardSkeleton from './components/OpsDashboardSkeleton.vue'
 import OpsConcurrencyCard from './components/OpsConcurrencyCard.vue'
+import OpsErrorDetailModal from './components/OpsErrorDetailModal.vue'
+import OpsErrorDistributionChart from './components/OpsErrorDistributionChart.vue'
+import OpsErrorDetailsModal from './components/OpsErrorDetailsModal.vue'
+import OpsErrorTrendChart from './components/OpsErrorTrendChart.vue'
+import OpsLatencyChart from './components/OpsLatencyChart.vue'
 import OpsThroughputTrendChart from './components/OpsThroughputTrendChart.vue'
 import OpsSwitchRateTrendChart from './components/OpsSwitchRateTrendChart.vue'
-import type { OpsRequestDetailsPreset } from './components/OpsRequestDetailsModal.vue'
-
-const OpsLatencyChart = defineAsyncComponent(() => import('./components/OpsLatencyChart.vue'))
-const OpsErrorDistributionChart = defineAsyncComponent(() => import('./components/OpsErrorDistributionChart.vue'))
-const OpsErrorTrendChart = defineAsyncComponent(() => import('./components/OpsErrorTrendChart.vue'))
-const OpsErrorDetailModal = defineAsyncComponent(() => import('./components/OpsErrorDetailModal.vue'))
-const OpsErrorDetailsModal = defineAsyncComponent(() => import('./components/OpsErrorDetailsModal.vue'))
-const OpsAlertEventsCard = defineAsyncComponent(() => import('./components/OpsAlertEventsCard.vue'))
-const OpsOpenAITokenStatsCard = defineAsyncComponent(() => import('./components/OpsOpenAITokenStatsCard.vue'))
-const OpsSystemLogTable = defineAsyncComponent(() => import('./components/OpsSystemLogTable.vue'))
-const OpsRequestDetailsModal = defineAsyncComponent(() => import('./components/OpsRequestDetailsModal.vue'))
-const OpsSettingsDialog = defineAsyncComponent(() => import('./components/OpsSettingsDialog.vue'))
-const OpsAlertRulesCard = defineAsyncComponent(() => import('./components/OpsAlertRulesCard.vue'))
+import OpsAlertEventsCard from './components/OpsAlertEventsCard.vue'
+import OpsOpenAITokenStatsCard from './components/OpsOpenAITokenStatsCard.vue'
+import OpsSystemLogTable from './components/OpsSystemLogTable.vue'
+import OpsRequestDetailsModal, { type OpsRequestDetailsPreset } from './components/OpsRequestDetailsModal.vue'
+import OpsSettingsDialog from './components/OpsSettingsDialog.vue'
+import OpsAlertRulesCard from './components/OpsAlertRulesCard.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -387,7 +383,6 @@ const showAlertRulesCard = ref(false)
 // Auto refresh settings
 const showAlertEvents = ref(true)
 const showOpenAITokenStats = ref(false)
-const showDeferredOpsPanels = ref(false)
 const autoRefreshEnabled = ref(false)
 const autoRefreshIntervalMs = ref(30000) // default 30 seconds
 const autoRefreshCountdown = ref(0)
@@ -401,7 +396,6 @@ const { pause: pauseCountdown, resume: resumeCountdown } = useIntervalFn(
     if (!autoRefreshEnabled.value) return
     if (!opsEnabled.value) return
     if (loading.value) return
-    if (document.visibilityState !== 'visible') return
 
     if (autoRefreshCountdown.value <= 0) {
       // Fetch immediately when the countdown reaches 0.
@@ -415,20 +409,6 @@ const { pause: pauseCountdown, resume: resumeCountdown } = useIntervalFn(
   1000,
   { immediate: false }
 )
-
-function scheduleDeferredOpsPanels(fetchSeq: number) {
-  const run = () => {
-    if (fetchSeq !== dashboardFetchSeq) return
-    showDeferredOpsPanels.value = true
-    void refreshDeferredPanels(fetchSeq, dashboardFetchController?.signal ?? new AbortController().signal)
-  }
-
-  if (typeof window.requestIdleCallback === 'function') {
-    window.requestIdleCallback(run, { timeout: 1200 })
-    return
-  }
-  window.setTimeout(run, 250)
-}
 
 // Load ops dashboard presentation settings from backend.
 async function loadDashboardAdvancedSettings() {
@@ -741,8 +721,8 @@ async function fetchData() {
       autoRefreshCountdown.value = Math.floor(autoRefreshIntervalMs.value / 1000)
     }
 
-    // 延迟非核心面板，避免首屏被低优先级图表和日志表抢占。
-    scheduleDeferredOpsPanels(fetchSeq)
+    // Defer non-core visual panels to reduce initial blocking.
+    void refreshDeferredPanels(fetchSeq, dashboardFetchController.signal)
   } catch (err) {
     if (!isOpsDisabledError(err)) {
       console.error('[ops] failed to fetch dashboard data', err)
@@ -790,16 +770,9 @@ watch(
   }
 )
 
-function handleVisibilityChange() {
-  if (document.visibilityState !== 'visible') return
-  if (!opsEnabled.value || !autoRefreshEnabled.value || loading.value) return
-  fetchData()
-}
-
 onMounted(async () => {
   // Fullscreen mode: listen for ESC key
   window.addEventListener('keydown', handleKeydown)
-  document.addEventListener('visibilitychange', handleVisibilityChange)
 
   await adminSettingsStore.fetch()
   if (!adminSettingsStore.opsMonitoringEnabled) {
@@ -835,7 +808,6 @@ async function loadThresholds() {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
-  document.removeEventListener('visibilitychange', handleVisibilityChange)
   abortDashboardFetch()
   pauseCountdown()
 })

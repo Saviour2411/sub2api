@@ -20,35 +20,18 @@ type ComponentImportFn = () => Promise<unknown>
  * 只存储路由路径，不存储 import 函数，避免打包问题
  */
 const PREFETCH_ADJACENCY: Record<string, string[]> = {
-  // Admin routes - 仅预加载体积适中的相邻页面，避免管理页弱网抢带宽。
-  '/admin/dashboard': ['/admin/users'],
-  '/admin/accounts': ['/admin/dashboard'],
-  '/admin/users': ['/admin/dashboard'],
-  '/admin/groups': ['/admin/users'],
-  '/admin/subscriptions': ['/admin/redeem'],
+  // Admin routes - 预加载最常访问的相邻页面
+  '/admin/dashboard': ['/admin/accounts', '/admin/users'],
+  '/admin/accounts': ['/admin/dashboard', '/admin/users'],
+  '/admin/users': ['/admin/groups', '/admin/dashboard'],
+  '/admin/groups': ['/admin/subscriptions', '/admin/users'],
+  '/admin/subscriptions': ['/admin/groups', '/admin/redeem'],
   // User routes
   '/dashboard': ['/keys', '/usage'],
   '/keys': ['/dashboard', '/usage'],
   '/usage': ['/keys', '/redeem'],
   '/redeem': ['/usage', '/profile'],
   '/profile': ['/dashboard', '/keys']
-}
-
-const HEAVY_PREFETCH_ROUTES = new Set([
-  '/admin/accounts',
-  '/admin/settings',
-  '/admin/ops',
-  '/admin/groups'
-])
-
-const shouldSkipPrefetchForConnection = (): boolean => {
-  if (typeof navigator === 'undefined') return false
-  const connection = (navigator as Navigator & {
-    connection?: { saveData?: boolean; effectiveType?: string }
-  }).connection
-  if (!connection) return false
-  if (connection.saveData) return true
-  return connection.effectiveType === 'slow-2g' || connection.effectiveType === '2g'
 }
 
 /**
@@ -146,9 +129,8 @@ export function useRoutePrefetch(router?: Router) {
    */
   const triggerPrefetch = (route: RouteLocationNormalized): void => {
     cancelPendingPrefetch()
-    if (shouldSkipPrefetchForConnection()) return
 
-    const prefetchPaths = getPrefetchPaths(route).filter((path) => !HEAVY_PREFETCH_ROUTES.has(path))
+    const prefetchPaths = getPrefetchPaths(route)
     if (prefetchPaths.length === 0) return
 
     pendingPrefetchHandle.value = scheduleIdleCallback(
@@ -158,18 +140,17 @@ export function useRoutePrefetch(router?: Router) {
         const routePath = route.path
         if (prefetchedRoutes.value.has(routePath)) return
 
-        // 每次只预加载一个相邻页面，避免空闲任务占满弱网带宽。
-        let importFn: ComponentImportFn | null = null
+        // 获取需要预加载的组件 import 函数
+        const importFns: ComponentImportFn[] = []
         for (const path of prefetchPaths) {
-          const candidate = getComponentImporter(path)
-          if (candidate) {
-            importFn = candidate
-            break
+          const importFn = getComponentImporter(path)
+          if (importFn) {
+            importFns.push(importFn)
           }
         }
 
-        if (importFn) {
-          prefetchComponent(importFn).then(() => {
+        if (importFns.length > 0) {
+          Promise.all(importFns.map(prefetchComponent)).then(() => {
             prefetchedRoutes.value.add(routePath)
           })
         }

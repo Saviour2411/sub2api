@@ -1525,30 +1525,6 @@
       inset 0 1px 0 rgba(255, 255, 255, 0.86),
       0 12px 28px rgba(15, 68, 112, 0.09);
   }
-
-  @media (prefers-reduced-motion: reduce) {
-    *,
-    *::before,
-    *::after {
-      animation-duration: 1ms !important;
-      animation-iteration-count: 1 !important;
-      scroll-behavior: auto !important;
-      transition-duration: 1ms !important;
-    }
-
-    .mecha-app-shell::before,
-    .hud-grid,
-    .scanline {
-      opacity: 0.28 !important;
-    }
-
-    .shadow-glow,
-    .auth-console-rail,
-    .mecha-target-ring,
-    .auth-mecha-reticle {
-      box-shadow: none !important;
-    }
-  }
 }
 
 @layer utilities {

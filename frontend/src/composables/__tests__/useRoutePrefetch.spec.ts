@@ -91,7 +91,7 @@ describe('useRoutePrefetch', () => {
       const route = createMockRoute('/admin/dashboard')
       const config = _getPrefetchConfig(route)
 
-      expect(config).toHaveLength(1)
+      expect(config).toHaveLength(2)
     })
 
     it('普通用户 dashboard 应该返回正确的预加载配置', () => {
@@ -190,7 +190,7 @@ describe('useRoutePrefetch', () => {
   describe('预加载映射表', () => {
     it('管理员预加载映射表应该包含正确的路由', () => {
       expect(_adminPrefetchMap).toHaveProperty('/admin/dashboard')
-      expect(_adminPrefetchMap['/admin/dashboard']).toEqual(['/admin/users'])
+      expect(_adminPrefetchMap['/admin/dashboard']).toHaveLength(2)
     })
 
     it('用户预加载映射表应该包含正确的路由', () => {

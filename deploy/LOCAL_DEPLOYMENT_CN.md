@@ -41,9 +41,6 @@
 - Nginx 模板：`deploy/nginx-sub2api-api.saviour.cc.cd.conf`
   - 目标安装路径：`/etc/nginx/sites-available/sub2api-api.saviour.cc.cd`
   - 启用软链：`/etc/nginx/sites-enabled/sub2api-api.saviour.cc.cd`
-- Nginx 访问耗时日志格式：`deploy/nginx-sub2api-log-format.conf`
-  - 目标安装路径：`/etc/nginx/conf.d/sub2api-log-format.conf`
-  - 必须先于站点配置加载，用于记录 `request_time` 和 `upstream_response_time`。
 - 前端主题资产：
   - `frontend/public/theme/staly.png`：原始参考图，约 2.7MB，仅作为兜底资源保留。
   - `frontend/public/theme/staly-login.webp`：桌面端认证页背景，约 123KB。
@@ -58,7 +55,6 @@
   - 登录后布局：`AppLayout`、顶部栏、侧边栏、表格页容器统一使用冷蓝、钢铁灰、装甲切角、边角发光和数据终端风格。
   - 公共组件：按钮、输入框、卡片、表格、下拉框、开关、弹窗、Toast、空状态等通过全局样式统一。
   - 静态缓存：后端对 `/assets/` 输出 `public, max-age=31536000, immutable`，对 `/theme/` 输出 `public, max-age=2592000`；HTML 仍保持 `no-cache`。
-  - 管理体验优化：账号管理和运维监控的非首屏弹窗/面板按需加载，路由预加载会避开超大管理页和弱网环境，减少页面切换时的带宽抢占。
 - 运维注意：
   - 修改主题时优先改 `frontend/src/style.css`、`frontend/tailwind.config.js` 和布局组件，避免逐页重复硬编码。
   - 替换认证页大图时必须同时生成桌面和移动端 WebP，避免登录页重新加载 2MB 以上图片。
@@ -101,7 +97,6 @@ server {
 安装 Nginx 站点配置：
 
 ```bash
-sudo install -m 644 deploy/nginx-sub2api-log-format.conf /etc/nginx/conf.d/sub2api-log-format.conf
 sudo install -m 644 deploy/nginx-sub2api-api.saviour.cc.cd.conf /etc/nginx/sites-available/sub2api-api.saviour.cc.cd
 sudo ln -sf /etc/nginx/sites-available/sub2api-api.saviour.cc.cd /etc/nginx/sites-enabled/sub2api-api.saviour.cc.cd
 sudo nginx -t
@@ -135,14 +130,6 @@ curl http://127.0.0.1:18080/health
 ```bash
 curl -k --resolve api.saviour.cc.cd:2503:127.0.0.1 https://api.saviour.cc.cd:2503/health
 ```
-
-查看页面和接口耗时：
-
-```bash
-sudo tail -f /var/log/nginx/sub2api-api.access.log
-```
-
-日志中 `request_time` 是 Nginx 从接收请求到响应完成的总耗时，`upstream_response_time` 是 Sub2API 回源耗时。若前者明显大于后者，优先排查客户端网络或 Cloudflare；若两者都高，再排查后端接口。
 
 验证 IP/SNI 不匹配被拒绝：
 
