@@ -113,14 +113,15 @@ function preloadAuthBackground() {
   background-position: center right 14%;
   background-size: cover;
   opacity: 0.98;
-  filter: saturate(1.1) contrast(1.04);
+  filter: saturate(1.08) contrast(1.06) brightness(1.03);
 }
 
 .auth-overlay {
   background:
-    linear-gradient(105deg, rgba(238, 246, 255, 0.98) 0%, rgba(238, 246, 255, 0.84) 34%, rgba(238, 246, 255, 0.08) 68%, rgba(238, 246, 255, 0.38) 100%),
-    radial-gradient(circle at 28% 20%, rgba(75, 181, 255, 0.26), transparent 34%),
-    radial-gradient(circle at 82% 70%, rgba(255, 111, 56, 0.2), transparent 30%);
+    linear-gradient(105deg, rgba(248, 252, 255, 0.99) 0%, rgba(232, 243, 253, 0.9) 32%, rgba(238, 246, 255, 0.18) 60%, rgba(236, 245, 253, 0.5) 100%),
+    linear-gradient(118deg, transparent 0 43%, rgba(23, 152, 242, 0.12) 43.2% 43.55%, transparent 43.75% 100%),
+    linear-gradient(92deg, transparent 0 76%, rgba(255, 111, 56, 0.14) 76.2% 76.5%, transparent 76.7% 100%),
+    repeating-linear-gradient(0deg, transparent 0 12px, rgba(23, 152, 242, 0.035) 13px, transparent 14px);
 }
 
 :global(.dark) .auth-overlay {
@@ -141,6 +142,10 @@ function preloadAuthBackground() {
 
 .scanline {
   background: repeating-linear-gradient(0deg, transparent 0 9px, rgba(75, 181, 255, 0.06) 10px, transparent 11px);
+  mix-blend-mode: multiply;
+}
+
+:global(.dark) .scanline {
   mix-blend-mode: screen;
 }
 
@@ -172,13 +177,14 @@ function preloadAuthBackground() {
 
 .auth-console {
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(226, 238, 251, 0.74)),
-    linear-gradient(90deg, rgba(23, 152, 242, 0.2), transparent 24%, transparent 78%, rgba(255, 111, 56, 0.14));
-  border: 1px solid rgba(75, 181, 255, 0.28);
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(232, 244, 255, 0.84)),
+    linear-gradient(90deg, rgba(23, 152, 242, 0.24), transparent 24%, transparent 78%, rgba(255, 111, 56, 0.16));
+  border: 1px solid rgba(23, 152, 242, 0.36);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.75),
-    0 28px 80px rgba(8, 47, 88, 0.18),
-    0 0 0 1px rgba(255, 255, 255, 0.36);
+    inset 0 1px 0 rgba(255, 255, 255, 0.86),
+    inset 0 -1px 0 rgba(23, 152, 242, 0.12),
+    0 30px 78px rgba(15, 68, 112, 0.2),
+    0 0 0 1px rgba(255, 255, 255, 0.42);
   backdrop-filter: blur(22px);
 }
 
@@ -205,11 +211,13 @@ function preloadAuthBackground() {
 
 .mecha-login-panel {
   position: relative;
-  border: 1px solid rgba(75, 181, 255, 0.26);
+  border: 1px solid rgba(23, 152, 242, 0.32);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(239, 246, 255, 0.74)),
-    linear-gradient(135deg, rgba(75, 181, 255, 0.16), transparent 36%, rgba(255, 111, 56, 0.1));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(238, 247, 255, 0.82)),
+    linear-gradient(135deg, rgba(23, 152, 242, 0.18), transparent 36%, rgba(255, 111, 56, 0.12));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    0 12px 28px rgba(15, 68, 112, 0.1);
 }
 
 :global(.dark) .mecha-login-panel {
@@ -230,11 +238,15 @@ function preloadAuthBackground() {
 }
 
 .auth-hud-panel {
-  border: 1px solid rgba(75, 181, 255, 0.24);
-  background: rgba(239, 246, 255, 0.56);
+  border: 1px solid rgba(23, 152, 242, 0.32);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.76), rgba(226, 239, 251, 0.62)),
+    linear-gradient(135deg, transparent 0 76%, rgba(255, 111, 56, 0.14) 76% 100%);
   padding: 18px;
   backdrop-filter: blur(12px);
-  box-shadow: 0 18px 60px rgba(8, 47, 88, 0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 18px 60px rgba(15, 68, 112, 0.2);
 }
 
 :global(.dark) .auth-hud-panel {
@@ -242,10 +254,11 @@ function preloadAuthBackground() {
 }
 
 .auth-metric {
-  border: 1px solid rgba(75, 181, 255, 0.24);
+  border: 1px solid rgba(23, 152, 242, 0.3);
   padding: 0.375rem 0.5rem;
   text-align: center;
-  background: rgba(75, 181, 255, 0.08);
+  background:
+    linear-gradient(135deg, rgba(223, 241, 255, 0.86), rgba(255, 255, 255, 0.62));
   clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
 }
 
