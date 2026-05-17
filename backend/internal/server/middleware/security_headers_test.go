@@ -129,6 +129,7 @@ func TestSecurityHeaders(t *testing.T) {
 		assert.Contains(t, csp, "default-src 'self'")
 		assert.Contains(t, csp, "'nonce-")
 		assert.Contains(t, csp, CloudflareInsightsDomain)
+		assert.Contains(t, csp, "worker-src 'self' "+BlobWorkerSource)
 	})
 
 	t.Run("api_route_skips_csp_nonce_generation", func(t *testing.T) {
@@ -192,6 +193,7 @@ func TestSecurityHeaders(t *testing.T) {
 		assert.NotEmpty(t, csp)
 		// Default policy should contain these elements
 		assert.Contains(t, csp, "default-src 'self'")
+		assert.Contains(t, csp, "worker-src 'self' "+BlobWorkerSource)
 	})
 
 	t.Run("uses_default_policy_when_whitespace_only", func(t *testing.T) {
@@ -342,6 +344,21 @@ func TestEnhanceCSPPolicy(t *testing.T) {
 		assert.Contains(t, enhanced, AirwallexDemoCheckoutDomain)
 		assert.Contains(t, enhanced, "style-src 'self'")
 		assert.Contains(t, enhanced, "frame-src 'self'")
+	})
+
+	t.Run("adds_worker_src_blob_for_blob_workers", func(t *testing.T) {
+		policy := "default-src 'self'; script-src 'self' __CSP_NONCE__"
+		enhanced := enhanceCSPPolicy(policy)
+
+		assert.Contains(t, enhanced, "worker-src 'self' "+BlobWorkerSource)
+		assert.Equal(t, 1, countDirectiveValue(enhanced, "worker-src", BlobWorkerSource))
+	})
+
+	t.Run("does_not_duplicate_worker_src_blob", func(t *testing.T) {
+		policy := "default-src 'self'; script-src 'self' __CSP_NONCE__; worker-src 'self' blob:"
+		enhanced := enhanceCSPPolicy(policy)
+
+		assert.Equal(t, 1, countDirectiveValue(enhanced, "worker-src", BlobWorkerSource))
 	})
 
 	t.Run("does_not_duplicate_airwallex_domains", func(t *testing.T) {

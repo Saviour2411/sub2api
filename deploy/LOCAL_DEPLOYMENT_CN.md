@@ -55,6 +55,7 @@
   - 登录后布局：`AppLayout`、顶部栏、侧边栏、表格页容器统一使用冷蓝、钢铁灰、装甲切角、边角发光和数据终端风格。
   - 公共组件：按钮、输入框、卡片、表格、下拉框、开关、弹窗、Toast、空状态等通过全局样式统一。
   - 首屏兜底：`frontend/index.html` 内置轻量加载占位，前端启动、路由资源加载和 Vue 运行时错误都会显示可见错误面板，避免新浏览器首次访问登录/注册页时出现纯白页面。
+  - CSP Worker：默认 CSP 包含 `worker-src 'self' blob:`，避免浏览器或前端依赖创建 blob Worker 时被回退到 `script-src` 拦截。
   - 静态缓存：后端对 `/assets/` 输出 `public, max-age=31536000, immutable`，对 `/theme/` 输出 `public, max-age=2592000`；HTML 仍保持 `no-cache`。
 - 运维注意：
   - 修改主题时优先改 `frontend/src/style.css`、`frontend/tailwind.config.js` 和布局组件，避免逐页重复硬编码。
