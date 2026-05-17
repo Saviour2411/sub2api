@@ -32,6 +32,7 @@ export const useAppStore = defineStore('app', () => {
   const apiBaseUrl = ref<string>('')
   const docUrl = ref<string>('')
   const cachedPublicSettings = ref<PublicSettings | null>(null)
+  let publicSettingsPromise: Promise<PublicSettings | null> | null = null
 
   // Version cache state
   const versionLoaded = ref<boolean>(false)
@@ -362,21 +363,26 @@ export const useAppStore = defineStore('app', () => {
       }
     }
 
-    // Prevent duplicate requests
-    if (publicSettingsLoading.value) {
-      return null
+    // 复用进行中的公开配置请求，避免多个页面组件同时拉取 300KB+ 配置。
+    if (publicSettingsPromise && !force) {
+      return publicSettingsPromise
     }
 
     publicSettingsLoading.value = true
-    try {
+    publicSettingsPromise = (async () => {
       const data = await fetchPublicSettingsAPI()
       applySettings(data)
       return data
+    })()
+
+    try {
+      return await publicSettingsPromise
     } catch (error) {
       console.error('Failed to fetch public settings:', error)
       return null
     } finally {
       publicSettingsLoading.value = false
+      publicSettingsPromise = null
     }
   }
 
