@@ -12,6 +12,7 @@ describe('API Client', () => {
 
   beforeEach(async () => {
     localStorage.clear()
+    sessionStorage.clear()
     // 每次测试重新导入以获取干净的模块状态
     vi.resetModules()
     const mod = await import('@/api/client')
@@ -177,6 +178,43 @@ describe('API Client', () => {
       expect(localStorage.getItem('auth_token')).toBeNull()
 
       // 恢复 location
+      Object.defineProperty(window, 'location', {
+        value: originalLocation,
+        writable: true,
+      })
+    })
+
+    it('无登录态的公开页请求遇到 401 时不强制跳转登录页', async () => {
+      const originalLocation = window.location
+      const mockLocation = { ...originalLocation, pathname: '/register', href: '/register' }
+      Object.defineProperty(window, 'location', {
+        value: mockLocation,
+        writable: true,
+      })
+
+      const adapter = vi.fn().mockRejectedValue({
+        response: {
+          status: 401,
+          data: { code: 'UNAUTHORIZED', message: 'Authorization header is required' },
+        },
+        config: {
+          url: '/auth/me',
+          headers: {},
+        },
+        code: 'ERR_BAD_REQUEST',
+      })
+      apiClient.defaults.adapter = adapter
+
+      await expect(apiClient.get('/auth/me')).rejects.toEqual(
+        expect.objectContaining({
+          status: 401,
+          code: 'UNAUTHORIZED',
+        })
+      )
+
+      expect(mockLocation.href).toBe('/register')
+      expect(sessionStorage.getItem('auth_expired')).toBeNull()
+
       Object.defineProperty(window, 'location', {
         value: originalLocation,
         writable: true,

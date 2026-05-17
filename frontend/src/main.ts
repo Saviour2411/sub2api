@@ -40,4 +40,19 @@ async function bootstrap() {
   app.mount('#app')
 }
 
-bootstrap()
+bootstrap().catch((error) => {
+  console.error('Failed to bootstrap application:', error)
+  const appRoot = document.getElementById('app')
+  if (appRoot) {
+    appRoot.innerHTML = `
+      <div class="app-bootstrap-fallback">
+        <div class="app-bootstrap-panel">
+          <div class="app-bootstrap-kicker">ACCESS TERMINAL</div>
+          <h1 class="app-bootstrap-title">页面加载失败</h1>
+          <p class="app-bootstrap-text">请刷新页面重试，或清理浏览器缓存后再次访问。</p>
+          <div class="app-bootstrap-bar"></div>
+        </div>
+      </div>
+    `
+  }
+})

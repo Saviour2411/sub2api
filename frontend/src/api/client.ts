@@ -254,15 +254,17 @@ apiClient.interceptors.response.use(
               ? authHeader.length > 0
               : !!authHeader
 
+        const shouldRedirectForAuthExpiry = (hasToken || sentAuth) && !isAuthEndpoint
+
         localStorage.removeItem('auth_token')
         localStorage.removeItem('refresh_token')
         localStorage.removeItem('auth_user')
         localStorage.removeItem('token_expires_at')
-        if ((hasToken || sentAuth) && !isAuthEndpoint) {
+        if (shouldRedirectForAuthExpiry) {
           sessionStorage.setItem('auth_expired', '1')
         }
-        // Only redirect if not already on login page
-        if (!window.location.pathname.includes('/login')) {
+        // 只有当前请求明确带了登录态时才跳转，避免公开页面上的普通 401 造成注册页白屏/跳转。
+        if (shouldRedirectForAuthExpiry && !window.location.pathname.includes('/login')) {
           window.location.href = '/login'
         }
       }
