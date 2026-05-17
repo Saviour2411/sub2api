@@ -26,7 +26,7 @@ function renderBootstrapError(title = '页面加载失败', detail = '请刷新�
 
 function initThemeClass() {
   const savedTheme = safeLocalStorage.getItem('theme')
-  const shouldUseDark = savedTheme === 'light' ? false : true
+  const shouldUseDark = savedTheme === 'dark'
   document.documentElement.classList.toggle('dark', shouldUseDark)
 }
 

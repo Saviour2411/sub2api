@@ -866,9 +866,7 @@ function handleGroupClick(item: NavItem) {
 
 // Initialize theme
 const savedTheme = localStorage.getItem('theme')
-if (
-  savedTheme !== 'light'
-) {
+if (savedTheme === 'dark') {
   isDark.value = true
   document.documentElement.classList.add('dark')
 }
