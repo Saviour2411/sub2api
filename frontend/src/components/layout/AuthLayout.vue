@@ -1,5 +1,5 @@
 <template>
-  <div class="auth-shell relative min-h-screen overflow-hidden bg-[#eaf1f8] text-slate-950 dark:bg-[#040912] dark:text-white">
+  <div class="auth-shell relative min-h-screen overflow-hidden bg-[#eaf1f8] text-slate-950 dark:bg-[#03070d] dark:text-white">
     <div class="auth-visual absolute inset-0"></div>
     <div class="auth-overlay absolute inset-0"></div>
 
@@ -10,6 +10,8 @@
       <div class="absolute bottom-[13vh] left-0 h-px w-[72vw] bg-gradient-to-r from-transparent via-primary-300/70 to-transparent"></div>
       <div class="armor-mark absolute right-[7vw] top-[8vh] hidden h-28 w-28 border border-primary-200/60 dark:border-primary-300/30 md:block"></div>
       <div class="armor-mark absolute bottom-[8vh] left-[12vw] h-20 w-44 border border-orange-300/40 dark:border-orange-300/25"></div>
+      <div class="auth-mecha-reticle absolute right-[10vw] top-[18vh] hidden h-80 w-80 lg:block"></div>
+      <div class="auth-energy-spine absolute bottom-0 right-[32vw] hidden h-[74vh] w-10 lg:block"></div>
     </div>
 
     <div class="relative z-10 grid min-h-screen grid-cols-1 items-center px-4 py-8 md:px-10 lg:grid-cols-[minmax(420px,520px)_1fr] lg:py-10">
@@ -18,7 +20,7 @@
 
         <div class="relative p-5 sm:p-7">
           <template v-if="settingsLoaded">
-            <div class="mb-7 flex items-center gap-4">
+            <div class="mb-7 flex items-center gap-4 auth-entrance">
               <div
                 class="auth-logo flex h-14 w-14 items-center justify-center overflow-hidden border border-primary-200/90 bg-white/90 shadow-glow backdrop-blur-xl dark:border-primary-300/35 dark:bg-[#0b1420]/85"
               >
@@ -38,7 +40,7 @@
             </div>
           </template>
 
-          <div class="mecha-login-panel p-5 sm:p-6">
+          <div class="mecha-login-panel p-5 sm:p-6 auth-entrance auth-entrance-delay">
             <slot />
           </div>
 
@@ -61,6 +63,11 @@
           </div>
           <div class="h-2 overflow-hidden bg-slate-900/10 dark:bg-white/10">
             <div class="h-full w-[74%] bg-gradient-to-r from-primary-400 via-cyan-200 to-orange-300"></div>
+          </div>
+          <div class="mt-5 grid grid-cols-3 gap-2 font-mono text-[10px] uppercase text-slate-600 dark:text-slate-300">
+            <span class="auth-metric">AUTH</span>
+            <span class="auth-metric">TOKEN</span>
+            <span class="auth-metric">ROUTE</span>
           </div>
         </div>
       </section>
@@ -103,23 +110,25 @@ function preloadAuthBackground() {
 <style scoped>
 .auth-visual {
   background-image: image-set(url('/theme/staly-login.webp') type('image/webp'), url('/theme/staly.png') type('image/png'));
-  background-position: center right 18%;
+  background-position: center right 14%;
   background-size: cover;
-  opacity: 0.92;
+  opacity: 0.98;
+  filter: saturate(1.1) contrast(1.04);
 }
 
 .auth-overlay {
   background:
-    linear-gradient(105deg, rgba(238, 246, 255, 0.98) 0%, rgba(238, 246, 255, 0.88) 35%, rgba(238, 246, 255, 0.12) 68%, rgba(238, 246, 255, 0.5) 100%),
-    radial-gradient(circle at 28% 20%, rgba(75, 181, 255, 0.22), transparent 34%),
-    radial-gradient(circle at 82% 70%, rgba(255, 111, 56, 0.16), transparent 30%);
+    linear-gradient(105deg, rgba(238, 246, 255, 0.98) 0%, rgba(238, 246, 255, 0.84) 34%, rgba(238, 246, 255, 0.08) 68%, rgba(238, 246, 255, 0.38) 100%),
+    radial-gradient(circle at 28% 20%, rgba(75, 181, 255, 0.26), transparent 34%),
+    radial-gradient(circle at 82% 70%, rgba(255, 111, 56, 0.2), transparent 30%);
 }
 
 :global(.dark) .auth-overlay {
   background:
-    linear-gradient(105deg, rgba(4, 9, 18, 0.98) 0%, rgba(4, 9, 18, 0.86) 36%, rgba(4, 9, 18, 0.18) 68%, rgba(4, 9, 18, 0.7) 100%),
-    radial-gradient(circle at 28% 20%, rgba(75, 181, 255, 0.22), transparent 34%),
-    radial-gradient(circle at 82% 70%, rgba(255, 111, 56, 0.16), transparent 30%);
+    linear-gradient(105deg, rgba(2, 5, 10, 0.99) 0%, rgba(3, 8, 15, 0.9) 34%, rgba(4, 9, 18, 0.08) 66%, rgba(4, 9, 18, 0.62) 100%),
+    radial-gradient(circle at 28% 20%, rgba(75, 181, 255, 0.28), transparent 34%),
+    radial-gradient(circle at 82% 70%, rgba(255, 111, 56, 0.2), transparent 30%),
+    repeating-linear-gradient(0deg, transparent 0 12px, rgba(75, 181, 255, 0.045) 13px, transparent 14px);
 }
 
 .hud-grid {
@@ -133,6 +142,24 @@ function preloadAuthBackground() {
 .scanline {
   background: repeating-linear-gradient(0deg, transparent 0 9px, rgba(75, 181, 255, 0.06) 10px, transparent 11px);
   mix-blend-mode: screen;
+}
+
+.auth-mecha-reticle {
+  border: 1px solid rgba(75, 181, 255, 0.24);
+  clip-path: polygon(50% 0, 100% 18%, 100% 82%, 50% 100%, 0 82%, 0 18%);
+  background:
+    linear-gradient(90deg, transparent 49.6%, rgba(75, 181, 255, 0.3) 49.8% 50.2%, transparent 50.4%),
+    linear-gradient(0deg, transparent 49.6%, rgba(75, 181, 255, 0.22) 49.8% 50.2%, transparent 50.4%),
+    radial-gradient(circle, transparent 0 34%, rgba(75, 181, 255, 0.18) 34.4% 34.8%, transparent 35.2% 100%);
+  box-shadow: inset 0 0 60px rgba(75, 181, 255, 0.12), 0 0 70px rgba(75, 181, 255, 0.08);
+}
+
+.auth-energy-spine {
+  transform: skewX(-18deg);
+  background: linear-gradient(180deg, transparent, rgba(75, 181, 255, 0.18), rgba(255, 111, 56, 0.12), transparent);
+  border-left: 1px solid rgba(75, 181, 255, 0.18);
+  border-right: 1px solid rgba(255, 111, 56, 0.16);
+  filter: blur(0.1px);
 }
 
 .armor-mark,
@@ -157,13 +184,13 @@ function preloadAuthBackground() {
 
 :global(.dark) .auth-console {
   background:
-    linear-gradient(135deg, rgba(9, 17, 29, 0.92), rgba(13, 28, 44, 0.72)),
-    linear-gradient(90deg, rgba(75, 181, 255, 0.2), transparent 24%, transparent 78%, rgba(255, 111, 56, 0.16));
-  border-color: rgba(75, 181, 255, 0.3);
+    linear-gradient(135deg, rgba(7, 16, 28, 0.96), rgba(5, 12, 22, 0.76)),
+    linear-gradient(90deg, rgba(75, 181, 255, 0.25), transparent 24%, transparent 78%, rgba(255, 111, 56, 0.18));
+  border-color: rgba(75, 181, 255, 0.38);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.12),
     0 30px 90px rgba(0, 0, 0, 0.45),
-    0 0 42px rgba(23, 152, 242, 0.14);
+    0 0 52px rgba(23, 152, 242, 0.2);
 }
 
 .auth-console-rail {
@@ -187,8 +214,8 @@ function preloadAuthBackground() {
 
 :global(.dark) .mecha-login-panel {
   background:
-    linear-gradient(180deg, rgba(8, 18, 31, 0.86), rgba(11, 22, 36, 0.78)),
-    linear-gradient(135deg, rgba(75, 181, 255, 0.14), transparent 36%, rgba(255, 111, 56, 0.09));
+    linear-gradient(180deg, rgba(6, 15, 27, 0.92), rgba(4, 10, 18, 0.86)),
+    linear-gradient(135deg, rgba(75, 181, 255, 0.18), transparent 36%, rgba(255, 111, 56, 0.12));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
@@ -214,10 +241,42 @@ function preloadAuthBackground() {
   background: rgba(5, 12, 22, 0.46);
 }
 
+.auth-metric {
+  border: 1px solid rgba(75, 181, 255, 0.24);
+  padding: 0.375rem 0.5rem;
+  text-align: center;
+  background: rgba(75, 181, 255, 0.08);
+  clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
+}
+
+.auth-entrance {
+  animation: authRise 520ms ease-out both;
+}
+
+.auth-entrance-delay {
+  animation-delay: 90ms;
+}
+
+.auth-form-title h2 {
+  font-family: Bahnschrift, 'DIN Alternate', 'Arial Narrow', system-ui, sans-serif;
+}
+
+@keyframes authRise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (max-width: 768px) {
   .auth-visual {
     background-image: image-set(url('/theme/staly-login-mobile.webp') type('image/webp'), url('/theme/staly.png') type('image/png'));
     background-position: center top;
+    opacity: 0.88;
   }
 
   .auth-overlay {

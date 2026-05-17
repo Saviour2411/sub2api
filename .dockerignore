@@ -28,7 +28,12 @@ build/
 
 # Node modules (will be installed in container)
 frontend/node_modules/
+frontend/.pnpm-store/
+frontend/.pnpm-home/
 node_modules/
+
+# Locally generated frontend build output (container rebuilds it)
+backend/internal/web/dist/
 
 # Go build cache (will be built in container)
 backend/vendor/

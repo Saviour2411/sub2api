@@ -60,11 +60,23 @@ onUnmounted(() => {
 
 /* 表格滚动容器 - 增强版表体滚动方案 */
 .table-scroll-container {
-  @apply flex h-full flex-col overflow-hidden rounded-md border border-slate-200/95 bg-white/95 shadow-sm dark:border-primary-400/25 dark:bg-[#07111d]/95;
+  @apply flex h-full flex-col overflow-hidden border border-slate-200/95 bg-white/95 shadow-sm dark:border-primary-400/25 dark:bg-[#07111d]/95;
+  border-radius: 0;
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 14px);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.72),
     inset 0 -1px 0 rgba(75, 181, 255, 0.1),
     0 16px 42px rgba(8, 47, 88, 0.1);
+}
+
+:global(.dark) .table-scroll-container {
+  background:
+    linear-gradient(135deg, rgba(7, 16, 28, 0.96), rgba(3, 8, 15, 0.94)),
+    linear-gradient(90deg, rgba(75, 181, 255, 0.08), transparent 44%, rgba(255, 111, 56, 0.06));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -1px 0 rgba(75, 181, 255, 0.14),
+    0 24px 60px rgba(0, 0, 0, 0.42);
 }
 
 .table-scroll-container :deep(.table-wrapper) {
@@ -80,7 +92,7 @@ onUnmounted(() => {
 }
 
 .table-scroll-container :deep(thead) {
-  @apply bg-slate-50/90 backdrop-blur-sm dark:bg-[#0d1827]/90;
+  @apply bg-slate-50/90 backdrop-blur-sm dark:bg-[#07111d]/95;
 }
 
 .table-scroll-container :deep(tbody) {
@@ -88,7 +100,7 @@ onUnmounted(() => {
 }
 
 .table-scroll-container :deep(th) {
-  @apply border-b border-slate-200 px-5 py-4 text-left text-sm font-bold text-slate-600 dark:border-primary-400/25 dark:text-slate-300;
+  @apply border-b border-slate-200 px-5 py-4 text-left text-sm font-bold text-slate-600 dark:border-primary-400/25 dark:text-primary-100;
   box-shadow: inset 0 -1px 0 rgba(75, 181, 255, 0.1);
 }
 
@@ -102,6 +114,7 @@ onUnmounted(() => {
 
 .table-scroll-container :deep(tbody tr:hover) {
   @apply bg-primary-50/70 dark:bg-primary-500/10;
+  box-shadow: inset 3px 0 0 rgba(75, 181, 255, 0.72);
 }
 
 /* 移动端：恢复正常滚动 */

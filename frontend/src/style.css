@@ -11,6 +11,10 @@
     @apply scroll-smooth antialiased;
   }
 
+  body * {
+    letter-spacing: 0 !important;
+  }
+
   body {
     @apply bg-[#edf3fa] text-slate-900 dark:bg-[#040912] dark:text-slate-100;
     @apply min-h-screen;
@@ -336,6 +340,35 @@
     @apply h-12 w-12 rounded-md;
     @apply flex items-center justify-center;
     @apply text-xl;
+  }
+
+  .card .rounded-lg,
+  .card .rounded-xl,
+  .card .rounded-2xl,
+  .modal-content .rounded-lg,
+  .dialog-container .rounded-lg,
+  .dropdown .rounded-lg {
+    border-radius: 0 !important;
+  }
+
+  .dark .card [class*='bg-blue-100'],
+  .dark .card [class*='bg-purple-100'],
+  .dark .card [class*='bg-violet-100'],
+  .dark .card [class*='bg-indigo-100'],
+  .dark .card [class*='bg-green-100'],
+  .dark .card [class*='bg-emerald-100'],
+  .dark .card [class*='bg-amber-100'],
+  .dark .card [class*='bg-rose-100'],
+  .dark .card [class*='bg-orange-100'],
+  .dark .card [class*='bg-cyan-100'],
+  .dark .card [class*='bg-teal-100'],
+  .dark .card [class*='bg-lime-100'] {
+    border: 1px solid rgba(75, 181, 255, 0.2);
+    background:
+      linear-gradient(135deg, rgba(75, 181, 255, 0.16), rgba(75, 181, 255, 0.04)),
+      linear-gradient(135deg, transparent 0 70%, rgba(255, 111, 56, 0.13) 70% 100%) !important;
+    color: #7dd3fc !important;
+    clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 8px);
   }
 
   .stat-icon-primary {
@@ -825,6 +858,351 @@
   /* 表头固定时添加底部阴影，增强视觉层次 */
   .table-wrapper thead.sticky {
     box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+  }
+
+  /* ============ 强沉浸机甲主题覆盖 ============ */
+  .mecha-app-shell {
+    isolation: isolate;
+    background:
+      linear-gradient(135deg, #eef5fc 0%, #dde9f6 52%, #eef5fc 100%),
+      linear-gradient(90deg, rgba(23, 152, 242, 0.08), transparent 32%, rgba(255, 111, 56, 0.06));
+  }
+
+  .dark .mecha-app-shell {
+    background:
+      radial-gradient(circle at 86% 10%, rgba(23, 152, 242, 0.2), transparent 30rem),
+      radial-gradient(circle at 9% 92%, rgba(255, 111, 56, 0.12), transparent 26rem),
+      linear-gradient(135deg, #02050a 0%, #07101d 44%, #03070d 100%);
+  }
+
+  .mecha-app-shell::before,
+  .mecha-app-shell::after {
+    content: '';
+    position: fixed;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .mecha-app-shell::before {
+    inset: 0;
+    background:
+      repeating-linear-gradient(0deg, transparent 0 10px, rgba(75, 181, 255, 0.045) 11px, transparent 12px),
+      linear-gradient(90deg, transparent 0 13%, rgba(75, 181, 255, 0.12) 13.12% 13.22%, transparent 13.34% 100%),
+      linear-gradient(90deg, transparent 0 78%, rgba(255, 111, 56, 0.1) 78.12% 78.28%, transparent 78.4% 100%);
+    opacity: 0.55;
+    mix-blend-mode: screen;
+  }
+
+  .mecha-app-shell::after {
+    left: 72px;
+    right: 0;
+    top: 64px;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(75, 181, 255, 0), rgba(75, 181, 255, 0.72), rgba(255, 111, 56, 0.5), rgba(75, 181, 255, 0));
+    box-shadow: 0 0 24px rgba(75, 181, 255, 0.55);
+  }
+
+  .mecha-target-ring {
+    border: 1px solid rgba(75, 181, 255, 0.22);
+    clip-path: polygon(50% 0, 100% 20%, 100% 80%, 50% 100%, 0 80%, 0 20%);
+    background:
+      linear-gradient(90deg, transparent 49.6%, rgba(75, 181, 255, 0.24) 49.8% 50.2%, transparent 50.4%),
+      linear-gradient(0deg, transparent 49.6%, rgba(75, 181, 255, 0.18) 49.8% 50.2%, transparent 50.4%);
+    box-shadow: inset 0 0 44px rgba(75, 181, 255, 0.12), 0 0 58px rgba(75, 181, 255, 0.08);
+  }
+
+  .mecha-diagonal-beam {
+    transform: skewX(-20deg);
+    background: linear-gradient(90deg, transparent, rgba(75, 181, 255, 0.08), transparent);
+    border-left: 1px solid rgba(75, 181, 255, 0.14);
+    border-right: 1px solid rgba(255, 111, 56, 0.09);
+  }
+
+  .command-header {
+    background:
+      linear-gradient(90deg, rgba(255, 255, 255, 0.92), rgba(235, 245, 255, 0.86)),
+      linear-gradient(90deg, rgba(75, 181, 255, 0.12), transparent 38%, rgba(255, 111, 56, 0.08));
+    box-shadow:
+      inset 0 -1px 0 rgba(75, 181, 255, 0.18),
+      0 12px 42px rgba(8, 47, 88, 0.08);
+  }
+
+  .dark .command-header {
+    background:
+      linear-gradient(90deg, rgba(4, 10, 18, 0.94), rgba(7, 17, 29, 0.88)),
+      linear-gradient(90deg, rgba(75, 181, 255, 0.14), transparent 42%, rgba(255, 111, 56, 0.09));
+    box-shadow:
+      inset 0 -1px 0 rgba(75, 181, 255, 0.28),
+      0 20px 50px rgba(0, 0, 0, 0.42);
+  }
+
+  .command-title,
+  .page-title,
+  .sidebar-brand-title {
+    font-family: Bahnschrift, 'DIN Alternate', 'Arial Narrow', system-ui, sans-serif;
+  }
+
+  .command-chip {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(75, 181, 255, 0.18);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  }
+
+  .dark .command-chip {
+    background: linear-gradient(135deg, rgba(9, 20, 34, 0.76), rgba(4, 10, 18, 0.58));
+    border-color: rgba(75, 181, 255, 0.22);
+  }
+
+  .sidebar {
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%);
+  }
+
+  .dark .sidebar {
+    background:
+      linear-gradient(180deg, rgba(5, 12, 22, 0.98), rgba(2, 6, 12, 0.98)),
+      linear-gradient(90deg, rgba(75, 181, 255, 0.08), transparent 38%);
+    box-shadow:
+      18px 0 46px rgba(0, 0, 0, 0.38),
+      inset -1px 0 0 rgba(75, 181, 255, 0.28),
+      inset -4px 0 0 rgba(255, 111, 56, 0.08);
+  }
+
+  .sidebar-header {
+    background:
+      linear-gradient(90deg, rgba(75, 181, 255, 0.08), transparent),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent);
+  }
+
+  .sidebar-link {
+    position: relative;
+    min-height: 2.625rem;
+    border: 1px solid transparent;
+    clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 8px);
+  }
+
+  .sidebar-link:hover {
+    border-color: rgba(75, 181, 255, 0.18);
+    box-shadow: inset 0 0 0 1px rgba(75, 181, 255, 0.08);
+  }
+
+  .sidebar-link-active {
+    border-color: rgba(75, 181, 255, 0.38);
+    background:
+      linear-gradient(90deg, rgba(75, 181, 255, 0.22), rgba(75, 181, 255, 0.08)),
+      linear-gradient(135deg, transparent 0 72%, rgba(255, 111, 56, 0.16) 72% 100%);
+  }
+
+  .sidebar-link-active::after {
+    content: '';
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    width: 5px;
+    height: 5px;
+    transform: translateY(-50%);
+    background: #ff8a4a;
+    box-shadow: 0 0 14px rgba(255, 111, 56, 0.8);
+  }
+
+  .card,
+  .glass-card,
+  .modal-content,
+  .dialog-container,
+  .dropdown,
+  .toast {
+    border-radius: 0;
+    clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 12px);
+  }
+
+  .card {
+    border-color: rgba(75, 181, 255, 0.24);
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(237, 247, 255, 0.86)),
+      linear-gradient(90deg, rgba(75, 181, 255, 0.12), transparent 34%, rgba(255, 111, 56, 0.08));
+  }
+
+  .dark .card {
+    border-color: rgba(75, 181, 255, 0.28);
+    background:
+      linear-gradient(135deg, rgba(8, 18, 31, 0.94), rgba(4, 10, 18, 0.92)),
+      linear-gradient(90deg, rgba(75, 181, 255, 0.1), transparent 42%, rgba(255, 111, 56, 0.06));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      inset 0 -1px 0 rgba(75, 181, 255, 0.1),
+      0 22px 52px rgba(0, 0, 0, 0.36);
+  }
+
+  .card::before,
+  .mecha-panel::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(90deg, rgba(75, 181, 255, 0.16), transparent 16%, transparent 84%, rgba(255, 111, 56, 0.1)),
+      repeating-linear-gradient(90deg, transparent 0 38px, rgba(75, 181, 255, 0.035) 39px, transparent 40px);
+    opacity: 0.62;
+  }
+
+  .stat-card {
+    min-height: 6.25rem;
+    align-items: center;
+  }
+
+  .stat-icon {
+    border-radius: 0;
+    clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
+    border: 1px solid rgba(75, 181, 255, 0.24);
+    background:
+      linear-gradient(135deg, rgba(75, 181, 255, 0.18), rgba(75, 181, 255, 0.06)),
+      linear-gradient(135deg, transparent 0 68%, rgba(255, 111, 56, 0.16) 68% 100%) !important;
+    color: #4bb5ff !important;
+    box-shadow: inset 0 0 18px rgba(75, 181, 255, 0.12);
+  }
+
+  .stat-value {
+    font-family: Bahnschrift, 'DIN Alternate', 'Arial Narrow', system-ui, sans-serif;
+  }
+
+  .badge,
+  .tabs,
+  .tab,
+  .input,
+  .btn,
+  .switch,
+  .dropdown-item,
+  .code,
+  .code-block {
+    border-radius: 0;
+  }
+
+  .btn {
+    clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 8px);
+  }
+
+  .btn-primary {
+    background:
+      linear-gradient(90deg, #62c9ff 0%, #1798f2 42%, #0a4f8b 100%),
+      linear-gradient(135deg, transparent 0 72%, rgba(255, 111, 56, 0.35) 72% 100%);
+    border-color: rgba(117, 213, 255, 0.62);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.24),
+      0 0 28px rgba(23, 152, 242, 0.34);
+  }
+
+  .btn-secondary,
+  .btn-ghost {
+    border: 1px solid rgba(75, 181, 255, 0.18);
+  }
+
+  .dark .btn-secondary,
+  .dark .btn-ghost {
+    background: rgba(8, 18, 31, 0.72);
+    border-color: rgba(75, 181, 255, 0.22);
+  }
+
+  .input,
+  textarea.input,
+  select.input {
+    clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 7px);
+  }
+
+  .dark .input,
+  .dark textarea.input,
+  .dark select.input {
+    background:
+      linear-gradient(90deg, rgba(5, 12, 22, 0.92), rgba(8, 18, 31, 0.86)),
+      linear-gradient(90deg, rgba(75, 181, 255, 0.08), transparent);
+    border-color: rgba(75, 181, 255, 0.24);
+    box-shadow:
+      inset 3px 0 0 rgba(75, 181, 255, 0.18),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+
+  .modal-overlay,
+  .dialog-overlay {
+    background:
+      linear-gradient(rgba(1, 4, 9, 0.78), rgba(1, 4, 9, 0.82)),
+      repeating-linear-gradient(0deg, transparent 0 10px, rgba(75, 181, 255, 0.06) 11px, transparent 12px);
+  }
+
+  .dark .modal-content,
+  .dark .dialog-container,
+  .dark .dropdown,
+  .dark .toast {
+    background:
+      linear-gradient(135deg, rgba(7, 16, 28, 0.98), rgba(3, 8, 15, 0.96)),
+      linear-gradient(90deg, rgba(75, 181, 255, 0.1), transparent 45%, rgba(255, 111, 56, 0.07));
+    border-color: rgba(75, 181, 255, 0.26);
+  }
+
+  .table-container,
+  .table-wrapper,
+  .mecha-data-table {
+    border-radius: 0;
+  }
+
+  .mecha-data-table {
+    position: relative;
+  }
+
+  .mecha-data-table::before {
+    content: '';
+    position: sticky;
+    left: 0;
+    top: 0;
+    z-index: 2;
+    display: block;
+    height: 2px;
+    background: linear-gradient(90deg, rgba(75, 181, 255, 0), rgba(75, 181, 255, 0.9), rgba(255, 111, 56, 0.72), rgba(75, 181, 255, 0));
+  }
+
+  .mecha-data-table thead th,
+  .table th {
+    font-family: Bahnschrift, 'DIN Alternate', 'Arial Narrow', system-ui, sans-serif;
+    color: rgb(71 85 105);
+    background:
+      linear-gradient(180deg, rgba(239, 246, 255, 0.98), rgba(226, 238, 251, 0.92)),
+      linear-gradient(90deg, rgba(75, 181, 255, 0.12), transparent);
+  }
+
+  .dark .mecha-data-table thead th,
+  .dark .table th {
+    color: rgb(191 219 254);
+    background:
+      linear-gradient(180deg, rgba(11, 25, 42, 0.98), rgba(6, 15, 27, 0.98)),
+      linear-gradient(90deg, rgba(75, 181, 255, 0.12), transparent);
+    border-bottom-color: rgba(75, 181, 255, 0.24);
+  }
+
+  .dark .mecha-data-table tbody,
+  .dark .table tbody {
+    background: rgba(3, 8, 15, 0.74);
+  }
+
+  .mecha-data-table tbody tr,
+  .table tbody tr {
+    background-image: linear-gradient(90deg, rgba(75, 181, 255, 0), rgba(75, 181, 255, 0));
+  }
+
+  .mecha-data-table tbody tr:hover,
+  .table tbody tr:hover {
+    background:
+      linear-gradient(90deg, rgba(75, 181, 255, 0.13), rgba(75, 181, 255, 0.04)),
+      linear-gradient(135deg, transparent 0 86%, rgba(255, 111, 56, 0.1) 86% 100%);
+  }
+
+  .mecha-mobile-row {
+    border-radius: 0 !important;
+    clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 12px);
+  }
+
+  .dark .mecha-mobile-row {
+    border-color: rgba(75, 181, 255, 0.24) !important;
+    background:
+      linear-gradient(135deg, rgba(7, 16, 28, 0.94), rgba(3, 8, 15, 0.92)),
+      linear-gradient(90deg, rgba(75, 181, 255, 0.08), transparent) !important;
   }
 }
 

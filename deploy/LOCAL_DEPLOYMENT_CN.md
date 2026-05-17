@@ -407,6 +407,31 @@ CLIProxyAPI/Codex 导入行为：
 
 同步上游时注意：该功能刻意使用 `extra` 存储，未新增数据库迁移；若上游改动账号表单或 failover 处理，需要优先检查上述文件的冲突。
 
+### 前端机甲沉浸主题
+
+当前本地分支将前端主题调整为暗色优先的强沉浸机甲控制台风格。
+
+实现要点：
+
+- 无本地主题偏好时默认启用暗色主题；用户手动切换到浅色后仍会保存并继续生效。
+- 通过全局设计系统覆盖卡片、表格、侧边栏、顶部栏、弹窗、按钮、输入框、徽章、移动端表格卡片等基础 UI。
+- 登录页继续使用已优化的 `/theme/staly-login.webp` 与 `/theme/staly-login-mobile.webp`，避免直接加载根目录未跟踪的原始大图 `staly.png`。
+- 本地 pnpm 缓存目录 `frontend/.pnpm-store/`、`frontend/.pnpm-home/` 已加入 `.gitignore` 与 `.dockerignore`，不要提交依赖缓存，也不要带入 Docker 构建上下文。
+
+相关文件：
+
+- `frontend/src/style.css`
+- `frontend/src/main.ts`
+- `frontend/src/components/layout/AppLayout.vue`
+- `frontend/src/components/layout/AppSidebar.vue`
+- `frontend/src/components/layout/AppHeader.vue`
+- `frontend/src/components/layout/AuthLayout.vue`
+- `frontend/src/components/layout/TablePageLayout.vue`
+- `frontend/src/components/common/DataTable.vue`
+- `frontend/src/views/auth/LoginView.vue`
+
+同步上游时注意：本次没有新增后端接口或数据库迁移；若上游改动全局样式、布局壳层、登录页或表格组件，需要优先检查上述文件的冲突。
+
 ## 备份与回滚
 
 备份部署数据：

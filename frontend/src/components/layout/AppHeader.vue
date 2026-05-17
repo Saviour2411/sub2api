@@ -1,5 +1,5 @@
 <template>
-  <header class="glass sticky top-0 z-30 border-b border-slate-200/70 dark:border-primary-400/25">
+  <header class="glass command-header sticky top-0 z-30 border-b border-slate-200/70 dark:border-primary-400/25">
     <div class="flex h-16 items-center justify-between px-4 md:px-6">
       <!-- Left: Mobile Menu Toggle + Page Title -->
       <div class="flex items-center gap-4">
@@ -12,7 +12,7 @@
         </button>
 
         <div class="hidden lg:block">
-          <h1 class="font-mono text-lg font-black uppercase text-slate-950 dark:text-white">
+          <h1 class="command-title font-mono text-lg font-black uppercase text-slate-950 dark:text-white">
             {{ pageTitle }}
           </h1>
           <p v-if="pageDescription" class="text-xs text-slate-500 dark:text-slate-400">
@@ -32,7 +32,7 @@
           :href="docUrl"
           target="_blank"
           rel="noopener noreferrer"
-            class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-primary-50 hover:text-primary-700 dark:text-slate-400 dark:hover:bg-primary-500/10 dark:hover:text-white"
+          class="command-chip flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-primary-50 hover:text-primary-700 dark:text-slate-400 dark:hover:bg-primary-500/10 dark:hover:text-white"
         >
           <Icon name="book" size="sm" />
           <span class="hidden sm:inline">{{ t('nav.docs') }}</span>
@@ -47,7 +47,7 @@
         <!-- Balance Display -->
         <div
           v-if="user"
-          class="hidden items-center gap-2 rounded-md border border-primary-200/70 bg-primary-50/95 px-3 py-1.5 shadow-sm shadow-primary-500/10 dark:border-primary-400/25 dark:bg-primary-500/10 sm:flex"
+          class="command-chip hidden items-center gap-2 rounded-md border border-primary-200/70 bg-primary-50/95 px-3 py-1.5 shadow-sm shadow-primary-500/10 dark:border-primary-400/25 dark:bg-primary-500/10 sm:flex"
         >
           <svg
             class="h-4 w-4 text-primary-600 dark:text-primary-400"
@@ -71,7 +71,7 @@
         <div v-if="user" class="relative" ref="dropdownRef">
           <button
             @click="toggleDropdown"
-          class="flex items-center gap-2 rounded-md p-1.5 transition-colors hover:bg-primary-50 dark:hover:bg-primary-500/10"
+          class="command-chip flex items-center gap-2 rounded-md p-1.5 transition-colors hover:bg-primary-50 dark:hover:bg-primary-500/10"
             aria-label="User Menu"
           >
             <div class="armor-cut flex h-8 w-8 items-center justify-center overflow-hidden border border-primary-200/70 bg-gradient-to-br from-primary-300 via-primary-500 to-primary-800 text-sm font-medium text-white shadow-sm shadow-primary-500/25">
