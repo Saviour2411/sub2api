@@ -124,7 +124,7 @@ function preloadAuthBackground() {
     repeating-linear-gradient(0deg, transparent 0 12px, rgba(23, 152, 242, 0.035) 13px, transparent 14px);
 }
 
-:global(.dark) .auth-overlay {
+:global(.dark .auth-overlay) {
   background:
     linear-gradient(105deg, rgba(2, 5, 10, 0.99) 0%, rgba(3, 8, 15, 0.9) 34%, rgba(4, 9, 18, 0.08) 66%, rgba(4, 9, 18, 0.62) 100%),
     radial-gradient(circle at 28% 20%, rgba(75, 181, 255, 0.28), transparent 34%),
@@ -145,7 +145,7 @@ function preloadAuthBackground() {
   mix-blend-mode: multiply;
 }
 
-:global(.dark) .scanline {
+:global(.dark .scanline) {
   mix-blend-mode: screen;
 }
 
@@ -188,7 +188,7 @@ function preloadAuthBackground() {
   backdrop-filter: blur(22px);
 }
 
-:global(.dark) .auth-console {
+:global(.dark .auth-console) {
   background:
     linear-gradient(135deg, rgba(7, 16, 28, 0.96), rgba(5, 12, 22, 0.76)),
     linear-gradient(90deg, rgba(75, 181, 255, 0.25), transparent 24%, transparent 78%, rgba(255, 111, 56, 0.18));
@@ -220,7 +220,7 @@ function preloadAuthBackground() {
     0 12px 28px rgba(15, 68, 112, 0.1);
 }
 
-:global(.dark) .mecha-login-panel {
+:global(.dark .mecha-login-panel) {
   background:
     linear-gradient(180deg, rgba(6, 15, 27, 0.92), rgba(4, 10, 18, 0.86)),
     linear-gradient(135deg, rgba(75, 181, 255, 0.18), transparent 36%, rgba(255, 111, 56, 0.12));
@@ -249,7 +249,7 @@ function preloadAuthBackground() {
     0 18px 60px rgba(15, 68, 112, 0.2);
 }
 
-:global(.dark) .auth-hud-panel {
+:global(.dark .auth-hud-panel) {
   background: rgba(5, 12, 22, 0.46);
 }
 
@@ -298,7 +298,7 @@ function preloadAuthBackground() {
       radial-gradient(circle at 50% 8%, rgba(75, 181, 255, 0.2), transparent 32%);
   }
 
-  :global(.dark) .auth-overlay {
+  :global(.dark .auth-overlay) {
     background:
       linear-gradient(180deg, rgba(4, 9, 18, 0.92) 0%, rgba(4, 9, 18, 0.84) 44%, rgba(4, 9, 18, 0.96) 100%),
       radial-gradient(circle at 50% 8%, rgba(75, 181, 255, 0.2), transparent 32%);
