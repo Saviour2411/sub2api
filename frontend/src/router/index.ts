@@ -866,8 +866,29 @@ router.onError((error) => {
       window.location.reload()
     } else {
       console.error('Chunk load error persists after reload. Please clear browser cache.')
+      renderRouteLoadError('页面资源加载失败', '浏览器缓存中的页面资源已过期，请清理缓存后重试。')
     }
+    return
   }
+
+  renderRouteLoadError('页面加载失败', '路由组件加载时发生错误，请刷新页面重试。')
 })
+
+function renderRouteLoadError(title: string, detail: string) {
+  const appRoot = document.getElementById('app')
+  if (!appRoot) {
+    return
+  }
+  appRoot.innerHTML = `
+    <div class="app-bootstrap-fallback">
+      <div class="app-bootstrap-panel">
+        <div class="app-bootstrap-kicker">ACCESS TERMINAL</div>
+        <h1 class="app-bootstrap-title">${title}</h1>
+        <p class="app-bootstrap-text">${detail}</p>
+        <div class="app-bootstrap-bar"></div>
+      </div>
+    </div>
+  `
+}
 
 export default router

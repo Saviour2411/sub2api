@@ -113,7 +113,21 @@ onMounted(async () => {
 
 <template>
   <NavigationProgress />
-  <RouterView />
+  <RouterView v-slot="{ Component }">
+    <Suspense>
+      <component :is="Component" v-if="Component" />
+      <template #fallback>
+        <div class="app-bootstrap-fallback">
+          <div class="app-bootstrap-panel">
+            <div class="app-bootstrap-kicker">ACCESS TERMINAL</div>
+            <h1 class="app-bootstrap-title">正在连接 ZeroAPI</h1>
+            <p class="app-bootstrap-text">正在加载控制台资源，请稍候。</p>
+            <div class="app-bootstrap-bar"></div>
+          </div>
+        </div>
+      </template>
+    </Suspense>
+  </RouterView>
   <Toast />
   <AnnouncementPopup />
 </template>

@@ -6,6 +6,23 @@ import i18n, { initI18n } from './i18n'
 import { useAppStore } from '@/stores/app'
 import './style.css'
 
+function renderBootstrapError(title = '页面加载失败', detail = '请刷新页面重试，或清理浏览器缓存后再次访问。') {
+  const appRoot = document.getElementById('app')
+  if (!appRoot) {
+    return
+  }
+  appRoot.innerHTML = `
+    <div class="app-bootstrap-fallback">
+      <div class="app-bootstrap-panel">
+        <div class="app-bootstrap-kicker">ACCESS TERMINAL</div>
+        <h1 class="app-bootstrap-title">${title}</h1>
+        <p class="app-bootstrap-text">${detail}</p>
+        <div class="app-bootstrap-bar"></div>
+      </div>
+    </div>
+  `
+}
+
 function initThemeClass() {
   const savedTheme = localStorage.getItem('theme')
   const shouldUseDark = savedTheme === 'light' ? false : true
@@ -19,6 +36,10 @@ async function bootstrap() {
   const app = createApp(App)
   const pinia = createPinia()
   app.use(pinia)
+  app.config.errorHandler = (error) => {
+    console.error('Vue runtime error:', error)
+    renderBootstrapError('页面渲染失败', '浏览器执行页面脚本时发生错误，请刷新页面重试。')
+  }
 
   // Initialize settings from injected config BEFORE mounting (prevents flash)
   // This must happen after pinia is installed but before router and i18n
@@ -42,17 +63,5 @@ async function bootstrap() {
 
 bootstrap().catch((error) => {
   console.error('Failed to bootstrap application:', error)
-  const appRoot = document.getElementById('app')
-  if (appRoot) {
-    appRoot.innerHTML = `
-      <div class="app-bootstrap-fallback">
-        <div class="app-bootstrap-panel">
-          <div class="app-bootstrap-kicker">ACCESS TERMINAL</div>
-          <h1 class="app-bootstrap-title">页面加载失败</h1>
-          <p class="app-bootstrap-text">请刷新页面重试，或清理浏览器缓存后再次访问。</p>
-          <div class="app-bootstrap-bar"></div>
-        </div>
-      </div>
-    `
-  }
+  renderBootstrapError()
 })
