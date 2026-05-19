@@ -47,13 +47,14 @@ npm install -g pnpm
 
 | Workflow | 触发条件 | 检查内容 |
 |----------|----------|----------|
-| **backend-ci.yml** | push, pull_request | 单元测试 + 集成测试 + golangci-lint v2.7 |
-| **security-scan.yml** | push, pull_request, 每周一 | govulncheck + gosec + pnpm audit |
-| **release.yml** | tag `v*` | 构建发布（PR 不触发） |
+| **backend-ci.yml** | push, pull_request | 后端单元测试、集成测试、前端 lint/typecheck/关键测试、golangci-lint |
+| **security-scan.yml** | push, pull_request, 每周一 | govulncheck + pnpm audit |
+| **release.yml** | tag `v*`, workflow_dispatch | 构建 Release、推送 DockerHub/GHCR 镜像、可选自动部署生产 |
 
 ### CI 要求
 
-- Go 版本必须是 **1.25.7**
+- Go 版本必须是 **1.26.3**
+- golangci-lint 使用 **v2.9**
 - 前端使用 `pnpm install --frozen-lockfile`，必须提交 `pnpm-lock.yaml`
 
 ### 本地测试命令
@@ -70,6 +71,69 @@ cd backend && golangci-lint run ./...
 
 # 前端依赖安装（必须用 pnpm）
 cd frontend && pnpm install
+```
+
+### 固定开发上线流程
+
+1. 本地从 `main` 创建功能分支开发。
+2. 提交前按变更范围运行后端测试、前端检查和必要的构建验证。
+3. 推送分支并确保 GitHub CI 通过。
+4. 合并到 `main` 后创建正式 tag，例如 `v1.2.3`。
+5. 推送 tag 后由 `release.yml` 构建 Release 和 Docker 镜像。
+6. 镜像发布成功后，`deploy-production` job 通过 SSH 登录生产主机并执行 `deploy/remote-deploy.sh`。
+7. 生产主机只负责运行容器、保存数据、查看日志和数据库，不再承担镜像构建。
+
+### 发布命令
+
+```bash
+git checkout main
+git pull origin main
+git tag -a v1.2.3 -m "v1.2.3 release notes"
+git push origin v1.2.3
+```
+
+### GitHub Secrets
+
+| Secret | 用途 |
+|--------|------|
+| `DOCKERHUB_USERNAME` | DockerHub 命名空间，镜像为 `${DOCKERHUB_USERNAME}/sub2api` |
+| `DOCKERHUB_TOKEN` | DockerHub access token |
+| `DEPLOY_HOST` | 生产主机地址 |
+| `DEPLOY_USER` | SSH 用户 |
+| `DEPLOY_SSH_KEY` | GitHub Actions 使用的部署私钥 |
+| `DEPLOY_DIR` | 生产主机 Docker Compose 部署目录 |
+| `DEPLOY_PORT` | SSH 端口，未配置时默认 `22` |
+| `DEPLOY_COMPOSE_FILE` | Compose 文件名，未配置时默认 `docker-compose.yml` |
+| `DEPLOY_HEALTH_URL` | 健康检查 URL，未配置时脚本使用本机 `SERVER_PORT` |
+
+### 生产主机部署目录要求
+
+生产主机的 `DEPLOY_DIR` 内必须存在：
+
+- `docker-compose.yml`
+- `.env`
+- `data/`
+- `postgres_data/`
+- `redis_data/`
+
+`.env` 中必须固定保存 `POSTGRES_PASSWORD`、`JWT_SECRET`、`TOTP_ENCRYPTION_KEY`，并通过 `SUB2API_IMAGE`、`SUB2API_TAG` 指定生产镜像。
+
+### 手动更新与回滚
+
+```bash
+cd DEPLOY_DIR
+
+# 更新到指定版本
+sed -i 's/^SUB2API_TAG=.*/SUB2API_TAG=1.2.3/' .env
+docker compose pull sub2api
+docker compose up -d sub2api
+docker compose logs --tail=200 sub2api
+
+# 回滚到上一稳定版本
+sed -i 's/^SUB2API_TAG=.*/SUB2API_TAG=1.2.2/' .env
+docker compose pull sub2api
+docker compose up -d sub2api
+docker compose logs --tail=200 sub2api
 ```
 
 ## 四、常见坑点 & 解决方案

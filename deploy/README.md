@@ -16,6 +16,7 @@ This directory contains files for deploying Sub2API on Linux servers.
 | `docker-compose.yml` | Docker Compose configuration (named volumes) |
 | `docker-compose.local.yml` | Docker Compose configuration (local directories, easy migration) |
 | `docker-deploy.sh` | **One-click Docker deployment script (recommended)** |
+| `remote-deploy.sh` | Remote deployment script for GitHub Actions SSH deploy |
 | `.env.example` | Docker environment variables template |
 | `DOCKER.md` | Docker Hub documentation |
 | `install.sh` | One-click binary installation script |
@@ -35,10 +36,10 @@ Use the automated preparation script for the easiest setup:
 
 ```bash
 # Download and run the preparation script
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/docker-deploy.sh | bash
+curl -sSL https://raw.githubusercontent.com/Saviour2411/sub2api/main/deploy/docker-deploy.sh | bash
 
 # Or download first, then run
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/docker-deploy.sh -o docker-deploy.sh
+curl -sSL https://raw.githubusercontent.com/Saviour2411/sub2api/main/deploy/docker-deploy.sh -o docker-deploy.sh
 chmod +x docker-deploy.sh
 ./docker-deploy.sh
 ```
@@ -71,7 +72,7 @@ If you prefer manual control:
 
 ```bash
 # Clone repository
-git clone https://github.com/Wei-Shaw/sub2api.git
+git clone https://github.com/Saviour2411/sub2api.git
 cd sub2api/deploy
 
 # Configure environment
@@ -210,6 +211,8 @@ docker compose down -v
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `POSTGRES_PASSWORD` | **Yes** | - | PostgreSQL password |
+| `SUB2API_IMAGE` | No | `DOCKERHUB_USERNAME/sub2api` | Docker image repository |
+| `SUB2API_TAG` | No | `latest` | Docker image tag |
 | `JWT_SECRET` | **Recommended** | *(auto-generated)* | JWT secret (fixed for persistent sessions) |
 | `TOTP_ENCRYPTION_KEY` | **Recommended** | *(auto-generated)* | TOTP encryption key (fixed for persistent 2FA) |
 | `SERVER_PORT` | No | `8080` | Server port |
@@ -224,6 +227,36 @@ docker compose down -v
 See `.env.example` for all available options.
 
 > **Note:** The `docker-deploy.sh` script automatically generates `JWT_SECRET`, `TOTP_ENCRYPTION_KEY`, and `POSTGRES_PASSWORD` for you.
+
+### Remote Deployment Script
+
+`remote-deploy.sh` is designed for CI/CD systems such as GitHub Actions. It updates `SUB2API_IMAGE` and `SUB2API_TAG` in the remote `.env`, pulls the new image, restarts only the `sub2api` service, and performs a health check.
+
+Required environment variables:
+
+| Variable | Description |
+|----------|-------------|
+| `DEPLOY_DIR` | Remote deployment directory containing `docker-compose.yml` and `.env` |
+| `SUB2API_IMAGE` | Docker image repository, for example `DOCKERHUB_USERNAME/sub2api` |
+| `SUB2API_TAG` | Docker image tag to deploy |
+
+Optional environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `COMPOSE_FILE` | `docker-compose.yml` | Compose file name under `DEPLOY_DIR` |
+| `HEALTH_URL` | `http://127.0.0.1:${SERVER_PORT:-8080}/health` | Health check URL |
+| `HEALTH_RETRIES` | `30` | Health check retry count |
+| `HEALTH_INTERVAL` | `5` | Seconds between health check retries |
+
+Example:
+
+```bash
+DEPLOY_DIR=/opt/sub2api \
+SUB2API_IMAGE=DOCKERHUB_USERNAME/sub2api \
+SUB2API_TAG=1.2.3 \
+sh ./remote-deploy.sh
+```
 
 ### Easy Migration (Local Directory Version)
 

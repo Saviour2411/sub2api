@@ -8,9 +8,11 @@ Sub2API is an AI API Gateway Platform for distributing and managing AI product s
 docker run -d \
   --name sub2api \
   -p 8080:8080 \
-  -e DATABASE_URL="postgres://user:pass@host:5432/sub2api" \
-  -e REDIS_URL="redis://host:6379" \
-  weishaw/sub2api:latest
+  -e AUTO_SETUP=true \
+  -e DATABASE_HOST="postgres" \
+  -e DATABASE_PASSWORD="change_this_secure_password" \
+  -e REDIS_HOST="redis" \
+  DOCKERHUB_USERNAME/sub2api:latest
 ```
 
 ## Docker Compose
@@ -20,12 +22,19 @@ version: '3.8'
 
 services:
   sub2api:
-    image: weishaw/sub2api:latest
+    image: "${SUB2API_IMAGE:-DOCKERHUB_USERNAME/sub2api}:${SUB2API_TAG:-latest}"
     ports:
       - "8080:8080"
     environment:
-      - DATABASE_URL=postgres://postgres:postgres@db:5432/sub2api?sslmode=disable
-      - REDIS_URL=redis://redis:6379
+      - AUTO_SETUP=true
+      - DATABASE_HOST=db
+      - DATABASE_PORT=5432
+      - DATABASE_USER=postgres
+      - DATABASE_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - DATABASE_DBNAME=sub2api
+      - DATABASE_SSLMODE=disable
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     depends_on:
       - db
       - redis
@@ -53,10 +62,14 @@ volumes:
 
 | Variable | Description | Required | Default |
 |----------|-------------|----------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | Yes | - |
-| `REDIS_URL` | Redis connection string | Yes | - |
-| `PORT` | Server port | No | `8080` |
-| `GIN_MODE` | Gin framework mode (`debug`/`release`) | No | `release` |
+| `AUTO_SETUP` | Enable Docker auto setup | Recommended | `true` |
+| `DATABASE_HOST` | PostgreSQL host | Yes | - |
+| `DATABASE_PASSWORD` | PostgreSQL password | Yes | - |
+| `REDIS_HOST` | Redis host | Yes | - |
+| `SERVER_PORT` | Server port inside container | No | `8080` |
+| `SERVER_MODE` | Gin framework mode (`debug`/`release`) | No | `release` |
+| `JWT_SECRET` | Fixed JWT secret for persistent sessions | Recommended | auto-generated |
+| `TOTP_ENCRYPTION_KEY` | Fixed encryption key for 2FA secrets | Recommended | auto-generated |
 
 ## Supported Architectures
 
@@ -72,5 +85,5 @@ volumes:
 
 ## Links
 
-- [GitHub Repository](https://github.com/weishaw/sub2api)
-- [Documentation](https://github.com/weishaw/sub2api#readme)
+- [GitHub Repository](https://github.com/Saviour2411/sub2api)
+- [Documentation](https://github.com/Saviour2411/sub2api#readme)

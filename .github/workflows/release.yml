@@ -15,6 +15,11 @@ on:
         required: false
         type: boolean
         default: false
+      deploy_production:
+        description: 'Deploy production after release'
+        required: false
+        type: boolean
+        default: true
 
 # 环境变量：合并 workflow_dispatch 输入和 repository variable
 # tag push 触发时读取 vars.SIMPLE_RELEASE，workflow_dispatch 时使用输入参数
@@ -87,6 +92,8 @@ jobs:
   release:
     needs: [update-version, build-frontend]
     runs-on: ubuntu-latest
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -304,3 +311,74 @@ jobs:
           git add backend/cmd/server/VERSION
           git commit -m "chore: sync VERSION to ${VERSION} [skip ci]"
           git push origin HEAD:${{ github.event.repository.default_branch }}
+
+  deploy-production:
+    needs: [release]
+    if: ${{ needs.release.result == 'success' && (github.event_name == 'push' || github.event.inputs.deploy_production == 'true') && github.event.inputs.simple_release != 'true' && vars.SIMPLE_RELEASE != 'true' }}
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout deployment scripts
+        uses: actions/checkout@v6
+
+      - name: Check deployment configuration
+        id: deploy_config
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_DIR: ${{ secrets.DEPLOY_DIR }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_USER" ] || [ -z "$DEPLOY_SSH_KEY" ] || [ -z "$DEPLOY_DIR" ] || [ -z "$DOCKERHUB_USERNAME" ]; then
+            echo "Deployment secrets are incomplete; skipping production deploy."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve release version
+        if: ${{ steps.deploy_config.outputs.enabled == 'true' }}
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG_NAME=${{ github.event.inputs.tag }}
+          else
+            TAG_NAME=${GITHUB_REF#refs/tags/}
+          fi
+          VERSION=${TAG_NAME#v}
+          echo "tag=${TAG_NAME}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare SSH key
+        if: ${{ steps.deploy_config.outputs.enabled == 'true' }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${{ secrets.DEPLOY_PORT || '22' }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Upload remote deployment files
+        if: ${{ steps.deploy_config.outputs.enabled == 'true' }}
+        env:
+          DEPLOY_DIR: ${{ secrets.DEPLOY_DIR }}
+          COMPOSE_FILE: ${{ secrets.DEPLOY_COMPOSE_FILE || 'docker-compose.yml' }}
+        run: |
+          if [ ! -f "deploy/$COMPOSE_FILE" ]; then
+            echo "deploy/$COMPOSE_FILE not found"
+            exit 1
+          fi
+          scp -i ~/.ssh/deploy_key -P "${{ secrets.DEPLOY_PORT || '22' }}" deploy/remote-deploy.sh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/sub2api-remote-deploy.sh"
+          scp -i ~/.ssh/deploy_key -P "${{ secrets.DEPLOY_PORT || '22' }}" "deploy/$COMPOSE_FILE" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${DEPLOY_DIR}/${COMPOSE_FILE}"
+
+      - name: Deploy on remote host
+        if: ${{ steps.deploy_config.outputs.enabled == 'true' }}
+        env:
+          DEPLOY_DIR: ${{ secrets.DEPLOY_DIR }}
+          SUB2API_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/sub2api
+          SUB2API_TAG: ${{ steps.version.outputs.version }}
+          COMPOSE_FILE: ${{ secrets.DEPLOY_COMPOSE_FILE || 'docker-compose.yml' }}
+          HEALTH_URL: ${{ secrets.DEPLOY_HEALTH_URL }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT || '22' }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "DEPLOY_DIR='$DEPLOY_DIR' SUB2API_IMAGE='$SUB2API_IMAGE' SUB2API_TAG='$SUB2API_TAG' COMPOSE_FILE='$COMPOSE_FILE' HEALTH_URL='$HEALTH_URL' sh /tmp/sub2api-remote-deploy.sh"

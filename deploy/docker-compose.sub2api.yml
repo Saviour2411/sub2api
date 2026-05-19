@@ -3,7 +3,7 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
-    image: sub2api:local
+    image: "${SUB2API_IMAGE:-DOCKERHUB_USERNAME/sub2api}:${SUB2API_TAG:-latest}"
     container_name: sub2api
     restart: unless-stopped
     ulimits:
