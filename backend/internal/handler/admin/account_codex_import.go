@@ -612,8 +612,10 @@ func enrichCodexImportAccountFromJWT(item *codexImportAccount, token string, val
 			return fmt.Errorf("access_token 已过期: %s", time.Unix(claims.Exp, 0).UTC().Format(time.RFC3339))
 		}
 		expiresAt := time.Unix(claims.Exp, 0).UTC()
-		item.TokenExpiresAt = &expiresAt
-		item.Credentials["expires_at"] = expiresAt.Format(time.RFC3339)
+		if item.TokenExpiresAt == nil {
+			item.TokenExpiresAt = &expiresAt
+			item.Credentials["expires_at"] = expiresAt.Format(time.RFC3339)
+		}
 	}
 	if item.Email == "" {
 		item.Email = strings.TrimSpace(claims.Email)
