@@ -363,7 +363,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 		if !clientDisconnected {
 			if semanticChecking {
 				chunk := line + "\n"
-				semanticBufferedSSE.WriteString(chunk)
+				_, _ = semanticBufferedSSE.WriteString(chunk)
 				semanticBufferedLines = append(semanticBufferedLines, line)
 				if semanticDetector.Observe(chunk) {
 					semanticChecking = false
@@ -426,7 +426,6 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 			}
 			return nil, fmt.Errorf("upstream semantic error: %s", match.RuleName)
 		}
-		semanticChecking = false
 		flushSemanticSSE()
 	}
 

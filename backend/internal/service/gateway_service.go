@@ -7512,7 +7512,6 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 						}
 						return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, fmt.Errorf("upstream semantic error: %s", match.RuleName)
 					}
-					semanticChecking = false
 					for _, bufferedBlock := range semanticBufferedBlocks {
 						if !clientDisconnected {
 							restored := reverseToolNamesIfPresent(c, []byte(bufferedBlock))
@@ -7522,10 +7521,8 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 								break
 							}
 							flusher.Flush()
-							lastDataAt = time.Now()
 						}
 					}
-					semanticBufferedBlocks = nil
 				}
 				// 上游完成，返回结果
 				if !sawTerminalEvent {

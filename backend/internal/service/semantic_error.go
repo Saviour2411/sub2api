@@ -47,7 +47,7 @@ func (d *semanticErrorPrefixDetector) Observe(text string) bool {
 		d.released = true
 		return true
 	}
-	d.buffer.WriteString(text)
+	_, _ = d.buffer.WriteString(text)
 	if utf8.RuneCountInString(d.buffer.String()) > d.config.MatchMaxChars {
 		d.released = true
 		return true
@@ -125,32 +125,6 @@ func writeAnthropicSemanticErrorJSON(c *gin.Context, message string) {
 			"message": message,
 		},
 	})
-}
-
-func openAISemanticErrorSSE(message string) string {
-	payload := map[string]any{
-		"type":            "error",
-		"sequence_number": 0,
-		"error": map[string]string{
-			"type":    "upstream_error",
-			"message": message,
-			"code":    "upstream_error",
-		},
-	}
-	body, _ := json.Marshal(payload)
-	return "data: " + string(body) + "\n\n"
-}
-
-func anthropicSemanticErrorSSE(message string) string {
-	payload := map[string]any{
-		"type": "error",
-		"error": map[string]string{
-			"type":    "upstream_error",
-			"message": message,
-		},
-	}
-	body, _ := json.Marshal(payload)
-	return "event: error\ndata: " + string(body) + "\n\n"
 }
 
 func chatCompletionsSemanticErrorSSE(message string) string {

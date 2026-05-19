@@ -591,7 +591,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 					continue
 				}
 				if semanticChecking {
-					semanticBufferedSSE.WriteString(sse)
+					_, _ = semanticBufferedSSE.WriteString(sse)
 					if semanticDetector.Observe(sse) {
 						semanticChecking = false
 						flushSemanticSSE()

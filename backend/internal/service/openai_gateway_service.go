@@ -3653,7 +3653,6 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				} else {
 					clientOutputStarted = true
 					flusher.Flush()
-					lastDownstreamWriteAt = time.Now()
 				}
 			}
 		}
@@ -4718,7 +4717,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			if !clientDisconnected {
 				if semanticChecking {
 					chunk := line + "\n"
-					semanticBufferedStream.WriteString(chunk)
+					_, _ = semanticBufferedStream.WriteString(chunk)
 					if semanticDetector.Observe(chunk) {
 						semanticChecking = false
 						flushSemanticBuffered()
@@ -4760,7 +4759,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		if !clientDisconnected {
 			if semanticChecking {
 				chunk := line + "\n"
-				semanticBufferedStream.WriteString(chunk)
+				_, _ = semanticBufferedStream.WriteString(chunk)
 				if semanticDetector.Observe(chunk) {
 					semanticChecking = false
 					flushSemanticBuffered()
