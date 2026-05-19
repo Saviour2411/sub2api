@@ -221,10 +221,10 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 
 	// 8. Forward response
 	if clientStream {
-		return s.streamRawChatCompletions(ctx, c, account, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+		return s.streamRawChatCompletions(ctx, c, account, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, len(body))
 	}
 	if isEventStreamResponse(resp.Header) {
-		return s.streamRawChatCompletions(ctx, c, account, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+		return s.streamRawChatCompletions(ctx, c, account, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, len(body))
 	}
 	return s.bufferRawChatCompletions(ctx, c, account, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 }
@@ -246,17 +246,25 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	reasoningEffort *string,
 	serviceTier *string,
 	startTime time.Time,
+	requestBodyLen int,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 
-	if s.responseHeaderFilter != nil {
-		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	headersWritten := false
+	writeStreamHeaders := func() {
+		if headersWritten {
+			return
+		}
+		headersWritten = true
+		if s.responseHeaderFilter != nil {
+			responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+		}
+		c.Writer.Header().Set("Content-Type", "text/event-stream")
+		c.Writer.Header().Set("Cache-Control", "no-cache")
+		c.Writer.Header().Set("Connection", "keep-alive")
+		c.Writer.Header().Set("X-Accel-Buffering", "no")
+		c.Writer.WriteHeader(http.StatusOK)
 	}
-	c.Writer.Header().Set("Content-Type", "text/event-stream")
-	c.Writer.Header().Set("Cache-Control", "no-cache")
-	c.Writer.Header().Set("Connection", "keep-alive")
-	c.Writer.Header().Set("X-Accel-Buffering", "no")
-	c.Writer.WriteHeader(http.StatusOK)
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -271,6 +279,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	var semanticDetector *semanticErrorPrefixDetector
 	semanticChecking := false
 	semanticBufferedSSE := strings.Builder{}
+	semanticBufferedLines := make([]string, 0, 8)
 	if s.settingService != nil {
 		cfg := s.settingService.GetSemanticErrorConfig(ctx)
 		platform := ""
@@ -280,25 +289,63 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 		semanticDetector = newSemanticErrorPrefixDetector(cfg, platform)
 		semanticChecking = semanticDetector.Enabled()
 	}
-	flushSemanticSSE := func() {
-		if semanticBufferedSSE.Len() == 0 || clientDisconnected {
-			semanticBufferedSSE.Reset()
+	clientOutputStarted := false
+	pendingLines := make([]string, 0, 8)
+	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
+
+	writeLine := func(line string) {
+		if clientDisconnected {
 			return
 		}
-		if _, werr := c.Writer.WriteString(semanticBufferedSSE.String()); werr != nil {
+		if !clientOutputStarted && !refusalDetector.ShouldReleaseClientOutput() {
+			pendingLines = append(pendingLines, line)
+			return
+		}
+		if !clientOutputStarted {
+			writeStreamHeaders()
+			for _, pending := range pendingLines {
+				if _, werr := c.Writer.WriteString(pending + "\n"); werr != nil {
+					clientDisconnected = true
+					logger.L().Debug("openai chat_completions raw: client disconnected, continuing to drain upstream for billing",
+						zap.Error(werr),
+						zap.String("request_id", requestID),
+					)
+					return
+				}
+			}
+			pendingLines = pendingLines[:0]
+			clientOutputStarted = true
+		}
+		if _, werr := c.Writer.WriteString(line + "\n"); werr != nil {
 			clientDisconnected = true
-			logger.L().Debug("openai chat_completions raw: client disconnected during semantic buffer flush",
+			logger.L().Debug("openai chat_completions raw: client disconnected, continuing to drain upstream for billing",
 				zap.Error(werr),
 				zap.String("request_id", requestID),
 			)
-		} else {
+		}
+	}
+	flushSemanticSSE := func() {
+		if len(semanticBufferedLines) == 0 || clientDisconnected {
+			semanticBufferedSSE.Reset()
+			semanticBufferedLines = semanticBufferedLines[:0]
+			return
+		}
+		for _, bufferedLine := range semanticBufferedLines {
+			writeLine(bufferedLine)
+			if clientDisconnected {
+				break
+			}
+		}
+		if !clientDisconnected && clientOutputStarted {
 			c.Writer.Flush()
 		}
 		semanticBufferedSSE.Reset()
+		semanticBufferedLines = semanticBufferedLines[:0]
 	}
 
 	for scanner.Scan() {
 		line := scanner.Text()
+		refusalDetector.ObserveSSELine(line)
 		if payload, ok := extractOpenAISSEDataLine(line); ok {
 			trimmedPayload := strings.TrimSpace(payload)
 			if trimmedPayload != "[DONE]" {
@@ -317,27 +364,22 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 			if semanticChecking {
 				chunk := line + "\n"
 				semanticBufferedSSE.WriteString(chunk)
+				semanticBufferedLines = append(semanticBufferedLines, line)
 				if semanticDetector.Observe(chunk) {
 					semanticChecking = false
 					flushSemanticSSE()
 				}
 				continue
 			}
-			if _, werr := c.Writer.WriteString(line + "\n"); werr != nil {
-				clientDisconnected = true
-				logger.L().Debug("openai chat_completions raw: client disconnected, continuing to drain upstream for billing",
-					zap.Error(werr),
-					zap.String("request_id", requestID),
-				)
-			}
+			writeLine(line)
 		}
 		if line == "" {
-			if !clientDisconnected && !semanticChecking {
+			if !clientDisconnected && clientOutputStarted {
 				c.Writer.Flush()
 			}
 			continue
 		}
-		if !clientDisconnected && !semanticChecking {
+		if !clientDisconnected && clientOutputStarted {
 			c.Writer.Flush()
 		}
 	}
@@ -348,6 +390,27 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 				zap.Error(err),
 				zap.String("request_id", requestID),
 			)
+		}
+	} else if !clientDisconnected && !clientOutputStarted {
+		if refusalDetector.IsSilentRefusal() {
+			return nil, newOpenAISilentRefusalFailoverError(c, account, requestID)
+		}
+		if len(pendingLines) > 0 {
+			writeStreamHeaders()
+			for _, pending := range pendingLines {
+				if _, werr := c.Writer.WriteString(pending + "\n"); werr != nil {
+					clientDisconnected = true
+					logger.L().Debug("openai chat_completions raw: client disconnected during final flush",
+						zap.Error(werr),
+						zap.String("request_id", requestID),
+					)
+					break
+				}
+			}
+			if !clientDisconnected {
+				c.Writer.Flush()
+				clientOutputStarted = true
+			}
 		}
 	}
 	if semanticChecking {
@@ -492,16 +555,10 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 //
 //   - base 已是 /chat/completions：原样返回
 //   - base 以 /v1 结尾：追加 /chat/completions
+//   - base 以其他版本段结尾（如 /v4）：追加 /chat/completions
 //   - 其他情况：追加 /v1/chat/completions
 //
 // 与 buildOpenAIResponsesURL 是姐妹函数。
 func buildOpenAIChatCompletionsURL(base string) string {
-	normalized := strings.TrimRight(strings.TrimSpace(base), "/")
-	if strings.HasSuffix(normalized, "/chat/completions") {
-		return normalized
-	}
-	if strings.HasSuffix(normalized, "/v1") {
-		return normalized + "/chat/completions"
-	}
-	return normalized + "/v1/chat/completions"
+	return buildOpenAIEndpointURL(base, "/v1/chat/completions")
 }

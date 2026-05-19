@@ -1138,7 +1138,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingDataIntervalTimeout(
 	require.False(t, result.clientDisconnect)
 }
 
-func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingKeepalive(t *testing.T) {
+func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingSendsKeepaliveDuringIdle(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -1147,9 +1147,8 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingKeepalive(t *testing
 	svc := &GatewayService{
 		cfg: &config.Config{
 			Gateway: config.GatewayConfig{
-				StreamDataIntervalTimeout: 0,
-				StreamKeepaliveInterval:   1,
-				MaxLineSize:               defaultMaxLineSize,
+				StreamKeepaliveInterval: 1,
+				MaxLineSize:             defaultMaxLineSize,
 			},
 		},
 		rateLimitService: &RateLimitService{},
@@ -1162,20 +1161,74 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingKeepalive(t *testing
 		Body:       pr,
 	}
 
+	done := make(chan struct{})
 	go func() {
-		defer func() { _ = pw.Close() }()
+		defer close(done)
 		time.Sleep(1200 * time.Millisecond)
-		_, _ = pw.Write([]byte("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":1}}}\n\n"))
-		_, _ = pw.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
+		_, _ = pw.Write([]byte(strings.Join([]string{
+			`data: {"type":"message_start","message":{"usage":{"input_tokens":3}}}`,
+			"",
+			`data: {"type":"message_delta","usage":{"output_tokens":2}}`,
+			"",
+			"data: [DONE]",
+			"",
+		}, "\n")))
+		_ = pw.Close()
 	}()
 
 	result, err := svc.handleStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 8}, time.Now(), "claude-3-7-sonnet-20250219")
 	_ = pr.Close()
+	<-done
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Contains(t, rec.Body.String(), "event: ping\ndata: {\"type\":\"ping\"}\n\n")
-	require.Contains(t, rec.Body.String(), "message_stop")
+	require.Contains(t, rec.Body.String(), "event: ping\ndata: {\"type\": \"ping\"}\n\n")
+	require.Contains(t, rec.Body.String(), "data: [DONE]")
+}
+
+func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingKeepaliveDoesNotInterleavePartialEvent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	svc := &GatewayService{
+		cfg: &config.Config{
+			Gateway: config.GatewayConfig{
+				StreamKeepaliveInterval: 1,
+				MaxLineSize:             defaultMaxLineSize,
+			},
+		},
+		rateLimitService: &RateLimitService{},
+	}
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       pr,
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = pw.Write([]byte(`data: {"type":"message_start","message":{"usage":{"input_tokens":4}}}` + "\n"))
+		time.Sleep(1200 * time.Millisecond)
+		_, _ = pw.Write([]byte("\n"))
+		_, _ = pw.Write([]byte("data: [DONE]\n\n"))
+		_ = pw.Close()
+	}()
+
+	result, err := svc.handleStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 9}, time.Now(), "claude-3-7-sonnet-20250219")
+	_ = pr.Close()
+	<-done
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	body := rec.Body.String()
+	require.NotContains(t, body, `data: {"type":"message_start","message":{"usage":{"input_tokens":4}}}`+"\n"+"event: ping")
+	require.NotContains(t, body, "event: ping")
+	require.Contains(t, body, "data: [DONE]")
 }
 
 func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingReadError(t *testing.T) {

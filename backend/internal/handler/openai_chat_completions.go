@@ -143,6 +143,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
 			if len(failedAccountIDs) == 0 {
+				markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
 				return
 			} else {
@@ -155,6 +156,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			}
 		}
 		if selection == nil || selection.Account == nil {
+			markOpsRoutingCapacityLimited(c)
 			h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", streamStarted)
 			return
 		}
@@ -178,6 +180,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
 		forwardCtx := withPreResponseKeepalive(c.Request.Context(), preResponseKeepalive)
+		writerSizeBeforeForward := c.Writer.Size()
 		result, err := h.gatewayService.ForwardAsChatCompletions(forwardCtx, c, account, forwardBody, promptCacheKey, "")
 		preResponseStarted := stopPreResponseKeepaliveFromContext(forwardCtx)
 		if preResponseStarted {
@@ -207,6 +210,10 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			} else {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
+					if c.Writer.Size() != writerSizeBeforeForward {
+						h.handleFailoverExhausted(c, failoverErr, true)
+						return
+					}
 					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
 					strictFailureUnscheduled := h.gatewayService.HandleUpstreamFailoverError(c.Request.Context(), account, failoverErr)
 					// Pool mode: retry on the same account
@@ -303,7 +310,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 // resolveRawCCUpstreamEndpoint returns the actual upstream endpoint for
 // OpenAI Chat Completions requests. For APIKey accounts whose upstream
-// has been probed to not support the Responses API, the request is
+// is forced or probed to not support the Responses API, the request is
 // forwarded directly to /v1/chat/completions — not through the default
 // CC→Responses conversion path.
 func resolveRawCCUpstreamEndpoint(c *gin.Context, account *service.Account) string {
