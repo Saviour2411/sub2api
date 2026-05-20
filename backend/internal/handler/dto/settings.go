@@ -191,6 +191,7 @@ type SystemSettings struct {
 	SemanticErrorDetectionEnabled          bool                `json:"semantic_error_detection_enabled"`
 	SemanticErrorMatchMaxChars             int                 `json:"semantic_error_match_max_chars"`
 	SemanticErrorRules                     []SemanticErrorRule `json:"semantic_error_rules"`
+	OpenAICodexUserAgent                   string              `json:"openai_codex_user_agent"`
 
 	// Web Search Emulation
 	WebSearchEmulationEnabled bool `json:"web_search_emulation_enabled"`
@@ -227,6 +228,9 @@ type SystemSettings struct {
 	PaymentCancelRateLimitWindow  int    `json:"payment_cancel_rate_limit_window"`
 	PaymentCancelRateLimitUnit    string `json:"payment_cancel_rate_limit_unit"`
 	PaymentCancelRateLimitMode    string `json:"payment_cancel_rate_limit_window_mode"`
+
+	// Force Alipay mobile clients to use QR code payment instead of mobile redirect
+	PaymentAlipayForceQRCode bool `json:"payment_alipay_force_qrcode"`
 
 	// Balance low notification
 	BalanceLowNotifyEnabled     bool               `json:"balance_low_notify_enabled"`
@@ -392,6 +396,62 @@ type OpenAIFastPolicyRule struct {
 // OpenAIFastPolicySettings OpenAI fast 策略配置 DTO
 type OpenAIFastPolicySettings struct {
 	Rules []OpenAIFastPolicyRule `json:"rules"`
+}
+
+// EmailTemplateEventOption describes an editable notification email event.
+type EmailTemplateEventOption struct {
+	Value       string `json:"value"`
+	Label       string `json:"label,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+// EmailTemplateSummary is shown in the admin email template list.
+type EmailTemplateSummary struct {
+	Event     string `json:"event"`
+	Locale    string `json:"locale"`
+	Subject   string `json:"subject"`
+	IsCustom  bool   `json:"is_custom,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
+}
+
+// EmailTemplateListResponse is returned by GET /admin/settings/email-templates.
+type EmailTemplateListResponse struct {
+	Events       []EmailTemplateEventOption `json:"events"`
+	Locales      []string                   `json:"locales"`
+	Templates    []EmailTemplateSummary     `json:"templates,omitempty"`
+	Placeholders []string                   `json:"placeholders,omitempty"`
+}
+
+// EmailTemplateDetail is returned for a specific event/locale template.
+type EmailTemplateDetail struct {
+	Event        string   `json:"event"`
+	Locale       string   `json:"locale"`
+	Subject      string   `json:"subject"`
+	HTML         string   `json:"html"`
+	IsCustom     bool     `json:"is_custom,omitempty"`
+	UpdatedAt    string   `json:"updated_at,omitempty"`
+	Placeholders []string `json:"placeholders,omitempty"`
+}
+
+// UpdateEmailTemplateRequest updates a template override.
+type UpdateEmailTemplateRequest struct {
+	Subject string `json:"subject"`
+	HTML    string `json:"html"`
+}
+
+// PreviewEmailTemplateRequest previews a template without saving it.
+type PreviewEmailTemplateRequest struct {
+	Event     string            `json:"event"`
+	Locale    string            `json:"locale"`
+	Subject   string            `json:"subject"`
+	HTML      string            `json:"html"`
+	Variables map[string]string `json:"variables,omitempty"`
+}
+
+// EmailTemplatePreviewResponse is the rendered preview payload.
+type EmailTemplatePreviewResponse struct {
+	Subject string `json:"subject"`
+	HTML    string `json:"html"`
 }
 
 // ParseCustomMenuItems parses a JSON string into a slice of CustomMenuItem.

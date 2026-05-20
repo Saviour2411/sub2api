@@ -221,7 +221,13 @@ export function appendAuthSourceDefaultsToUpdateRequest(
   const target = payload as Record<string, unknown>;
 
   for (const source of AUTH_SOURCE_TYPES) {
-    const current = authSourceDefaults[source];
+    const current = authSourceDefaults[source] ?? {
+      balance: AUTH_SOURCE_DEFAULT_BALANCE,
+      concurrency: AUTH_SOURCE_DEFAULT_CONCURRENCY,
+      subscriptions: [],
+      grant_on_signup: false,
+      grant_on_first_bind: false,
+    };
     target[`auth_source_default_${source}_balance`] =
       Number(current.balance) || 0;
     target[`auth_source_default_${source}_concurrency`] = Math.max(
@@ -530,6 +536,7 @@ export interface SystemSettings {
   semantic_error_detection_enabled: boolean;
   semantic_error_match_max_chars: number;
   semantic_error_rules: SemanticErrorRule[];
+  openai_codex_user_agent: string;
   web_search_emulation_enabled?: boolean;
 
   // Payment configuration
@@ -554,6 +561,7 @@ export interface SystemSettings {
   payment_cancel_rate_limit_window: number;
   payment_cancel_rate_limit_unit: string;
   payment_cancel_rate_limit_window_mode: string;
+  payment_alipay_force_qrcode?: boolean;
   payment_visible_method_alipay_source?: string;
   payment_visible_method_wxpay_source?: string;
   payment_visible_method_alipay_enabled?: boolean;
@@ -759,6 +767,7 @@ export interface UpdateSettingsRequest {
   semantic_error_detection_enabled?: boolean;
   semantic_error_match_max_chars?: number;
   semantic_error_rules?: SemanticErrorRule[];
+  openai_codex_user_agent?: string;
   // Payment configuration
   payment_enabled?: boolean;
   risk_control_enabled?: boolean;
@@ -781,6 +790,7 @@ export interface UpdateSettingsRequest {
   payment_cancel_rate_limit_window?: number;
   payment_cancel_rate_limit_unit?: string;
   payment_cancel_rate_limit_window_mode?: string;
+  payment_alipay_force_qrcode?: boolean;
   payment_visible_method_alipay_source?: string;
   payment_visible_method_wxpay_source?: string;
   payment_visible_method_alipay_enabled?: boolean;
@@ -881,6 +891,105 @@ export async function sendTestEmail(
 ): Promise<{ message: string }> {
   const { data } = await apiClient.post<{ message: string }>(
     "/admin/settings/send-test-email",
+    request,
+  );
+  return data;
+}
+
+// ==================== Email Template Settings ====================
+
+export interface EmailTemplateOption {
+  value: string;
+  label?: string;
+  description?: string;
+}
+
+export type EmailTemplateEventOption = string | EmailTemplateOption;
+
+export interface EmailTemplateSummary {
+  event: string;
+  locale: string;
+  subject: string;
+  is_custom?: boolean;
+  updated_at?: string;
+}
+
+export interface EmailTemplateListResponse {
+  events: EmailTemplateEventOption[];
+  locales: string[];
+  templates?: EmailTemplateSummary[];
+  placeholders?: string[];
+}
+
+export interface EmailTemplateDetail {
+  event: string;
+  locale: string;
+  subject: string;
+  html: string;
+  is_custom?: boolean;
+  updated_at?: string;
+  placeholders?: string[];
+}
+
+export interface UpdateEmailTemplateRequest {
+  subject: string;
+  html: string;
+}
+
+export interface PreviewEmailTemplateRequest extends UpdateEmailTemplateRequest {
+  event: string;
+  locale: string;
+}
+
+export interface EmailTemplatePreviewResponse {
+  subject: string;
+  html: string;
+}
+
+export async function getEmailTemplates(): Promise<EmailTemplateListResponse> {
+  const { data } = await apiClient.get<EmailTemplateListResponse>(
+    "/admin/settings/email-templates",
+  );
+  return data;
+}
+
+export async function getEmailTemplate(
+  event: string,
+  locale: string,
+): Promise<EmailTemplateDetail> {
+  const { data } = await apiClient.get<EmailTemplateDetail>(
+    `/admin/settings/email-templates/${encodeURIComponent(event)}/${encodeURIComponent(locale)}`,
+  );
+  return data;
+}
+
+export async function updateEmailTemplate(
+  event: string,
+  locale: string,
+  request: UpdateEmailTemplateRequest,
+): Promise<EmailTemplateDetail> {
+  const { data } = await apiClient.put<EmailTemplateDetail>(
+    `/admin/settings/email-templates/${encodeURIComponent(event)}/${encodeURIComponent(locale)}`,
+    request,
+  );
+  return data;
+}
+
+export async function restoreOfficialEmailTemplate(
+  event: string,
+  locale: string,
+): Promise<EmailTemplateDetail> {
+  const { data } = await apiClient.post<EmailTemplateDetail>(
+    `/admin/settings/email-templates/${encodeURIComponent(event)}/${encodeURIComponent(locale)}/restore-official`,
+  );
+  return data;
+}
+
+export async function previewEmailTemplate(
+  request: PreviewEmailTemplateRequest,
+): Promise<EmailTemplatePreviewResponse> {
+  const { data } = await apiClient.post<EmailTemplatePreviewResponse>(
+    "/admin/settings/email-template-preview",
     request,
   );
   return data;
@@ -1192,6 +1301,11 @@ export const settingsAPI = {
   updateSettings,
   testSmtpConnection,
   sendTestEmail,
+  getEmailTemplates,
+  getEmailTemplate,
+  updateEmailTemplate,
+  restoreOfficialEmailTemplate,
+  previewEmailTemplate,
   getAdminApiKey,
   regenerateAdminApiKey,
   deleteAdminApiKey,

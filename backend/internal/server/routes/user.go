@@ -33,6 +33,7 @@ func RegisterUserRoutes(
 			user.POST("/auth-identities/bind/start", h.User.StartIdentityBinding)
 			user.GET("/checkin/status", h.DailyCheckin.GetStatus)
 			user.POST("/checkin", h.DailyCheckin.Checkin)
+			user.GET("/api-keys/:id/usage/daily", h.Usage.GetMyAPIKeyDailyUsage)
 
 			// 通知邮箱管理
 			notifyEmail := user.Group("/notify-email")
