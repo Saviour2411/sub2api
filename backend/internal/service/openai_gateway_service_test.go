@@ -1008,8 +1008,10 @@ func TestOpenAIStreamingTimeout(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "stream data interval timeout") {
 		t.Fatalf("expected stream timeout error, got %v", err)
 	}
-	if !strings.Contains(rec.Body.String(), "\"type\":\"error\"") || !strings.Contains(rec.Body.String(), "stream_timeout") {
-		t.Fatalf("expected OpenAI-compatible error SSE event, got %q", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), "event: response.failed") ||
+		!strings.Contains(rec.Body.String(), `"type":"response.failed"`) ||
+		!strings.Contains(rec.Body.String(), "stream_timeout") {
+		t.Fatalf("expected OpenAI Responses-compatible failed SSE event, got %q", rec.Body.String())
 	}
 }
 
@@ -1114,6 +1116,84 @@ func TestOpenAIStreamingResponseFailedBeforeOutputReturnsFailover(t *testing.T) 
 	require.Contains(t, string(failoverErr.ResponseBody), "An error occurred while processing your request")
 	require.False(t, c.Writer.Written())
 	require.Empty(t, rec.Body.String())
+}
+
+func TestOpenAIResponsesStreamFailedEventUsesResponsesSchema(t *testing.T) {
+	body := openAIResponsesStreamFailedEvent(`上游未知异常，请稍后重试`)
+
+	require.True(t, strings.HasPrefix(body, "event: response.failed\n"))
+	require.True(t, strings.HasSuffix(body, "\n\n"))
+	lines := strings.Split(strings.TrimSuffix(body, "\n\n"), "\n")
+	require.Len(t, lines, 2)
+	require.True(t, strings.HasPrefix(lines[1], "data: "))
+
+	data := strings.TrimPrefix(lines[1], "data: ")
+	require.Equal(t, "response.failed", gjson.Get(data, "type").String())
+	require.Equal(t, "failed", gjson.Get(data, "response.status").String())
+	require.Equal(t, "server_error", gjson.Get(data, "response.error.code").String())
+	require.Equal(t, "上游未知异常，请稍后重试", gjson.Get(data, "response.error.message").String())
+}
+
+func TestOpenAIStreamingSemanticErrorUsesResponsesFailedEvent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			StreamDataIntervalTimeout: 0,
+			StreamKeepaliveInterval:   0,
+			MaxLineSize:               defaultMaxLineSize,
+		},
+	}
+	gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
+		semanticErrorConfig: SemanticErrorConfig{
+			Enabled:       true,
+			MatchMaxChars: 4096,
+			Rules: compileSemanticErrorRules([]SemanticErrorRule{{
+				Enabled:       true,
+				Name:          "quota",
+				MatchType:     "contains",
+				Pattern:       "quota exceeded",
+				CustomMessage: "上游额度异常",
+			}}),
+		},
+		expiresAt: time.Now().Add(time.Minute).UnixNano(),
+	})
+	t.Cleanup(func() {
+		gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
+			semanticErrorConfig: defaultSemanticErrorConfig(),
+			expiresAt:           time.Now().Add(time.Minute).UnixNano(),
+		})
+	})
+	svc := &OpenAIGatewayService{
+		cfg:            cfg,
+		settingService: &SettingService{},
+	}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			"event: response.created",
+			`data: {"type":"response.created","response":{"id":"resp_1"}}`,
+			"",
+			"event: response.completed",
+			`data: {"type":"response.completed","response":{"id":"resp_1","output":[{"type":"message","content":[{"type":"output_text","text":"quota exceeded"}]}],"usage":{"input_tokens":1,"output_tokens":2}}}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{"X-Request-Id": []string{"rid-semantic"}},
+	}
+
+	result, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"}, time.Now(), "model", "model")
+	require.Error(t, err)
+	require.NotNil(t, result)
+	body := rec.Body.String()
+	require.Contains(t, body, "event: response.failed")
+	require.Contains(t, body, `"type":"response.failed"`)
+	require.Contains(t, body, "上游额度异常")
+	require.NotContains(t, body, `"type":"error"`)
+	require.NotContains(t, body, "quota exceeded")
 }
 
 func TestOpenAIStreamingResponseFailedBeforeOutputCapacityErrorReturnsFailover(t *testing.T) {
@@ -1559,8 +1639,10 @@ func TestOpenAIStreamingTooLong(t *testing.T) {
 	if !errors.Is(err, bufio.ErrTooLong) {
 		t.Fatalf("expected ErrTooLong, got %v", err)
 	}
-	if !strings.Contains(rec.Body.String(), "\"type\":\"error\"") || !strings.Contains(rec.Body.String(), "response_too_large") {
-		t.Fatalf("expected OpenAI-compatible error SSE event, got %q", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), "event: response.failed") ||
+		!strings.Contains(rec.Body.String(), `"type":"response.failed"`) ||
+		!strings.Contains(rec.Body.String(), "response_too_large") {
+		t.Fatalf("expected OpenAI Responses-compatible failed SSE event, got %q", rec.Body.String())
 	}
 }
 

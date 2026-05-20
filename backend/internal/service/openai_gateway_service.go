@@ -4580,12 +4580,11 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			return
 		}
 		errorEventSent = true
-		payload := `{"type":"error","sequence_number":0,"error":{"type":"upstream_error","message":` + strconv.Quote(reason) + `,"code":"upstream_error"}}`
 		if err := flushBuffered(); err != nil {
 			clientDisconnected = true
 			return
 		}
-		if _, err := bufferedWriter.WriteString("data: " + payload + "\n\n"); err != nil {
+		if _, err := bufferedWriter.WriteString(openAIResponsesStreamFailedEvent(reason)); err != nil {
 			clientDisconnected = true
 			return
 		}
@@ -5034,6 +5033,16 @@ func (s *OpenAIGatewayService) replaceModelInSSELine(line, fromModel, toModel st
 	}
 
 	return line
+}
+
+func openAIResponsesStreamFailedEvent(message string) string {
+	now := time.Now().Unix()
+	payload := `{"type":"response.failed","sequence_number":1,"response":{"id":"resp_sub2api_error","object":"response","created_at":` +
+		strconv.FormatInt(now, 10) +
+		`,"status":"failed","error":{"code":"server_error","message":` +
+		strconv.Quote(message) +
+		`},"output":[],"usage":null,"metadata":{}}}`
+	return "event: response.failed\ndata: " + payload + "\n\n"
 }
 
 // correctToolCallsInResponseBody 修正响应体中的工具调用
