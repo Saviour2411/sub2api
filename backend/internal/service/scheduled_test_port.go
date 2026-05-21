@@ -33,6 +33,17 @@ type ScheduledTestResult struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
+type ScheduledTestLatestFailure struct {
+	AccountID    int64     `json:"account_id"`
+	PlanID       int64     `json:"plan_id"`
+	ResultID     int64     `json:"result_id"`
+	ModelID      string    `json:"model_id"`
+	ErrorMessage string    `json:"error_message"`
+	StartedAt    time.Time `json:"started_at"`
+	FinishedAt   time.Time `json:"finished_at"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
 // ScheduledTestPlanRepository defines the data access interface for test plans.
 type ScheduledTestPlanRepository interface {
 	Create(ctx context.Context, plan *ScheduledTestPlan) (*ScheduledTestPlan, error)
@@ -48,5 +59,6 @@ type ScheduledTestPlanRepository interface {
 type ScheduledTestResultRepository interface {
 	Create(ctx context.Context, result *ScheduledTestResult) (*ScheduledTestResult, error)
 	ListByPlanID(ctx context.Context, planID int64, limit int) ([]*ScheduledTestResult, error)
+	ListLatestFailuresByAccountIDs(ctx context.Context, accountIDs []int64) (map[int64]*ScheduledTestLatestFailure, error)
 	PruneOldResults(ctx context.Context, planID int64, keepCount int) error
 }

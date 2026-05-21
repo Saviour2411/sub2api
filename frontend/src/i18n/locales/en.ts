@@ -3008,6 +3008,7 @@ export default {
         creditsExhausted: 'Credits Exhausted',
         creditsExhaustedUntil: 'AI Credits exhausted, expected recovery at {time}',
         overloadedUntil: 'Overloaded until {time}',
+        lastScheduledTestFailure: 'Latest scheduled test failure ({model})',
         viewTempUnschedDetails: 'View temp unschedulable details'
       },
       columns: {
@@ -5501,7 +5502,10 @@ export default {
         title: 'Gateway Scheduling Settings',
         description: 'Control API Key scheduling behavior',
         allowUngroupedKey: 'Allow Ungrouped Key Scheduling',
-        allowUngroupedKeyHint: 'When disabled, API Keys not assigned to any group cannot make requests (403 Forbidden). Keep disabled to ensure all Keys belong to a specific group.'
+        allowUngroupedKeyHint: 'When disabled, API Keys not assigned to any group cannot make requests (403 Forbidden). Keep disabled to ensure all Keys belong to a specific group.',
+        scheduledTestDefaultPrompt: 'Scheduled Test Default Prompt',
+        scheduledTestDefaultPromptPlaceholder: 'hi',
+        scheduledTestDefaultPromptHint: 'Only used for scheduled text test requests; image model tests do not use this prompt. Saving an empty value resets it to hi.'
       },
       gatewayForwarding: {
         title: 'Request Forwarding',

@@ -537,6 +537,7 @@ export interface SystemSettings {
   semantic_error_match_max_chars: number;
   semantic_error_rules: SemanticErrorRule[];
   openai_codex_user_agent: string;
+  scheduled_test_default_prompt: string;
   web_search_emulation_enabled?: boolean;
 
   // Payment configuration
@@ -768,6 +769,7 @@ export interface UpdateSettingsRequest {
   semantic_error_match_max_chars?: number;
   semantic_error_rules?: SemanticErrorRule[];
   openai_codex_user_agent?: string;
+  scheduled_test_default_prompt?: string;
   // Payment configuration
   payment_enabled?: boolean;
   risk_control_enabled?: boolean;

@@ -126,6 +126,7 @@ const (
 	defaultSemanticErrorMatchMaxChars = 4096
 	minSemanticErrorMatchMaxChars     = 128
 	maxSemanticErrorMatchMaxChars     = 65536
+	DefaultScheduledTestPrompt        = "hi"
 )
 
 type SemanticErrorConfig struct {
@@ -645,6 +646,25 @@ func (s *SettingService) GetAllSettings(ctx context.Context) (*SystemSettings, e
 	}
 
 	return s.parseSettings(settings), nil
+}
+
+func (s *SettingService) GetScheduledTestDefaultPrompt(ctx context.Context) string {
+	if s == nil || s.settingRepo == nil {
+		return DefaultScheduledTestPrompt
+	}
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyScheduledTestDefaultPrompt)
+	if err != nil {
+		return DefaultScheduledTestPrompt
+	}
+	return normalizeScheduledTestDefaultPrompt(value)
+}
+
+func normalizeScheduledTestDefaultPrompt(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return DefaultScheduledTestPrompt
+	}
+	return value
 }
 
 // GetFrontendURL 获取前端基础URL（数据库优先，fallback 到配置文件）
@@ -1840,6 +1860,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeySemanticErrorMatchMaxChars] = strconv.Itoa(settings.SemanticErrorMatchMaxChars)
 	updates[SettingKeySemanticErrorRules] = string(semanticErrorRulesJSON)
 	updates[SettingKeyOpenAICodexUserAgent] = strings.TrimSpace(settings.OpenAICodexUserAgent)
+	updates[SettingKeyScheduledTestDefaultPrompt] = normalizeScheduledTestDefaultPrompt(settings.ScheduledTestDefaultPrompt)
 	updates[SettingPaymentVisibleMethodAlipaySource] = settings.PaymentVisibleMethodAlipaySource
 	updates[SettingPaymentVisibleMethodWxpaySource] = settings.PaymentVisibleMethodWxpaySource
 	updates[SettingPaymentVisibleMethodAlipayEnabled] = strconv.FormatBool(settings.PaymentVisibleMethodAlipayEnabled)
@@ -2971,6 +2992,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingPaymentVisibleMethodWxpayEnabled:          "false",
 		openAIAdvancedSchedulerSettingKey:                "false",
 		SettingKeyOpenAICodexUserAgent:                   "",
+		SettingKeyScheduledTestDefaultPrompt:             DefaultScheduledTestPrompt,
 	}
 
 	return s.settingRepo.SetMultiple(ctx, defaults)
@@ -3500,6 +3522,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.SemanticErrorMatchMaxChars = normalizeSemanticErrorMatchMaxChars(settings[SettingKeySemanticErrorMatchMaxChars])
 	result.SemanticErrorRules = parseSemanticErrorRules(settings[SettingKeySemanticErrorRules])
 	result.OpenAICodexUserAgent = strings.TrimSpace(settings[SettingKeyOpenAICodexUserAgent])
+	result.ScheduledTestDefaultPrompt = normalizeScheduledTestDefaultPrompt(settings[SettingKeyScheduledTestDefaultPrompt])
 
 	// Web search emulation: quick enabled check from the JSON config
 	if raw := settings[SettingKeyWebSearchEmulationConfig]; raw != "" {

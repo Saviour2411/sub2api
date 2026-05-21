@@ -17,9 +17,13 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/util/httputil"
 )
@@ -514,23 +518,24 @@ var ErrRPMStatusUnavailable = infraerrors.New(http.StatusNotImplemented, "RPM_ST
 
 // adminServiceImpl implements AdminService
 type adminServiceImpl struct {
-	userRepo             UserRepository
-	groupRepo            GroupRepository
-	accountRepo          AccountRepository
-	proxyRepo            ProxyRepository
-	apiKeyRepo           APIKeyRepository
-	redeemCodeRepo       RedeemCodeRepository
-	userGroupRateRepo    UserGroupRateRepository
-	userRPMCache         UserRPMCache
-	billingCacheService  *BillingCacheService
-	proxyProber          ProxyExitInfoProber
-	proxyLatencyCache    ProxyLatencyCache
-	authCacheInvalidator APIKeyAuthCacheInvalidator
-	entClient            *dbent.Client // 用于开启数据库事务
-	settingService       *SettingService
-	defaultSubAssigner   DefaultSubscriptionAssigner
-	userSubRepo          UserSubscriptionRepository
-	privacyClientFactory PrivacyClientFactory
+	userRepo                     UserRepository
+	groupRepo                    GroupRepository
+	accountRepo                  AccountRepository
+	proxyRepo                    ProxyRepository
+	apiKeyRepo                   APIKeyRepository
+	redeemCodeRepo               RedeemCodeRepository
+	userGroupRateRepo            UserGroupRateRepository
+	userRPMCache                 UserRPMCache
+	billingCacheService          *BillingCacheService
+	proxyProber                  ProxyExitInfoProber
+	proxyLatencyCache            ProxyLatencyCache
+	authCacheInvalidator         APIKeyAuthCacheInvalidator
+	entClient                    *dbent.Client // 用于开启数据库事务
+	settingService               *SettingService
+	defaultSubAssigner           DefaultSubscriptionAssigner
+	userSubRepo                  UserSubscriptionRepository
+	privacyClientFactory         PrivacyClientFactory
+	defaultScheduledTestPlanRepo ScheduledTestPlanRepository
 }
 
 type userGroupRateBatchReader interface {
@@ -556,25 +561,27 @@ func NewAdminService(
 	defaultSubAssigner DefaultSubscriptionAssigner,
 	userSubRepo UserSubscriptionRepository,
 	privacyClientFactory PrivacyClientFactory,
+	defaultScheduledTestPlanRepo ScheduledTestPlanRepository,
 ) AdminService {
 	return &adminServiceImpl{
-		userRepo:             userRepo,
-		groupRepo:            groupRepo,
-		accountRepo:          accountRepo,
-		proxyRepo:            proxyRepo,
-		apiKeyRepo:           apiKeyRepo,
-		redeemCodeRepo:       redeemCodeRepo,
-		userGroupRateRepo:    userGroupRateRepo,
-		userRPMCache:         userRPMCache,
-		billingCacheService:  billingCacheService,
-		proxyProber:          proxyProber,
-		proxyLatencyCache:    proxyLatencyCache,
-		authCacheInvalidator: authCacheInvalidator,
-		entClient:            entClient,
-		settingService:       settingService,
-		defaultSubAssigner:   defaultSubAssigner,
-		userSubRepo:          userSubRepo,
-		privacyClientFactory: privacyClientFactory,
+		userRepo:                     userRepo,
+		groupRepo:                    groupRepo,
+		accountRepo:                  accountRepo,
+		proxyRepo:                    proxyRepo,
+		apiKeyRepo:                   apiKeyRepo,
+		redeemCodeRepo:               redeemCodeRepo,
+		userGroupRateRepo:            userGroupRateRepo,
+		userRPMCache:                 userRPMCache,
+		billingCacheService:          billingCacheService,
+		proxyProber:                  proxyProber,
+		proxyLatencyCache:            proxyLatencyCache,
+		authCacheInvalidator:         authCacheInvalidator,
+		entClient:                    entClient,
+		settingService:               settingService,
+		defaultSubAssigner:           defaultSubAssigner,
+		userSubRepo:                  userSubRepo,
+		privacyClientFactory:         privacyClientFactory,
+		defaultScheduledTestPlanRepo: defaultScheduledTestPlanRepo,
 	}
 }
 
@@ -2552,6 +2559,7 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 			return nil, err
 		}
 	}
+	s.createDefaultScheduledTestPlanAsync(account)
 
 	// OAuth 账号：创建后异步设置隐私。
 	// 使用 Ensure（幂等）而非 Force：新建账号 Extra 为空时效果相同，但更安全。
@@ -2579,6 +2587,157 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	}
 
 	return account, nil
+}
+
+func (s *adminServiceImpl) createDefaultScheduledTestPlanAsync(account *Account) {
+	if s == nil || s.defaultScheduledTestPlanRepo == nil || account == nil || account.ID <= 0 {
+		return
+	}
+	modelID := defaultScheduledTestModelID(account)
+	if modelID == "" {
+		return
+	}
+	accountID := account.ID
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("create_default_scheduled_test_plan_panic", "account_id", accountID, "recover", r)
+			}
+		}()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		nextRun, err := computeNextRun("0 * * * *", time.Now())
+		if err != nil {
+			slog.Warn("create_default_scheduled_test_plan_cron_failed", "account_id", accountID, "error", err)
+			return
+		}
+		_, err = s.defaultScheduledTestPlanRepo.Create(ctx, &ScheduledTestPlan{
+			AccountID:      accountID,
+			ModelID:        modelID,
+			CronExpression: "0 * * * *",
+			Enabled:        true,
+			MaxResults:     50,
+			AutoRecover:    true,
+			NextRunAt:      &nextRun,
+		})
+		if err != nil {
+			slog.Warn("create_default_scheduled_test_plan_failed", "account_id", accountID, "model_id", modelID, "error", err)
+		}
+	}()
+}
+
+func defaultScheduledTestModelID(account *Account) string {
+	if account == nil || !isScheduledTestSupportedAccount(account) {
+		return ""
+	}
+	mapping := account.GetModelMapping()
+	switch account.Platform {
+	case PlatformOpenAI:
+		if len(mapping) > 0 && !account.IsOpenAIPassthroughEnabled() {
+			return firstMappedModelInOpenAIDefaultOrder(mapping)
+		}
+		if len(openai.DefaultModels) > 0 {
+			return openai.DefaultModels[0].ID
+		}
+	case PlatformGemini:
+		if len(mapping) > 0 && !account.IsOAuth() {
+			return firstMappedModelInGeminiDefaultOrder(mapping)
+		}
+		if len(geminicli.DefaultModels) > 0 {
+			return geminicli.DefaultModels[0].ID
+		}
+	case PlatformAntigravity:
+		models := antigravity.DefaultModels()
+		if len(models) > 0 {
+			return models[0].ID
+		}
+	default:
+		if len(mapping) > 0 && !account.IsOAuth() {
+			return firstMappedModelInClaudeDefaultOrder(mapping)
+		}
+		if len(claude.DefaultModels) > 0 {
+			return claude.DefaultModels[0].ID
+		}
+	}
+	return ""
+}
+
+func firstMappedModelInOpenAIDefaultOrder(mapping map[string]string) string {
+	if len(mapping) == 0 {
+		return ""
+	}
+	if _, ok := mapping["*"]; ok && len(openai.DefaultModels) > 0 {
+		return openai.DefaultModels[0].ID
+	}
+	for _, model := range openai.DefaultModels {
+		if _, ok := mapping[model.ID]; ok {
+			return model.ID
+		}
+	}
+	return firstSortedMappedModelID(mapping)
+}
+
+func firstMappedModelInGeminiDefaultOrder(mapping map[string]string) string {
+	if len(mapping) == 0 {
+		return ""
+	}
+	if _, ok := mapping["*"]; ok && len(geminicli.DefaultModels) > 0 {
+		return geminicli.DefaultModels[0].ID
+	}
+	for _, model := range geminicli.DefaultModels {
+		if _, ok := mapping[model.ID]; ok {
+			return model.ID
+		}
+	}
+	return firstSortedMappedModelID(mapping)
+}
+
+func firstMappedModelInClaudeDefaultOrder(mapping map[string]string) string {
+	if len(mapping) == 0 {
+		return ""
+	}
+	if _, ok := mapping["*"]; ok && len(claude.DefaultModels) > 0 {
+		return claude.DefaultModels[0].ID
+	}
+	for _, model := range claude.DefaultModels {
+		if _, ok := mapping[model.ID]; ok {
+			return model.ID
+		}
+	}
+	return firstSortedMappedModelID(mapping)
+}
+
+func firstSortedMappedModelID(mapping map[string]string) string {
+	keys := make([]string, 0, len(mapping))
+	for modelID := range mapping {
+		modelID = strings.TrimSpace(modelID)
+		if modelID != "" && modelID != "*" {
+			keys = append(keys, modelID)
+		}
+	}
+	sort.Strings(keys)
+	if len(keys) == 0 {
+		return ""
+	}
+	return keys[0]
+}
+
+func isScheduledTestSupportedAccount(account *Account) bool {
+	if account == nil {
+		return false
+	}
+	switch account.Platform {
+	case PlatformOpenAI:
+		return account.Type == AccountTypeOAuth || account.Type == AccountTypeAPIKey
+	case PlatformGemini:
+		return account.Type == AccountTypeOAuth || account.Type == AccountTypeAPIKey || account.Type == AccountTypeServiceAccount
+	case PlatformAntigravity:
+		return account.Type == AccountTypeOAuth || account.Type == AccountTypeAPIKey || account.Type == AccountTypeUpstream
+	case PlatformAnthropic:
+		return account.IsOAuth() || account.Type == AccountTypeAPIKey || account.Type == AccountTypeBedrock || account.Type == AccountTypeServiceAccount
+	default:
+		return false
+	}
 }
 
 func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *UpdateAccountInput) (*Account, error) {

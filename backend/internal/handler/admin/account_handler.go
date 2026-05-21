@@ -55,6 +55,7 @@ type AccountHandler struct {
 	accountTestService      *service.AccountTestService
 	concurrencyService      *service.ConcurrencyService
 	crsSyncService          *service.CRSSyncService
+	scheduledTestSvc        *service.ScheduledTestService
 	sessionLimitCache       service.SessionLimitCache
 	rpmCache                service.RPMCache
 	tokenCacheInvalidator   service.TokenCacheInvalidator
@@ -72,6 +73,7 @@ func NewAccountHandler(
 	accountTestService *service.AccountTestService,
 	concurrencyService *service.ConcurrencyService,
 	crsSyncService *service.CRSSyncService,
+	scheduledTestSvc *service.ScheduledTestService,
 	sessionLimitCache service.SessionLimitCache,
 	rpmCache service.RPMCache,
 	tokenCacheInvalidator service.TokenCacheInvalidator,
@@ -87,10 +89,15 @@ func NewAccountHandler(
 		accountTestService:      accountTestService,
 		concurrencyService:      concurrencyService,
 		crsSyncService:          crsSyncService,
+		scheduledTestSvc:        scheduledTestSvc,
 		sessionLimitCache:       sessionLimitCache,
 		rpmCache:                rpmCache,
 		tokenCacheInvalidator:   tokenCacheInvalidator,
 	}
+}
+
+func (h *AccountHandler) SetScheduledTestService(scheduledTestSvc *service.ScheduledTestService) {
+	h.scheduledTestSvc = scheduledTestSvc
 }
 
 // CreateAccountRequest represents create account request
@@ -169,11 +176,37 @@ type CheckMixedChannelRequest struct {
 // AccountWithConcurrency extends Account with real-time concurrency info
 type AccountWithConcurrency struct {
 	*dto.Account
-	CurrentConcurrency int `json:"current_concurrency"`
+	CurrentConcurrency       int                          `json:"current_concurrency"`
+	LastScheduledTestFailure *AccountScheduledTestFailure `json:"last_scheduled_test_failure,omitempty"`
 	// 以下字段仅对 Anthropic OAuth/SetupToken 账号有效，且仅在启用相应功能时返回
 	CurrentWindowCost *float64 `json:"current_window_cost,omitempty"` // 当前窗口费用
 	ActiveSessions    *int     `json:"active_sessions,omitempty"`     // 当前活跃会话数
 	CurrentRPM        *int     `json:"current_rpm,omitempty"`         // 当前分钟 RPM 计数
+}
+
+type AccountScheduledTestFailure struct {
+	PlanID       int64     `json:"plan_id"`
+	ResultID     int64     `json:"result_id"`
+	ModelID      string    `json:"model_id"`
+	ErrorMessage string    `json:"error_message"`
+	StartedAt    time.Time `json:"started_at"`
+	FinishedAt   time.Time `json:"finished_at"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+func accountScheduledTestFailureFromService(failure *service.ScheduledTestLatestFailure) *AccountScheduledTestFailure {
+	if failure == nil {
+		return nil
+	}
+	return &AccountScheduledTestFailure{
+		PlanID:       failure.PlanID,
+		ResultID:     failure.ResultID,
+		ModelID:      failure.ModelID,
+		ErrorMessage: failure.ErrorMessage,
+		StartedAt:    failure.StartedAt,
+		FinishedAt:   failure.FinishedAt,
+		CreatedAt:    failure.CreatedAt,
+	}
 }
 
 const accountListGroupUngroupedQueryValue = "ungrouped"
@@ -347,13 +380,23 @@ func (h *AccountHandler) List(c *gin.Context) {
 		_ = g.Wait()
 	}
 
+	latestScheduledTestFailures := map[int64]*service.ScheduledTestLatestFailure{}
+	if h.scheduledTestSvc != nil && len(accountIDs) > 0 {
+		if failures, failureErr := h.scheduledTestSvc.ListLatestFailuresByAccountIDs(c.Request.Context(), accountIDs); failureErr == nil && failures != nil {
+			latestScheduledTestFailures = failures
+		} else if failureErr != nil {
+			slog.Warn("account_list_latest_scheduled_test_failures_failed", "error", failureErr)
+		}
+	}
+
 	// Build response with concurrency info
 	result := make([]AccountWithConcurrency, len(accounts))
 	for i := range accounts {
 		acc := &accounts[i]
 		item := AccountWithConcurrency{
-			Account:            dto.AccountFromService(acc),
-			CurrentConcurrency: concurrencyCounts[acc.ID],
+			Account:                  dto.AccountFromService(acc),
+			CurrentConcurrency:       concurrencyCounts[acc.ID],
+			LastScheduledTestFailure: accountScheduledTestFailureFromService(latestScheduledTestFailures[acc.ID]),
 		}
 
 		// 添加窗口费用（仅当启用时）

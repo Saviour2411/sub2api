@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/lib/pq"
 )
 
 // --- Plan Repository ---
@@ -136,6 +137,44 @@ func (r *scheduledTestResultRepository) ListByPlanID(ctx context.Context, planID
 		results = append(results, r)
 	}
 	return results, rows.Err()
+}
+
+func (r *scheduledTestResultRepository) ListLatestFailuresByAccountIDs(ctx context.Context, accountIDs []int64) (map[int64]*service.ScheduledTestLatestFailure, error) {
+	result := make(map[int64]*service.ScheduledTestLatestFailure)
+	if len(accountIDs) == 0 {
+		return result, nil
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT DISTINCT ON (p.account_id)
+			p.account_id,
+			p.id,
+			p.model_id,
+			r.id,
+			r.error_message,
+			r.started_at,
+			r.finished_at,
+			r.created_at
+		FROM scheduled_test_results r
+		JOIN scheduled_test_plans p ON p.id = r.plan_id
+		WHERE p.account_id = ANY($1) AND r.status = 'failed'
+		ORDER BY p.account_id, r.created_at DESC, r.id DESC
+	`, pq.Array(accountIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		failure := &service.ScheduledTestLatestFailure{}
+		if err := rows.Scan(
+			&failure.AccountID, &failure.PlanID, &failure.ModelID, &failure.ResultID,
+			&failure.ErrorMessage, &failure.StartedAt, &failure.FinishedAt, &failure.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		result[failure.AccountID] = failure
+	}
+	return result, rows.Err()
 }
 
 func (r *scheduledTestResultRepository) PruneOldResults(ctx context.Context, planID int64, keepCount int) error {

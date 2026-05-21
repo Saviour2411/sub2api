@@ -3195,6 +3195,7 @@ export default {
         creditsExhausted: '积分已用尽',
         creditsExhaustedUntil: 'AI Credits 已用尽，预计 {time} 恢复',
         overloadedUntil: '负载过重，重置时间：{time}',
+        lastScheduledTestFailure: '最近定时测试失败（{model}）',
         viewTempUnschedDetails: '查看临时不可调度详情'
       },
       tempUnschedulable: {
@@ -5659,7 +5660,10 @@ export default {
         title: '网关调度设置',
         description: '控制 API Key 的调度行为',
         allowUngroupedKey: '允许未分组 Key 调度',
-        allowUngroupedKeyHint: '关闭后，未分配到任何分组的 API Key 将无法发起请求（返回 403）。建议保持关闭以确保所有 Key 都归属明确的分组。'
+        allowUngroupedKeyHint: '关闭后，未分配到任何分组的 API Key 将无法发起请求（返回 403）。建议保持关闭以确保所有 Key 都归属明确的分组。',
+        scheduledTestDefaultPrompt: '定时测试默认提示词',
+        scheduledTestDefaultPromptPlaceholder: 'hi',
+        scheduledTestDefaultPromptHint: '仅用于定时文本测试请求；图片模型测试不会使用该提示词。留空保存时会恢复为 hi。'
       },
       gatewayForwarding: {
         title: '请求转发行为',

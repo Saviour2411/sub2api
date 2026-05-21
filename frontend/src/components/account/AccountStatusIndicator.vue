@@ -57,6 +57,27 @@
       </div>
     </div>
 
+    <div v-if="latestScheduledTestFailureMessage" class="group/scheduled relative">
+      <Icon
+        name="questionCircle"
+        size="sm"
+        class="cursor-help text-amber-500 transition-colors hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300"
+      />
+      <div
+        class="invisible absolute left-0 top-full z-[100] mt-1.5 min-w-[240px] max-w-[360px] rounded-lg bg-gray-800 px-3 py-2 text-xs text-white opacity-0 shadow-xl transition-all duration-200 group-hover/scheduled:visible group-hover/scheduled:opacity-100 dark:bg-gray-900"
+      >
+        <div class="mb-1 font-medium text-amber-200">
+          {{ t('admin.accounts.status.lastScheduledTestFailure', { model: account.last_scheduled_test_failure?.model_id || '-' }) }}
+        </div>
+        <div class="whitespace-pre-wrap break-words leading-relaxed text-gray-300">
+          {{ latestScheduledTestFailureMessage }}
+        </div>
+        <div
+          class="absolute bottom-full left-3 border-[6px] border-transparent border-b-gray-800 dark:border-b-gray-900"
+        ></div>
+      </div>
+    </div>
+
     <!-- Rate Limit Indicator (429) -->
     <div v-if="isRateLimited" class="group relative">
       <span
@@ -284,6 +305,10 @@ const isTempUnschedulable = computed(() => {
 // Computed: has error status
 const hasError = computed(() => {
   return props.account.status === 'error'
+})
+
+const latestScheduledTestFailureMessage = computed(() => {
+  return props.account.last_scheduled_test_failure?.error_message?.trim() || ''
 })
 
 const isQuotaExceeded = computed(() => {

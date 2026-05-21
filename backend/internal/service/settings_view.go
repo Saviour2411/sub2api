@@ -204,6 +204,7 @@ type SystemSettings struct {
 	SemanticErrorMatchMaxChars             int    // 响应字符数阈值，超过则不匹配
 	SemanticErrorRules                     []SemanticErrorRule
 	OpenAICodexUserAgent                   string // OpenAI Codex 上游完整 User-Agent；空值使用内置默认
+	ScheduledTestDefaultPrompt             string
 
 	// Web Search Emulation
 	WebSearchEmulationEnabled bool // 是否启用 web search 模拟

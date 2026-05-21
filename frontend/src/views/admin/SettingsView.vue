@@ -3697,6 +3697,31 @@
                 </div>
                 <Toggle v-model="form.openai_advanced_scheduler_enabled" />
               </div>
+
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.scheduling.scheduledTestDefaultPrompt") }}
+                </label>
+                <textarea
+                  v-model="form.scheduled_test_default_prompt"
+                  rows="3"
+                  class="input min-h-[84px] w-full font-mono text-sm"
+                  :placeholder="
+                    t(
+                      'admin.settings.scheduling.scheduledTestDefaultPromptPlaceholder',
+                    )
+                  "
+                ></textarea>
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{
+                    t(
+                      "admin.settings.scheduling.scheduledTestDefaultPromptHint",
+                    )
+                  }}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -7249,6 +7274,7 @@ const form = reactive<SettingsForm>({
   semantic_error_match_max_chars: 4096,
   semantic_error_rules: [] as SemanticErrorRule[],
   openai_codex_user_agent: "",
+  scheduled_test_default_prompt: "hi",
   // Balance & quota notification
   balance_low_notify_enabled: false,
   balance_low_notify_threshold: 0,
@@ -8526,6 +8552,8 @@ async function saveSettings() {
       semantic_error_rules: normalizedSemanticErrorRules,
       openai_codex_user_agent:
         form.openai_codex_user_agent?.trim() || "",
+      scheduled_test_default_prompt:
+        form.scheduled_test_default_prompt?.trim() || "hi",
       // Payment configuration
       payment_enabled: form.payment_enabled,
       risk_control_enabled: form.risk_control_enabled,

@@ -2,6 +2,9 @@ package service
 
 import (
 	"context"
+	"net/http"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -130,8 +133,9 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d SaveResult error: %v", plan.ID, err)
 	}
 
-	// Auto-recover account if test succeeded and auto_recover is enabled.
-	if result.Status == "success" && plan.AutoRecover {
+	if result.Status == "failed" {
+		s.handleFailedTest(ctx, plan, result)
+	} else if result.Status == "success" && plan.AutoRecover {
 		s.tryRecoverAccount(ctx, plan.AccountID, plan.ID)
 	}
 
@@ -144,6 +148,41 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 	if err := s.planRepo.UpdateAfterRun(ctx, plan.ID, time.Now(), nextRun); err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d UpdateAfterRun error: %v", plan.ID, err)
 	}
+}
+
+func (s *ScheduledTestRunnerService) handleFailedTest(ctx context.Context, plan *ScheduledTestPlan, result *ScheduledTestResult) {
+	if s.rateLimitSvc == nil || plan == nil || result == nil {
+		return
+	}
+	reason := strings.TrimSpace(result.ErrorMessage)
+	if reason == "" {
+		reason = "scheduled test failed"
+	}
+	account := &Account{ID: plan.AccountID}
+	if s.rateLimitSvc.HandleStrictFailureScheduling(ctx, account, scheduledTestFailureStatusCode(reason), reason) {
+		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d marked account=%d unschedulable after failed test", plan.ID, plan.AccountID)
+	}
+}
+
+func scheduledTestFailureStatusCode(errorMessage string) int {
+	const prefix = "API returned "
+	idx := strings.Index(errorMessage, prefix)
+	if idx < 0 {
+		return http.StatusBadGateway
+	}
+	rest := strings.TrimSpace(errorMessage[idx+len(prefix):])
+	end := 0
+	for end < len(rest) && rest[end] >= '0' && rest[end] <= '9' {
+		end++
+	}
+	if end == 0 {
+		return http.StatusBadGateway
+	}
+	statusCode, err := strconv.Atoi(rest[:end])
+	if err != nil || statusCode <= 0 {
+		return http.StatusBadGateway
+	}
+	return statusCode
 }
 
 // tryRecoverAccount attempts to recover an account from recoverable runtime state.

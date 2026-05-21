@@ -192,6 +192,7 @@ type SystemSettings struct {
 	SemanticErrorMatchMaxChars             int                 `json:"semantic_error_match_max_chars"`
 	SemanticErrorRules                     []SemanticErrorRule `json:"semantic_error_rules"`
 	OpenAICodexUserAgent                   string              `json:"openai_codex_user_agent"`
+	ScheduledTestDefaultPrompt             string              `json:"scheduled_test_default_prompt"`
 
 	// Web Search Emulation
 	WebSearchEmulationEnabled bool `json:"web_search_emulation_enabled"`

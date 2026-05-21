@@ -76,6 +76,13 @@ func (s *ScheduledTestService) ListResults(ctx context.Context, planID int64, li
 	return s.resultRepo.ListByPlanID(ctx, planID, limit)
 }
 
+func (s *ScheduledTestService) ListLatestFailuresByAccountIDs(ctx context.Context, accountIDs []int64) (map[int64]*ScheduledTestLatestFailure, error) {
+	if s == nil || s.resultRepo == nil || len(accountIDs) == 0 {
+		return map[int64]*ScheduledTestLatestFailure{}, nil
+	}
+	return s.resultRepo.ListLatestFailuresByAccountIDs(ctx, accountIDs)
+}
+
 // SaveResult inserts a result and prunes old entries beyond maxResults.
 func (s *ScheduledTestService) SaveResult(ctx context.Context, planID int64, maxResults int, result *ScheduledTestResult) error {
 	result.PlanID = planID
