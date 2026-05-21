@@ -1003,6 +1003,20 @@
     transform: translateY(-50%);
     background: #ff8a4a;
     box-shadow: 0 0 14px rgba(255, 111, 56, 0.8);
+    animation: mecha-pulse-core 2s ease-in-out infinite;
+  }
+
+  .sidebar-link {
+    transition:
+      background-color 0.22s ease,
+      color 0.22s ease,
+      border-color 0.22s ease,
+      box-shadow 0.22s ease,
+      transform 0.22s ease;
+  }
+
+  .sidebar-link:hover {
+    transform: translateX(2px);
   }
 
   .card,
@@ -1557,5 +1571,314 @@
 
   .safe-bottom {
     padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* ============================================================
+   Mecha Glow-Up: animation atoms (added by mecha-ui-glowup-f10e95)
+   ============================================================ */
+
+@keyframes mecha-scan-sweep {
+  0% { transform: translateX(-110%); opacity: 0; }
+  12% { opacity: 0.95; }
+  88% { opacity: 0.95; }
+  100% { transform: translateX(110%); opacity: 0; }
+}
+
+@keyframes mecha-scan-sweep-y {
+  0% { transform: translateY(-110%); opacity: 0; }
+  12% { opacity: 0.85; }
+  88% { opacity: 0.85; }
+  100% { transform: translateY(110%); opacity: 0; }
+}
+
+@keyframes mecha-pulse-ring {
+  0% { transform: scale(0.65); opacity: 0.85; }
+  70% { transform: scale(2.1); opacity: 0; }
+  100% { transform: scale(2.1); opacity: 0; }
+}
+
+@keyframes mecha-pulse-core {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.18); }
+}
+
+@keyframes mecha-glow-breathe {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1px rgba(75, 181, 255, 0.28),
+      0 0 24px rgba(75, 181, 255, 0.22);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(75, 181, 255, 0.5),
+      0 0 44px rgba(75, 181, 255, 0.45);
+  }
+}
+
+@keyframes mecha-data-flicker {
+  0%, 100% { opacity: 1; }
+  44% { opacity: 1; }
+  46% { opacity: 0.78; }
+  48% { opacity: 1; }
+}
+
+@keyframes mecha-target-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes mecha-grid-drift {
+  0% { background-position: 0 0; }
+  100% { background-position: 52px 52px; }
+}
+
+@keyframes mecha-reveal-up {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes mecha-reveal-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes mecha-unlock-clip {
+  0% { clip-path: polygon(50% 50%, 50% 50%, 50% 50%, 50% 50%, 50% 50%, 50% 50%); opacity: 0; }
+  60% { opacity: 1; }
+  100% { clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 14px); opacity: 1; }
+}
+
+@keyframes mecha-cursor-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+@keyframes mecha-page-enter {
+  0% { opacity: 0; transform: translateY(8px) scale(0.992); filter: blur(2px); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+
+@layer utilities {
+  /* 3D 倾斜舞台：宿主元素需要透视 */
+  .tilt-surface {
+    perspective: 1100px;
+    transform-style: preserve-3d;
+  }
+
+  /* 跟随鼠标的光斑（由 useTilt 注入 CSS 变量） */
+  .tilt-glow {
+    --tilt-mx: 50%;
+    --tilt-my: 50%;
+    position: relative;
+  }
+
+  .tilt-glow::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      420px circle at var(--tilt-mx) var(--tilt-my),
+      rgba(75, 181, 255, 0.22),
+      rgba(75, 181, 255, 0) 55%
+    );
+    opacity: 0;
+    transition: opacity 240ms ease;
+    mix-blend-mode: screen;
+  }
+
+  .tilt-glow.is-tilting::after {
+    opacity: 1;
+  }
+
+  /* Pulse Dot：呼吸点 */
+  .pulse-dot {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 0.625rem;
+    height: 0.625rem;
+  }
+
+  .pulse-dot-core {
+    position: relative;
+    z-index: 2;
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: currentColor;
+    box-shadow: 0 0 8px currentColor;
+    animation: mecha-pulse-core 1.6s ease-in-out infinite;
+  }
+
+  .pulse-dot-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 999px;
+    border: 1px solid currentColor;
+    animation: mecha-pulse-ring 1.6s ease-out infinite;
+  }
+
+  .pulse-dot-ring-2 {
+    animation-delay: 0.7s;
+  }
+
+  /* Live glow：活体边光 */
+  .live-glow {
+    animation: mecha-glow-breathe 2.6s ease-in-out infinite;
+  }
+
+  /* Scanline sweep host & beam */
+  .scan-host {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .scan-beam {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 35%;
+    pointer-events: none;
+    background: linear-gradient(
+      90deg,
+      transparent 0,
+      rgba(75, 181, 255, 0.18) 32%,
+      rgba(255, 255, 255, 0.6) 50%,
+      rgba(255, 111, 56, 0.16) 68%,
+      transparent 100%
+    );
+    mix-blend-mode: screen;
+    animation: mecha-scan-sweep var(--scan-duration, 4.2s) linear infinite;
+    animation-delay: var(--scan-delay, 0s);
+  }
+
+  .scan-beam-y {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 35%;
+    pointer-events: none;
+    background: linear-gradient(
+      180deg,
+      transparent 0,
+      rgba(75, 181, 255, 0.18) 32%,
+      rgba(255, 255, 255, 0.55) 50%,
+      rgba(255, 111, 56, 0.14) 68%,
+      transparent 100%
+    );
+    mix-blend-mode: screen;
+    animation: mecha-scan-sweep-y var(--scan-duration, 5s) linear infinite;
+    animation-delay: var(--scan-delay, 0s);
+  }
+
+  /* Reveal：滚动揭示 */
+  .reveal-up,
+  .reveal-fade {
+    opacity: 0;
+    will-change: transform, opacity;
+  }
+
+  .reveal-up {
+    transform: translateY(18px);
+  }
+
+  .reveal-up.is-visible {
+    animation: mecha-reveal-up 620ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  .reveal-fade.is-visible {
+    animation: mecha-reveal-fade 720ms ease-out forwards;
+  }
+
+  /* HUD 靶环慢转 */
+  .mecha-target-spin {
+    animation: mecha-target-rotate 38s linear infinite;
+  }
+
+  .mecha-target-spin-rev {
+    animation: mecha-target-rotate 56s linear infinite reverse;
+  }
+
+  /* 数字微抖 */
+  .data-flicker {
+    animation: mecha-data-flicker 5.4s ease-in-out infinite;
+  }
+
+  /* 终端光标 */
+  .term-cursor {
+    display: inline-block;
+    width: 0.55em;
+    height: 1em;
+    margin-left: 2px;
+    background: currentColor;
+    vertical-align: -0.12em;
+    animation: mecha-cursor-blink 1s steps(1, end) infinite;
+  }
+
+  /* 页面切换 */
+  .page-mecha-enter-active {
+    animation: mecha-page-enter 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .page-mecha-leave-active {
+    transition: opacity 180ms ease;
+  }
+
+  .page-mecha-leave-to {
+    opacity: 0;
+  }
+
+  /* 解锁动画 */
+  .mecha-unlock {
+    animation: mecha-unlock-clip 540ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  /* 全局粒子背景 host —— BackgroundFX 用 */
+  .background-fx {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .background-fx-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  /* prefers-reduced-motion: 全部停掉 */
+  @media (prefers-reduced-motion: reduce) {
+    .pulse-dot-core,
+    .pulse-dot-ring,
+    .live-glow,
+    .scan-beam,
+    .scan-beam-y,
+    .mecha-target-spin,
+    .mecha-target-spin-rev,
+    .data-flicker,
+    .term-cursor {
+      animation: none !important;
+    }
+
+    .reveal-up,
+    .reveal-fade {
+      opacity: 1 !important;
+      transform: none !important;
+      animation: none !important;
+    }
+
+    .page-mecha-enter-active,
+    .page-mecha-leave-active {
+      animation: none !important;
+      transition: none !important;
+    }
   }
 }

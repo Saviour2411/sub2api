@@ -9,7 +9,7 @@
     <!-- Logo/Brand -->
     <div class="sidebar-header" :class="{ 'sidebar-header-collapsed': sidebarCollapsed }">
       <!-- Custom Logo or Default Logo -->
-      <div class="sidebar-logo armor-cut flex h-9 w-9 items-center justify-center overflow-hidden border border-primary-200/70 bg-white/95 shadow-glow dark:border-primary-400/30 dark:bg-[#0b1420]">
+      <div class="sidebar-logo live-glow armor-cut flex h-9 w-9 items-center justify-center overflow-hidden border border-primary-200/70 bg-white/95 shadow-glow dark:border-primary-400/30 dark:bg-[#0b1420]">
         <img v-if="settingsLoaded" :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
       </div>
       <div class="sidebar-brand" :class="{ 'sidebar-brand-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">

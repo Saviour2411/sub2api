@@ -12,6 +12,14 @@
       <div class="mecha-diagonal-beam absolute left-[18vw] top-0 hidden h-full w-44 lg:block"></div>
     </div>
 
+    <!-- Animated background (canvas particles + scanlines) -->
+    <BackgroundFX variant="app" :density="0.7" />
+
+    <!-- Top energy band (sweeps across) -->
+    <div class="app-energy-band pointer-events-none fixed inset-x-0 top-16 z-10 hidden h-px lg:block">
+      <div class="app-energy-beam"></div>
+    </div>
+
     <!-- Sidebar -->
     <AppSidebar />
 
@@ -40,6 +48,7 @@ import { useOnboardingTour } from '@/composables/useOnboardingTour'
 import { useOnboardingStore } from '@/stores/onboarding'
 import AppSidebar from './AppSidebar.vue'
 import AppHeader from './AppHeader.vue'
+import BackgroundFX from '@/components/common/BackgroundFX.vue'
 
 const appStore = useAppStore()
 const authStore = useAuthStore()
@@ -59,3 +68,46 @@ onMounted(() => {
 
 defineExpose({ replayTour })
 </script>
+
+<style scoped>
+.app-energy-band {
+  overflow: hidden;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(75, 181, 255, 0.32),
+    rgba(255, 111, 56, 0.22),
+    transparent
+  );
+  filter: drop-shadow(0 0 14px rgba(75, 181, 255, 0.5));
+}
+
+.app-energy-beam {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  width: 28%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(75, 181, 255, 0.95) 35%,
+    rgba(255, 255, 255, 1) 50%,
+    rgba(255, 111, 56, 0.88) 65%,
+    transparent
+  );
+  filter: blur(0.8px);
+  animation: app-energy-sweep 6.4s linear infinite;
+}
+
+@keyframes app-energy-sweep {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(420%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-energy-beam {
+    animation: none !important;
+    opacity: 0.4;
+  }
+}
+</style>

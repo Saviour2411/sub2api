@@ -12,12 +12,25 @@
         </button>
 
         <div class="hidden lg:block">
-          <h1 class="command-title font-mono text-lg font-black uppercase text-slate-950 dark:text-white">
-            {{ pageTitle }}
-          </h1>
-          <p v-if="pageDescription" class="text-xs text-slate-500 dark:text-slate-400">
+          <div class="flex items-center gap-2.5">
+            <PulseDot tone="success" :title="t('common.online') || 'ONLINE'" />
+            <h1 class="command-title font-mono text-lg font-black uppercase text-slate-950 dark:text-white">
+              {{ pageTitle }}
+            </h1>
+          </div>
+          <p v-if="pageDescription" class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
             {{ pageDescription }}
           </p>
+        </div>
+
+        <!-- System Clock (HUD) -->
+        <div class="command-clock hidden items-center gap-2 px-3 py-1 lg:flex">
+          <span class="font-mono text-[10px] uppercase tracking-[0.2em] text-primary-600 dark:text-primary-300">
+            {{ tz }}
+          </span>
+          <span class="font-mono text-sm font-semibold text-slate-700 dark:text-slate-200 tabular-nums">
+            {{ time }}
+          </span>
         </div>
       </div>
 
@@ -62,9 +75,14 @@
               d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z"
             />
           </svg>
-          <span class="text-sm font-semibold text-primary-700 dark:text-primary-300">
-            ${{ user.balance?.toFixed(2) || '0.00' }}
-          </span>
+          <CountUp
+            class="text-sm font-semibold text-primary-700 dark:text-primary-300"
+            :value="user.balance ?? 0"
+            :decimals="2"
+            :duration="800"
+            prefix="$"
+            :trigger-on-view="false"
+          />
         </div>
 
         <!-- User Dropdown -->
@@ -222,6 +240,9 @@ import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMini.vue'
 import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
 import Icon from '@/components/icons/Icon.vue'
+import PulseDot from '@/components/common/PulseDot.vue'
+import CountUp from '@/components/common/CountUp.vue'
+import { useSystemClock } from '@/composables/useSystemClock'
 
 const router = useRouter()
 const route = useRoute()
@@ -237,6 +258,9 @@ const dropdownRef = ref<HTMLElement | null>(null)
 const contactInfo = computed(() => appStore.contactInfo)
 const docUrl = computed(() => appStore.docUrl)
 const avatarUrl = computed(() => user.value?.avatar_url?.trim() || '')
+
+// HUD system clock
+const { time, tz } = useSystemClock()
 
 // 只在标准模式的管理员下显示新手引导按钮
 const showOnboardingButton = computed(() => {
@@ -339,5 +363,23 @@ onBeforeUnmount(() => {
 .dropdown-leave-to {
   opacity: 0;
   transform: scale(0.95) translateY(-4px);
+}
+
+.command-clock {
+  position: relative;
+  border: 1px solid rgba(75, 181, 255, 0.22);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.85),
+    rgba(232, 245, 255, 0.55)
+  );
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86);
+}
+
+:global(.dark) .command-clock {
+  background: linear-gradient(135deg, rgba(7, 16, 28, 0.78), rgba(4, 10, 18, 0.6));
+  border-color: rgba(75, 181, 255, 0.3);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 </style>

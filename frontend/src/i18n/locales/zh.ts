@@ -105,6 +105,28 @@ export default {
       description: '注册即可获得免费试用额度，体验一站式 AI 服务',
       button: '免费注册'
     },
+    // 实时数据面板
+    live: {
+      label: '实时',
+      requestsRouted: '已路由请求',
+      activeChannels: '在线通道',
+      avgLatency: '平均延迟',
+      modelsCovered: '覆盖模型',
+      uptimeLabel: '在线运行',
+      coreOnline: '核心已就绪',
+      systemNominal: '系统状态正常'
+    },
+    terminal: {
+      title: '指挥终端',
+      logRouting: '正在路由至最优上游...',
+      logHit: '上游命中：claude-sonnet-4',
+      logCost: '消耗：12 tokens · 0.000086$',
+      logHandshake: '建立 Antigravity 会话...',
+      logSticky: '会话保持已绑定 #42',
+      logStream: '流式响应已下发',
+      response: '"content": "Hello, gateway!"',
+      streamHint: '事件流已建立'
+    },
     footer: {
       allRightsReserved: '保留所有权利。'
     }

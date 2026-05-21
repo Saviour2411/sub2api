@@ -3,6 +3,9 @@
     <div class="auth-visual absolute inset-0"></div>
     <div class="auth-overlay absolute inset-0"></div>
 
+    <!-- Dynamic Background (canvas particles + drifting beams) -->
+    <BackgroundFX variant="auth" :density="0.85" />
+
     <div class="pointer-events-none absolute inset-0 overflow-hidden">
       <div class="hud-grid absolute inset-0"></div>
       <div class="scanline absolute inset-0"></div>
@@ -10,25 +13,28 @@
       <div class="absolute bottom-[13vh] left-0 h-px w-[72vw] bg-gradient-to-r from-transparent via-primary-300/70 to-transparent"></div>
       <div class="armor-mark absolute right-[7vw] top-[8vh] hidden h-28 w-28 border border-primary-200/60 dark:border-primary-300/30 md:block"></div>
       <div class="armor-mark absolute bottom-[8vh] left-[12vw] h-20 w-44 border border-orange-300/40 dark:border-orange-300/25"></div>
-      <div class="auth-mecha-reticle absolute right-[10vw] top-[18vh] hidden h-80 w-80 lg:block"></div>
-      <div class="auth-energy-spine absolute bottom-0 right-[32vw] hidden h-[74vh] w-10 lg:block"></div>
+      <div class="auth-mecha-reticle mecha-target-spin absolute right-[10vw] top-[18vh] hidden h-80 w-80 lg:block"></div>
+      <div class="auth-energy-spine absolute bottom-0 right-[32vw] hidden h-[74vh] w-10 lg:block">
+        <div class="auth-energy-spine-beam"></div>
+      </div>
     </div>
 
     <div class="relative z-10 grid min-h-screen grid-cols-1 items-center px-4 py-8 md:px-10 lg:grid-cols-[minmax(420px,520px)_1fr] lg:py-10">
-      <section class="auth-console relative w-full max-w-[520px]">
+      <section class="auth-console relative w-full max-w-[520px] mecha-unlock">
         <div class="auth-console-rail"></div>
 
         <div class="relative p-5 sm:p-7">
           <template v-if="settingsLoaded">
             <div class="mb-7 flex items-center gap-4 auth-entrance">
               <div
-                class="auth-logo flex h-14 w-14 items-center justify-center overflow-hidden border border-primary-200/90 bg-white/90 shadow-glow backdrop-blur-xl dark:border-primary-300/35 dark:bg-[#0b1420]/85"
+                class="auth-logo live-glow flex h-14 w-14 items-center justify-center overflow-hidden border border-primary-200/90 bg-white/90 shadow-glow backdrop-blur-xl dark:border-primary-300/35 dark:bg-[#0b1420]/85"
               >
                 <img :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
               </div>
               <div class="min-w-0">
-                <div class="mb-1 font-mono text-[10px] font-semibold uppercase text-primary-600 dark:text-primary-300">
-                  ACCESS TERMINAL
+                <div class="mb-1 flex items-center gap-2 font-mono text-[10px] font-semibold uppercase text-primary-600 dark:text-primary-300">
+                  <PulseDot tone="primary" />
+                  <span>ACCESS TERMINAL</span>
                 </div>
                 <h1 class="truncate text-3xl font-black leading-tight text-slate-950 dark:text-white">
                   {{ siteName }}
@@ -40,7 +46,8 @@
             </div>
           </template>
 
-          <div class="mecha-login-panel p-5 sm:p-6 auth-entrance auth-entrance-delay">
+          <div class="mecha-login-panel scan-host p-5 sm:p-6 auth-entrance auth-entrance-delay">
+            <ScanlineSweep :duration="5" />
             <slot />
           </div>
 
@@ -49,7 +56,10 @@
           </div>
 
           <div class="mt-6 flex items-center justify-between gap-4 font-mono text-[10px] uppercase text-slate-500 dark:text-slate-500">
-            <span>CORE ONLINE</span>
+            <span class="flex items-center gap-1.5">
+              <PulseDot tone="success" />
+              <span>CORE ONLINE</span>
+            </span>
             <span>&copy; {{ currentYear }} {{ siteName }}</span>
           </div>
         </div>
@@ -59,10 +69,13 @@
         <div class="auth-hud-panel mb-10 mr-8 w-[min(34vw,520px)]">
           <div class="mb-4 flex items-center justify-between font-mono text-[10px] uppercase text-primary-700 dark:text-primary-200">
             <span>NEURAL GATEWAY</span>
-            <span>SYNC 100%</span>
+            <span class="inline-flex items-center gap-1.5">
+              <span>SYNC</span>
+              <CountUp :value="100" suffix="%" :duration="1400" />
+            </span>
           </div>
-          <div class="h-2 overflow-hidden bg-slate-900/10 dark:bg-white/10">
-            <div class="h-full w-[74%] bg-gradient-to-r from-primary-400 via-cyan-200 to-orange-300"></div>
+          <div class="h-2 overflow-hidden bg-slate-900/10 dark:bg-white/10 relative">
+            <div class="h-full w-[74%] bg-gradient-to-r from-primary-400 via-cyan-200 to-orange-300 auth-progress-bar"></div>
           </div>
           <div class="mt-5 grid grid-cols-3 gap-2 font-mono text-[10px] uppercase text-slate-600 dark:text-slate-300">
             <span class="auth-metric">AUTH</span>
@@ -79,6 +92,10 @@
 import { computed, onMounted } from 'vue'
 import { useAppStore } from '@/stores'
 import { sanitizeUrl } from '@/utils/url'
+import BackgroundFX from '@/components/common/BackgroundFX.vue'
+import PulseDot from '@/components/common/PulseDot.vue'
+import CountUp from '@/components/common/CountUp.vue'
+import ScanlineSweep from '@/components/common/ScanlineSweep.vue'
 
 const appStore = useAppStore()
 
@@ -207,6 +224,70 @@ function preloadAuthBackground() {
   width: 4px;
   background: linear-gradient(180deg, transparent, #4bb5ff, #ff6f38, transparent);
   box-shadow: 0 0 24px rgba(75, 181, 255, 0.75);
+  overflow: hidden;
+}
+
+.auth-console-rail::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -40%;
+  height: 30%;
+  background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.95), transparent);
+  animation: auth-rail-pulse 3.6s ease-in-out infinite;
+}
+
+@keyframes auth-rail-pulse {
+  0% { transform: translateY(0%); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: translateY(420%); opacity: 0; }
+}
+
+.auth-energy-spine-beam {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -30%;
+  height: 35%;
+  background: linear-gradient(180deg, transparent, rgba(75, 181, 255, 0.85), rgba(255, 111, 56, 0.6), transparent);
+  filter: blur(1px);
+  animation: auth-spine-sweep 5.2s ease-in-out infinite;
+}
+
+@keyframes auth-spine-sweep {
+  0% { transform: translateY(0%); opacity: 0.2; }
+  20% { opacity: 0.9; }
+  80% { opacity: 0.9; }
+  100% { transform: translateY(360%); opacity: 0.2; }
+}
+
+.auth-progress-bar {
+  position: relative;
+  overflow: hidden;
+}
+
+.auth-progress-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.78), transparent);
+  transform: translateX(-100%);
+  animation: auth-progress-shine 2.6s linear infinite;
+}
+
+@keyframes auth-progress-shine {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(220%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-console-rail::after,
+  .auth-energy-spine-beam,
+  .auth-progress-bar::after {
+    animation: none !important;
+  }
 }
 
 .mecha-login-panel {

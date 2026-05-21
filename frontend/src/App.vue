@@ -113,7 +113,11 @@ onMounted(async () => {
 
 <template>
   <NavigationProgress />
-  <RouterView />
+  <RouterView v-slot="{ Component, route: r }">
+    <transition name="page-mecha" mode="out-in">
+      <component :is="Component" :key="r.fullPath" />
+    </transition>
+  </RouterView>
   <Toast />
   <AnnouncementPopup />
 </template>

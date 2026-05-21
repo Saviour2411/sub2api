@@ -105,6 +105,28 @@ export default {
       description: 'Sign up now and get free trial credits to experience seamless AI access',
       button: 'Sign Up Free'
     },
+    // Live telemetry strip
+    live: {
+      label: 'LIVE',
+      requestsRouted: 'Requests Routed',
+      activeChannels: 'Active Channels',
+      avgLatency: 'Avg Latency',
+      modelsCovered: 'Models Covered',
+      uptimeLabel: 'Uptime',
+      coreOnline: 'Core Online',
+      systemNominal: 'All systems nominal'
+    },
+    terminal: {
+      title: 'Command Terminal',
+      logRouting: 'Routing to optimal upstream...',
+      logHit: 'Upstream hit: claude-sonnet-4',
+      logCost: 'Spent: 12 tokens · 0.000086$',
+      logHandshake: 'Opening Antigravity session...',
+      logSticky: 'Sticky session bound #42',
+      logStream: 'Stream response delivered',
+      response: '"content": "Hello, gateway!"',
+      streamHint: 'Event stream established'
+    },
     footer: {
       allRightsReserved: 'All rights reserved.'
     }
