@@ -313,6 +313,7 @@ jobs:
     needs: [release]
     if: ${{ needs.release.result == 'success' && (github.event_name == 'push' || github.event.inputs.deploy_production == 'true') && github.event.inputs.simple_release != 'true' && vars.SIMPLE_RELEASE != 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment: production
     steps:
       - name: Checkout deployment scripts
@@ -353,7 +354,7 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -p "${{ secrets.DEPLOY_PORT || '22' }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+          timeout 30s ssh-keyscan -p "${{ secrets.DEPLOY_PORT || '22' }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Upload remote deployment files
         if: ${{ steps.deploy_config.outputs.enabled == 'true' }}
@@ -365,8 +366,9 @@ jobs:
             echo "deploy/$COMPOSE_FILE not found"
             exit 1
           fi
-          scp -i ~/.ssh/deploy_key -P "${{ secrets.DEPLOY_PORT || '22' }}" deploy/remote-deploy.sh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/sub2api-remote-deploy.sh"
-          scp -i ~/.ssh/deploy_key -P "${{ secrets.DEPLOY_PORT || '22' }}" "deploy/$COMPOSE_FILE" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${DEPLOY_DIR}/${COMPOSE_FILE}"
+          SSH_OPTS="-i $HOME/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=10 -o ServerAliveCountMax=3"
+          timeout 60s scp -O $SSH_OPTS -P "${{ secrets.DEPLOY_PORT || '22' }}" deploy/remote-deploy.sh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/sub2api-remote-deploy.sh"
+          timeout 60s scp -O $SSH_OPTS -P "${{ secrets.DEPLOY_PORT || '22' }}" "deploy/$COMPOSE_FILE" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${DEPLOY_DIR}/${COMPOSE_FILE}"
 
       - name: Deploy on remote host
         if: ${{ steps.deploy_config.outputs.enabled == 'true' }}
@@ -377,5 +379,5 @@ jobs:
           COMPOSE_FILE: ${{ secrets.DEPLOY_COMPOSE_FILE || 'docker-compose.yml' }}
           HEALTH_URL: ${{ secrets.DEPLOY_HEALTH_URL }}
         run: |
-          ssh -i ~/.ssh/deploy_key -p "${{ secrets.DEPLOY_PORT || '22' }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+          timeout 300s ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -p "${{ secrets.DEPLOY_PORT || '22' }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             "DEPLOY_DIR='$DEPLOY_DIR' SUB2API_IMAGE='$SUB2API_IMAGE' SUB2API_TAG='$SUB2API_TAG' COMPOSE_FILE='$COMPOSE_FILE' HEALTH_URL='$HEALTH_URL' sh /tmp/sub2api-remote-deploy.sh"
