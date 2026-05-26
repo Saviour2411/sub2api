@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"testing"
 	"time"
 
@@ -203,17 +204,7 @@ func TestVerifyOrderByOutTradeNoBackfillsTradeNoFromPaidQuery(t *testing.T) {
 		}
 		return nil
 	}
-	redeemRepo := &paymentOrderLifecycleRedeemRepo{
-		codesByCode: map[string]*RedeemCode{
-			order.RechargeCode: {
-				ID:     1,
-				Code:   order.RechargeCode,
-				Type:   RedeemTypeBalance,
-				Value:  order.Amount,
-				Status: StatusUnused,
-			},
-		},
-	}
+	redeemRepo := createPaymentOrderLifecycleRedeemRepo(t, ctx, client, order.RechargeCode, order.Amount)
 	redeemService := NewRedeemService(
 		redeemRepo,
 		userRepo,
@@ -254,9 +245,7 @@ func TestVerifyOrderByOutTradeNoBackfillsTradeNoFromPaidQuery(t *testing.T) {
 	require.Equal(t, "upstream-trade-123", reloaded.PaymentTradeNo)
 
 	require.Equal(t, 88.0, userRepo.getByIDUser.Balance)
-	require.Len(t, redeemRepo.useCalls, 1)
-	require.Equal(t, int64(1), redeemRepo.useCalls[0].id)
-	require.Equal(t, user.ID, redeemRepo.useCalls[0].userID)
+	requirePaymentOrderLifecycleRedeemUsed(t, ctx, client, order.RechargeCode, user.ID)
 }
 
 func TestVerifyOrderByOutTradeNoRetriesZeroAmountPaidQueryOnce(t *testing.T) {
@@ -304,17 +293,7 @@ func TestVerifyOrderByOutTradeNoRetriesZeroAmountPaidQueryOnce(t *testing.T) {
 		}
 		return nil
 	}
-	redeemRepo := &paymentOrderLifecycleRedeemRepo{
-		codesByCode: map[string]*RedeemCode{
-			order.RechargeCode: {
-				ID:     1,
-				Code:   order.RechargeCode,
-				Type:   RedeemTypeBalance,
-				Value:  order.Amount,
-				Status: StatusUnused,
-			},
-		},
-	}
+	redeemRepo := createPaymentOrderLifecycleRedeemRepo(t, ctx, client, order.RechargeCode, order.Amount)
 	redeemService := NewRedeemService(
 		redeemRepo,
 		userRepo,
@@ -395,17 +374,7 @@ func TestVerifyOrderByOutTradeNoRejectsPaidQueryWithZeroAmount(t *testing.T) {
 			Balance:  0,
 		},
 	}
-	redeemRepo := &paymentOrderLifecycleRedeemRepo{
-		codesByCode: map[string]*RedeemCode{
-			order.RechargeCode: {
-				ID:     1,
-				Code:   order.RechargeCode,
-				Type:   RedeemTypeBalance,
-				Value:  order.Amount,
-				Status: StatusUnused,
-			},
-		},
-	}
+	redeemRepo := createPaymentOrderLifecycleRedeemRepo(t, ctx, client, order.RechargeCode, order.Amount)
 	redeemService := NewRedeemService(
 		redeemRepo,
 		userRepo,
@@ -608,17 +577,7 @@ func TestReconcilePendingWxpayOrdersBackfillsPaidOrder(t *testing.T) {
 		}
 		return nil
 	}
-	redeemRepo := &paymentOrderLifecycleRedeemRepo{
-		codesByCode: map[string]*RedeemCode{
-			order.RechargeCode: {
-				ID:     1,
-				Code:   order.RechargeCode,
-				Type:   RedeemTypeBalance,
-				Value:  order.Amount,
-				Status: StatusUnused,
-			},
-		},
-	}
+	redeemRepo := createPaymentOrderLifecycleRedeemRepo(t, ctx, client, order.RechargeCode, order.Amount)
 	redeemService := NewRedeemService(
 		redeemRepo,
 		userRepo,
@@ -662,7 +621,7 @@ func TestReconcilePendingWxpayOrdersBackfillsPaidOrder(t *testing.T) {
 	require.Equal(t, OrderStatusCompleted, reloaded.Status)
 	require.Equal(t, "wxpay-upstream-trade-123", reloaded.PaymentTradeNo)
 	require.Equal(t, 50.0, userRepo.getByIDUser.Balance)
-	require.Len(t, redeemRepo.useCalls, 1)
+	requirePaymentOrderLifecycleRedeemUsed(t, ctx, client, order.RechargeCode, user.ID)
 }
 
 func TestVerifyOrderByOutTradeNoUsesOutTradeNoWhenPaymentTradeNoAlreadyExistsForAlipay(t *testing.T) {
@@ -710,17 +669,7 @@ func TestVerifyOrderByOutTradeNoUsesOutTradeNoWhenPaymentTradeNoAlreadyExistsFor
 		}
 		return nil
 	}
-	redeemRepo := &paymentOrderLifecycleRedeemRepo{
-		codesByCode: map[string]*RedeemCode{
-			order.RechargeCode: {
-				ID:     1,
-				Code:   order.RechargeCode,
-				Type:   RedeemTypeBalance,
-				Value:  order.Amount,
-				Status: StatusUnused,
-			},
-		},
-	}
+	redeemRepo := createPaymentOrderLifecycleRedeemRepo(t, ctx, client, order.RechargeCode, order.Amount)
 	redeemService := NewRedeemService(
 		redeemRepo,
 		userRepo,
@@ -804,6 +753,88 @@ func newPaymentOrderLifecycleTestClient(t *testing.T) *dbent.Client {
 
 	drv := entsql.OpenDB(dialect.SQLite, db)
 	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(drv)))
+	ensurePaymentOrderLifecycleRedeemCodeSchema(t, db)
 	t.Cleanup(func() { _ = client.Close() })
 	return client
+}
+
+func createPaymentOrderLifecycleRedeemRepo(t *testing.T, ctx context.Context, client *dbent.Client, code string, value float64) *paymentOrderLifecycleRedeemRepo {
+	t.Helper()
+
+	created, err := client.RedeemCode.Create().
+		SetCode(code).
+		SetType(RedeemTypeBalance).
+		SetValue(value).
+		SetStatus(StatusUnused).
+		SetValidityDays(30).
+		Save(ctx)
+	require.NoError(t, err)
+	_, err = client.ExecContext(ctx, `UPDATE redeem_codes SET max_uses = 1, used_count = 0 WHERE id = $1`, created.ID)
+	require.NoError(t, err)
+
+	return &paymentOrderLifecycleRedeemRepo{
+		codesByCode: map[string]*RedeemCode{
+			code: {
+				ID:           created.ID,
+				Code:         code,
+				Type:         RedeemTypeBalance,
+				Value:        value,
+				Status:       StatusUnused,
+				MaxUses:      1,
+				ValidityDays: 30,
+				CreatedAt:    created.CreatedAt,
+			},
+		},
+	}
+}
+
+func requirePaymentOrderLifecycleRedeemUsed(t *testing.T, ctx context.Context, client *dbent.Client, code string, userID int64) {
+	t.Helper()
+
+	rows, err := client.QueryContext(ctx, `
+SELECT rc.used_count, rc.status, rcu.user_id
+FROM redeem_codes rc
+JOIN redeem_code_usages rcu ON rcu.redeem_code_id = rc.id
+WHERE rc.code = $1
+`, code)
+	require.NoError(t, err)
+	defer rows.Close()
+
+	require.True(t, rows.Next())
+	var (
+		usedCount int
+		status    string
+		usedBy    int64
+	)
+	require.NoError(t, rows.Scan(&usedCount, &status, &usedBy))
+	require.Equal(t, 1, usedCount)
+	require.Equal(t, StatusUsed, status)
+	require.Equal(t, userID, usedBy)
+	require.NoError(t, rows.Err())
+}
+
+func ensurePaymentOrderLifecycleRedeemCodeSchema(t *testing.T, db *sql.DB) {
+	t.Helper()
+
+	_, err := db.Exec(`ALTER TABLE redeem_codes ADD COLUMN max_uses INTEGER NOT NULL DEFAULT 1`)
+	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+		require.NoError(t, err)
+	}
+	_, err = db.Exec(`ALTER TABLE redeem_codes ADD COLUMN used_count INTEGER NOT NULL DEFAULT 0`)
+	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+		require.NoError(t, err)
+	}
+	_, err = db.Exec(`
+CREATE TABLE IF NOT EXISTS redeem_code_usages (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	redeem_code_id INTEGER NOT NULL REFERENCES redeem_codes(id) ON DELETE CASCADE,
+	user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	type TEXT NOT NULL,
+	value REAL NOT NULL,
+	group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL,
+	validity_days INTEGER NOT NULL DEFAULT 30,
+	used_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	UNIQUE(redeem_code_id, user_id)
+)`)
+	require.NoError(t, err)
 }

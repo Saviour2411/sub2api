@@ -451,7 +451,7 @@ LIMIT $%d OFFSET $%d
 	if err != nil {
 		return nil, nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	codes := make([]service.RedeemCode, 0, params.Limit())
 	for rows.Next() {
@@ -479,7 +479,7 @@ WHERE user_id = $1
 	if err != nil {
 		return 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
 		return 0, rows.Err()
 	}

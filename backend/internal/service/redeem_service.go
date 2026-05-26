@@ -281,17 +281,15 @@ func (s *RedeemService) entClientFromContext(ctx context.Context) *dbent.Client 
 
 func (s *RedeemService) getRedeemCodeForUpdate(ctx context.Context, code string) (*RedeemCode, error) {
 	client := s.entClientFromContext(ctx)
-	rows, err := client.QueryContext(ctx, `
-SELECT id, code, type, value, status, max_uses, used_count,
-       used_by, used_at, notes, created_at, expires_at, group_id, validity_days
-FROM redeem_codes
-WHERE code = $1
-FOR UPDATE
-`, code)
+	query := redeemCodeForUpdateQuery(true)
+	rows, err := client.QueryContext(ctx, query, code)
+	if err != nil && isSQLiteForUpdateError(err) {
+		rows, err = client.QueryContext(ctx, redeemCodeForUpdateQuery(false), code)
+	}
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {
@@ -350,6 +348,24 @@ FOR UPDATE
 	return &out, nil
 }
 
+func redeemCodeForUpdateQuery(withLock bool) string {
+	query := `
+SELECT id, code, type, value, status, max_uses, used_count,
+       used_by, used_at, notes, created_at, expires_at, group_id, validity_days
+FROM redeem_codes
+WHERE code = $1
+FOR UPDATE
+`
+	if !withLock {
+		return strings.TrimSuffix(query, "FOR UPDATE\n")
+	}
+	return query
+}
+
+func isSQLiteForUpdateError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), `near "FOR": syntax error`)
+}
+
 func (s *RedeemService) hasRedeemedCode(ctx context.Context, redeemCodeID, userID int64) (bool, error) {
 	client := s.entClientFromContext(ctx)
 	rows, err := client.QueryContext(ctx, `
@@ -361,7 +377,7 @@ LIMIT 1
 	if err != nil {
 		return false, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	if rows.Next() {
 		return true, rows.Err()
@@ -409,7 +425,7 @@ RETURNING used_count, max_uses, status
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {
@@ -767,7 +783,7 @@ LIMIT $2 OFFSET $3
 	if err != nil {
 		return nil, nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	usages := make([]RedeemCodeUsage, 0, params.Limit())
 	for rows.Next() {

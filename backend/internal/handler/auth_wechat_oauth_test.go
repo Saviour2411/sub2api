@@ -1360,6 +1360,7 @@ func newWeChatOAuthTestHandlerWithSettings(t *testing.T, invitationEnabled bool,
 
 	drv := entsql.OpenDB(dialect.SQLite, db)
 	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(drv)))
+	ensureWeChatOAuthRedeemCodeSchema(t, db)
 
 	userRepo := &oauthPendingFlowUserRepo{client: client}
 	redeemRepo := repository.NewRedeemCodeRepository(client)
@@ -1407,6 +1408,37 @@ func newWeChatOAuthTestHandlerWithSettings(t *testing.T, invitationEnabled bool,
 		settingSvc:  settingSvc,
 		cfg:         cfg,
 	}, client
+}
+
+func ensureWeChatOAuthRedeemCodeSchema(t *testing.T, db *sql.DB) {
+	t.Helper()
+
+	_, err := db.Exec(`
+ALTER TABLE redeem_codes ADD COLUMN max_uses INTEGER NOT NULL DEFAULT 1;
+`)
+	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+		require.NoError(t, err)
+	}
+	_, err = db.Exec(`
+ALTER TABLE redeem_codes ADD COLUMN used_count INTEGER NOT NULL DEFAULT 0;
+`)
+	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+		require.NoError(t, err)
+	}
+	_, err = db.Exec(`
+CREATE TABLE IF NOT EXISTS redeem_code_usages (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	redeem_code_id INTEGER NOT NULL REFERENCES redeem_codes(id) ON DELETE CASCADE,
+	user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	type TEXT NOT NULL,
+	value REAL NOT NULL,
+	group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL,
+	validity_days INTEGER NOT NULL DEFAULT 30,
+	used_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	UNIQUE(redeem_code_id, user_id)
+);
+`)
+	require.NoError(t, err)
 }
 
 type wechatOAuthSettingRepoStub struct {

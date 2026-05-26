@@ -324,6 +324,8 @@ func (s *proxyRepoStub) ListAccountSummariesByProxyID(ctx context.Context, proxy
 
 type redeemRepoStub struct {
 	deleteErrByID map[int64]error
+	codesByID     map[int64]*RedeemCode
+	getErrByID    map[int64]error
 	deletedIDs    []int64
 }
 
@@ -336,7 +338,17 @@ func (s *redeemRepoStub) CreateBatch(ctx context.Context, codes []RedeemCode) er
 }
 
 func (s *redeemRepoStub) GetByID(ctx context.Context, id int64) (*RedeemCode, error) {
-	panic("unexpected GetByID call")
+	if s.getErrByID != nil {
+		if err, ok := s.getErrByID[id]; ok {
+			return nil, err
+		}
+	}
+	if s.codesByID != nil {
+		if code, ok := s.codesByID[id]; ok {
+			return code, nil
+		}
+	}
+	return &RedeemCode{ID: id, Status: StatusUnused, MaxUses: 1}, nil
 }
 
 func (s *redeemRepoStub) GetByCode(ctx context.Context, code string) (*RedeemCode, error) {
@@ -611,6 +623,19 @@ func TestAdminService_DeleteRedeemCode_Error(t *testing.T) {
 	err := svc.DeleteRedeemCode(context.Background(), 1)
 	require.ErrorIs(t, err, deleteErr)
 	require.Equal(t, []int64{1}, repo.deletedIDs)
+}
+
+func TestAdminService_DeleteRedeemCode_Used(t *testing.T) {
+	repo := &redeemRepoStub{
+		codesByID: map[int64]*RedeemCode{
+			1: {ID: 1, Status: StatusUnused, MaxUses: 3, UsedCount: 1},
+		},
+	}
+	svc := &adminServiceImpl{redeemCodeRepo: repo}
+
+	err := svc.DeleteRedeemCode(context.Background(), 1)
+	require.Error(t, err)
+	require.Empty(t, repo.deletedIDs)
 }
 
 func TestAdminService_BatchDeleteRedeemCodes_Success(t *testing.T) {
