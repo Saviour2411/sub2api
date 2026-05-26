@@ -322,11 +322,11 @@ jobs:
       - name: Check deployment configuration
         id: deploy_config
         env:
-          DEPLOY_HOST: ${{ vars.DEPLOY_HOST || '87.76.198.249' }}
-          DEPLOY_USER: ${{ vars.DEPLOY_USER || 'root' }}
-          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22748' }}
-          DEPLOY_DIR: ${{ vars.DEPLOY_DIR || '/root/proj/sub2api' }}
-          DEPLOY_COMPOSE_FILE: ${{ vars.DEPLOY_COMPOSE_FILE || 'docker-compose.yml' }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || vars.DEPLOY_HOST || '87.76.198.249' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER || vars.DEPLOY_USER || 'root' }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || vars.DEPLOY_PORT || '22748' }}
+          DEPLOY_DIR: ${{ secrets.DEPLOY_DIR || vars.DEPLOY_DIR || '/root/proj/sub2api/deploy' }}
+          DEPLOY_COMPOSE_FILE: ${{ secrets.DEPLOY_COMPOSE_FILE || vars.DEPLOY_COMPOSE_FILE || 'docker-compose.yml' }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME || vars.DOCKERHUB_USERNAME }}
         run: |
