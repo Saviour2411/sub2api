@@ -371,6 +371,42 @@ jobs:
             sleep "$((attempt * 5))"
           done
 
+      - name: Diagnose SSH connectivity
+        if: ${{ steps.deploy_config.outputs.enabled == 'true' }}
+        env:
+          DEPLOY_HOST: ${{ steps.deploy_config.outputs.host }}
+          DEPLOY_USER: ${{ steps.deploy_config.outputs.user }}
+          DEPLOY_PORT: ${{ steps.deploy_config.outputs.port }}
+        run: |
+          SSH_OPTS="-i $HOME/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=10 -o PasswordAuthentication=no -o PreferredAuthentications=publickey"
+
+          echo "部署目标: ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PORT}"
+          echo "Runner 出口 IPv4:"
+          curl -4fsS --max-time 10 https://api.ipify.org || true
+          echo
+
+          echo "目标地址解析结果:"
+          getent ahosts "$DEPLOY_HOST" || true
+
+          echo "TCP 端口探测:"
+          if command -v nc >/dev/null 2>&1; then
+            set +e
+            nc -vz -w 10 "$DEPLOY_HOST" "$DEPLOY_PORT"
+            nc_status=$?
+            set -e
+            echo "nc 退出码: $nc_status"
+          else
+            echo "nc 不存在，跳过 TCP 探测"
+          fi
+
+          echo "SSH 建连调试:"
+          set +e
+          timeout 30s ssh -vvv $SSH_OPTS -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" "true" 2>&1 \
+            | sed -E 's#(Offering public key: ).*#\1[redacted]#; s#(identity file ).*#\1[redacted]#'
+          ssh_status=${PIPESTATUS[0]}
+          set -e
+          echo "ssh 调试退出码: $ssh_status"
+
       - name: Upload remote deployment files
         if: ${{ steps.deploy_config.outputs.enabled == 'true' }}
         env:
@@ -385,24 +421,39 @@ jobs:
             exit 1
           fi
           SSH_OPTS="-i $HOME/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=10 -o ServerAliveCountMax=3"
-          for attempt in 1 2 3; do
-            if timeout 60s ssh $SSH_OPTS -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" "cat > /tmp/sub2api-remote-deploy.sh" < deploy/remote-deploy.sh; then
-              break
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              exit 1
-            fi
-            sleep "$((attempt * 5))"
-          done
-          for attempt in 1 2 3; do
-            if timeout 60s ssh $SSH_OPTS -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" "cat > '${DEPLOY_DIR}/${COMPOSE_FILE}'" < "deploy/$COMPOSE_FILE"; then
-              break
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              exit 1
-            fi
-            sleep "$((attempt * 5))"
-          done
+
+          upload_with_retry() {
+            label="$1"
+            remote_cmd="$2"
+            local_file="$3"
+
+            for attempt in 1 2 3; do
+              echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] $label: 第 ${attempt}/3 次尝试"
+              set +e
+              timeout 60s ssh $SSH_OPTS -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" "$remote_cmd" < "$local_file"
+              status=$?
+              set -e
+              if [ "$status" -eq 0 ]; then
+                echo "$label: 成功"
+                return 0
+              fi
+              echo "::warning::$label 第 $attempt 次失败，退出码 $status"
+              if [ "$attempt" -eq 3 ]; then
+                echo "$label: 最后一次失败，输出 ssh -vvv 调试信息"
+                set +e
+                timeout 60s ssh -vvv $SSH_OPTS -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" "$remote_cmd" < "$local_file" 2>&1 \
+                  | sed -E 's#(Offering public key: ).*#\1[redacted]#; s#(identity file ).*#\1[redacted]#'
+                debug_status=${PIPESTATUS[0]}
+                set -e
+                echo "$label: ssh -vvv 退出码 $debug_status"
+                exit "$debug_status"
+              fi
+              sleep "$((attempt * 5))"
+            done
+          }
+
+          upload_with_retry "上传远端部署脚本" "cat > /tmp/sub2api-remote-deploy.sh" "deploy/remote-deploy.sh"
+          upload_with_retry "上传 Compose 文件" "cat > '${DEPLOY_DIR}/${COMPOSE_FILE}'" "deploy/$COMPOSE_FILE"
 
       - name: Deploy on remote host
         if: ${{ steps.deploy_config.outputs.enabled == 'true' }}
@@ -417,12 +468,18 @@ jobs:
           HEALTH_URL: ${{ secrets.DEPLOY_HEALTH_URL }}
         run: |
           for attempt in 1 2 3; do
-            if timeout 300s ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
-              "DEPLOY_DIR='$DEPLOY_DIR' SUB2API_IMAGE='$SUB2API_IMAGE' SUB2API_TAG='$SUB2API_TAG' COMPOSE_FILE='$COMPOSE_FILE' HEALTH_URL='$HEALTH_URL' sh /tmp/sub2api-remote-deploy.sh"; then
+            echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] 远端部署: 第 ${attempt}/3 次尝试"
+            set +e
+            timeout 300s ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+              "DEPLOY_DIR='$DEPLOY_DIR' SUB2API_IMAGE='$SUB2API_IMAGE' SUB2API_TAG='$SUB2API_TAG' COMPOSE_FILE='$COMPOSE_FILE' HEALTH_URL='$HEALTH_URL' sh /tmp/sub2api-remote-deploy.sh"
+            status=$?
+            set -e
+            if [ "$status" -eq 0 ]; then
               break
             fi
+            echo "::warning::远端部署第 $attempt 次失败，退出码 $status"
             if [ "$attempt" -eq 3 ]; then
-              exit 1
+              exit "$status"
             fi
             sleep "$((attempt * 5))"
           done
