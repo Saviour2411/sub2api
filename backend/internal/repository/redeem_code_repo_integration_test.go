@@ -253,6 +253,8 @@ func (s *RedeemCodeRepoSuite) TestUse() {
 	s.Require().NotNil(got.UsedBy)
 	s.Require().Equal(user.ID, *got.UsedBy)
 	s.Require().NotNil(got.UsedAt)
+	s.Require().Equal(1, got.MaxUses)
+	s.Require().Equal(1, got.UsedCount)
 }
 
 func (s *RedeemCodeRepoSuite) TestUse_Idempotency() {
@@ -266,6 +268,33 @@ func (s *RedeemCodeRepoSuite) TestUse_Idempotency() {
 	// Second use should fail
 	err = s.repo.Use(s.ctx, code.ID, user.ID)
 	s.Require().Error(err, "Use expected error on second call")
+	s.Require().ErrorIs(err, service.ErrRedeemCodeUsed)
+}
+
+func (s *RedeemCodeRepoSuite) TestUse_MultipleUsersUntilMaxUses() {
+	user1 := s.createUser(uniqueTestValue(s.T(), "multi1") + "@example.com")
+	user2 := s.createUser(uniqueTestValue(s.T(), "multi2") + "@example.com")
+	user3 := s.createUser(uniqueTestValue(s.T(), "multi3") + "@example.com")
+	code := &service.RedeemCode{Code: "MULTI-USE", Type: service.RedeemTypeBalance, Value: 0, Status: service.StatusUnused, MaxUses: 2}
+	s.Require().NoError(s.repo.Create(s.ctx, code))
+
+	s.Require().NoError(s.repo.Use(s.ctx, code.ID, user1.ID), "first user can use")
+	got, err := s.repo.GetByID(s.ctx, code.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(service.StatusUnused, got.Status)
+	s.Require().Equal(2, got.MaxUses)
+	s.Require().Equal(1, got.UsedCount)
+
+	err = s.repo.Use(s.ctx, code.ID, user1.ID)
+	s.Require().ErrorIs(err, service.ErrRedeemCodeUsedByUser)
+
+	s.Require().NoError(s.repo.Use(s.ctx, code.ID, user2.ID), "second user can use")
+	got, err = s.repo.GetByID(s.ctx, code.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(service.StatusUsed, got.Status)
+	s.Require().Equal(2, got.UsedCount)
+
+	err = s.repo.Use(s.ctx, code.ID, user3.ID)
 	s.Require().ErrorIs(err, service.ErrRedeemCodeUsed)
 }
 
@@ -286,30 +315,16 @@ func (s *RedeemCodeRepoSuite) TestListByUser() {
 	base := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
 
 	usedAt1 := base
-	_, err := s.client.RedeemCode.Create().
-		SetCode("USER-1").
-		SetType(service.RedeemTypeBalance).
-		SetStatus(service.StatusUsed).
-		SetValue(0).
-		SetNotes("").
-		SetValidityDays(30).
-		SetUsedBy(user.ID).
-		SetUsedAt(usedAt1).
-		Save(s.ctx)
-	s.Require().NoError(err)
+	code1 := &service.RedeemCode{Code: "USER-1", Type: service.RedeemTypeBalance, Value: 0, Status: service.StatusUnused}
+	s.Require().NoError(s.repo.Create(s.ctx, code1))
+	s.Require().NoError(s.repo.Use(s.ctx, code1.ID, user.ID))
+	s.setRedeemUsageTime(code1.ID, user.ID, usedAt1)
 
 	usedAt2 := base.Add(1 * time.Hour)
-	_, err = s.client.RedeemCode.Create().
-		SetCode("USER-2").
-		SetType(service.RedeemTypeBalance).
-		SetStatus(service.StatusUsed).
-		SetValue(0).
-		SetNotes("").
-		SetValidityDays(30).
-		SetUsedBy(user.ID).
-		SetUsedAt(usedAt2).
-		Save(s.ctx)
-	s.Require().NoError(err)
+	code2 := &service.RedeemCode{Code: "USER-2", Type: service.RedeemTypeBalance, Value: 0, Status: service.StatusUnused}
+	s.Require().NoError(s.repo.Create(s.ctx, code2))
+	s.Require().NoError(s.repo.Use(s.ctx, code2.ID, user.ID))
+	s.setRedeemUsageTime(code2.ID, user.ID, usedAt2)
 
 	codes, err := s.repo.ListByUser(s.ctx, user.ID, 10)
 	s.Require().NoError(err, "ListByUser")
@@ -323,18 +338,9 @@ func (s *RedeemCodeRepoSuite) TestListByUser_WithGroupPreload() {
 	user := s.createUser(uniqueTestValue(s.T(), "grp") + "@example.com")
 	group := s.createGroup(uniqueTestValue(s.T(), "g-listby"))
 
-	_, err := s.client.RedeemCode.Create().
-		SetCode("WITH-GRP").
-		SetType(service.RedeemTypeSubscription).
-		SetStatus(service.StatusUsed).
-		SetValue(0).
-		SetNotes("").
-		SetValidityDays(30).
-		SetUsedBy(user.ID).
-		SetUsedAt(time.Now()).
-		SetGroupID(group.ID).
-		Save(s.ctx)
-	s.Require().NoError(err)
+	code := &service.RedeemCode{Code: "WITH-GRP", Type: service.RedeemTypeSubscription, Value: 0, Status: service.StatusUnused, GroupID: &group.ID, ValidityDays: 30}
+	s.Require().NoError(s.repo.Create(s.ctx, code))
+	s.Require().NoError(s.repo.Use(s.ctx, code.ID, user.ID))
 
 	codes, err := s.repo.ListByUser(s.ctx, user.ID, 10)
 	s.Require().NoError(err)
@@ -345,17 +351,9 @@ func (s *RedeemCodeRepoSuite) TestListByUser_WithGroupPreload() {
 
 func (s *RedeemCodeRepoSuite) TestListByUser_DefaultLimit() {
 	user := s.createUser(uniqueTestValue(s.T(), "deflimit") + "@example.com")
-	_, err := s.client.RedeemCode.Create().
-		SetCode("DEF-LIM").
-		SetType(service.RedeemTypeBalance).
-		SetStatus(service.StatusUsed).
-		SetValue(0).
-		SetNotes("").
-		SetValidityDays(30).
-		SetUsedBy(user.ID).
-		SetUsedAt(time.Now()).
-		Save(s.ctx)
-	s.Require().NoError(err)
+	code := &service.RedeemCode{Code: "DEF-LIM", Type: service.RedeemTypeBalance, Value: 0, Status: service.StatusUnused}
+	s.Require().NoError(s.repo.Create(s.ctx, code))
+	s.Require().NoError(s.repo.Use(s.ctx, code.ID, user.ID))
 
 	// limit <= 0 should default to 10
 	codes, err := s.repo.ListByUser(s.ctx, user.ID, 0)
@@ -398,14 +396,32 @@ func (s *RedeemCodeRepoSuite) TestCreateBatch_Filters_Use_Idempotency_ListByUser
 		SetUsedAt(time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)).
 		Save(s.ctx)
 	s.Require().NoError(err)
+	s.setRedeemUsageTime(codeB.ID, user.ID, time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC))
 	s.Require().NoError(s.repo.Use(s.ctx, codeA.ID, user.ID), "Use codeA")
 	_, err = s.client.RedeemCode.UpdateOneID(codeA.ID).
 		SetUsedAt(time.Date(2025, 1, 1, 13, 0, 0, 0, time.UTC)).
 		Save(s.ctx)
 	s.Require().NoError(err)
+	s.setRedeemUsageTime(codeA.ID, user.ID, time.Date(2025, 1, 1, 13, 0, 0, 0, time.UTC))
 
 	used, err := s.repo.ListByUser(s.ctx, user.ID, 10)
 	s.Require().NoError(err, "ListByUser")
 	s.Require().Len(used, 2, "expected 2 used codes")
 	s.Require().Equal("CODEA", used[0].Code, "expected newest used code first")
+}
+
+func (s *RedeemCodeRepoSuite) setRedeemUsageTime(redeemCodeID, userID int64, usedAt time.Time) {
+	s.T().Helper()
+	_, err := s.client.ExecContext(s.ctx, `
+UPDATE redeem_codes
+SET used_at = $3
+WHERE id = $1 AND used_by = $2
+`, redeemCodeID, userID, usedAt)
+	s.Require().NoError(err)
+	_, err = s.client.ExecContext(s.ctx, `
+UPDATE redeem_code_usages
+SET used_at = $3
+WHERE redeem_code_id = $1 AND user_id = $2
+`, redeemCodeID, userID, usedAt)
+	s.Require().NoError(err)
 }

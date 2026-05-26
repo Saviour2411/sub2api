@@ -59,10 +59,11 @@ func (r *redeemCodeRepository) CreateBatch(ctx context.Context, codes []service.
 		return nil
 	}
 
+	client := clientFromContext(ctx, r.client)
 	builders := make([]*dbent.RedeemCodeCreate, 0, len(codes))
 	for i := range codes {
 		c := &codes[i]
-		b := r.client.RedeemCode.Create().
+		b := client.RedeemCode.Create().
 			SetCode(c.Code).
 			SetType(c.Type).
 			SetValue(c.Value).
@@ -76,7 +77,23 @@ func (r *redeemCodeRepository) CreateBatch(ctx context.Context, codes []service.
 		builders = append(builders, b)
 	}
 
-	return r.client.RedeemCode.CreateBulk(builders...).Exec(ctx)
+	created, err := client.RedeemCode.CreateBulk(builders...).Save(ctx)
+	if err != nil {
+		return err
+	}
+
+	for i := range created {
+		codes[i].ID = created[i].ID
+		codes[i].CreatedAt = created[i].CreatedAt
+		codes[i].MaxUses = normalizeRedeemMaxUses(codes[i].MaxUses)
+		if err := r.updateUsageLimits(ctx, created[i].ID, codes[i].MaxUses, codes[i].UsedCount); err != nil {
+			if isUndefinedColumn(err) {
+				return nil
+			}
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *redeemCodeRepository) GetByID(ctx context.Context, id int64) (*service.RedeemCode, error) {
@@ -269,25 +286,75 @@ func (r *redeemCodeRepository) Update(ctx context.Context, code *service.RedeemC
 func (r *redeemCodeRepository) Use(ctx context.Context, id, userID int64) error {
 	now := time.Now()
 	client := clientFromContext(ctx, r.client)
+	var candidateCount, insertedCount, updatedCount int
+	err := scanSingleRow(ctx, client, `
+WITH candidate AS (
+    SELECT id, type, value, group_id, validity_days
+    FROM redeem_codes
+    WHERE id = $1
+      AND status = $5
+      AND used_count < max_uses
+    FOR UPDATE
+),
+inserted AS (
+INSERT INTO redeem_code_usages (
+    redeem_code_id,
+    user_id,
+    type,
+    value,
+    group_id,
+    validity_days,
+    used_at
+) SELECT id, $2, type, value, group_id, validity_days, $3
+  FROM candidate
+ON CONFLICT (redeem_code_id, user_id) DO NOTHING
+  RETURNING redeem_code_id
+),
+updated AS (
+UPDATE redeem_codes
+SET used_count = used_count + 1,
+    used_by = $2,
+    used_at = $3,
+    status = CASE WHEN used_count + 1 >= max_uses THEN $4 ELSE status END
+WHERE id IN (SELECT redeem_code_id FROM inserted)
+  RETURNING id
+)
+SELECT
+    (SELECT COUNT(*) FROM candidate),
+    (SELECT COUNT(*) FROM inserted),
+    (SELECT COUNT(*) FROM updated)
+`, []any{id, userID, now, service.StatusUsed, service.StatusUnused}, &candidateCount, &insertedCount, &updatedCount)
+	if err != nil {
+		if isUndefinedColumn(err) || isMissingRedeemUsageTable(err) {
+			return r.useLegacy(ctx, id, userID, now)
+		}
+		return err
+	}
+	if candidateCount == 0 {
+		return service.ErrRedeemCodeUsed
+	}
+	if insertedCount == 0 {
+		return service.ErrRedeemCodeUsedByUser
+	}
+	if updatedCount == 0 {
+		return service.ErrRedeemCodeUsed
+	}
+	return nil
+}
+
+func (r *redeemCodeRepository) useLegacy(ctx context.Context, id, userID int64, usedAt time.Time) error {
+	client := clientFromContext(ctx, r.client)
 	affected, err := client.RedeemCode.Update().
 		Where(redeemcode.IDEQ(id), redeemcode.StatusEQ(service.StatusUnused)).
 		SetStatus(service.StatusUsed).
 		SetUsedBy(userID).
-		SetUsedAt(now).
+		SetUsedAt(usedAt).
 		Save(ctx)
 	if err != nil {
 		return err
 	}
 	if affected == 0 {
 		return service.ErrRedeemCodeUsed
-	}
-	_, err = client.ExecContext(ctx, `
-UPDATE redeem_codes
-SET used_count = CASE WHEN used_count < 1 THEN 1 ELSE used_count END
-WHERE id = $1
-`, id)
-	if err != nil && !isUndefinedColumn(err) {
-		return err
 	}
 	return nil
 }
