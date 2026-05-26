@@ -322,18 +322,25 @@ jobs:
       - name: Check deployment configuration
         id: deploy_config
         env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST || '87.76.198.249' }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER || 'root' }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22748' }}
+          DEPLOY_DIR: ${{ vars.DEPLOY_DIR || '/root/proj/sub2api' }}
+          DEPLOY_COMPOSE_FILE: ${{ vars.DEPLOY_COMPOSE_FILE || 'docker-compose.yml' }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_DIR: ${{ secrets.DEPLOY_DIR }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME || vars.DOCKERHUB_USERNAME }}
         run: |
-          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_USER" ] || [ -z "$DEPLOY_SSH_KEY" ] || [ -z "$DEPLOY_DIR" ] || [ -z "$DOCKERHUB_USERNAME" ]; then
+          if [ -z "$DEPLOY_SSH_KEY" ] || [ -z "$DOCKERHUB_USERNAME" ]; then
             echo "Deployment secrets are incomplete; skipping production deploy."
             echo "enabled=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "enabled=true" >> "$GITHUB_OUTPUT"
+          echo "host=$DEPLOY_HOST" >> "$GITHUB_OUTPUT"
+          echo "user=$DEPLOY_USER" >> "$GITHUB_OUTPUT"
+          echo "port=$DEPLOY_PORT" >> "$GITHUB_OUTPUT"
+          echo "dir=$DEPLOY_DIR" >> "$GITHUB_OUTPUT"
+          echo "compose_file=$DEPLOY_COMPOSE_FILE" >> "$GITHUB_OUTPUT"
 
       - name: Resolve release version
         if: ${{ steps.deploy_config.outputs.enabled == 'true' }}
@@ -354,30 +361,68 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          timeout 30s ssh-keyscan -p "${{ secrets.DEPLOY_PORT || '22748' }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+          for attempt in 1 2 3; do
+            if timeout 30s ssh-keyscan -p "${{ steps.deploy_config.outputs.port }}" -H "${{ steps.deploy_config.outputs.host }}" >> ~/.ssh/known_hosts; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            sleep "$((attempt * 5))"
+          done
 
       - name: Upload remote deployment files
         if: ${{ steps.deploy_config.outputs.enabled == 'true' }}
         env:
-          DEPLOY_DIR: ${{ secrets.DEPLOY_DIR }}
-          COMPOSE_FILE: ${{ secrets.DEPLOY_COMPOSE_FILE || 'docker-compose.yml' }}
+          DEPLOY_HOST: ${{ steps.deploy_config.outputs.host }}
+          DEPLOY_USER: ${{ steps.deploy_config.outputs.user }}
+          DEPLOY_PORT: ${{ steps.deploy_config.outputs.port }}
+          DEPLOY_DIR: ${{ steps.deploy_config.outputs.dir }}
+          COMPOSE_FILE: ${{ steps.deploy_config.outputs.compose_file }}
         run: |
           if [ ! -f "deploy/$COMPOSE_FILE" ]; then
             echo "deploy/$COMPOSE_FILE not found"
             exit 1
           fi
           SSH_OPTS="-i $HOME/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=10 -o ServerAliveCountMax=3"
-          timeout 60s ssh $SSH_OPTS -p "${{ secrets.DEPLOY_PORT || '22748' }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "cat > /tmp/sub2api-remote-deploy.sh" < deploy/remote-deploy.sh
-          timeout 60s ssh $SSH_OPTS -p "${{ secrets.DEPLOY_PORT || '22748' }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "cat > '${DEPLOY_DIR}/${COMPOSE_FILE}'" < "deploy/$COMPOSE_FILE"
+          for attempt in 1 2 3; do
+            if timeout 60s ssh $SSH_OPTS -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" "cat > /tmp/sub2api-remote-deploy.sh" < deploy/remote-deploy.sh; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            sleep "$((attempt * 5))"
+          done
+          for attempt in 1 2 3; do
+            if timeout 60s ssh $SSH_OPTS -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" "cat > '${DEPLOY_DIR}/${COMPOSE_FILE}'" < "deploy/$COMPOSE_FILE"; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            sleep "$((attempt * 5))"
+          done
 
       - name: Deploy on remote host
         if: ${{ steps.deploy_config.outputs.enabled == 'true' }}
         env:
-          DEPLOY_DIR: ${{ secrets.DEPLOY_DIR }}
+          DEPLOY_HOST: ${{ steps.deploy_config.outputs.host }}
+          DEPLOY_USER: ${{ steps.deploy_config.outputs.user }}
+          DEPLOY_PORT: ${{ steps.deploy_config.outputs.port }}
+          DEPLOY_DIR: ${{ steps.deploy_config.outputs.dir }}
           SUB2API_IMAGE: ${{ secrets.DOCKERHUB_USERNAME || vars.DOCKERHUB_USERNAME }}/sub2api
           SUB2API_TAG: ${{ steps.version.outputs.version }}
-          COMPOSE_FILE: ${{ secrets.DEPLOY_COMPOSE_FILE || 'docker-compose.yml' }}
+          COMPOSE_FILE: ${{ steps.deploy_config.outputs.compose_file }}
           HEALTH_URL: ${{ secrets.DEPLOY_HEALTH_URL }}
         run: |
-          timeout 300s ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -p "${{ secrets.DEPLOY_PORT || '22748' }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "DEPLOY_DIR='$DEPLOY_DIR' SUB2API_IMAGE='$SUB2API_IMAGE' SUB2API_TAG='$SUB2API_TAG' COMPOSE_FILE='$COMPOSE_FILE' HEALTH_URL='$HEALTH_URL' sh /tmp/sub2api-remote-deploy.sh"
+          for attempt in 1 2 3; do
+            if timeout 300s ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+              "DEPLOY_DIR='$DEPLOY_DIR' SUB2API_IMAGE='$SUB2API_IMAGE' SUB2API_TAG='$SUB2API_TAG' COMPOSE_FILE='$COMPOSE_FILE' HEALTH_URL='$HEALTH_URL' sh /tmp/sub2api-remote-deploy.sh"; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            sleep "$((attempt * 5))"
+          done
