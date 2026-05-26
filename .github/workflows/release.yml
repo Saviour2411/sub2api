@@ -367,8 +367,8 @@ jobs:
             exit 1
           fi
           SSH_OPTS="-i $HOME/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=10 -o ServerAliveCountMax=3"
-          timeout 60s scp -O $SSH_OPTS -P "${{ secrets.DEPLOY_PORT || '22' }}" deploy/remote-deploy.sh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/sub2api-remote-deploy.sh"
-          timeout 60s scp -O $SSH_OPTS -P "${{ secrets.DEPLOY_PORT || '22' }}" "deploy/$COMPOSE_FILE" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${DEPLOY_DIR}/${COMPOSE_FILE}"
+          timeout 60s ssh $SSH_OPTS -p "${{ secrets.DEPLOY_PORT || '22' }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "cat > /tmp/sub2api-remote-deploy.sh" < deploy/remote-deploy.sh
+          timeout 60s ssh $SSH_OPTS -p "${{ secrets.DEPLOY_PORT || '22' }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "cat > '${DEPLOY_DIR}/${COMPOSE_FILE}'" < "deploy/$COMPOSE_FILE"
 
       - name: Deploy on remote host
         if: ${{ steps.deploy_config.outputs.enabled == 'true' }}
