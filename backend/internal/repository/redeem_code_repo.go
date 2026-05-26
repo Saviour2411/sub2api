@@ -2,6 +2,9 @@ package repository
 
 import (
 	"context"
+	"database/sql"
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -10,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/lib/pq"
 
 	entsql "entgo.io/ent/dialect/sql"
 )
@@ -23,7 +27,8 @@ func NewRedeemCodeRepository(client *dbent.Client) service.RedeemCodeRepository 
 }
 
 func (r *redeemCodeRepository) Create(ctx context.Context, code *service.RedeemCode) error {
-	created, err := r.client.RedeemCode.Create().
+	client := clientFromContext(ctx, r.client)
+	created, err := client.RedeemCode.Create().
 		SetCode(code.Code).
 		SetType(code.Type).
 		SetValue(code.Value).
@@ -38,6 +43,13 @@ func (r *redeemCodeRepository) Create(ctx context.Context, code *service.RedeemC
 	if err == nil {
 		code.ID = created.ID
 		code.CreatedAt = created.CreatedAt
+		code.MaxUses = normalizeRedeemMaxUses(code.MaxUses)
+		if err := r.updateUsageLimits(ctx, code.ID, code.MaxUses, code.UsedCount); err != nil {
+			if isUndefinedColumn(err) {
+				return nil
+			}
+			return err
+		}
 	}
 	return err
 }
@@ -77,7 +89,11 @@ func (r *redeemCodeRepository) GetByID(ctx context.Context, id int64) (*service.
 		}
 		return nil, err
 	}
-	return redeemCodeEntityToService(m), nil
+	out := redeemCodeEntityToService(m)
+	if err := r.fillUsageLimits(ctx, []*service.RedeemCode{out}); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (r *redeemCodeRepository) GetByCode(ctx context.Context, code string) (*service.RedeemCode, error) {
@@ -90,7 +106,11 @@ func (r *redeemCodeRepository) GetByCode(ctx context.Context, code string) (*ser
 		}
 		return nil, err
 	}
-	return redeemCodeEntityToService(m), nil
+	out := redeemCodeEntityToService(m)
+	if err := r.fillUsageLimits(ctx, []*service.RedeemCode{out}); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (r *redeemCodeRepository) Delete(ctx context.Context, id int64) error {
@@ -161,6 +181,9 @@ func (r *redeemCodeRepository) ListWithFilters(ctx context.Context, params pagin
 	}
 
 	outCodes := redeemCodeEntitiesToService(codes)
+	if err := r.fillUsageLimitsForValues(ctx, outCodes); err != nil {
+		return nil, nil, err
+	}
 
 	return outCodes, paginationResultFromTotal(int64(total), params), nil
 }
@@ -233,6 +256,13 @@ func (r *redeemCodeRepository) Update(ctx context.Context, code *service.RedeemC
 		return err
 	}
 	code.CreatedAt = updated.CreatedAt
+	code.MaxUses = normalizeRedeemMaxUses(code.MaxUses)
+	if err := r.updateUsageLimits(ctx, code.ID, code.MaxUses, code.UsedCount); err != nil {
+		if isUndefinedColumn(err) {
+			return nil
+		}
+		return err
+	}
 	return nil
 }
 
@@ -251,6 +281,14 @@ func (r *redeemCodeRepository) Use(ctx context.Context, id, userID int64) error 
 	if affected == 0 {
 		return service.ErrRedeemCodeUsed
 	}
+	_, err = client.ExecContext(ctx, `
+UPDATE redeem_codes
+SET used_count = CASE WHEN used_count < 1 THEN 1 ELSE used_count END
+WHERE id = $1
+`, id)
+	if err != nil && !isUndefinedColumn(err) {
+		return err
+	}
 	return nil
 }
 
@@ -259,7 +297,15 @@ func (r *redeemCodeRepository) ListByUser(ctx context.Context, userID int64, lim
 		limit = 10
 	}
 
-	codes, err := r.client.RedeemCode.Query().
+	codes, _, err := r.listUsageHistoryByUser(ctx, userID, pagination.PaginationParams{Page: 1, PageSize: limit}, "")
+	if err == nil {
+		return codes, nil
+	}
+	if !isMissingRedeemUsageTable(err) {
+		return nil, err
+	}
+
+	entities, err := r.client.RedeemCode.Query().
 		Where(redeemcode.UsedByEQ(userID)).
 		WithGroup().
 		Order(dbent.Desc(redeemcode.FieldUsedAt)).
@@ -269,12 +315,24 @@ func (r *redeemCodeRepository) ListByUser(ctx context.Context, userID int64, lim
 		return nil, err
 	}
 
-	return redeemCodeEntitiesToService(codes), nil
+	out := redeemCodeEntitiesToService(entities)
+	if err := r.fillUsageLimitsForValues(ctx, out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // ListByUserPaginated returns paginated balance/concurrency history for a user.
 // Supports optional type filter (e.g. "balance", "admin_balance", "concurrency", "admin_concurrency", "subscription").
 func (r *redeemCodeRepository) ListByUserPaginated(ctx context.Context, userID int64, params pagination.PaginationParams, codeType string) ([]service.RedeemCode, *pagination.PaginationResult, error) {
+	codes, result, err := r.listUsageHistoryByUser(ctx, userID, params, codeType)
+	if err == nil {
+		return codes, result, nil
+	}
+	if !isMissingRedeemUsageTable(err) {
+		return nil, nil, err
+	}
+
 	q := r.client.RedeemCode.Query().
 		Where(redeemcode.UsedByEQ(userID))
 
@@ -288,7 +346,7 @@ func (r *redeemCodeRepository) ListByUserPaginated(ctx context.Context, userID i
 		return nil, nil, err
 	}
 
-	codes, err := q.
+	entities, err := q.
 		WithGroup().
 		Offset(params.Offset()).
 		Limit(params.Limit()).
@@ -298,15 +356,27 @@ func (r *redeemCodeRepository) ListByUserPaginated(ctx context.Context, userID i
 		return nil, nil, err
 	}
 
-	return redeemCodeEntitiesToService(codes), paginationResultFromTotal(int64(total), params), nil
+	out := redeemCodeEntitiesToService(entities)
+	if err := r.fillUsageLimitsForValues(ctx, out); err != nil {
+		return nil, nil, err
+	}
+	return out, paginationResultFromTotal(int64(total), params), nil
 }
 
 // SumPositiveBalanceByUser returns total recharged amount (sum of value > 0 where type is balance/admin_balance).
 func (r *redeemCodeRepository) SumPositiveBalanceByUser(ctx context.Context, userID int64) (float64, error) {
+	total, err := r.sumPositiveBalanceUsageByUser(ctx, userID)
+	if err == nil {
+		return total, nil
+	}
+	if !isMissingRedeemUsageTable(err) {
+		return 0, err
+	}
+
 	var result []struct {
 		Sum float64 `json:"sum"`
 	}
-	err := r.client.RedeemCode.Query().
+	err = r.client.RedeemCode.Query().
 		Where(
 			redeemcode.UsedByEQ(userID),
 			redeemcode.ValueGT(0),
@@ -323,6 +393,167 @@ func (r *redeemCodeRepository) SumPositiveBalanceByUser(ctx context.Context, use
 	return result[0].Sum, nil
 }
 
+func (r *redeemCodeRepository) listUsageHistoryByUser(ctx context.Context, userID int64, params pagination.PaginationParams, codeType string) ([]service.RedeemCode, *pagination.PaginationResult, error) {
+	client := clientFromContext(ctx, r.client)
+	filterSQL := "WHERE rcu.user_id = $1"
+	args := []any{userID}
+	if codeType != "" {
+		filterSQL += " AND rcu.type = $2"
+		args = append(args, codeType)
+	}
+
+	countRows, err := client.QueryContext(ctx, "SELECT COUNT(*) FROM redeem_code_usages rcu "+filterSQL, args...)
+	if err != nil {
+		return nil, nil, err
+	}
+	var total int64
+	if countRows.Next() {
+		if err := countRows.Scan(&total); err != nil {
+			_ = countRows.Close()
+			return nil, nil, err
+		}
+	}
+	if err := countRows.Close(); err != nil {
+		return nil, nil, err
+	}
+
+	queryArgs := append([]any{}, args...)
+	limitArg := len(queryArgs) + 1
+	offsetArg := len(queryArgs) + 2
+	queryArgs = append(queryArgs, params.Limit(), params.Offset())
+	rows, err := client.QueryContext(ctx, fmt.Sprintf(`
+SELECT rcu.redeem_code_id,
+       rc.code,
+       rcu.type,
+       rcu.value,
+       rc.status,
+       rc.max_uses,
+       rc.used_count,
+       rcu.user_id,
+       rcu.used_at,
+       rc.created_at,
+       rc.expires_at,
+       rcu.group_id,
+       rcu.validity_days,
+       rc.notes,
+       g.id,
+       g.name,
+       g.platform,
+       g.rate_multiplier,
+       g.subscription_type
+FROM redeem_code_usages rcu
+JOIN redeem_codes rc ON rc.id = rcu.redeem_code_id
+LEFT JOIN groups g ON g.id = rcu.group_id
+%s
+ORDER BY rcu.used_at DESC, rcu.id DESC
+LIMIT $%d OFFSET $%d
+`, filterSQL, limitArg, offsetArg), queryArgs...)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+
+	codes := make([]service.RedeemCode, 0, params.Limit())
+	for rows.Next() {
+		code, err := scanRedeemUsageHistoryRow(rows)
+		if err != nil {
+			return nil, nil, err
+		}
+		codes = append(codes, code)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	return codes, paginationResultFromTotal(total, params), nil
+}
+
+func (r *redeemCodeRepository) sumPositiveBalanceUsageByUser(ctx context.Context, userID int64) (float64, error) {
+	client := clientFromContext(ctx, r.client)
+	rows, err := client.QueryContext(ctx, `
+SELECT COALESCE(SUM(value), 0)
+FROM redeem_code_usages
+WHERE user_id = $1
+  AND value > 0
+  AND type IN ('balance', 'admin_balance')
+`, userID)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return 0, rows.Err()
+	}
+	var total float64
+	if err := rows.Scan(&total); err != nil {
+		return 0, err
+	}
+	return total, rows.Err()
+}
+
+func scanRedeemUsageHistoryRow(rows *sql.Rows) (service.RedeemCode, error) {
+	var (
+		code              service.RedeemCode
+		usedBy            int64
+		usedAt            time.Time
+		expiresAt         sql.NullTime
+		groupID           sql.NullInt64
+		notes             sql.NullString
+		groupRowID        sql.NullInt64
+		groupName         sql.NullString
+		groupPlatform     sql.NullString
+		groupRate         sql.NullFloat64
+		groupSubscription sql.NullString
+	)
+	if err := rows.Scan(
+		&code.ID,
+		&code.Code,
+		&code.Type,
+		&code.Value,
+		&code.Status,
+		&code.MaxUses,
+		&code.UsedCount,
+		&usedBy,
+		&usedAt,
+		&code.CreatedAt,
+		&expiresAt,
+		&groupID,
+		&code.ValidityDays,
+		&notes,
+		&groupRowID,
+		&groupName,
+		&groupPlatform,
+		&groupRate,
+		&groupSubscription,
+	); err != nil {
+		return code, err
+	}
+	code.UsedBy = &usedBy
+	code.UsedAt = &usedAt
+	code.Status = service.StatusUsed
+	if expiresAt.Valid {
+		code.ExpiresAt = &expiresAt.Time
+	}
+	if groupID.Valid {
+		code.GroupID = &groupID.Int64
+	}
+	if notes.Valid {
+		code.Notes = notes.String
+	}
+	if code.MaxUses <= 0 {
+		code.MaxUses = 1
+	}
+	if groupRowID.Valid {
+		code.Group = &service.Group{
+			ID:               groupRowID.Int64,
+			Name:             groupName.String,
+			Platform:         groupPlatform.String,
+			RateMultiplier:   groupRate.Float64,
+			SubscriptionType: groupSubscription.String,
+		}
+	}
+	return code, nil
+}
+
 func redeemCodeEntityToService(m *dbent.RedeemCode) *service.RedeemCode {
 	if m == nil {
 		return nil
@@ -333,6 +564,8 @@ func redeemCodeEntityToService(m *dbent.RedeemCode) *service.RedeemCode {
 		Type:         m.Type,
 		Value:        m.Value,
 		Status:       m.Status,
+		MaxUses:      1,
+		UsedCount:    0,
 		UsedBy:       m.UsedBy,
 		UsedAt:       m.UsedAt,
 		Notes:        derefString(m.Notes),
@@ -348,6 +581,82 @@ func redeemCodeEntityToService(m *dbent.RedeemCode) *service.RedeemCode {
 		out.Group = groupEntityToService(m.Edges.Group)
 	}
 	return out
+}
+
+func normalizeRedeemMaxUses(maxUses int) int {
+	if maxUses <= 0 {
+		return 1
+	}
+	return maxUses
+}
+
+func (r *redeemCodeRepository) updateUsageLimits(ctx context.Context, id int64, maxUses, usedCount int) error {
+	client := clientFromContext(ctx, r.client)
+	_, err := client.ExecContext(ctx, `
+UPDATE redeem_codes
+SET max_uses = $2, used_count = $3
+WHERE id = $1
+`, id, normalizeRedeemMaxUses(maxUses), usedCount)
+	return err
+}
+
+func (r *redeemCodeRepository) fillUsageLimitsForValues(ctx context.Context, codes []service.RedeemCode) error {
+	ptrs := make([]*service.RedeemCode, 0, len(codes))
+	for i := range codes {
+		ptrs = append(ptrs, &codes[i])
+	}
+	return r.fillUsageLimits(ctx, ptrs)
+}
+
+func (r *redeemCodeRepository) fillUsageLimits(ctx context.Context, codes []*service.RedeemCode) error {
+	for _, code := range codes {
+		if code == nil {
+			continue
+		}
+		client := clientFromContext(ctx, r.client)
+		rows, err := client.QueryContext(ctx, `
+SELECT max_uses, used_count
+FROM redeem_codes
+WHERE id = $1
+`, code.ID)
+		if err != nil {
+			if isUndefinedColumn(err) {
+				return nil
+			}
+			return err
+		}
+		if rows.Next() {
+			if err := rows.Scan(&code.MaxUses, &code.UsedCount); err != nil {
+				_ = rows.Close()
+				return err
+			}
+			code.MaxUses = normalizeRedeemMaxUses(code.MaxUses)
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func isUndefinedColumn(err error) bool {
+	var pqErr *pq.Error
+	return err != nil && errors.As(err, &pqErr) && pqErr.Code == "42703"
+}
+
+func isMissingRedeemUsageTable(err error) bool {
+	if err == nil {
+		return false
+	}
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) {
+		return pqErr.Code == "42P01" || pqErr.Code == "42703"
+	}
+	return strings.Contains(err.Error(), "redeem_code_usages")
 }
 
 func redeemCodeEntitiesToService(models []*dbent.RedeemCode) []service.RedeemCode {

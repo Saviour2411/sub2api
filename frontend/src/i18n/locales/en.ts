@@ -4199,6 +4199,7 @@ export default {
         code: 'Code',
         type: 'Type',
         value: 'Value',
+        usage: 'Usage',
         status: 'Status',
         usedBy: 'Used By',
         usedAt: 'Used At',
@@ -4237,6 +4238,7 @@ export default {
       amount: 'Amount ($)',
       value: 'Value',
       count: 'Count',
+      maxUses: 'Uses per code',
       generating: 'Generating...',
       generate: 'Generate',
       copyAll: 'Copy All',
@@ -4252,6 +4254,11 @@ export default {
       failedToDelete: 'Failed to delete code',
       failedToDeleteUnused: 'Failed to delete unused codes',
       failedToCopy: 'Failed to copy codes',
+      viewUsages: 'Usages',
+      usageRecords: 'Usage Records',
+      usageUser: 'User',
+      noUsages: 'No usage records',
+      failedToLoadUsages: 'Failed to load usage records',
       types: {
         balance: 'Balance',
         concurrency: 'Concurrency',
@@ -4274,6 +4281,7 @@ export default {
       days: ' days',
       status: {
         unused: 'Unused',
+        partial: 'Partially Used',
         used: 'Used',
         expired: 'Expired',
         disabled: 'Disabled'

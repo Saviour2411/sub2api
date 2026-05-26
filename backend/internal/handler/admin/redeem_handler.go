@@ -12,6 +12,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -37,6 +38,7 @@ type GenerateRedeemCodesRequest struct {
 	Count         int        `json:"count" binding:"required,min=1,max=100"`
 	Type          string     `json:"type" binding:"required,oneof=balance concurrency subscription invitation"`
 	Value         float64    `json:"value"`
+	MaxUses       int        `json:"max_uses" binding:"omitempty,min=1"`
 	GroupID       *int64     `json:"group_id"`      // 订阅类型必填
 	ValidityDays  int        `json:"validity_days"` // 订阅类型使用，正数增加/负数退款扣减
 	ExpiresAt     *time.Time `json:"expires_at"`
@@ -147,6 +149,7 @@ func (h *RedeemHandler) Generate(c *gin.Context) {
 			Count:        req.Count,
 			Type:         req.Type,
 			Value:        req.Value,
+			MaxUses:      req.MaxUses,
 			GroupID:      req.GroupID,
 			ValidityDays: req.ValidityDays,
 			ExpiresAt:    expiresAt,
@@ -325,6 +328,39 @@ func (h *RedeemHandler) Expire(c *gin.Context) {
 	response.Success(c, dto.RedeemCodeFromServiceAdmin(code))
 }
 
+// GetUsages 查询指定兑换码的使用记录。
+// GET /api/v1/admin/redeem-codes/:id/usages
+func (h *RedeemHandler) GetUsages(c *gin.Context) {
+	if h.redeemService == nil {
+		response.InternalError(c, "redeem service not configured")
+		return
+	}
+
+	codeID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid redeem code ID")
+		return
+	}
+
+	page, pageSize := response.ParsePagination(c)
+	params := pagination.PaginationParams{
+		Page:     page,
+		PageSize: pageSize,
+	}
+
+	usages, result, err := h.redeemService.ListRedeemUsages(c.Request.Context(), codeID, params)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	out := make([]dto.RedeemCodeUsage, 0, len(usages))
+	for i := range usages {
+		out = append(out, *dto.RedeemCodeUsageFromService(&usages[i]))
+	}
+	response.Paginated(c, out, result.Total, page, pageSize)
+}
+
 // GetStats handles getting redeem code statistics
 // GET /api/v1/admin/redeem-codes/stats
 func (h *RedeemHandler) GetStats(c *gin.Context) {
@@ -367,7 +403,7 @@ func (h *RedeemHandler) Export(c *gin.Context) {
 	writer := csv.NewWriter(&buf)
 
 	// Write header
-	if err := writer.Write([]string{"id", "code", "type", "value", "status", "used_by", "used_by_email", "used_at", "expires_at", "created_at"}); err != nil {
+	if err := writer.Write([]string{"id", "code", "type", "value", "status", "used_count", "max_uses", "remaining_uses", "used_by", "used_by_email", "used_at", "expires_at", "created_at"}); err != nil {
 		response.InternalError(c, "Failed to export redeem codes: "+err.Error())
 		return
 	}
@@ -396,6 +432,9 @@ func (h *RedeemHandler) Export(c *gin.Context) {
 			code.Type,
 			fmt.Sprintf("%.2f", code.Value),
 			code.Status,
+			fmt.Sprintf("%d", code.UsedCount),
+			fmt.Sprintf("%d", code.MaxUses),
+			fmt.Sprintf("%d", code.RemainingUses()),
 			usedBy,
 			usedByEmail,
 			usedAt,

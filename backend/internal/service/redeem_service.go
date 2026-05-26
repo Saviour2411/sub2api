@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -16,12 +17,13 @@ import (
 )
 
 var (
-	ErrRedeemCodeNotFound  = infraerrors.NotFound("REDEEM_CODE_NOT_FOUND", "redeem code not found")
-	ErrRedeemCodeUsed      = infraerrors.Conflict("REDEEM_CODE_USED", "redeem code already used")
-	ErrRedeemCodeExpired   = infraerrors.Conflict("REDEEM_CODE_EXPIRED", "redeem code expired")
-	ErrInsufficientBalance = infraerrors.BadRequest("INSUFFICIENT_BALANCE", "insufficient balance")
-	ErrRedeemRateLimited   = infraerrors.TooManyRequests("REDEEM_RATE_LIMITED", "too many failed attempts, please try again later")
-	ErrRedeemCodeLocked    = infraerrors.Conflict("REDEEM_CODE_LOCKED", "redeem code is being processed, please try again")
+	ErrRedeemCodeNotFound   = infraerrors.NotFound("REDEEM_CODE_NOT_FOUND", "redeem code not found")
+	ErrRedeemCodeUsed       = infraerrors.Conflict("REDEEM_CODE_USED", "redeem code already used")
+	ErrRedeemCodeUsedByUser = infraerrors.Conflict("REDEEM_CODE_ALREADY_USED_BY_USER", "you have already used this redeem code")
+	ErrRedeemCodeExpired    = infraerrors.Conflict("REDEEM_CODE_EXPIRED", "redeem code expired")
+	ErrInsufficientBalance  = infraerrors.BadRequest("INSUFFICIENT_BALANCE", "insufficient balance")
+	ErrRedeemRateLimited    = infraerrors.TooManyRequests("REDEEM_RATE_LIMITED", "too many failed attempts, please try again later")
+	ErrRedeemCodeLocked     = infraerrors.Conflict("REDEEM_CODE_LOCKED", "redeem code is being processed, please try again")
 )
 
 const (
@@ -270,6 +272,166 @@ func (s *RedeemService) releaseRedeemLock(ctx context.Context, code string) {
 	_ = s.cache.ReleaseRedeemLock(ctx, code)
 }
 
+func (s *RedeemService) entClientFromContext(ctx context.Context) *dbent.Client {
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		return tx.Client()
+	}
+	return s.entClient
+}
+
+func (s *RedeemService) getRedeemCodeForUpdate(ctx context.Context, code string) (*RedeemCode, error) {
+	client := s.entClientFromContext(ctx)
+	rows, err := client.QueryContext(ctx, `
+SELECT id, code, type, value, status, max_uses, used_count,
+       used_by, used_at, notes, created_at, expires_at, group_id, validity_days
+FROM redeem_codes
+WHERE code = $1
+FOR UPDATE
+`, code)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		return nil, ErrRedeemCodeNotFound
+	}
+
+	var (
+		out       RedeemCode
+		usedBy    sql.NullInt64
+		usedAt    sql.NullTime
+		notes     sql.NullString
+		expiresAt sql.NullTime
+		groupID   sql.NullInt64
+	)
+	if err := rows.Scan(
+		&out.ID,
+		&out.Code,
+		&out.Type,
+		&out.Value,
+		&out.Status,
+		&out.MaxUses,
+		&out.UsedCount,
+		&usedBy,
+		&usedAt,
+		&notes,
+		&out.CreatedAt,
+		&expiresAt,
+		&groupID,
+		&out.ValidityDays,
+	); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if usedBy.Valid {
+		out.UsedBy = &usedBy.Int64
+	}
+	if usedAt.Valid {
+		out.UsedAt = &usedAt.Time
+	}
+	if notes.Valid {
+		out.Notes = notes.String
+	}
+	if expiresAt.Valid {
+		out.ExpiresAt = &expiresAt.Time
+	}
+	if groupID.Valid {
+		out.GroupID = &groupID.Int64
+	}
+	if out.MaxUses <= 0 {
+		out.MaxUses = 1
+	}
+	return &out, nil
+}
+
+func (s *RedeemService) hasRedeemedCode(ctx context.Context, redeemCodeID, userID int64) (bool, error) {
+	client := s.entClientFromContext(ctx)
+	rows, err := client.QueryContext(ctx, `
+SELECT 1
+FROM redeem_code_usages
+WHERE redeem_code_id = $1 AND user_id = $2
+LIMIT 1
+`, redeemCodeID, userID)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+
+	if rows.Next() {
+		return true, rows.Err()
+	}
+	return false, rows.Err()
+}
+
+func (s *RedeemService) createRedeemUsage(ctx context.Context, redeemCode *RedeemCode, userID int64, usedAt time.Time) error {
+	client := s.entClientFromContext(ctx)
+	result, err := client.ExecContext(ctx, `
+INSERT INTO redeem_code_usages (
+    redeem_code_id,
+    user_id,
+    type,
+    value,
+    group_id,
+    validity_days,
+    used_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (redeem_code_id, user_id) DO NOTHING
+`, redeemCode.ID, userID, redeemCode.Type, redeemCode.Value, nullableInt64Arg(redeemCode.GroupID), redeemCode.ValidityDays, usedAt)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err == nil && affected == 0 {
+		return ErrRedeemCodeUsedByUser
+	}
+	return nil
+}
+
+func (s *RedeemService) incrementRedeemUsageCount(ctx context.Context, redeemCode *RedeemCode, userID int64, usedAt time.Time) error {
+	client := s.entClientFromContext(ctx)
+	rows, err := client.QueryContext(ctx, `
+UPDATE redeem_codes
+SET used_count = used_count + 1,
+    used_by = $2,
+    used_at = $3,
+    status = CASE WHEN used_count + 1 >= max_uses THEN $4 ELSE status END
+WHERE id = $1
+  AND status = $5
+  AND used_count < max_uses
+RETURNING used_count, max_uses, status
+`, redeemCode.ID, userID, usedAt, StatusUsed, StatusUnused)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		return ErrRedeemCodeUsed
+	}
+	if err := rows.Scan(&redeemCode.UsedCount, &redeemCode.MaxUses, &redeemCode.Status); err != nil {
+		return err
+	}
+	redeemCode.UsedBy = &userID
+	redeemCode.UsedAt = &usedAt
+	return rows.Err()
+}
+
+func nullableInt64Arg(v *int64) any {
+	if v == nil {
+		return nil
+	}
+	return *v
+}
+
 // Redeem 使用兑换码
 func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (*RedeemCode, error) {
 	// 检查限流
@@ -282,31 +444,6 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 		return nil, ErrRedeemCodeLocked
 	}
 	defer s.releaseRedeemLock(ctx, code)
-
-	// 查找兑换码
-	redeemCode, err := s.redeemRepo.GetByCode(ctx, code)
-	if err != nil {
-		if errors.Is(err, ErrRedeemCodeNotFound) {
-			s.incrementRedeemErrorCount(ctx, userID)
-			return nil, ErrRedeemCodeNotFound
-		}
-		return nil, fmt.Errorf("get redeem code: %w", err)
-	}
-
-	// 检查兑换码状态和码本身的过期时间
-	if redeemCode.IsExpired() {
-		s.incrementRedeemErrorCount(ctx, userID)
-		return nil, ErrRedeemCodeExpired
-	}
-	if !redeemCode.CanUse() {
-		s.incrementRedeemErrorCount(ctx, userID)
-		return nil, ErrRedeemCodeUsed
-	}
-
-	// 验证兑换码类型的前置条件
-	if redeemCode.Type == RedeemTypeSubscription && redeemCode.GroupID == nil {
-		return nil, infraerrors.BadRequest("REDEEM_CODE_INVALID", "invalid subscription redeem code: missing group_id")
-	}
 
 	// 获取用户信息
 	user, err := s.userRepo.GetByID(ctx, userID)
@@ -324,13 +461,48 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 	// 将事务放入 context，使 repository 方法能够使用同一事务
 	txCtx := dbent.NewTxContext(ctx, tx)
 
-	// 【关键】先标记兑换码为已使用，确保并发安全
-	// 利用数据库乐观锁（WHERE status = 'unused'）保证原子性
-	if err := s.redeemRepo.Use(txCtx, redeemCode.ID, userID); err != nil {
-		if errors.Is(err, ErrRedeemCodeNotFound) || errors.Is(err, ErrRedeemCodeUsed) {
-			return nil, ErrRedeemCodeUsed
+	redeemCode, err := s.getRedeemCodeForUpdate(txCtx, code)
+	if err != nil {
+		if errors.Is(err, ErrRedeemCodeNotFound) {
+			s.incrementRedeemErrorCount(ctx, userID)
+			return nil, ErrRedeemCodeNotFound
 		}
-		return nil, fmt.Errorf("mark code as used: %w", err)
+		return nil, fmt.Errorf("get redeem code: %w", err)
+	}
+
+	// 检查兑换码状态、次数和过期时间。
+	if redeemCode.IsExpired() {
+		s.incrementRedeemErrorCount(ctx, userID)
+		return nil, ErrRedeemCodeExpired
+	}
+	if !redeemCode.CanUse() {
+		s.incrementRedeemErrorCount(ctx, userID)
+		return nil, ErrRedeemCodeUsed
+	}
+
+	if redeemCode.Type == RedeemTypeSubscription && redeemCode.GroupID == nil {
+		return nil, infraerrors.BadRequest("REDEEM_CODE_INVALID", "invalid subscription redeem code: missing group_id")
+	}
+	if redeemCode.Type == RedeemTypeSubscription && redeemCode.ValidityDays == 0 {
+		redeemCode.ValidityDays = 30
+	}
+
+	alreadyUsed, err := s.hasRedeemedCode(txCtx, redeemCode.ID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("check redeem usage: %w", err)
+	}
+	if alreadyUsed {
+		s.incrementRedeemErrorCount(ctx, userID)
+		return nil, ErrRedeemCodeUsedByUser
+	}
+
+	now := time.Now()
+	if err := s.createRedeemUsage(txCtx, redeemCode, userID, now); err != nil {
+		if errors.Is(err, ErrRedeemCodeUsedByUser) {
+			s.incrementRedeemErrorCount(ctx, userID)
+			return nil, err
+		}
+		return nil, fmt.Errorf("create redeem usage: %w", err)
 	}
 
 	// 执行兑换逻辑（兑换码已被锁定，此时可安全操作）
@@ -380,6 +552,14 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 
 	default:
 		return nil, fmt.Errorf("unsupported redeem type: %s", redeemCode.Type)
+	}
+
+	if err := s.incrementRedeemUsageCount(txCtx, redeemCode, userID, now); err != nil {
+		if errors.Is(err, ErrRedeemCodeUsed) {
+			s.incrementRedeemErrorCount(ctx, userID)
+			return nil, ErrRedeemCodeUsed
+		}
+		return nil, fmt.Errorf("increment redeem usage count: %w", err)
 	}
 
 	// 提交事务
@@ -500,7 +680,7 @@ func (s *RedeemService) Delete(ctx context.Context, id int64) error {
 	}
 
 	// 不允许删除已使用的兑换码
-	if code.IsUsed() {
+	if code.IsUsed() || code.UsedCount > 0 {
 		return infraerrors.Conflict("REDEEM_CODE_DELETE_USED", "cannot delete used redeem code")
 	}
 
@@ -534,6 +714,133 @@ func (s *RedeemService) GetUserHistory(ctx context.Context, userID int64, limit 
 		return nil, fmt.Errorf("get user redeem history: %w", err)
 	}
 	return codes, nil
+}
+
+func (s *RedeemService) ListRedeemUsages(ctx context.Context, redeemCodeID int64, params pagination.PaginationParams) ([]RedeemCodeUsage, *pagination.PaginationResult, error) {
+	if s.entClient == nil {
+		return nil, nil, fmt.Errorf("ent client is not configured")
+	}
+	client := s.entClientFromContext(ctx)
+
+	countRows, err := client.QueryContext(ctx, `
+SELECT COUNT(*)
+FROM redeem_code_usages
+WHERE redeem_code_id = $1
+`, redeemCodeID)
+	if err != nil {
+		return nil, nil, err
+	}
+	var total int64
+	if countRows.Next() {
+		if err := countRows.Scan(&total); err != nil {
+			_ = countRows.Close()
+			return nil, nil, err
+		}
+	}
+	if err := countRows.Close(); err != nil {
+		return nil, nil, err
+	}
+
+	rows, err := client.QueryContext(ctx, `
+SELECT rcu.id,
+       rcu.redeem_code_id,
+       rcu.user_id,
+       rcu.type,
+       rcu.value,
+       rcu.group_id,
+       rcu.validity_days,
+       rcu.used_at,
+       u.email,
+       u.username,
+       g.id,
+       g.name,
+       g.platform,
+       g.rate_multiplier,
+       g.subscription_type
+FROM redeem_code_usages rcu
+LEFT JOIN users u ON u.id = rcu.user_id
+LEFT JOIN groups g ON g.id = rcu.group_id
+WHERE rcu.redeem_code_id = $1
+ORDER BY rcu.used_at DESC, rcu.id DESC
+LIMIT $2 OFFSET $3
+`, redeemCodeID, params.Limit(), params.Offset())
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+
+	usages := make([]RedeemCodeUsage, 0, params.Limit())
+	for rows.Next() {
+		usage, err := scanRedeemUsageRow(rows)
+		if err != nil {
+			return nil, nil, err
+		}
+		usages = append(usages, usage)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+
+	pages := int64(0)
+	limit := int64(params.Limit())
+	if limit > 0 {
+		pages = (total + limit - 1) / limit
+	}
+	return usages, &pagination.PaginationResult{
+		Total:    total,
+		Page:     params.Page,
+		PageSize: params.Limit(),
+		Pages:    int(pages),
+	}, nil
+}
+
+func scanRedeemUsageRow(rows *sql.Rows) (RedeemCodeUsage, error) {
+	var (
+		usage         RedeemCodeUsage
+		groupID       sql.NullInt64
+		email         sql.NullString
+		username      sql.NullString
+		groupRowID    sql.NullInt64
+		groupName     sql.NullString
+		groupPlatform sql.NullString
+		groupRate     sql.NullFloat64
+		groupSubType  sql.NullString
+	)
+	if err := rows.Scan(
+		&usage.ID,
+		&usage.RedeemCodeID,
+		&usage.UserID,
+		&usage.Type,
+		&usage.Value,
+		&groupID,
+		&usage.ValidityDays,
+		&usage.UsedAt,
+		&email,
+		&username,
+		&groupRowID,
+		&groupName,
+		&groupPlatform,
+		&groupRate,
+		&groupSubType,
+	); err != nil {
+		return usage, err
+	}
+	if groupID.Valid {
+		usage.GroupID = &groupID.Int64
+	}
+	if email.Valid || username.Valid {
+		usage.User = &User{ID: usage.UserID, Email: email.String, Username: username.String}
+	}
+	if groupRowID.Valid {
+		usage.Group = &Group{
+			ID:               groupRowID.Int64,
+			Name:             groupName.String,
+			Platform:         groupPlatform.String,
+			RateMultiplier:   groupRate.Float64,
+			SubscriptionType: groupSubType.String,
+		}
+	}
+	return usage, nil
 }
 
 // reduceOrCancelSubscription 缩短订阅天数，剩余天数 <= 0 时取消订阅

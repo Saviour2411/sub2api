@@ -12,6 +12,8 @@ type RedeemCode struct {
 	Type      string
 	Value     float64
 	Status    string
+	MaxUses   int
+	UsedCount int
 	UsedBy    *int64
 	UsedAt    *time.Time
 	Notes     string
@@ -44,7 +46,44 @@ func (r *RedeemCode) IsExpiredAt(now time.Time) bool {
 }
 
 func (r *RedeemCode) CanUse() bool {
-	return r.Status == StatusUnused && !r.IsExpired()
+	if r.Status != StatusUnused || r.IsExpired() {
+		return false
+	}
+	maxUses := r.MaxUses
+	if maxUses <= 0 {
+		maxUses = 1
+	}
+	return r.UsedCount < maxUses
+}
+
+func (r *RedeemCode) RemainingUses() int {
+	if r == nil {
+		return 0
+	}
+	maxUses := r.MaxUses
+	if maxUses <= 0 {
+		maxUses = 1
+	}
+	remaining := maxUses - r.UsedCount
+	if remaining < 0 {
+		return 0
+	}
+	return remaining
+}
+
+type RedeemCodeUsage struct {
+	ID           int64
+	RedeemCodeID int64
+	UserID       int64
+	Type         string
+	Value        float64
+	GroupID      *int64
+	ValidityDays int
+	UsedAt       time.Time
+
+	User       *User
+	RedeemCode *RedeemCode
+	Group      *Group
 }
 
 func GenerateRedeemCode() (string, error) {

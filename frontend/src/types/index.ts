@@ -1175,7 +1175,19 @@ export interface CodexSessionImportResult {
 
 // ==================== Usage & Redeem Types ====================
 
-export type RedeemCodeType = 'balance' | 'concurrency' | 'subscription' | 'invitation'
+export type RedeemCodeType =
+  | 'balance'
+  | 'concurrency'
+  | 'subscription'
+  | 'invitation'
+  | 'admin_balance'
+  | 'admin_concurrency'
+  | 'affiliate_balance'
+  | 'daily_checkin_balance'
+export type GenerateRedeemCodeType = Extract<
+  RedeemCodeType,
+  'balance' | 'concurrency' | 'subscription' | 'invitation'
+>
 export type UsageRequestType = 'unknown' | 'sync' | 'stream' | 'ws_v2'
 export type ImageSizeSource = 'output' | 'input' | 'default' | 'legacy'
 export type ImageSizeBreakdown = Record<string, number>
@@ -1301,6 +1313,9 @@ export interface RedeemCode {
   type: RedeemCodeType
   value: number
   status: 'active' | 'used' | 'expired' | 'unused'
+  max_uses: number
+  used_count: number
+  remaining_uses: number
   used_by: number | null
   used_at: string | null
   created_at: string
@@ -1314,12 +1329,26 @@ export interface RedeemCode {
 
 export interface GenerateRedeemCodesRequest {
   count: number
-  type: RedeemCodeType
+  type: GenerateRedeemCodeType
   value: number
+  max_uses?: number
   group_id?: number | null // 订阅类型专用
   validity_days?: number // 订阅类型专用
   expires_at?: string | null
   expires_in_days?: number
+}
+
+export interface RedeemCodeUsage {
+  id: number
+  redeem_code_id: number
+  user_id: number
+  type: RedeemCodeType
+  value: number
+  group_id?: number | null
+  validity_days: number
+  used_at: string
+  user?: User
+  group?: Group
 }
 
 export interface RedeemCodeRequest {

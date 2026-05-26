@@ -399,6 +399,7 @@ type GenerateRedeemCodesInput struct {
 	Count        int
 	Type         string
 	Value        float64
+	MaxUses      int
 	GroupID      *int64 // 订阅类型专用：关联的分组ID
 	ValidityDays int    // 订阅类型专用：有效天数
 	ExpiresAt    *time.Time
@@ -3285,7 +3286,14 @@ func (s *adminServiceImpl) GenerateRedeemCodes(ctx context.Context, input *Gener
 			Type:      input.Type,
 			Value:     input.Value,
 			Status:    StatusUnused,
+			MaxUses:   input.MaxUses,
 			ExpiresAt: input.ExpiresAt,
+		}
+		if code.MaxUses <= 0 {
+			code.MaxUses = 1
+		}
+		if input.Type == RedeemTypeInvitation {
+			code.MaxUses = 1
 		}
 		// 订阅类型专用字段
 		if input.Type == RedeemTypeSubscription {
@@ -3304,12 +3312,23 @@ func (s *adminServiceImpl) GenerateRedeemCodes(ctx context.Context, input *Gener
 }
 
 func (s *adminServiceImpl) DeleteRedeemCode(ctx context.Context, id int64) error {
+	code, err := s.redeemCodeRepo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if code.IsUsed() || code.UsedCount > 0 {
+		return infraerrors.Conflict("REDEEM_CODE_DELETE_USED", "cannot delete used redeem code")
+	}
 	return s.redeemCodeRepo.Delete(ctx, id)
 }
 
 func (s *adminServiceImpl) BatchDeleteRedeemCodes(ctx context.Context, ids []int64) (int64, error) {
 	var deleted int64
 	for _, id := range ids {
+		code, err := s.redeemCodeRepo.GetByID(ctx, id)
+		if err != nil || code.IsUsed() || code.UsedCount > 0 {
+			continue
+		}
 		if err := s.redeemCodeRepo.Delete(ctx, id); err == nil {
 			deleted++
 		}

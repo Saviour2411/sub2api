@@ -330,15 +330,18 @@ type ProxyAccountSummary struct {
 }
 
 type RedeemCode struct {
-	ID        int64      `json:"id"`
-	Code      string     `json:"code"`
-	Type      string     `json:"type"`
-	Value     float64    `json:"value"`
-	Status    string     `json:"status"`
-	UsedBy    *int64     `json:"used_by"`
-	UsedAt    *time.Time `json:"used_at"`
-	CreatedAt time.Time  `json:"created_at"`
-	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	ID            int64      `json:"id"`
+	Code          string     `json:"code"`
+	Type          string     `json:"type"`
+	Value         float64    `json:"value"`
+	Status        string     `json:"status"`
+	MaxUses       int        `json:"max_uses"`
+	UsedCount     int        `json:"used_count"`
+	RemainingUses int        `json:"remaining_uses"`
+	UsedBy        *int64     `json:"used_by"`
+	UsedAt        *time.Time `json:"used_at"`
+	CreatedAt     time.Time  `json:"created_at"`
+	ExpiresAt     *time.Time `json:"expires_at,omitempty"`
 
 	GroupID      *int64 `json:"group_id"`
 	ValidityDays int    `json:"validity_days"`
@@ -357,6 +360,19 @@ type AdminRedeemCode struct {
 	RedeemCode
 
 	Notes string `json:"notes"`
+}
+
+type RedeemCodeUsage struct {
+	ID           int64     `json:"id"`
+	RedeemCodeID int64     `json:"redeem_code_id"`
+	UserID       int64     `json:"user_id"`
+	Type         string    `json:"type"`
+	Value        float64   `json:"value"`
+	GroupID      *int64    `json:"group_id,omitempty"`
+	ValidityDays int       `json:"validity_days"`
+	UsedAt       time.Time `json:"used_at"`
+	User         *User     `json:"user,omitempty"`
+	Group        *Group    `json:"group,omitempty"`
 }
 
 // UsageLog 是普通用户接口使用的 usage log DTO（不包含管理员字段）。

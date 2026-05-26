@@ -1,22 +1,24 @@
 /**
- * Admin Redeem Codes API endpoints
- * Handles redeem code generation and management for administrators
+ * 管理端兑换码 API。
+ * 处理管理员生成和管理兑换码的请求。
  */
 
 import { apiClient } from '../client'
 import type {
   RedeemCode,
+  RedeemCodeUsage,
   GenerateRedeemCodesRequest,
+  GenerateRedeemCodeType,
   RedeemCodeType,
   PaginatedResponse
 } from '@/types'
 
 /**
- * List all redeem codes with pagination
- * @param page - Page number (default: 1)
- * @param pageSize - Items per page (default: 20)
- * @param filters - Optional filters
- * @returns Paginated list of redeem codes
+ * 分页查询兑换码列表。
+ * @param page 页码，默认 1
+ * @param pageSize 每页数量，默认 20
+ * @param filters 可选筛选条件
+ * @returns 分页兑换码列表
  */
 export async function list(
   page: number = 1,
@@ -44,9 +46,9 @@ export async function list(
 }
 
 /**
- * Get redeem code by ID
- * @param id - Redeem code ID
- * @returns Redeem code details
+ * 按 ID 查询兑换码详情。
+ * @param id 兑换码 ID
+ * @returns 兑换码详情
  */
 export async function getById(id: number): Promise<RedeemCode> {
   const { data } = await apiClient.get<RedeemCode>(`/admin/redeem-codes/${id}`)
@@ -54,19 +56,20 @@ export async function getById(id: number): Promise<RedeemCode> {
 }
 
 /**
- * Generate new redeem codes
- * @param count - Number of codes to generate
- * @param type - Type of redeem code
- * @param value - Value of the code
- * @param groupId - Group ID (required for subscription type)
- * @param validityDays - Validity days (for subscription type)
- * @param expiresInDays - Days before the code itself expires
- * @returns Array of generated redeem codes
+ * 生成兑换码。
+ * @param count 生成数量
+ * @param type 兑换码类型
+ * @param value 面值
+ * @param groupId 订阅分组 ID，订阅类型必填
+ * @param validityDays 订阅有效天数
+ * @param expiresInDays 兑换码自身过期天数
+ * @returns 生成后的兑换码列表
  */
 export async function generate(
   count: number,
-  type: RedeemCodeType,
+  type: GenerateRedeemCodeType,
   value: number,
+  maxUses?: number,
   groupId?: number | null,
   validityDays?: number,
   expiresInDays?: number | null
@@ -74,7 +77,8 @@ export async function generate(
   const payload: GenerateRedeemCodesRequest = {
     count,
     type,
-    value
+    value,
+    max_uses: maxUses && maxUses > 1 ? maxUses : undefined
   }
 
   // 订阅类型专用字段
@@ -92,10 +96,27 @@ export async function generate(
   return data
 }
 
+export async function getUsages(
+  id: number,
+  page: number = 1,
+  pageSize: number = 20
+): Promise<PaginatedResponse<RedeemCodeUsage>> {
+  const { data } = await apiClient.get<PaginatedResponse<RedeemCodeUsage>>(
+    `/admin/redeem-codes/${id}/usages`,
+    {
+      params: {
+        page,
+        page_size: pageSize
+      }
+    }
+  )
+  return data
+}
+
 /**
- * Delete redeem code
- * @param id - Redeem code ID
- * @returns Success confirmation
+ * 删除兑换码。
+ * @param id 兑换码 ID
+ * @returns 删除结果
  */
 export async function deleteCode(id: number): Promise<{ message: string }> {
   const { data } = await apiClient.delete<{ message: string }>(`/admin/redeem-codes/${id}`)
@@ -103,9 +124,9 @@ export async function deleteCode(id: number): Promise<{ message: string }> {
 }
 
 /**
- * Batch delete redeem codes
- * @param ids - Array of redeem code IDs
- * @returns Success confirmation
+ * 批量删除兑换码。
+ * @param ids 兑换码 ID 列表
+ * @returns 删除结果
  */
 export async function batchDelete(ids: number[]): Promise<{
   deleted: number
@@ -119,9 +140,9 @@ export async function batchDelete(ids: number[]): Promise<{
 }
 
 /**
- * Expire redeem code
- * @param id - Redeem code ID
- * @returns Updated redeem code
+ * 手动过期兑换码。
+ * @param id 兑换码 ID
+ * @returns 更新后的兑换码
  */
 export async function expire(id: number): Promise<RedeemCode> {
   const { data } = await apiClient.post<RedeemCode>(`/admin/redeem-codes/${id}/expire`)
@@ -129,8 +150,8 @@ export async function expire(id: number): Promise<RedeemCode> {
 }
 
 /**
- * Get redeem code statistics
- * @returns Statistics about redeem codes
+ * 查询兑换码统计。
+ * @returns 兑换码统计信息
  */
 export async function getStats(): Promise<{
   total_codes: number
@@ -152,9 +173,9 @@ export async function getStats(): Promise<{
 }
 
 /**
- * Export redeem codes to CSV
- * @param filters - Optional filters
- * @returns CSV data as blob
+ * 导出兑换码 CSV。
+ * @param filters 可选筛选条件
+ * @returns CSV Blob
  */
 export async function exportCodes(filters?: {
   type?: RedeemCodeType
@@ -177,6 +198,7 @@ export const redeemAPI = {
   delete: deleteCode,
   batchDelete,
   expire,
+  getUsages,
   getStats,
   exportCodes
 }

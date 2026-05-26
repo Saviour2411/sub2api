@@ -525,19 +525,22 @@ func RedeemCodeFromServiceAdmin(rc *service.RedeemCode) *AdminRedeemCode {
 
 func redeemCodeFromServiceBase(rc *service.RedeemCode) RedeemCode {
 	out := RedeemCode{
-		ID:           rc.ID,
-		Code:         rc.Code,
-		Type:         rc.Type,
-		Value:        rc.Value,
-		Status:       rc.Status,
-		UsedBy:       rc.UsedBy,
-		UsedAt:       rc.UsedAt,
-		CreatedAt:    rc.CreatedAt,
-		ExpiresAt:    rc.ExpiresAt,
-		GroupID:      rc.GroupID,
-		ValidityDays: rc.ValidityDays,
-		User:         UserFromServiceShallow(rc.User),
-		Group:        GroupFromServiceShallow(rc.Group),
+		ID:            rc.ID,
+		Code:          rc.Code,
+		Type:          rc.Type,
+		Value:         rc.Value,
+		Status:        rc.Status,
+		MaxUses:       rc.MaxUses,
+		UsedCount:     rc.UsedCount,
+		RemainingUses: rc.RemainingUses(),
+		UsedBy:        rc.UsedBy,
+		UsedAt:        rc.UsedAt,
+		CreatedAt:     rc.CreatedAt,
+		ExpiresAt:     rc.ExpiresAt,
+		GroupID:       rc.GroupID,
+		ValidityDays:  rc.ValidityDays,
+		User:          UserFromServiceShallow(rc.User),
+		Group:         GroupFromServiceShallow(rc.Group),
 	}
 	if rc.IsExpired() {
 		out.Status = service.StatusExpired
@@ -550,6 +553,24 @@ func redeemCodeFromServiceBase(rc *service.RedeemCode) RedeemCode {
 	}
 
 	return out
+}
+
+func RedeemCodeUsageFromService(usage *service.RedeemCodeUsage) *RedeemCodeUsage {
+	if usage == nil {
+		return nil
+	}
+	return &RedeemCodeUsage{
+		ID:           usage.ID,
+		RedeemCodeID: usage.RedeemCodeID,
+		UserID:       usage.UserID,
+		Type:         usage.Type,
+		Value:        usage.Value,
+		GroupID:      usage.GroupID,
+		ValidityDays: usage.ValidityDays,
+		UsedAt:       usage.UsedAt,
+		User:         UserFromServiceShallow(usage.User),
+		Group:        GroupFromServiceShallow(usage.Group),
+	}
 }
 
 // AccountSummaryFromService returns a minimal AccountSummary for usage log display.
