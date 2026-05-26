@@ -361,15 +361,7 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          for attempt in 1 2 3; do
-            if timeout 30s ssh-keyscan -p "${{ steps.deploy_config.outputs.port }}" -H "${{ steps.deploy_config.outputs.host }}" >> ~/.ssh/known_hosts; then
-              break
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              exit 1
-            fi
-            sleep "$((attempt * 5))"
-          done
+          touch ~/.ssh/known_hosts
 
       - name: Diagnose SSH connectivity
         if: ${{ steps.deploy_config.outputs.enabled == 'true' }}
@@ -378,7 +370,7 @@ jobs:
           DEPLOY_USER: ${{ steps.deploy_config.outputs.user }}
           DEPLOY_PORT: ${{ steps.deploy_config.outputs.port }}
         run: |
-          SSH_OPTS="-i $HOME/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=10 -o PasswordAuthentication=no -o PreferredAuthentications=publickey"
+          SSH_OPTS="-i $HOME/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$HOME/.ssh/known_hosts -o PasswordAuthentication=no -o PreferredAuthentications=publickey"
 
           echo "部署目标: ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PORT}"
           echo "Runner 出口 IPv4:"
@@ -420,7 +412,7 @@ jobs:
             echo "deploy/$COMPOSE_FILE not found"
             exit 1
           fi
-          SSH_OPTS="-i $HOME/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=10 -o ServerAliveCountMax=3"
+          SSH_OPTS="-i $HOME/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$HOME/.ssh/known_hosts -o ServerAliveInterval=10 -o ServerAliveCountMax=3"
 
           upload_with_retry() {
             label="$1"
@@ -470,7 +462,7 @@ jobs:
           for attempt in 1 2 3; do
             echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] 远端部署: 第 ${attempt}/3 次尝试"
             set +e
-            timeout 300s ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+            timeout 300s ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$HOME/.ssh/known_hosts -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
               "DEPLOY_DIR='$DEPLOY_DIR' SUB2API_IMAGE='$SUB2API_IMAGE' SUB2API_TAG='$SUB2API_TAG' COMPOSE_FILE='$COMPOSE_FILE' HEALTH_URL='$HEALTH_URL' sh /tmp/sub2api-remote-deploy.sh"
             status=$?
             set -e
