@@ -1,7 +1,7 @@
 <template>
   <div class="mecha-app-shell min-h-screen bg-[#edf3fa] text-slate-900 dark:bg-[#03070d] dark:text-slate-100">
     <!-- Background Decoration -->
-    <div class="pointer-events-none fixed inset-0 bg-mesh-gradient"></div>
+    <div class="pointer-events-none fixed inset-0 bg-mesh-gradient dark:bg-none"></div>
     <div class="pointer-events-none fixed inset-0 opacity-90 dark:opacity-100">
       <div class="hud-grid absolute inset-0"></div>
       <div class="absolute inset-0 bg-[linear-gradient(115deg,transparent_0%,transparent_42%,rgba(23,152,242,0.12)_42.2%,transparent_43.1%,transparent_72%,rgba(255,111,56,0.09)_72.2%,transparent_73%)]"></div>

@@ -1,6 +1,6 @@
 <template>
   <div class="card overflow-hidden">
-    <div class="overflow-auto">
+    <div class="overflow-x-auto">
       <DataTable
         :columns="columns"
         :data="data"

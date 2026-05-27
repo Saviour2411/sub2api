@@ -57,7 +57,7 @@ describe('TablePageLayout', () => {
     expect(result.event.defaultPrevented).toBe(true)
   })
 
-  it('表格还能继续向下滚动时不拦截滚轮', () => {
+  it('表格还能继续向下滚动时在表格内消费滚轮', () => {
     const wrapper = mount(TablePageLayout, {
       slots: {
         table: '<div class="table-wrapper"></div>'
@@ -68,8 +68,9 @@ describe('TablePageLayout', () => {
 
     const result = dispatchWheel(wrapper.find('.table-scroll-container').element, 120)
 
-    expect(result.allowed).toBe(true)
-    expect(result.event.defaultPrevented).toBe(false)
+    expect(result.allowed).toBe(false)
+    expect(result.event.defaultPrevented).toBe(true)
+    expect(tableWrapper.scrollTop).toBe(240)
   })
 
   it('表格滚到底时阻止继续向下滚动外层页面', () => {

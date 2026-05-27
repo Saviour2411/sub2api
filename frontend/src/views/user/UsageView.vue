@@ -747,6 +747,11 @@ const buildUsageQueryParams = (page: number, pageSize: number): UsageTableQueryP
   sort_order: sortState.sort_order
 })
 
+const getUsageMaxPage = (total: number, pageSize: number) => {
+  if (total <= 0) return 1
+  return Math.max(1, Math.ceil(total / pageSize))
+}
+
 const loadUsageLogs = async () => {
   if (abortController) {
     abortController.abort()
@@ -756,16 +761,27 @@ const loadUsageLogs = async () => {
   const { signal } = currentAbortController
   loading.value = true
   try {
-    const response = await usageAPI.query(
+    let response = await usageAPI.query(
       buildUsageQueryParams(pagination.page, pagination.page_size),
       { signal }
     )
     if (signal.aborted) {
       return
     }
+    const maxPage = getUsageMaxPage(response.total || 0, pagination.page_size)
+    if ((response.total || 0) > 0 && pagination.page > maxPage) {
+      pagination.page = maxPage
+      response = await usageAPI.query(
+        buildUsageQueryParams(pagination.page, pagination.page_size),
+        { signal }
+      )
+      if (signal.aborted) {
+        return
+      }
+    }
     usageLogs.value = response.items
     pagination.total = response.total
-    pagination.pages = response.pages
+    pagination.pages = response.pages || getUsageMaxPage(response.total || 0, pagination.page_size)
   } catch (error) {
     if (signal.aborted) {
       return

@@ -227,7 +227,7 @@ const getGranularityForRange = (start: string, end: string): 'day' | 'hour' => {
 const defaultRange = getLast24HoursRangeDates()
 const startDate = ref(defaultRange.start); const endDate = ref(defaultRange.end)
 const filters = ref<AdminUsageQueryParams>({ user_id: undefined, model: undefined, group_id: undefined, request_type: undefined, billing_type: null, start_date: startDate.value, end_date: endDate.value })
-const pagination = reactive({ page: 1, page_size: getPersistedPageSize(), total: 0 })
+const pagination = reactive({ page: 1, page_size: getPersistedPageSize(), total: 0, pages: 0 })
 const sortState = reactive({
   sort_by: 'created_at',
   sort_order: 'desc' as 'asc' | 'desc'
@@ -296,14 +296,31 @@ const buildUsageListParams = (
   }
 }
 
+const getUsageMaxPage = (total: number, pageSize: number) => {
+  if (total <= 0) return 1
+  return Math.max(1, Math.ceil(total / pageSize))
+}
+
 const loadLogs = async () => {
   abortController?.abort(); const c = new AbortController(); abortController = c; loading.value = true
   try {
-    const res = await adminAPI.usage.list(
+    let res = await adminAPI.usage.list(
       buildUsageListParams(pagination.page, pagination.page_size, false),
       { signal: c.signal }
     )
-    if(!c.signal.aborted) { usageLogs.value = res.items; pagination.total = res.total }
+    if (c.signal.aborted) return
+    const maxPage = getUsageMaxPage(res.total || 0, pagination.page_size)
+    if ((res.total || 0) > 0 && pagination.page > maxPage) {
+      pagination.page = maxPage
+      res = await adminAPI.usage.list(
+        buildUsageListParams(pagination.page, pagination.page_size, false),
+        { signal: c.signal }
+      )
+      if (c.signal.aborted) return
+    }
+    usageLogs.value = res.items
+    pagination.total = res.total
+    pagination.pages = res.pages || getUsageMaxPage(res.total || 0, pagination.page_size)
   } catch (error: any) { if(error?.name !== 'AbortError') console.error('Failed to load usage logs:', error) } finally { if(abortController === c) loading.value = false }
 }
 const loadStats = async () => {

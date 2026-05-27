@@ -150,6 +150,22 @@ describe('useTableLoader', () => {
       handlePageChange(0)
       expect(pagination.page).toBe(1) // 最小为 1
     })
+
+    it('load 后端总页数变小时自动回到最后一页并重新加载', async () => {
+      const fetchFn = vi.fn()
+        .mockResolvedValueOnce({ items: [], total: 21, pages: 2 })
+        .mockResolvedValueOnce({ items: [{ id: 21 }], total: 21, pages: 2 })
+      const { items, pagination, load } = useTableLoader({ fetchFn, pageSize: 20 })
+
+      pagination.page = 3
+
+      await load()
+
+      expect(fetchFn).toHaveBeenNthCalledWith(1, 3, 20, expect.anything(), expect.anything())
+      expect(fetchFn).toHaveBeenNthCalledWith(2, 2, 20, expect.anything(), expect.anything())
+      expect(pagination.page).toBe(2)
+      expect(items.value).toEqual([{ id: 21 }])
+    })
   })
 
   // --- 搜索防抖 ---

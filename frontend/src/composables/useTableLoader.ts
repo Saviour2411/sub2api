@@ -40,6 +40,11 @@ export function useTableLoader<T, P extends Record<string, any>>(options: TableL
     return error?.name === 'AbortError' || error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError'
   }
 
+  const getMaxPage = (total: number, pages: number) => {
+    if (total <= 0) return 1
+    return Math.max(1, pages || Math.ceil(total / pagination.page_size))
+  }
+
   const load = async () => {
     if (abortController) {
       abortController.abort()
@@ -49,12 +54,27 @@ export function useTableLoader<T, P extends Record<string, any>>(options: TableL
     loading.value = true
 
     try {
-      const response = await fetchFn(
+      let response = await fetchFn(
         pagination.page,
         pagination.page_size,
         toRaw(params) as P,
         { signal: currentController.signal }
       )
+      if (currentController.signal.aborted) return
+
+      const total = response.total || 0
+      const pages = response.pages || 0
+      const maxPage = getMaxPage(total, pages)
+      if (total > 0 && pagination.page > maxPage) {
+        pagination.page = maxPage
+        response = await fetchFn(
+          pagination.page,
+          pagination.page_size,
+          toRaw(params) as P,
+          { signal: currentController.signal }
+        )
+        if (currentController.signal.aborted) return
+      }
 
       items.value = response.items || []
       pagination.total = response.total || 0

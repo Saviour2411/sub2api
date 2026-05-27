@@ -51,12 +51,16 @@ const handleTableWheel = (event: WheelEvent) => {
     return
   }
 
-  const atTop = tableWrapper.scrollTop <= 0
-  const atBottom = tableWrapper.scrollTop + tableWrapper.clientHeight >= tableWrapper.scrollHeight - 1
+  const deltaY = event.deltaMode === WheelEvent.DOM_DELTA_LINE
+    ? event.deltaY * 16
+    : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+      ? event.deltaY * tableWrapper.clientHeight
+      : event.deltaY
+  const maxScrollTop = Math.max(0, tableWrapper.scrollHeight - tableWrapper.clientHeight)
+  const nextScrollTop = Math.min(Math.max(tableWrapper.scrollTop + deltaY, 0), maxScrollTop)
 
-  if ((event.deltaY < 0 && atTop) || (event.deltaY > 0 && atBottom)) {
-    event.preventDefault()
-  }
+  event.preventDefault()
+  tableWrapper.scrollTop = nextScrollTop
 }
 
 onMounted(() => {
