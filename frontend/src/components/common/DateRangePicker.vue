@@ -20,63 +20,73 @@
       </span>
     </button>
 
-    <Transition name="date-picker-dropdown">
-      <div v-if="isOpen" class="date-picker-dropdown">
-        <!-- Quick presets -->
-        <div class="date-picker-presets">
-          <button
-            v-for="preset in presets"
-            :key="preset.value"
-            @click="selectPreset(preset)"
-            :class="['date-picker-preset', isPresetActive(preset) && 'date-picker-preset-active']"
-          >
-            {{ t(preset.labelKey) }}
-          </button>
-        </div>
-
-        <div class="date-picker-divider"></div>
-
-        <!-- Custom date range inputs -->
-        <div class="date-picker-custom">
-          <div class="date-picker-field">
-            <label class="date-picker-label">{{ t('dates.startDate') }}</label>
-            <input
-              type="date"
-              v-model="localStartDate"
-              :max="localEndDate || tomorrow"
-              class="date-picker-input"
-              @change="onDateChange"
-            />
+    <Teleport to="body">
+      <Transition name="date-picker-dropdown">
+        <div
+          v-if="isOpen"
+          ref="dropdownRef"
+          class="date-picker-dropdown"
+          :class="instanceId"
+          :style="dropdownStyle"
+          @click.stop
+          @mousedown.stop
+        >
+          <!-- 快捷范围 -->
+          <div class="date-picker-presets">
+            <button
+              v-for="preset in presets"
+              :key="preset.value"
+              @click="selectPreset(preset)"
+              :class="['date-picker-preset', isPresetActive(preset) && 'date-picker-preset-active']"
+            >
+              {{ t(preset.labelKey) }}
+            </button>
           </div>
-          <div class="date-picker-separator">
-            <Icon name="arrowRight" size="sm" class="text-gray-400" />
-          </div>
-          <div class="date-picker-field">
-            <label class="date-picker-label">{{ t('dates.endDate') }}</label>
-            <input
-              type="date"
-              v-model="localEndDate"
-              :min="localStartDate"
-              :max="tomorrow"
-              class="date-picker-input"
-              @change="onDateChange"
-            />
-          </div>
-        </div>
 
-        <!-- Apply button -->
-        <div class="date-picker-actions">
-          <button @click="apply" class="date-picker-apply">
-            {{ t('dates.apply') }}
-          </button>
+          <div class="date-picker-divider"></div>
+
+          <!-- 自定义日期范围 -->
+          <div class="date-picker-custom">
+            <div class="date-picker-field">
+              <label class="date-picker-label">{{ t('dates.startDate') }}</label>
+              <input
+                type="date"
+                v-model="localStartDate"
+                :max="localEndDate || tomorrow"
+                class="date-picker-input"
+                @change="onDateChange"
+              />
+            </div>
+            <div class="date-picker-separator">
+              <Icon name="arrowRight" size="sm" class="text-gray-400" />
+            </div>
+            <div class="date-picker-field">
+              <label class="date-picker-label">{{ t('dates.endDate') }}</label>
+              <input
+                type="date"
+                v-model="localEndDate"
+                :min="localStartDate"
+                :max="tomorrow"
+                class="date-picker-input"
+                @change="onDateChange"
+              />
+            </div>
+          </div>
+
+          <!-- 应用按钮 -->
+          <div class="date-picker-actions">
+            <button @click="apply" class="date-picker-apply">
+              {{ t('dates.apply') }}
+            </button>
+          </div>
         </div>
-      </div>
-    </Transition>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 
@@ -102,14 +112,46 @@ const emit = defineEmits<Emits>()
 
 const { t, locale } = useI18n()
 
+const instanceId = `date-picker-${Math.random().toString(36).substring(2, 9)}`
+const dropdownViewportPadding = 12
+const dropdownPreferredWidth = 320
+
 const isOpen = ref(false)
 const containerRef = ref<HTMLElement | null>(null)
+const dropdownRef = ref<HTMLElement | null>(null)
 const localStartDate = ref(props.startDate)
 const localEndDate = ref(props.endDate)
 const activePreset = ref<string | null>('last24Hours')
+const triggerRect = ref<DOMRect | null>(null)
+const dropdownPosition = ref<'bottom' | 'top'>('bottom')
+
+const dropdownStyle = computed(() => {
+  if (!triggerRect.value) return {}
+
+  const rect = triggerRect.value
+  const viewportWidth = window.innerWidth || dropdownPreferredWidth + dropdownViewportPadding * 2
+  const maxWidth = Math.max(0, viewportWidth - dropdownViewportPadding * 2)
+  const width = Math.min(dropdownPreferredWidth, maxWidth)
+  const maxLeft = Math.max(dropdownViewportPadding, viewportWidth - width - dropdownViewportPadding)
+  const left = Math.min(Math.max(rect.left, dropdownViewportPadding), maxLeft)
+  const style: Record<string, string> = {
+    position: 'fixed',
+    left: `${left}px`,
+    width: `${width}px`,
+    zIndex: '100000020'
+  }
+
+  if (dropdownPosition.value === 'top') {
+    style.bottom = `${window.innerHeight - rect.top + 8}px`
+  } else {
+    style.top = `${rect.bottom + 8}px`
+  }
+
+  return style
+})
 
 const today = computed(() => {
-  // Use local timezone to avoid UTC timezone issues
+  // 使用本地时区，避免 UTC 日期偏移。
   const now = new Date()
   const year = now.getFullYear()
   const month = String(now.getMonth() + 1).padStart(2, '0')
@@ -117,15 +159,14 @@ const today = computed(() => {
   return `${year}-${month}-${day}`
 })
 
-// Tomorrow's date - used for max date to handle timezone differences
-// When user is in a timezone behind the server, "today" on server might be "tomorrow" locally
+// 明天日期用于 input 最大值，兼容用户本地时区与服务端时区不一致。
 const tomorrow = computed(() => {
   const d = new Date()
   d.setDate(d.getDate() + 1)
   return formatDateToString(d)
 })
 
-// Helper function to format date to YYYY-MM-DD using local timezone
+// 按本地时区格式化为 YYYY-MM-DD。
 const formatDateToString = (date: Date): string => {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -252,7 +293,7 @@ const selectPreset = (preset: DatePreset) => {
 }
 
 const onDateChange = () => {
-  // Check if current dates match any preset
+  // 同步判断当前日期是否命中预设范围。
   activePreset.value = null
   for (const preset of presets) {
     const range = preset.getRange()
@@ -267,6 +308,32 @@ const toggle = () => {
   isOpen.value = !isOpen.value
 }
 
+const updateTriggerRect = () => {
+  if (containerRef.value) {
+    triggerRect.value = containerRef.value.getBoundingClientRect()
+  }
+}
+
+const updateDropdownPosition = (dropdownHeight = 260) => {
+  if (!triggerRect.value) return
+
+  const spaceBelow = window.innerHeight - triggerRect.value.bottom
+  const spaceAbove = triggerRect.value.top
+  dropdownPosition.value = spaceBelow < dropdownHeight && spaceAbove > dropdownHeight ? 'top' : 'bottom'
+}
+
+const calculateDropdownPosition = () => {
+  updateTriggerRect()
+  updateDropdownPosition()
+
+  nextTick(() => {
+    if (!dropdownRef.value || !triggerRect.value) return
+
+    const dropdownHeight = dropdownRef.value.offsetHeight || 260
+    updateDropdownPosition(dropdownHeight)
+  })
+}
+
 const apply = () => {
   emit('update:startDate', localStartDate.value)
   emit('update:endDate', localEndDate.value)
@@ -279,7 +346,11 @@ const apply = () => {
 }
 
 const handleClickOutside = (event: MouseEvent) => {
-  if (containerRef.value && !containerRef.value.contains(event.target as Node)) {
+  const target = event.target as HTMLElement
+  const isInTrigger = containerRef.value?.contains(target)
+  const isInDropdown = !!target.closest(`.${instanceId}`)
+
+  if (!isInTrigger && !isInDropdown) {
     isOpen.value = false
   }
 }
@@ -290,7 +361,7 @@ const handleEscape = (event: KeyboardEvent) => {
   }
 }
 
-// Sync local state with props
+// 同步外部 props 到内部状态。
 watch(
   () => props.startDate,
   (val) => {
@@ -307,16 +378,29 @@ watch(
   }
 )
 
+watch(isOpen, (open) => {
+  if (open) {
+    calculateDropdownPosition()
+    window.addEventListener('scroll', updateTriggerRect, { capture: true, passive: true })
+    window.addEventListener('resize', calculateDropdownPosition)
+  } else {
+    window.removeEventListener('scroll', updateTriggerRect, { capture: true })
+    window.removeEventListener('resize', calculateDropdownPosition)
+  }
+})
+
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
   document.addEventListener('keydown', handleEscape)
-  // Initialize active preset detection
+  // 初始化当前预设识别。
   onDateChange()
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
   document.removeEventListener('keydown', handleEscape)
+  window.removeEventListener('scroll', updateTriggerRect, { capture: true })
+  window.removeEventListener('resize', calculateDropdownPosition)
 })
 </script>
 
@@ -350,13 +434,11 @@ onUnmounted(() => {
 }
 
 .date-picker-dropdown {
-  @apply absolute left-0 z-[100] mt-2;
   @apply bg-white dark:bg-dark-800;
   @apply rounded-xl;
   @apply border border-gray-200 dark:border-dark-700;
   @apply shadow-lg shadow-black/10 dark:shadow-black/30;
   @apply overflow-hidden;
-  @apply min-w-[320px];
 }
 
 .date-picker-presets {
@@ -423,7 +505,7 @@ onUnmounted(() => {
   @apply transition-colors duration-150;
 }
 
-/* Dropdown animation */
+/* 下拉动画 */
 .date-picker-dropdown-enter-active,
 .date-picker-dropdown-leave-active {
   transition: all 0.2s ease;

@@ -375,7 +375,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, toRaw, watch } from 'vue'
+import { ref, reactive, computed, nextTick, onMounted, onUnmounted, toRaw, watch } from 'vue'
 import { useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
@@ -770,6 +770,10 @@ const resetAutoRefreshCache = () => {
 
 const isFirstLoad = ref(true)
 
+const scrollAccountTableToTop = () => {
+  nextTick(() => dataTableRef.value?.scrollToTop?.())
+}
+
 const load = async () => {
   const requestParams = params as any
   hasPendingListSync.value = false
@@ -790,6 +794,7 @@ const reload = async () => {
   hasPendingListSync.value = false
   resetAutoRefreshCache()
   pendingTodayStatsRefresh.value = false
+  scrollAccountTableToTop()
   await baseReload()
   await refreshTodayStatsBatch()
 }
@@ -798,6 +803,7 @@ const debouncedReload = () => {
   hasPendingListSync.value = false
   resetAutoRefreshCache()
   pendingTodayStatsRefresh.value = true
+  scrollAccountTableToTop()
   baseDebouncedReload()
 }
 
@@ -805,6 +811,7 @@ const handlePageChange = (page: number) => {
   hasPendingListSync.value = false
   resetAutoRefreshCache()
   pendingTodayStatsRefresh.value = true
+  scrollAccountTableToTop()
   baseHandlePageChange(page)
 }
 
@@ -812,6 +819,7 @@ const handlePageSizeChange = (size: number) => {
   hasPendingListSync.value = false
   resetAutoRefreshCache()
   pendingTodayStatsRefresh.value = true
+  scrollAccountTableToTop()
   baseHandlePageSizeChange(size)
 }
 
@@ -825,6 +833,7 @@ const handleSort = (key: string, order: AccountSortOrder) => {
   hasPendingListSync.value = false
   resetAutoRefreshCache()
   pendingTodayStatsRefresh.value = true
+  scrollAccountTableToTop()
   load()
 }
 

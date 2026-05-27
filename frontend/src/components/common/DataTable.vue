@@ -229,46 +229,20 @@ const checkScrollable = () => {
 const checkActionsColumnWidth = () => {
   if (!tableWrapperRef.value) return
 
-  // 查找第一行的操作列单元格
   const firstActionCell = tableWrapperRef.value.querySelector('tbody tr:first-child td:last-child')
   if (!firstActionCell) return
 
-  // 查找操作列内容的容器div
   const actionsContainer = firstActionCell.querySelector('div')
   if (!actionsContainer) return
 
-  // 临时展开以测量完整宽度
-  const wasExpanded = actionsExpanded.value
-  actionsExpanded.value = true
+  const actionItems = actionsContainer.querySelectorAll('button, a, [role="button"]')
+  if (actionItems.length <= 2) {
+    actionsColumnNeedsExpanding.value = false
+    return
+  }
 
-  // 等待DOM更新
-  nextTick(() => {
-    // 测量所有按钮的总宽度
-    const actionItems = actionsContainer.querySelectorAll('button, a, [role="button"]')
-    if (actionItems.length <= 2) {
-      actionsColumnNeedsExpanding.value = false
-      actionsExpanded.value = wasExpanded
-      return
-    }
-
-    // 计算所有按钮的总宽度（包括gap）
-    let totalWidth = 0
-    actionItems.forEach((item, index) => {
-      totalWidth += (item as HTMLElement).offsetWidth
-      if (index < actionItems.length - 1) {
-        totalWidth += 4 // gap-1 = 4px
-      }
-    })
-
-    // 获取单元格可用宽度（减去padding）
-    const cellWidth = (firstActionCell as HTMLElement).clientWidth - 32 // 减去左右padding
-
-    // 如果总宽度超过可用宽度，需要展开功能
-    actionsColumnNeedsExpanding.value = totalWidth > cellWidth
-
-    // 恢复原来的展开状态
-    actionsExpanded.value = wasExpanded
-  })
+  const cellWidth = Math.max(0, (firstActionCell as HTMLElement).clientWidth - 32)
+  actionsColumnNeedsExpanding.value = (actionsContainer as HTMLElement).scrollWidth > cellWidth
 }
 
 // 监听尺寸变化
@@ -599,6 +573,13 @@ const measureElement = (el: any) => {
   }
 }
 
+const scrollToTop = () => {
+  if (tableWrapperRef.value) {
+    tableWrapperRef.value.scrollTop = 0
+  }
+  rowVirtualizer.value.scrollToOffset(0)
+}
+
 const hasActionsColumn = computed(() => {
   return props.columns.some(column => column.key === 'actions')
 })
@@ -701,6 +682,7 @@ defineExpose({
   sortedData,
   resolveRowKey,
   tableWrapperEl: tableWrapperRef,
+  scrollToTop,
 })
 </script>
 
