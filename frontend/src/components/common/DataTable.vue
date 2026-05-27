@@ -366,6 +366,8 @@ interface Props {
   overscan?: number
   /** 是否启用桌面端虚拟滚动；动态行高的小分页表格可关闭 */
   virtualized?: boolean
+  /** 外部查询上下文变化时重置表格滚动位置 */
+  scrollResetKey?: string | number
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -513,6 +515,15 @@ const columnsSignature = computed(() =>
   props.columns.map((column) => `${column.key}:${column.sortable ? '1' : '0'}`).join('|')
 )
 
+const clampScrollTop = () => {
+  const el = tableWrapperRef.value
+  if (!el) return
+  const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight)
+  if (el.scrollTop > maxScrollTop) {
+    el.scrollTop = maxScrollTop
+  }
+}
+
 watch(
   isDesktopViewport,
   async (isDesktop) => {
@@ -530,6 +541,7 @@ watch(
   [() => props.data.length, columnsSignature],
   async () => {
     await nextTick()
+    clampScrollTop()
     checkScrollable()
     checkActionsColumnWidth()
   },
@@ -615,6 +627,16 @@ const scrollToTop = () => {
     rowVirtualizer.value.scrollToOffset(0)
   }
 }
+
+watch(
+  () => props.scrollResetKey,
+  async () => {
+    await nextTick()
+    scrollToTop()
+    clampScrollTop()
+  },
+  { flush: 'post' }
+)
 
 const hasActionsColumn = computed(() => {
   return props.columns.some(column => column.key === 'actions')
