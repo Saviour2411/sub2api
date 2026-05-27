@@ -149,7 +149,36 @@
           </td>
         </tr>
 
-        <!-- Data rows (virtual scroll) -->
+        <!-- 数据行 -->
+        <template v-else-if="!isVirtualized">
+          <tr
+            v-for="(row, rowIndex) in sortedData"
+            :key="resolveRowKey(row, rowIndex)"
+            :data-row-id="resolveRowKey(row, rowIndex)"
+            :data-index="rowIndex"
+            class="hover:bg-gray-50 dark:hover:bg-dark-800"
+          >
+            <td
+              v-for="(column, colIndex) in columns"
+              :key="column.key"
+              :class="[
+                'whitespace-nowrap py-4 text-sm text-gray-900 dark:text-gray-100',
+                getAdaptivePaddingClass(),
+                getStickyColumnClass(column, colIndex),
+                column.class
+              ]"
+            >
+              <slot :name="`cell-${column.key}`"
+                    :row="row"
+                    :value="row[column.key]"
+                    :expanded="actionsExpanded">
+                {{ column.formatter
+                   ? column.formatter(row[column.key], row)
+                   : row[column.key] }}
+              </slot>
+            </td>
+          </tr>
+        </template>
         <template v-else>
           <tr v-if="virtualPaddingTop > 0" aria-hidden="true">
             <td :colspan="columns.length"
@@ -335,6 +364,8 @@ interface Props {
   estimateRowHeight?: number
   /** Number of rows to render beyond the visible area (default 5) */
   overscan?: number
+  /** 是否启用桌面端虚拟滚动；动态行高的小分页表格可关闭 */
+  virtualized?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -343,7 +374,8 @@ const props = withDefaults(defineProps<Props>(), {
   stickyActionsColumn: true,
   expandableActions: true,
   defaultSortOrder: 'asc',
-  serverSideSort: false
+  serverSideSort: false,
+  virtualized: true
 })
 
 const sortKey = ref<string>('')
@@ -547,8 +579,10 @@ const sortedData = computed(() => {
 })
 
 // --- Virtual scrolling ---
+const isVirtualized = computed(() => props.virtualized && isDesktopViewport.value)
+
 const rowVirtualizer = useVirtualizer(computed(() => ({
-  count: isDesktopViewport.value ? (sortedData.value?.length ?? 0) : 0,
+  count: isVirtualized.value ? (sortedData.value?.length ?? 0) : 0,
   getScrollElement: () => tableWrapperRef.value,
   estimateSize: () => props.estimateRowHeight ?? 56,
   overscan: props.overscan ?? 5,
@@ -577,7 +611,9 @@ const scrollToTop = () => {
   if (tableWrapperRef.value) {
     tableWrapperRef.value.scrollTop = 0
   }
-  rowVirtualizer.value.scrollToOffset(0)
+  if (isVirtualized.value) {
+    rowVirtualizer.value.scrollToOffset(0)
+  }
 }
 
 const hasActionsColumn = computed(() => {
