@@ -50,25 +50,25 @@
           <label class="input-label">{{ t('admin.accounts.currentApiKey') }}</label>
           <div class="flex gap-2">
             <input
-              :value="currentApiKey"
-              :type="showCurrentApiKey ? 'text' : 'password'"
+              :value="currentApiKeyDisplay"
+              :type="currentApiKeyInputType"
               readonly
               class="input min-w-0 flex-1 font-mono"
             />
             <button
               type="button"
-              @click="showCurrentApiKey = !showCurrentApiKey"
+              @click="toggleCurrentApiKeyVisibility"
               class="rounded-lg border border-gray-300 px-3 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-600 dark:text-gray-300 dark:hover:bg-dark-700"
-              :disabled="!currentApiKey"
+              :disabled="!canAccessCurrentApiKey || currentApiKeyLoading"
               :title="showCurrentApiKey ? t('admin.accounts.hideApiKey') : t('admin.accounts.showApiKey')"
             >
-              <Icon :name="showCurrentApiKey ? 'eyeOff' : 'eye'" size="sm" />
+              <Icon :name="currentApiKeyLoading ? 'refresh' : (showCurrentApiKey ? 'eyeOff' : 'eye')" size="sm" :class="{ 'animate-spin': currentApiKeyLoading }" />
             </button>
             <button
               type="button"
               @click="copyCurrentApiKey"
               class="rounded-lg border border-gray-300 px-3 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-600 dark:text-gray-300 dark:hover:bg-dark-700"
-              :disabled="!currentApiKey"
+              :disabled="!canAccessCurrentApiKey || currentApiKeyLoading"
               :title="t('admin.accounts.copyApiKey')"
             >
               <Icon name="copy" size="sm" />
@@ -589,25 +589,25 @@
           <label class="input-label">{{ t('admin.accounts.currentApiKey') }}</label>
           <div class="flex gap-2">
             <input
-              :value="currentApiKey"
-              :type="showCurrentApiKey ? 'text' : 'password'"
+              :value="currentApiKeyDisplay"
+              :type="currentApiKeyInputType"
               readonly
               class="input min-w-0 flex-1 font-mono"
             />
             <button
               type="button"
-              @click="showCurrentApiKey = !showCurrentApiKey"
+              @click="toggleCurrentApiKeyVisibility"
               class="rounded-lg border border-gray-300 px-3 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-600 dark:text-gray-300 dark:hover:bg-dark-700"
-              :disabled="!currentApiKey"
+              :disabled="!canAccessCurrentApiKey || currentApiKeyLoading"
               :title="showCurrentApiKey ? t('admin.accounts.hideApiKey') : t('admin.accounts.showApiKey')"
             >
-              <Icon :name="showCurrentApiKey ? 'eyeOff' : 'eye'" size="sm" />
+              <Icon :name="currentApiKeyLoading ? 'refresh' : (showCurrentApiKey ? 'eyeOff' : 'eye')" size="sm" :class="{ 'animate-spin': currentApiKeyLoading }" />
             </button>
             <button
               type="button"
               @click="copyCurrentApiKey"
               class="rounded-lg border border-gray-300 px-3 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-600 dark:text-gray-300 dark:hover:bg-dark-700"
-              :disabled="!currentApiKey"
+              :disabled="!canAccessCurrentApiKey || currentApiKeyLoading"
               :title="t('admin.accounts.copyApiKey')"
             >
               <Icon name="copy" size="sm" />
@@ -882,25 +882,25 @@
           <label class="input-label">{{ t('admin.accounts.currentApiKey') }}</label>
           <div class="flex gap-2">
             <input
-              :value="currentApiKey"
-              :type="showCurrentApiKey ? 'text' : 'password'"
+              :value="currentApiKeyDisplay"
+              :type="currentApiKeyInputType"
               readonly
               class="input min-w-0 flex-1 font-mono"
             />
             <button
               type="button"
-              @click="showCurrentApiKey = !showCurrentApiKey"
+              @click="toggleCurrentApiKeyVisibility"
               class="rounded-lg border border-gray-300 px-3 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-600 dark:text-gray-300 dark:hover:bg-dark-700"
-              :disabled="!currentApiKey"
+              :disabled="!canAccessCurrentApiKey || currentApiKeyLoading"
               :title="showCurrentApiKey ? t('admin.accounts.hideApiKey') : t('admin.accounts.showApiKey')"
             >
-              <Icon :name="showCurrentApiKey ? 'eyeOff' : 'eye'" size="sm" />
+              <Icon :name="currentApiKeyLoading ? 'refresh' : (showCurrentApiKey ? 'eyeOff' : 'eye')" size="sm" :class="{ 'animate-spin': currentApiKeyLoading }" />
             </button>
             <button
               type="button"
               @click="copyCurrentApiKey"
               class="rounded-lg border border-gray-300 px-3 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-600 dark:text-gray-300 dark:hover:bg-dark-700"
-              :disabled="!currentApiKey"
+              :disabled="!canAccessCurrentApiKey || currentApiKeyLoading"
               :title="t('admin.accounts.copyApiKey')"
             >
               <Icon name="copy" size="sm" />
@@ -2406,6 +2406,8 @@ const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
 const showCurrentApiKey = ref(false)
+const revealedApiKey = ref('')
+const currentApiKeyLoading = ref(false)
 // Bedrock credentials
 const editBedrockAccessKeyId = ref('')
 const editBedrockSecretAccessKey = ref('')
@@ -2671,12 +2673,63 @@ const defaultBaseUrl = computed(() => {
 
 const currentApiKey = computed(() => {
   const value = (props.account?.credentials as Record<string, unknown> | undefined)?.api_key
-  return typeof value === 'string' ? value : ''
+  if (typeof value === 'string' && value) return value
+  return revealedApiKey.value
 })
 
+const hasStoredCurrentApiKey = computed(() => {
+  if (currentApiKey.value) return true
+  return props.account?.credentials_status?.has_api_key === true
+})
+
+const canAccessCurrentApiKey = computed(() => hasStoredCurrentApiKey.value)
+
+const currentApiKeyDisplay = computed(() => {
+  if (currentApiKey.value) return currentApiKey.value
+  return hasStoredCurrentApiKey.value ? '********' : ''
+})
+
+const currentApiKeyInputType = computed(() => (
+  showCurrentApiKey.value && currentApiKey.value ? 'text' : 'password'
+))
+
+const loadCurrentApiKey = async () => {
+  if (currentApiKey.value) return currentApiKey.value
+  if (!props.account || !hasStoredCurrentApiKey.value) return ''
+
+  currentApiKeyLoading.value = true
+  try {
+    const result = await adminAPI.accounts.getApiKey(props.account.id)
+    revealedApiKey.value = result.api_key || ''
+    if (!revealedApiKey.value) {
+      appStore.showError(t('admin.accounts.apiKeyNotConfigured'))
+    }
+    return revealedApiKey.value
+  } catch (error) {
+    console.error('Failed to load account API Key:', error)
+    appStore.showError(t('admin.accounts.apiKeyLoadFailed'))
+    return ''
+  } finally {
+    currentApiKeyLoading.value = false
+  }
+}
+
+const toggleCurrentApiKeyVisibility = async () => {
+  if (showCurrentApiKey.value) {
+    showCurrentApiKey.value = false
+    return
+  }
+
+  const apiKey = await loadCurrentApiKey()
+  if (apiKey) {
+    showCurrentApiKey.value = true
+  }
+}
+
 const copyCurrentApiKey = async () => {
-  if (!currentApiKey.value) return
-  await copyToClipboard(currentApiKey.value, t('admin.accounts.apiKeyCopied'))
+  const apiKey = await loadCurrentApiKey()
+  if (!apiKey) return
+  await copyToClipboard(apiKey, t('admin.accounts.apiKeyCopied'))
 }
 
 const mixedChannelWarningMessageText = computed(() => {
@@ -3021,6 +3074,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   }
   editApiKey.value = ''
   showCurrentApiKey.value = false
+  revealedApiKey.value = ''
+  currentApiKeyLoading.value = false
 }
 
 async function loadTLSProfiles() {

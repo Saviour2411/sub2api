@@ -3693,6 +3693,8 @@ export default {
       hideApiKey: '隐藏 API Key',
       copyApiKey: '复制 API Key',
       apiKeyCopied: 'API Key 已复制',
+      apiKeyLoadFailed: '读取 API Key 失败',
+      apiKeyNotConfigured: '当前账号没有已保存的 API Key',
       // Upstream type
       upstream: {
         baseUrl: '上游 Base URL',

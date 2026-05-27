@@ -12,7 +12,11 @@
 
     <!-- 滚动区域：表格 -->
     <div class="layout-section-scrollable">
-      <div class="card mecha-panel table-scroll-container">
+      <div
+        ref="tableScrollContainerRef"
+        class="card mecha-panel table-scroll-container"
+        @wheel="handleTableWheel"
+      >
         <slot name="table" />
       </div>
     </div>
@@ -28,9 +32,31 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 
 const isMobile = ref(false)
+const tableScrollContainerRef = ref<HTMLElement | null>(null)
 
 const checkMobile = () => {
   isMobile.value = window.innerWidth < 1024
+}
+
+const handleTableWheel = (event: WheelEvent) => {
+  if (isMobile.value) return
+  if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
+
+  const tableWrapper = tableScrollContainerRef.value?.querySelector<HTMLElement>('.table-wrapper')
+  if (!tableWrapper) return
+
+  const canScrollVertically = tableWrapper.scrollHeight > tableWrapper.clientHeight + 1
+  if (!canScrollVertically) {
+    event.preventDefault()
+    return
+  }
+
+  const atTop = tableWrapper.scrollTop <= 0
+  const atBottom = tableWrapper.scrollTop + tableWrapper.clientHeight >= tableWrapper.scrollHeight - 1
+
+  if ((event.deltaY < 0 && atTop) || (event.deltaY > 0 && atBottom)) {
+    event.preventDefault()
+  }
 }
 
 onMounted(() => {
@@ -47,7 +73,9 @@ onUnmounted(() => {
 /* 桌面端：Flexbox 布局 */
 .table-page-layout {
   @apply flex flex-col gap-6;
-  height: calc(100vh - 64px - 4rem); /* 减去 header + lg:p-8 的上下padding */
+  height: calc(100dvh - 64px - 4rem); /* 减去 header + lg:p-8 的上下padding */
+  max-height: calc(100dvh - 64px - 4rem);
+  overflow: hidden;
 }
 
 .layout-section-fixed {
@@ -118,6 +146,12 @@ onUnmounted(() => {
 }
 
 /* 移动端：恢复正常滚动 */
+.table-page-layout.mobile-mode {
+  height: auto;
+  max-height: none;
+  overflow: visible;
+}
+
 .table-page-layout.mobile-mode .table-scroll-container {
   @apply h-auto overflow-visible border-none bg-transparent shadow-none;
 }

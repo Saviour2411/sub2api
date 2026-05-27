@@ -729,6 +729,7 @@ defineExpose({
   position: relative;
   overflow-x: auto;
   overflow-y: auto;
+  overscroll-behavior: contain;
   flex: 1;
   min-height: 0;
   isolation: isolate;

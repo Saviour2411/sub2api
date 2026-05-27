@@ -275,6 +275,7 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	{
 		accounts.GET("", h.Admin.Account.List)
 		accounts.GET("/:id", h.Admin.Account.GetByID)
+		accounts.GET("/:id/api-key", h.Admin.Account.GetAPIKey)
 		accounts.POST("", h.Admin.Account.Create)
 		accounts.POST("/check-mixed-channel", h.Admin.Account.CheckMixedChannel)
 		accounts.POST("/import/codex-session", h.Admin.Account.ImportCodexSession)

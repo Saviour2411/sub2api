@@ -194,6 +194,11 @@ type AccountScheduledTestFailure struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
+type AccountAPIKeyResponse struct {
+	APIKey    string `json:"api_key"`
+	HasAPIKey bool   `json:"has_api_key"`
+}
+
 func accountScheduledTestFailureFromService(failure *service.ScheduledTestLatestFailure) *AccountScheduledTestFailure {
 	if failure == nil {
 		return nil
@@ -507,6 +512,28 @@ func (h *AccountHandler) GetByID(c *gin.Context) {
 	}
 
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
+}
+
+// GetAPIKey 按需返回账号已保存的 API Key 明文，仅管理员接口可访问。
+// GET /api/v1/admin/accounts/:id/api-key
+func (h *AccountHandler) GetAPIKey(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+
+	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	apiKey := account.GetCredential("api_key")
+	response.Success(c, AccountAPIKeyResponse{
+		APIKey:    apiKey,
+		HasAPIKey: strings.TrimSpace(apiKey) != "",
+	})
 }
 
 // CheckMixedChannel handles checking mixed channel risk for account-group binding.

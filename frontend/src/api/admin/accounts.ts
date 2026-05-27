@@ -125,6 +125,17 @@ export async function getById(id: number): Promise<Account> {
   return data
 }
 
+export interface AccountAPIKeyRevealResponse {
+  api_key: string
+  has_api_key: boolean
+}
+
+// 管理员按需查看账号 API Key 明文；普通账号列表仍保持脱敏。
+export async function getApiKey(id: number): Promise<AccountAPIKeyRevealResponse> {
+  const { data } = await apiClient.get<AccountAPIKeyRevealResponse>(`/admin/accounts/${id}/api-key`)
+  return data
+}
+
 /**
  * Create new account
  * @param accountData - Account data
@@ -658,6 +669,7 @@ export const accountsAPI = {
   list,
   listWithEtag,
   getById,
+  getApiKey,
   create,
   update,
   checkMixedChannelRisk,

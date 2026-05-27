@@ -3552,6 +3552,8 @@ export default {
       hideApiKey: 'Hide API Key',
       copyApiKey: 'Copy API Key',
       apiKeyCopied: 'API Key copied',
+      apiKeyLoadFailed: 'Failed to load API Key',
+      apiKeyNotConfigured: 'This account has no saved API Key',
       // Upstream type
       upstream: {
         baseUrl: 'Upstream Base URL',

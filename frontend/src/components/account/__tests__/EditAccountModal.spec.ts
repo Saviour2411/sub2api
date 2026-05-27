@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 
-const { updateAccountMock, checkMixedChannelRiskMock } = vi.hoisted(() => ({
+const { updateAccountMock, checkMixedChannelRiskMock, getApiKeyMock } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
-  checkMixedChannelRiskMock: vi.fn()
+  checkMixedChannelRiskMock: vi.fn(),
+  getApiKeyMock: vi.fn()
 }))
 
 vi.mock('@/stores/app', () => ({
@@ -25,7 +26,8 @@ vi.mock('@/api/admin', () => ({
   adminAPI: {
     accounts: {
       update: updateAccountMock,
-      checkMixedChannelRisk: checkMixedChannelRiskMock
+      checkMixedChannelRisk: checkMixedChannelRiskMock,
+      getApiKey: getApiKeyMock
     },
     settings: {
       getWebSearchEmulationConfig: vi.fn().mockResolvedValue({ enabled: false, providers: [] }),
@@ -351,6 +353,32 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     // 用户未输入新 key 时，payload 不应带 api_key，由后端合并保留旧值
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).not.toHaveProperty('api_key')
+  })
+
+  it('按需读取脱敏账号的当前 API Key', async () => {
+    const account = buildAccount()
+    account.credentials = {
+      base_url: 'https://api.openai.com',
+      model_mapping: { 'gpt-5.2': 'gpt-5.2' }
+    }
+    account.credentials_status = { has_api_key: true }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    getApiKeyMock.mockReset()
+    getApiKeyMock.mockResolvedValue({ api_key: 'sk-revealed', has_api_key: true })
+
+    const wrapper = mountModal(account)
+    const buttons = wrapper.findAll('button')
+    const revealButton = buttons.find(button => button.attributes('title') === 'admin.accounts.showApiKey')
+    expect(revealButton).toBeTruthy()
+
+    await revealButton!.trigger('click')
+    await flushPromises()
+
+    expect(getApiKeyMock).toHaveBeenCalledWith(1)
+    const currentInput = wrapper.find('input[readonly]')
+    expect((currentInput.element as HTMLInputElement).value).toBe('sk-revealed')
+    expect((currentInput.element as HTMLInputElement).type).toBe('text')
   })
 
   it('allows saving apikey account against legacy backend without credentials_status', async () => {
