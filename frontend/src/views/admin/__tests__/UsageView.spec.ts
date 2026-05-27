@@ -137,6 +137,7 @@ describe('admin UsageView distribution metric toggles', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+    document.body.innerHTML = ''
   })
 
   it('keeps model and group metric toggles independent without refetching chart data', async () => {
@@ -192,5 +193,42 @@ describe('admin UsageView distribution metric toggles', () => {
     expect(modelChart.find('.metric').text()).toBe('actual_cost')
     expect(groupChart.find('.metric').text()).toBe('actual_cost')
     expect(getSnapshotV2).toHaveBeenCalledTimes(1)
+  })
+
+  it('将列设置下拉框挂载到 body，避免被使用记录卡片裁剪', async () => {
+    const wrapper = mount(UsageView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          UsageStatsCards: true,
+          UsageFilters: UsageFiltersStub,
+          UsageTable: true,
+          UsageExportProgress: true,
+          UsageCleanupDialog: true,
+          UserBalanceHistoryModal: true,
+          Pagination: true,
+          Select: true,
+          DateRangePicker: true,
+          Icon: true,
+          TokenUsageTrend: true,
+          ModelDistributionChart: ModelDistributionChartStub,
+          GroupDistributionChart: GroupDistributionChartStub,
+        },
+      },
+    })
+
+    vi.advanceTimersByTime(120)
+    await flushPromises()
+
+    await wrapper.get('button[title="admin.users.columnSettings"]').trigger('click')
+    await flushPromises()
+
+    const dropdown = document.body.querySelector<HTMLElement>('.usage-column-dropdown')
+    expect(dropdown).not.toBeNull()
+    expect(wrapper.element.contains(dropdown)).toBe(false)
+    expect(dropdown?.className).toContain('fixed')
+    expect(dropdown?.style.maxHeight).toBeTruthy()
+
+    wrapper.unmount()
   })
 })

@@ -1,5 +1,5 @@
 import { mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import TablePageLayout from '../TablePageLayout.vue'
 
@@ -86,5 +86,22 @@ describe('TablePageLayout', () => {
 
     expect(result.allowed).toBe(false)
     expect(result.event.defaultPrevented).toBe(true)
+  })
+
+  it('表格滚轮事件不会继续冒泡到页面外层', () => {
+    const wrapper = mount(TablePageLayout, {
+      slots: {
+        table: '<div class="table-wrapper"></div>'
+      }
+    })
+    const tableWrapper = wrapper.find<HTMLElement>('.table-wrapper').element
+    setScrollMetrics(tableWrapper, { scrollHeight: 900, clientHeight: 300, scrollTop: 600 })
+    const documentWheel = vi.fn()
+    document.addEventListener('wheel', documentWheel)
+
+    dispatchWheel(tableWrapper, 120)
+
+    expect(documentWheel).not.toHaveBeenCalled()
+    document.removeEventListener('wheel', documentWheel)
   })
 })

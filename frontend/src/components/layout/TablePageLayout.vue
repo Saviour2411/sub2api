@@ -45,9 +45,14 @@ const handleTableWheel = (event: WheelEvent) => {
   const tableWrapper = tableScrollContainerRef.value?.querySelector<HTMLElement>('.table-wrapper')
   if (!tableWrapper) return
 
+  const consumeWheel = () => {
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
   const canScrollVertically = tableWrapper.scrollHeight > tableWrapper.clientHeight + 1
   if (!canScrollVertically) {
-    event.preventDefault()
+    consumeWheel()
     return
   }
 
@@ -59,7 +64,7 @@ const handleTableWheel = (event: WheelEvent) => {
   const maxScrollTop = Math.max(0, tableWrapper.scrollHeight - tableWrapper.clientHeight)
   const nextScrollTop = Math.min(Math.max(tableWrapper.scrollTop + deltaY, 0), maxScrollTop)
 
-  event.preventDefault()
+  consumeWheel()
   tableWrapper.scrollTop = nextScrollTop
 }
 
@@ -115,6 +120,7 @@ onUnmounted(() => {
   @apply flex-1 overflow-x-auto overflow-y-auto;
   /* 确保横向滚动条显示在最底部 */
   scrollbar-gutter: stable;
+  overscroll-behavior-y: contain;
 }
 
 .table-scroll-container :deep(table) {
