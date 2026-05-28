@@ -179,9 +179,11 @@
         :extra-headers="form.extra_headers"
         :body-override-mode="form.body_override_mode"
         :body-override="form.body_override"
+        :stream-enabled="form.stream_enabled"
         @update:extra-headers="form.extra_headers = $event"
         @update:body-override-mode="form.body_override_mode = $event"
         @update:body-override="form.body_override = $event"
+        @update:stream-enabled="form.stream_enabled = $event"
       />
     </div>
 
@@ -297,6 +299,7 @@ interface TemplateForm {
   extra_headers: Record<string, string>
   body_override_mode: BodyOverrideMode
   body_override: Record<string, unknown> | null
+  stream_enabled: boolean
 }
 
 const editing = ref<null | 'new' | number>(null) // null = list view; 'new' = create; <id> = edit
@@ -313,6 +316,7 @@ function emptyForm(provider: Provider): TemplateForm {
     extra_headers: {},
     body_override_mode: 'off',
     body_override: null,
+    stream_enabled: false,
   }
 }
 
@@ -325,6 +329,7 @@ function loadForm(tpl: ChannelMonitorTemplate) {
   form.extra_headers = { ...(tpl.extra_headers || {}) }
   form.body_override_mode = tpl.body_override_mode
   form.body_override = tpl.body_override ? { ...tpl.body_override } : null
+  form.stream_enabled = tpl.stream_enabled || false
 }
 
 function openCreateForm() {
@@ -383,6 +388,7 @@ async function handleSubmit() {
         extra_headers: form.extra_headers,
         body_override_mode: form.body_override_mode,
         body_override: form.body_override,
+        stream_enabled: form.stream_enabled,
       })
       appStore.showSuccess(t('admin.channelMonitor.template.createSuccess'))
     } else if (typeof editing.value === 'number') {
@@ -393,6 +399,7 @@ async function handleSubmit() {
         extra_headers: form.extra_headers,
         body_override_mode: form.body_override_mode,
         body_override: form.body_override,
+        stream_enabled: form.stream_enabled,
       })
       appStore.showSuccess(t('admin.channelMonitor.template.updateSuccess'))
     }

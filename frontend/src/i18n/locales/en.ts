@@ -2725,6 +2725,8 @@ export default {
         headerNameInvalid: 'Header name cannot contain whitespace or colon: {name}',
         headersHint: 'Merged on top of adapter defaults (user wins). Hop-by-hop headers (Host / Content-Length / ...) are ignored.',
         headersParseError: 'Cannot parse line: {line}',
+        streamEnabled: 'Streaming request',
+        streamEnabledHint: 'Use SSE streaming endpoints for checks. Useful for upstreams that are more reliable in streaming mode.',
         bodyMode: 'Body handling',
         bodyModeOff: 'Default',
         bodyModeMerge: 'Merge',

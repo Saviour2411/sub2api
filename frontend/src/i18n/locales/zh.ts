@@ -2802,6 +2802,8 @@ export default {
         headerNameInvalid: 'Header 名不能包含空格或冒号：{name}',
         headersHint: '与默认请求头合并，用户值优先。hop-by-hop 类 header（Host/Content-Length/...）会被忽略。',
         headersParseError: '无法解析这一行：{line}',
+        streamEnabled: '流式请求',
+        streamEnabledHint: '开启后使用 SSE 流式接口检测，适合只稳定支持流式响应的上游。',
         bodyMode: '请求体处理',
         bodyModeOff: '默认',
         bodyModeMerge: '合并',

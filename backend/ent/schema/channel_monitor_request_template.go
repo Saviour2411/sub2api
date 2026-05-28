@@ -66,6 +66,10 @@ func (ChannelMonitorRequestTemplate) Fields() []ent.Field {
 		// 用 map[string]any 以便前端传任意结构（含嵌套）。
 		field.JSON("body_override", map[string]any{}).
 			Optional(),
+		// stream_enabled: 是否用流式请求执行监控检测。
+		field.Bool("stream_enabled").
+			Default(false).
+			Comment("使用此模板的监控是否执行流式检测"),
 	}
 }
 

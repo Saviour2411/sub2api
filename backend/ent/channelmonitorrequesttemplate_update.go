@@ -129,6 +129,20 @@ func (_u *ChannelMonitorRequestTemplateUpdate) ClearBodyOverride() *ChannelMonit
 	return _u
 }
 
+// SetStreamEnabled sets the "stream_enabled" field.
+func (_u *ChannelMonitorRequestTemplateUpdate) SetStreamEnabled(v bool) *ChannelMonitorRequestTemplateUpdate {
+	_u.mutation.SetStreamEnabled(v)
+	return _u
+}
+
+// SetNillableStreamEnabled sets the "stream_enabled" field if the given value is not nil.
+func (_u *ChannelMonitorRequestTemplateUpdate) SetNillableStreamEnabled(v *bool) *ChannelMonitorRequestTemplateUpdate {
+	if v != nil {
+		_u.SetStreamEnabled(*v)
+	}
+	return _u
+}
+
 // AddMonitorIDs adds the "monitors" edge to the ChannelMonitor entity by IDs.
 func (_u *ChannelMonitorRequestTemplateUpdate) AddMonitorIDs(ids ...int64) *ChannelMonitorRequestTemplateUpdate {
 	_u.mutation.AddMonitorIDs(ids...)
@@ -277,6 +291,9 @@ func (_u *ChannelMonitorRequestTemplateUpdate) sqlSave(ctx context.Context) (_no
 	}
 	if _u.mutation.BodyOverrideCleared() {
 		_spec.ClearField(channelmonitorrequesttemplate.FieldBodyOverride, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.StreamEnabled(); ok {
+		_spec.SetField(channelmonitorrequesttemplate.FieldStreamEnabled, field.TypeBool, value)
 	}
 	if _u.mutation.MonitorsCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -440,6 +457,20 @@ func (_u *ChannelMonitorRequestTemplateUpdateOne) SetBodyOverride(v map[string]i
 // ClearBodyOverride clears the value of the "body_override" field.
 func (_u *ChannelMonitorRequestTemplateUpdateOne) ClearBodyOverride() *ChannelMonitorRequestTemplateUpdateOne {
 	_u.mutation.ClearBodyOverride()
+	return _u
+}
+
+// SetStreamEnabled sets the "stream_enabled" field.
+func (_u *ChannelMonitorRequestTemplateUpdateOne) SetStreamEnabled(v bool) *ChannelMonitorRequestTemplateUpdateOne {
+	_u.mutation.SetStreamEnabled(v)
+	return _u
+}
+
+// SetNillableStreamEnabled sets the "stream_enabled" field if the given value is not nil.
+func (_u *ChannelMonitorRequestTemplateUpdateOne) SetNillableStreamEnabled(v *bool) *ChannelMonitorRequestTemplateUpdateOne {
+	if v != nil {
+		_u.SetStreamEnabled(*v)
+	}
 	return _u
 }
 
@@ -621,6 +652,9 @@ func (_u *ChannelMonitorRequestTemplateUpdateOne) sqlSave(ctx context.Context) (
 	}
 	if _u.mutation.BodyOverrideCleared() {
 		_spec.ClearField(channelmonitorrequesttemplate.FieldBodyOverride, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.StreamEnabled(); ok {
+		_spec.SetField(channelmonitorrequesttemplate.FieldStreamEnabled, field.TypeBool, value)
 	}
 	if _u.mutation.MonitorsCleared() {
 		edge := &sqlgraph.EdgeSpec{

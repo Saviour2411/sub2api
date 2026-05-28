@@ -53,6 +53,14 @@
       </p>
     </div>
 
+    <div class="flex items-start justify-between gap-4 rounded-lg border border-gray-200 bg-white px-3 py-3 dark:border-dark-700 dark:bg-dark-800/70">
+      <div>
+        <label class="input-label !mb-0">{{ t('admin.channelMonitor.advanced.streamEnabled') }}</label>
+        <p class="mt-1 text-xs text-gray-400">{{ t('admin.channelMonitor.advanced.streamEnabledHint') }}</p>
+      </div>
+      <Toggle :model-value="streamEnabled" @update:model-value="$emit('update:streamEnabled', $event)" />
+    </div>
+
     <!-- Body mode radio -->
     <div>
       <label class="input-label">{{ t('admin.channelMonitor.advanced.bodyMode') }}</label>
@@ -106,6 +114,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import Toggle from '@/components/common/Toggle.vue'
 import type { APIMode, BodyOverrideMode, Provider } from '@/api/admin/channelMonitor'
 import {
   API_MODE_RESPONSES,
@@ -118,12 +127,14 @@ const props = defineProps<{
   extraHeaders: Record<string, string>
   bodyOverrideMode: BodyOverrideMode
   bodyOverride: Record<string, unknown> | null
+  streamEnabled: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'update:extraHeaders', value: Record<string, string>): void
   (e: 'update:bodyOverrideMode', value: BodyOverrideMode): void
   (e: 'update:bodyOverride', value: Record<string, unknown> | null): void
+  (e: 'update:streamEnabled', value: boolean): void
 }>()
 
 const { t } = useI18n()

@@ -282,6 +282,20 @@ func (_u *ChannelMonitorUpdate) ClearBodyOverride() *ChannelMonitorUpdate {
 	return _u
 }
 
+// SetStreamEnabled sets the "stream_enabled" field.
+func (_u *ChannelMonitorUpdate) SetStreamEnabled(v bool) *ChannelMonitorUpdate {
+	_u.mutation.SetStreamEnabled(v)
+	return _u
+}
+
+// SetNillableStreamEnabled sets the "stream_enabled" field if the given value is not nil.
+func (_u *ChannelMonitorUpdate) SetNillableStreamEnabled(v *bool) *ChannelMonitorUpdate {
+	if v != nil {
+		_u.SetStreamEnabled(*v)
+	}
+	return _u
+}
+
 // AddHistoryIDs adds the "history" edge to the ChannelMonitorHistory entity by IDs.
 func (_u *ChannelMonitorUpdate) AddHistoryIDs(ids ...int64) *ChannelMonitorUpdate {
 	_u.mutation.AddHistoryIDs(ids...)
@@ -549,6 +563,9 @@ func (_u *ChannelMonitorUpdate) sqlSave(ctx context.Context) (_node int, err err
 	}
 	if _u.mutation.BodyOverrideCleared() {
 		_spec.ClearField(channelmonitor.FieldBodyOverride, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.StreamEnabled(); ok {
+		_spec.SetField(channelmonitor.FieldStreamEnabled, field.TypeBool, value)
 	}
 	if _u.mutation.HistoryCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -939,6 +956,20 @@ func (_u *ChannelMonitorUpdateOne) ClearBodyOverride() *ChannelMonitorUpdateOne 
 	return _u
 }
 
+// SetStreamEnabled sets the "stream_enabled" field.
+func (_u *ChannelMonitorUpdateOne) SetStreamEnabled(v bool) *ChannelMonitorUpdateOne {
+	_u.mutation.SetStreamEnabled(v)
+	return _u
+}
+
+// SetNillableStreamEnabled sets the "stream_enabled" field if the given value is not nil.
+func (_u *ChannelMonitorUpdateOne) SetNillableStreamEnabled(v *bool) *ChannelMonitorUpdateOne {
+	if v != nil {
+		_u.SetStreamEnabled(*v)
+	}
+	return _u
+}
+
 // AddHistoryIDs adds the "history" edge to the ChannelMonitorHistory entity by IDs.
 func (_u *ChannelMonitorUpdateOne) AddHistoryIDs(ids ...int64) *ChannelMonitorUpdateOne {
 	_u.mutation.AddHistoryIDs(ids...)
@@ -1236,6 +1267,9 @@ func (_u *ChannelMonitorUpdateOne) sqlSave(ctx context.Context) (_node *ChannelM
 	}
 	if _u.mutation.BodyOverrideCleared() {
 		_spec.ClearField(channelmonitor.FieldBodyOverride, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.StreamEnabled(); ok {
+		_spec.SetField(channelmonitor.FieldStreamEnabled, field.TypeBool, value)
 	}
 	if _u.mutation.HistoryCleared() {
 		edge := &sqlgraph.EdgeSpec{

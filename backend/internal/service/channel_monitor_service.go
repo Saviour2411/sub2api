@@ -133,6 +133,7 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 		ExtraHeaders:     emptyHeadersIfNil(p.ExtraHeaders),
 		BodyOverrideMode: defaultBodyMode(p.BodyOverrideMode),
 		BodyOverride:     p.BodyOverride,
+		StreamEnabled:    p.StreamEnabled,
 	}
 	if err := s.repo.Create(ctx, m); err != nil {
 		return nil, fmt.Errorf("create channel monitor: %w", err)
@@ -306,6 +307,7 @@ func (s *ChannelMonitorService) runChecksConcurrent(ctx context.Context, m *Chan
 		ExtraHeaders:     m.ExtraHeaders,
 		BodyOverrideMode: m.BodyOverrideMode,
 		BodyOverride:     m.BodyOverride,
+		StreamEnabled:    m.StreamEnabled,
 	}
 
 	var eg errgroup.Group
@@ -550,6 +552,9 @@ func applyMonitorAdvancedUpdate(existing *ChannelMonitor, p ChannelMonitorUpdate
 		}
 		existing.BodyOverrideMode = defaultBodyMode(newMode)
 		existing.BodyOverride = newBody
+	}
+	if p.StreamEnabled != nil {
+		existing.StreamEnabled = *p.StreamEnabled
 	}
 	existing.APIMode = newAPIMode
 	return nil

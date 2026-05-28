@@ -49,6 +49,8 @@ type CheckOptions struct {
 	// BodyOverride 在 merge 模式下做浅合并（key 命中黑名单时静默丢弃），
 	// 在 replace 模式下直接当作完整 body。
 	BodyOverride map[string]any
+	// StreamEnabled 为 true 时发送流式请求并解析 SSE。
+	StreamEnabled bool
 }
 
 // runCheckForModel 对单个 (provider, model) 做一次完整检测。
@@ -156,10 +158,11 @@ func pingEndpointOrigin(ctx context.Context, endpoint string) *int {
 //
 // 加新 provider 只需要在 providerAdapters 里增加一个条目，无需触碰 callProvider / validateProvider。
 type providerAdapter struct {
-	buildPath    func(model string) string
-	buildBody    func(model, prompt string) ([]byte, error)
-	buildHeaders func(apiKey string) map[string]string
-	textPath     string // gjson 提取响应文本的 path
+	buildPath       func(model string) string
+	buildStreamPath func(model string) string
+	buildBody       func(model, prompt string) ([]byte, error)
+	buildHeaders    func(apiKey string) map[string]string
+	textPath        string // gjson 提取响应文本的 path
 }
 
 // providerAdapters 全部已支持的 provider。键值即 MonitorProvider* 字符串。
@@ -168,7 +171,8 @@ type providerAdapter struct {
 var providerAdapters = map[string]providerAdapter{
 	MonitorProviderOpenAI: providerOpenAIChatAdapter,
 	MonitorProviderAnthropic: {
-		buildPath: func(string) string { return providerAnthropicPath },
+		buildPath:       func(string) string { return providerAnthropicPath },
+		buildStreamPath: func(string) string { return providerAnthropicPath },
 		buildBody: func(model, prompt string) ([]byte, error) {
 			return json.Marshal(map[string]any{
 				"model":      model,
@@ -186,7 +190,8 @@ var providerAdapters = map[string]providerAdapter{
 	},
 	MonitorProviderGemini: {
 		// Gemini 把 model 名写在 URL path 上：/v1beta/models/{model}:generateContent
-		buildPath: func(model string) string { return fmt.Sprintf(providerGeminiPathTemplate, model) },
+		buildPath:       func(model string) string { return fmt.Sprintf(providerGeminiPathTemplate, model) },
+		buildStreamPath: func(model string) string { return fmt.Sprintf(providerGeminiStreamPathTemplate, model) },
 		buildBody: func(_, prompt string) ([]byte, error) {
 			return json.Marshal(map[string]any{
 				"contents": []map[string]any{
@@ -205,7 +210,8 @@ var providerAdapters = map[string]providerAdapter{
 
 //nolint:gochecknoglobals // 适配器表是只读静态数据，初始化后不变更。
 var providerOpenAIChatAdapter = providerAdapter{
-	buildPath: func(string) string { return providerOpenAIPath },
+	buildPath:       func(string) string { return providerOpenAIPath },
+	buildStreamPath: func(string) string { return providerOpenAIPath },
 	buildBody: func(model, prompt string) ([]byte, error) {
 		return json.Marshal(map[string]any{
 			"model":      model,
@@ -222,7 +228,8 @@ var providerOpenAIChatAdapter = providerAdapter{
 
 //nolint:gochecknoglobals // 适配器表是只读静态数据，初始化后不变更。
 var providerOpenAIResponsesAdapter = providerAdapter{
-	buildPath: func(string) string { return providerOpenAIResponsesPath },
+	buildPath:       func(string) string { return providerOpenAIResponsesPath },
+	buildStreamPath: func(string) string { return providerOpenAIResponsesPath },
 	buildBody: func(model, prompt string) ([]byte, error) {
 		return json.Marshal(map[string]any{
 			"model":             model,
@@ -271,20 +278,52 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 	if !ok {
 		return "", "", 0, fmt.Errorf("unsupported provider %q", provider)
 	}
+	streamEnabled := opts != nil && opts.StreamEnabled
 	body, err := buildRequestBody(adapter, provider, apiMode, model, prompt, opts)
 	if err != nil {
 		return "", "", 0, err
 	}
+	body, err = applyMonitorStreamSetting(provider, body, streamEnabled)
+	if err != nil {
+		return "", "", 0, err
+	}
 	headers := mergeHeaders(adapter.buildHeaders(apiKey), opts)
-	full := joinURL(endpoint, adapter.buildPath(model))
+	if streamEnabled {
+		headers["Accept"] = "text/event-stream"
+	}
+	path := adapter.buildPath(model)
+	if streamEnabled && adapter.buildStreamPath != nil {
+		path = adapter.buildStreamPath(model)
+	}
+	full := joinURL(endpoint, path)
 	respBytes, status, err := postRawJSON(ctx, full, body, headers)
 	if err != nil {
 		return "", "", status, err
+	}
+	if streamEnabled {
+		return extractStreamingMonitorText(provider, apiMode, respBytes), string(respBytes), status, nil
 	}
 	if provider == MonitorProviderOpenAI && apiMode == MonitorAPIModeResponses {
 		return extractOpenAIResponsesText(respBytes), string(respBytes), status, nil
 	}
 	return gjson.GetBytes(respBytes, adapter.textPath).String(), string(respBytes), status, nil
+}
+
+func applyMonitorStreamSetting(provider string, body []byte, enabled bool) ([]byte, error) {
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("unmarshal body for stream setting: %w", err)
+	}
+	if provider == MonitorProviderGemini {
+		delete(payload, "stream")
+	} else {
+		payload["stream"] = enabled
+	}
+	out, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("marshal body with stream setting: %w", err)
+	}
+	return out, nil
 }
 
 // extractOpenAIResponsesText 聚合 Responses API 的最终 assistant 文本。
@@ -327,6 +366,61 @@ func extractOpenAIResponsesText(respBytes []byte) string {
 		return strings.Join(texts, "")
 	}
 	return gjson.GetBytes(respBytes, providerOpenAIResponsesAdapter.textPath).String()
+}
+
+func extractStreamingMonitorText(provider, apiMode string, respBytes []byte) string {
+	var texts []string
+	for _, payload := range extractSSEJSONPayloads(respBytes) {
+		switch provider {
+		case MonitorProviderOpenAI:
+			if defaultAPIMode(apiMode) == MonitorAPIModeResponses {
+				if text := gjson.Get(payload, "delta").String(); text != "" && gjson.Get(payload, "type").String() == "response.output_text.delta" {
+					texts = append(texts, text)
+				}
+				continue
+			}
+			gjson.Get(payload, "choices").ForEach(func(_, choice gjson.Result) bool {
+				if text := choice.Get("delta.content").String(); text != "" {
+					texts = append(texts, text)
+				}
+				return true
+			})
+		case MonitorProviderAnthropic:
+			if gjson.Get(payload, "type").String() == "content_block_delta" {
+				if text := gjson.Get(payload, "delta.text").String(); text != "" {
+					texts = append(texts, text)
+				}
+			}
+		case MonitorProviderGemini:
+			gjson.Get(payload, "candidates").ForEach(func(_, candidate gjson.Result) bool {
+				candidate.Get("content.parts").ForEach(func(_, part gjson.Result) bool {
+					if text := part.Get("text").String(); text != "" {
+						texts = append(texts, text)
+					}
+					return true
+				})
+				return true
+			})
+		}
+	}
+	return strings.Join(texts, "")
+}
+
+func extractSSEJSONPayloads(respBytes []byte) []string {
+	lines := strings.Split(string(respBytes), "\n")
+	payloads := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if !sseDataPrefix.MatchString(line) {
+			continue
+		}
+		payload := strings.TrimSpace(sseDataPrefix.ReplaceAllString(line, ""))
+		if payload == "" || payload == "[DONE]" || !gjson.Valid(payload) {
+			continue
+		}
+		payloads = append(payloads, payload)
+	}
+	return payloads
 }
 
 // mergeHeaders 把用户自定义 headers 合并到 adapter 默认 headers 上。

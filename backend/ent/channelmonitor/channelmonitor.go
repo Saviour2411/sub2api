@@ -51,6 +51,8 @@ const (
 	FieldBodyOverrideMode = "body_override_mode"
 	// FieldBodyOverride holds the string denoting the body_override field in the database.
 	FieldBodyOverride = "body_override"
+	// FieldStreamEnabled holds the string denoting the stream_enabled field in the database.
+	FieldStreamEnabled = "stream_enabled"
 	// EdgeHistory holds the string denoting the history edge name in mutations.
 	EdgeHistory = "history"
 	// EdgeDailyRollups holds the string denoting the daily_rollups edge name in mutations.
@@ -103,6 +105,7 @@ var Columns = []string{
 	FieldExtraHeaders,
 	FieldBodyOverrideMode,
 	FieldBodyOverride,
+	FieldStreamEnabled,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -150,6 +153,8 @@ var (
 	DefaultBodyOverrideMode string
 	// BodyOverrideModeValidator is a validator for the "body_override_mode" field. It is called by the builders before save.
 	BodyOverrideModeValidator func(string) error
+	// DefaultStreamEnabled holds the default value on creation for the "stream_enabled" field.
+	DefaultStreamEnabled bool
 )
 
 // Provider defines the type for the "provider" enum field.
@@ -257,6 +262,11 @@ func ByTemplateID(opts ...sql.OrderTermOption) OrderOption {
 // ByBodyOverrideMode orders the results by the body_override_mode field.
 func ByBodyOverrideMode(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBodyOverrideMode, opts...).ToFunc()
+}
+
+// ByStreamEnabled orders the results by the stream_enabled field.
+func ByStreamEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldStreamEnabled, opts...).ToFunc()
 }
 
 // ByHistoryCount orders the results by history count.

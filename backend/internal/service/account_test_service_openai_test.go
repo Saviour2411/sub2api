@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
@@ -47,6 +50,24 @@ func newJSONResponse(status int, body string) *http.Response {
 		Header:     make(http.Header),
 		Body:       io.NopCloser(strings.NewReader(body)),
 	}
+}
+
+func testAccountURLConfig() *config.Config {
+	return &config.Config{
+		Security: config.SecurityConfig{
+			URLAllowlist: config.URLAllowlistConfig{
+				AllowInsecureHTTP: true,
+			},
+		},
+	}
+}
+
+func readQueuedRequestJSON(t *testing.T, req *http.Request) map[string]any {
+	t.Helper()
+	defer func() { _ = req.Body.Close() }()
+	var payload map[string]any
+	require.NoError(t, json.NewDecoder(req.Body).Decode(&payload))
+	return payload
 }
 
 // --- test functions ---
@@ -332,4 +353,83 @@ func TestAccountTestService_OpenAI401SetsPermanentErrorOnly(t *testing.T) {
 	require.Zero(t, repo.rateLimitedID)
 	require.Zero(t, repo.clearedErrorID)
 	require.Nil(t, account.RateLimitResetAt)
+}
+
+func TestAccountTestService_OpenAIAPIKeyUnsupportedResponsesUsesChatCompletions(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, recorder := newTestContext()
+
+	resp := newJSONResponse(http.StatusOK, `data: {"choices":[{"delta":{"content":"ok"},"finish_reason":null}]}
+
+data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]
+
+`)
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{httpUpstream: upstream, cfg: testAccountURLConfig()}
+	account := &Account{
+		ID:          91,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": "http://chat-compatible.example",
+		},
+		Extra: map[string]any{openai_compat.ExtraKeyResponsesSupported: false},
+	}
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-compatible", "ping", "")
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1)
+	req := upstream.requests[0]
+	require.Equal(t, "/v1/chat/completions", req.URL.Path)
+	require.Equal(t, "Bearer sk-test", req.Header.Get("Authorization"))
+	require.Equal(t, "text/event-stream", req.Header.Get("Accept"))
+
+	payload := readQueuedRequestJSON(t, req)
+	require.Equal(t, "gpt-compatible", payload["model"])
+	require.Equal(t, true, payload["stream"])
+	require.Contains(t, payload, "messages")
+	require.NotContains(t, payload, "input")
+	require.NotContains(t, payload, "instructions")
+	require.Contains(t, recorder.Body.String(), "test_complete")
+	require.Contains(t, recorder.Body.String(), "ok")
+}
+
+func TestAccountTestService_RunTestBackgroundOpenAIAPIKeyUnsupportedResponsesUsesChatCompletions(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	resp := newJSONResponse(http.StatusOK, `data: {"choices":[{"delta":{"content":"scheduled ok"},"finish_reason":null}]}
+
+data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
+
+`)
+	account := &Account{
+		ID:          92,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": "http://chat-compatible.example",
+		},
+		Extra: map[string]any{openai_compat.ExtraKeyResponsesSupported: false},
+	}
+	repo := &openAIAccountTestRepo{
+		mockAccountRepoForGemini: mockAccountRepoForGemini{
+			accountsByID: map[int64]*Account{account.ID: account},
+		},
+	}
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: testAccountURLConfig()}
+
+	result, err := svc.RunTestBackground(context.Background(), account.ID, "gpt-compatible")
+	require.NoError(t, err)
+	require.Equal(t, "success", result.Status)
+	require.Equal(t, "scheduled ok", result.ResponseText)
+	require.Empty(t, result.ErrorMessage)
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, "/v1/chat/completions", upstream.requests[0].URL.Path)
 }

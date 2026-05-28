@@ -197,6 +197,20 @@ func (_c *ChannelMonitorCreate) SetBodyOverride(v map[string]interface{}) *Chann
 	return _c
 }
 
+// SetStreamEnabled sets the "stream_enabled" field.
+func (_c *ChannelMonitorCreate) SetStreamEnabled(v bool) *ChannelMonitorCreate {
+	_c.mutation.SetStreamEnabled(v)
+	return _c
+}
+
+// SetNillableStreamEnabled sets the "stream_enabled" field if the given value is not nil.
+func (_c *ChannelMonitorCreate) SetNillableStreamEnabled(v *bool) *ChannelMonitorCreate {
+	if v != nil {
+		_c.SetStreamEnabled(*v)
+	}
+	return _c
+}
+
 // AddHistoryIDs adds the "history" edge to the ChannelMonitorHistory entity by IDs.
 func (_c *ChannelMonitorCreate) AddHistoryIDs(ids ...int64) *ChannelMonitorCreate {
 	_c.mutation.AddHistoryIDs(ids...)
@@ -313,6 +327,10 @@ func (_c *ChannelMonitorCreate) defaults() {
 		v := channelmonitor.DefaultBodyOverrideMode
 		_c.mutation.SetBodyOverrideMode(v)
 	}
+	if _, ok := _c.mutation.StreamEnabled(); !ok {
+		v := channelmonitor.DefaultStreamEnabled
+		_c.mutation.SetStreamEnabled(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -403,6 +421,9 @@ func (_c *ChannelMonitorCreate) check() error {
 		if err := channelmonitor.BodyOverrideModeValidator(v); err != nil {
 			return &ValidationError{Name: "body_override_mode", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.body_override_mode": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.StreamEnabled(); !ok {
+		return &ValidationError{Name: "stream_enabled", err: errors.New(`ent: missing required field "ChannelMonitor.stream_enabled"`)}
 	}
 	return nil
 }
@@ -498,6 +519,10 @@ func (_c *ChannelMonitorCreate) createSpec() (*ChannelMonitor, *sqlgraph.CreateS
 	if value, ok := _c.mutation.BodyOverride(); ok {
 		_spec.SetField(channelmonitor.FieldBodyOverride, field.TypeJSON, value)
 		_node.BodyOverride = value
+	}
+	if value, ok := _c.mutation.StreamEnabled(); ok {
+		_spec.SetField(channelmonitor.FieldStreamEnabled, field.TypeBool, value)
+		_node.StreamEnabled = value
 	}
 	if nodes := _c.mutation.HistoryIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -840,6 +865,18 @@ func (u *ChannelMonitorUpsert) ClearBodyOverride() *ChannelMonitorUpsert {
 	return u
 }
 
+// SetStreamEnabled sets the "stream_enabled" field.
+func (u *ChannelMonitorUpsert) SetStreamEnabled(v bool) *ChannelMonitorUpsert {
+	u.Set(channelmonitor.FieldStreamEnabled, v)
+	return u
+}
+
+// UpdateStreamEnabled sets the "stream_enabled" field to the value that was provided on create.
+func (u *ChannelMonitorUpsert) UpdateStreamEnabled() *ChannelMonitorUpsert {
+	u.SetExcluded(channelmonitor.FieldStreamEnabled)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -1162,6 +1199,20 @@ func (u *ChannelMonitorUpsertOne) UpdateBodyOverride() *ChannelMonitorUpsertOne 
 func (u *ChannelMonitorUpsertOne) ClearBodyOverride() *ChannelMonitorUpsertOne {
 	return u.Update(func(s *ChannelMonitorUpsert) {
 		s.ClearBodyOverride()
+	})
+}
+
+// SetStreamEnabled sets the "stream_enabled" field.
+func (u *ChannelMonitorUpsertOne) SetStreamEnabled(v bool) *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetStreamEnabled(v)
+	})
+}
+
+// UpdateStreamEnabled sets the "stream_enabled" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertOne) UpdateStreamEnabled() *ChannelMonitorUpsertOne {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateStreamEnabled()
 	})
 }
 
@@ -1653,6 +1704,20 @@ func (u *ChannelMonitorUpsertBulk) UpdateBodyOverride() *ChannelMonitorUpsertBul
 func (u *ChannelMonitorUpsertBulk) ClearBodyOverride() *ChannelMonitorUpsertBulk {
 	return u.Update(func(s *ChannelMonitorUpsert) {
 		s.ClearBodyOverride()
+	})
+}
+
+// SetStreamEnabled sets the "stream_enabled" field.
+func (u *ChannelMonitorUpsertBulk) SetStreamEnabled(v bool) *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.SetStreamEnabled(v)
+	})
+}
+
+// UpdateStreamEnabled sets the "stream_enabled" field to the value that was provided on create.
+func (u *ChannelMonitorUpsertBulk) UpdateStreamEnabled() *ChannelMonitorUpsertBulk {
+	return u.Update(func(s *ChannelMonitorUpsert) {
+		s.UpdateStreamEnabled()
 	})
 }
 

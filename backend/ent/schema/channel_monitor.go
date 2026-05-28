@@ -86,6 +86,10 @@ func (ChannelMonitor) Fields() []ent.Field {
 		// body_override: 同 ChannelMonitorRequestTemplate.body_override
 		field.JSON("body_override", map[string]any{}).
 			Optional(),
+		// stream_enabled: 是否用流式请求执行监控检测。
+		field.Bool("stream_enabled").
+			Default(false).
+			Comment("渠道监控检测是否使用流式请求"),
 	}
 }
 

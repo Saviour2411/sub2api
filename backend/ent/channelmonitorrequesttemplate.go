@@ -36,6 +36,8 @@ type ChannelMonitorRequestTemplate struct {
 	BodyOverrideMode string `json:"body_override_mode,omitempty"`
 	// BodyOverride holds the value of the "body_override" field.
 	BodyOverride map[string]interface{} `json:"body_override,omitempty"`
+	// 使用此模板的监控是否执行流式检测
+	StreamEnabled bool `json:"stream_enabled,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the ChannelMonitorRequestTemplateQuery when eager-loading is set.
 	Edges        ChannelMonitorRequestTemplateEdges `json:"edges"`
@@ -67,6 +69,8 @@ func (*ChannelMonitorRequestTemplate) scanValues(columns []string) ([]any, error
 		switch columns[i] {
 		case channelmonitorrequesttemplate.FieldExtraHeaders, channelmonitorrequesttemplate.FieldBodyOverride:
 			values[i] = new([]byte)
+		case channelmonitorrequesttemplate.FieldStreamEnabled:
+			values[i] = new(sql.NullBool)
 		case channelmonitorrequesttemplate.FieldID:
 			values[i] = new(sql.NullInt64)
 		case channelmonitorrequesttemplate.FieldName, channelmonitorrequesttemplate.FieldProvider, channelmonitorrequesttemplate.FieldAPIMode, channelmonitorrequesttemplate.FieldDescription, channelmonitorrequesttemplate.FieldBodyOverrideMode:
@@ -152,6 +156,12 @@ func (_m *ChannelMonitorRequestTemplate) assignValues(columns []string, values [
 					return fmt.Errorf("unmarshal field body_override: %w", err)
 				}
 			}
+		case channelmonitorrequesttemplate.FieldStreamEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field stream_enabled", values[i])
+			} else if value.Valid {
+				_m.StreamEnabled = value.Bool
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -219,6 +229,9 @@ func (_m *ChannelMonitorRequestTemplate) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("body_override=")
 	builder.WriteString(fmt.Sprintf("%v", _m.BodyOverride))
+	builder.WriteString(", ")
+	builder.WriteString("stream_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.StreamEnabled))
 	builder.WriteByte(')')
 	return builder.String()
 }

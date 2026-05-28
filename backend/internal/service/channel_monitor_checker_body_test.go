@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -65,6 +66,7 @@ type openAICaptureHandler struct {
 	lastPath                  string
 	status                    int
 	responsesLeadingReasoning bool
+	stream                    bool
 }
 
 func (h *openAICaptureHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -82,6 +84,18 @@ func (h *openAICaptureHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(h.status)
 
 	answer := answerFromOpenAIRequest(parsed)
+	if h.stream {
+		w.Header().Set("Content-Type", "text/event-stream")
+		if h.lastPath == providerOpenAIResponsesPath {
+			_, _ = fmt.Fprintf(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":%q}\n\n", answer)
+			_, _ = fmt.Fprint(w, "data: {\"type\":\"response.completed\"}\n\n")
+			return
+		}
+		_, _ = fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":{\"content\":%q},\"finish_reason\":null}]}\n\n", answer)
+		_, _ = fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n")
+		_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
+		return
+	}
 	if h.lastPath == providerOpenAIResponsesPath {
 		output := []map[string]any{}
 		if h.responsesLeadingReasoning {
@@ -122,6 +136,86 @@ func answerFromOpenAIRequest(body map[string]any) string {
 		if messages, ok := body["messages"].([]any); ok && len(messages) > 0 {
 			if msg, ok := messages[0].(map[string]any); ok {
 				prompt, _ = msg["content"].(string)
+			}
+		}
+	}
+	return answerFromChallengePrompt(prompt)
+}
+
+type anthropicStreamCaptureHandler struct {
+	lastBody    map[string]any
+	lastHeaders http.Header
+}
+
+func (h *anthropicStreamCaptureHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.lastHeaders = r.Header.Clone()
+	defer func() { _ = r.Body.Close() }()
+	var parsed map[string]any
+	_ = json.NewDecoder(r.Body).Decode(&parsed)
+	h.lastBody = parsed
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+	answer := answerFromAnthropicRequest(parsed)
+	_, _ = fmt.Fprintf(w, "data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":%q}}\n\n", answer)
+}
+
+type geminiStreamCaptureHandler struct {
+	lastBody     map[string]any
+	lastHeaders  http.Header
+	lastPath     string
+	lastRawQuery string
+}
+
+func (h *geminiStreamCaptureHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.lastHeaders = r.Header.Clone()
+	h.lastPath = r.URL.Path
+	h.lastRawQuery = r.URL.RawQuery
+	defer func() { _ = r.Body.Close() }()
+	var parsed map[string]any
+	_ = json.NewDecoder(r.Body).Decode(&parsed)
+	h.lastBody = parsed
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+	answer := answerFromGeminiRequest(parsed)
+	_, _ = fmt.Fprintf(w, "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":%q}]}}]}\n\n", answer)
+}
+
+func setupFakeAnthropicStream(t *testing.T, handler *anthropicStreamCaptureHandler) string {
+	t.Helper()
+	swapMonitorHTTPClient(t)
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
+
+func setupFakeGeminiStream(t *testing.T, handler *geminiStreamCaptureHandler) string {
+	t.Helper()
+	swapMonitorHTTPClient(t)
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
+
+func answerFromAnthropicRequest(body map[string]any) string {
+	prompt := ""
+	if messages, ok := body["messages"].([]any); ok && len(messages) > 0 {
+		if msg, ok := messages[0].(map[string]any); ok {
+			prompt, _ = msg["content"].(string)
+		}
+	}
+	return answerFromChallengePrompt(prompt)
+}
+
+func answerFromGeminiRequest(body map[string]any) string {
+	prompt := ""
+	if contents, ok := body["contents"].([]any); ok && len(contents) > 0 {
+		if content, ok := contents[0].(map[string]any); ok {
+			if parts, ok := content["parts"].([]any); ok && len(parts) > 0 {
+				if part, ok := parts[0].(map[string]any); ok {
+					prompt, _ = part["text"].(string)
+				}
 			}
 		}
 	}
@@ -239,6 +333,90 @@ func TestRunCheckForModel_OpenAIResponses_SkipsLeadingReasoningItem(t *testing.T
 	}
 	if h.lastPath != providerOpenAIResponsesPath {
 		t.Fatalf("expected responses path %q, got %q", providerOpenAIResponsesPath, h.lastPath)
+	}
+}
+
+func TestRunCheckForModel_OpenAIChatStreamingRequest(t *testing.T) {
+	h := &openAICaptureHandler{stream: true}
+	endpoint := setupFakeOpenAI(t, h)
+
+	res := runCheckForModel(context.Background(), MonitorProviderOpenAI, endpoint, "sk-openai", "gpt-test", &CheckOptions{
+		StreamEnabled: true,
+	})
+
+	if res.Status != MonitorStatusOperational {
+		t.Fatalf("streaming chat request should pass challenge, got status=%s message=%q", res.Status, res.Message)
+	}
+	if h.lastPath != providerOpenAIPath {
+		t.Fatalf("expected chat completions path %q, got %q", providerOpenAIPath, h.lastPath)
+	}
+	if h.lastBody["stream"] != true {
+		t.Errorf("streaming chat body should set stream=true, got %v", h.lastBody["stream"])
+	}
+	if h.lastHeaders.Get("Accept") != "text/event-stream" {
+		t.Errorf("streaming request should ask for SSE, got Accept=%q", h.lastHeaders.Get("Accept"))
+	}
+}
+
+func TestRunCheckForModel_OpenAIResponsesStreamingRequest(t *testing.T) {
+	h := &openAICaptureHandler{stream: true}
+	endpoint := setupFakeOpenAI(t, h)
+
+	res := runCheckForModel(context.Background(), MonitorProviderOpenAI, endpoint, "sk-openai", "gpt-test", &CheckOptions{
+		APIMode:       MonitorAPIModeResponses,
+		StreamEnabled: true,
+	})
+
+	if res.Status != MonitorStatusOperational {
+		t.Fatalf("streaming responses request should pass challenge, got status=%s message=%q", res.Status, res.Message)
+	}
+	if h.lastPath != providerOpenAIResponsesPath {
+		t.Fatalf("expected responses path %q, got %q", providerOpenAIResponsesPath, h.lastPath)
+	}
+	if h.lastBody["stream"] != true {
+		t.Errorf("streaming responses body should set stream=true, got %v", h.lastBody["stream"])
+	}
+}
+
+func TestRunCheckForModel_AnthropicStreamingRequest(t *testing.T) {
+	h := &anthropicStreamCaptureHandler{}
+	endpoint := setupFakeAnthropicStream(t, h)
+
+	res := runCheckForModel(context.Background(), MonitorProviderAnthropic, endpoint, "sk-ant", "claude-test", &CheckOptions{
+		StreamEnabled: true,
+	})
+
+	if res.Status != MonitorStatusOperational {
+		t.Fatalf("streaming anthropic request should pass challenge, got status=%s message=%q", res.Status, res.Message)
+	}
+	if h.lastBody["stream"] != true {
+		t.Errorf("streaming anthropic body should set stream=true, got %v", h.lastBody["stream"])
+	}
+	if h.lastHeaders.Get("Accept") != "text/event-stream" {
+		t.Errorf("streaming request should ask for SSE, got Accept=%q", h.lastHeaders.Get("Accept"))
+	}
+}
+
+func TestRunCheckForModel_GeminiStreamingRequestUsesStreamEndpoint(t *testing.T) {
+	h := &geminiStreamCaptureHandler{}
+	endpoint := setupFakeGeminiStream(t, h)
+
+	res := runCheckForModel(context.Background(), MonitorProviderGemini, endpoint, "AIza-test", "gemini-test", &CheckOptions{
+		StreamEnabled: true,
+	})
+
+	if res.Status != MonitorStatusOperational {
+		t.Fatalf("streaming gemini request should pass challenge, got status=%s message=%q", res.Status, res.Message)
+	}
+	expectedPath := "/v1beta/models/gemini-test:streamGenerateContent"
+	if h.lastPath != expectedPath {
+		t.Fatalf("expected gemini stream path %q, got %q", expectedPath, h.lastPath)
+	}
+	if h.lastRawQuery != "alt=sse" {
+		t.Fatalf("expected gemini stream query alt=sse, got %q", h.lastRawQuery)
+	}
+	if _, ok := h.lastBody["stream"]; ok {
+		t.Error("gemini body should not contain stream field")
 	}
 }
 

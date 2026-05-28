@@ -538,6 +538,10 @@ func init() {
 	channelmonitor.DefaultBodyOverrideMode = channelmonitorDescBodyOverrideMode.Default.(string)
 	// channelmonitor.BodyOverrideModeValidator is a validator for the "body_override_mode" field. It is called by the builders before save.
 	channelmonitor.BodyOverrideModeValidator = channelmonitorDescBodyOverrideMode.Validators[0].(func(string) error)
+	// channelmonitorDescStreamEnabled is the schema descriptor for stream_enabled field.
+	channelmonitorDescStreamEnabled := channelmonitorFields[16].Descriptor()
+	// channelmonitor.DefaultStreamEnabled holds the default value on creation for the stream_enabled field.
+	channelmonitor.DefaultStreamEnabled = channelmonitorDescStreamEnabled.Default.(bool)
 	channelmonitordailyrollupFields := schema.ChannelMonitorDailyRollup{}.Fields()
 	_ = channelmonitordailyrollupFields
 	// channelmonitordailyrollupDescModel is the schema descriptor for model field.
@@ -689,6 +693,10 @@ func init() {
 	channelmonitorrequesttemplate.DefaultBodyOverrideMode = channelmonitorrequesttemplateDescBodyOverrideMode.Default.(string)
 	// channelmonitorrequesttemplate.BodyOverrideModeValidator is a validator for the "body_override_mode" field. It is called by the builders before save.
 	channelmonitorrequesttemplate.BodyOverrideModeValidator = channelmonitorrequesttemplateDescBodyOverrideMode.Validators[0].(func(string) error)
+	// channelmonitorrequesttemplateDescStreamEnabled is the schema descriptor for stream_enabled field.
+	channelmonitorrequesttemplateDescStreamEnabled := channelmonitorrequesttemplateFields[7].Descriptor()
+	// channelmonitorrequesttemplate.DefaultStreamEnabled holds the default value on creation for the stream_enabled field.
+	channelmonitorrequesttemplate.DefaultStreamEnabled = channelmonitorrequesttemplateDescStreamEnabled.Default.(bool)
 	errorpassthroughruleMixin := schema.ErrorPassthroughRule{}.Mixin()
 	errorpassthroughruleMixinFields0 := errorpassthroughruleMixin[0].Fields()
 	_ = errorpassthroughruleMixinFields0

@@ -84,6 +84,7 @@ func (s *ChannelMonitorRequestTemplateService) Create(ctx context.Context, p Cha
 		ExtraHeaders:     emptyHeadersIfNil(p.ExtraHeaders),
 		BodyOverrideMode: defaultBodyMode(p.BodyOverrideMode),
 		BodyOverride:     p.BodyOverride,
+		StreamEnabled:    p.StreamEnabled,
 	}
 	if err := s.repo.Create(ctx, t); err != nil {
 		return nil, fmt.Errorf("create template: %w", err)
@@ -207,6 +208,9 @@ func applyTemplateUpdate(existing *ChannelMonitorRequestTemplate, p ChannelMonit
 	existing.APIMode = newAPIMode
 	existing.BodyOverrideMode = defaultBodyMode(newMode)
 	existing.BodyOverride = newBody
+	if p.StreamEnabled != nil {
+		existing.StreamEnabled = *p.StreamEnabled
+	}
 	return nil
 }
 

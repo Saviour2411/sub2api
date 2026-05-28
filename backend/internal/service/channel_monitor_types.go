@@ -49,6 +49,7 @@ type ChannelMonitor struct {
 	ExtraHeaders     map[string]string // 与 adapter 默认 headers 合并，用户优先
 	BodyOverrideMode string            // off / merge / replace
 	BodyOverride     map[string]any    // 仅 mode != off 时使用
+	StreamEnabled    bool              // true 时用流式请求并解析 SSE 响应
 
 	// APIKeyDecryptFailed 表示 APIKey 字段无法解密（密钥不一致或损坏）。
 	// 此时 APIKey 为空字符串，runner / RunCheck 必须跳过该监控并提示重填。
@@ -81,6 +82,7 @@ type ChannelMonitorCreateParams struct {
 	ExtraHeaders     map[string]string
 	BodyOverrideMode string
 	BodyOverride     map[string]any
+	StreamEnabled    bool
 }
 
 // ChannelMonitorUpdateParams 更新参数（指针字段表示"未提供则不更新"）。
@@ -103,6 +105,7 @@ type ChannelMonitorUpdateParams struct {
 	ExtraHeaders     *map[string]string
 	BodyOverrideMode *string
 	BodyOverride     *map[string]any
+	StreamEnabled    *bool
 }
 
 // CheckResult 单个模型一次检测的结果。

@@ -125,6 +125,11 @@ func BodyOverrideMode(v string) predicate.ChannelMonitor {
 	return predicate.ChannelMonitor(sql.FieldEQ(FieldBodyOverrideMode, v))
 }
 
+// StreamEnabled applies equality check predicate on the "stream_enabled" field. It's identical to StreamEnabledEQ.
+func StreamEnabled(v bool) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEQ(FieldStreamEnabled, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.ChannelMonitor {
 	return predicate.ChannelMonitor(sql.FieldEQ(FieldCreatedAt, v))
@@ -868,6 +873,16 @@ func BodyOverrideIsNil() predicate.ChannelMonitor {
 // BodyOverrideNotNil applies the NotNil predicate on the "body_override" field.
 func BodyOverrideNotNil() predicate.ChannelMonitor {
 	return predicate.ChannelMonitor(sql.FieldNotNull(FieldBodyOverride))
+}
+
+// StreamEnabledEQ applies the EQ predicate on the "stream_enabled" field.
+func StreamEnabledEQ(v bool) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEQ(FieldStreamEnabled, v))
+}
+
+// StreamEnabledNEQ applies the NEQ predicate on the "stream_enabled" field.
+func StreamEnabledNEQ(v bool) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldNEQ(FieldStreamEnabled, v))
 }
 
 // HasHistory applies the HasEdge predicate on the "history" edge.
