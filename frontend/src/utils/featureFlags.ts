@@ -119,6 +119,11 @@ export const FeatureFlags = {
     mode: 'opt-in',
     label: 'Affiliate',
   }),
+  modelMarketplace: defineFlag({
+    key: 'model_marketplace_enabled',
+    mode: 'opt-out',
+    label: 'Model Marketplace',
+  }),
 } as const
 
 export type RegisteredFeatureFlag = keyof typeof FeatureFlags

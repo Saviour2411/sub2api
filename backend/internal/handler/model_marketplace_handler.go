@@ -100,7 +100,7 @@ func (h *ModelMarketplaceHandler) List(c *gin.Context) {
 			SubscriptionType: group.SubscriptionType,
 			IsExclusive:      group.IsExclusive,
 			Models:           models,
-			RequestFormats:   requestFormatsForPlatform(group.Platform),
+			RequestFormats:   requestFormatsForGroup(group),
 		})
 	}
 
@@ -147,10 +147,10 @@ func cloneModelMarketplaceModels(models []string) []string {
 	return out
 }
 
-func requestFormatsForPlatform(platform string) []modelMarketplaceRequestFormat {
-	switch platform {
+func requestFormatsForGroup(group service.Group) []modelMarketplaceRequestFormat {
+	switch group.Platform {
 	case service.PlatformOpenAI:
-		return []modelMarketplaceRequestFormat{
+		formats := []modelMarketplaceRequestFormat{
 			{
 				Name:        "OpenAI Chat Completions",
 				Method:      "POST",
@@ -165,15 +165,17 @@ func requestFormatsForPlatform(platform string) []modelMarketplaceRequestFormat 
 				ContentType: "application/json",
 				Body:        "{\n  \"model\": \"{model}\",\n  \"input\": \"Hello\",\n  \"stream\": true\n}",
 			},
-			{
-				Name:        "OpenAI Embeddings",
-				Method:      "POST",
-				Path:        "/v1/embeddings",
-				ContentType: "application/json",
-				Body:        "{\n  \"model\": \"{model}\",\n  \"input\": \"Text to embed\"\n}",
-			},
-			{Name: "List Models", Method: "GET", Path: "/v1/models"},
 		}
+		if group.AllowMessagesDispatch {
+			formats = append(formats, modelMarketplaceRequestFormat{
+				Name:        "Anthropic Messages",
+				Method:      "POST",
+				Path:        "/v1/messages",
+				ContentType: "application/json",
+				Body:        "{\n  \"model\": \"{model}\",\n  \"max_tokens\": 1024,\n  \"messages\": [{\"role\": \"user\", \"content\": \"Hello\"}],\n  \"stream\": true\n}",
+			})
+		}
+		return formats
 	case service.PlatformGemini:
 		return []modelMarketplaceRequestFormat{
 			{
@@ -183,7 +185,6 @@ func requestFormatsForPlatform(platform string) []modelMarketplaceRequestFormat 
 				ContentType: "application/json",
 				Body:        "{\n  \"contents\": [{\"parts\": [{\"text\": \"Hello\"}]}]\n}",
 			},
-			{Name: "Gemini List Models", Method: "GET", Path: "/v1beta/models"},
 		}
 	case service.PlatformAntigravity:
 		return []modelMarketplaceRequestFormat{
@@ -201,7 +202,6 @@ func requestFormatsForPlatform(platform string) []modelMarketplaceRequestFormat 
 				ContentType: "application/json",
 				Body:        "{\n  \"contents\": [{\"parts\": [{\"text\": \"Hello\"}]}]\n}",
 			},
-			{Name: "Antigravity List Models", Method: "GET", Path: "/antigravity/models"},
 		}
 	default:
 		return []modelMarketplaceRequestFormat{
@@ -212,14 +212,6 @@ func requestFormatsForPlatform(platform string) []modelMarketplaceRequestFormat 
 				ContentType: "application/json",
 				Body:        "{\n  \"model\": \"{model}\",\n  \"max_tokens\": 1024,\n  \"messages\": [{\"role\": \"user\", \"content\": \"Hello\"}],\n  \"stream\": true\n}",
 			},
-			{
-				Name:        "Anthropic Count Tokens",
-				Method:      "POST",
-				Path:        "/v1/messages/count_tokens",
-				ContentType: "application/json",
-				Body:        "{\n  \"model\": \"{model}\",\n  \"messages\": [{\"role\": \"user\", \"content\": \"Hello\"}]\n}",
-			},
-			{Name: "List Models", Method: "GET", Path: "/v1/models"},
 		}
 	}
 }

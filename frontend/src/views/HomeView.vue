@@ -52,10 +52,11 @@
           <router-link
             v-if="modelMarketplaceEnabled"
             to="/models"
-            class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
+            class="hidden items-center gap-2 rounded-full border border-primary-200/70 bg-white/80 px-3 py-1.5 text-xs font-semibold text-primary-700 shadow-sm backdrop-blur transition hover:border-primary-400 hover:bg-white dark:border-primary-400/25 dark:bg-dark-800/80 dark:text-primary-200 dark:hover:bg-dark-700 sm:inline-flex"
             :title="t('home.modelMarketplace')"
           >
-            <Icon name="grid" size="md" />
+            <Icon name="cube" size="sm" />
+            <span>{{ t('home.modelMarketplace') }}</span>
           </router-link>
 
           <a
@@ -130,13 +131,21 @@
             </p>
 
             <!-- CTA Button -->
-            <div class="hero-cta">
+            <div class="hero-cta flex flex-col items-center gap-3 sm:flex-row lg:justify-start">
               <router-link
                 :to="isAuthenticated ? dashboardPath : '/login'"
                 class="btn btn-primary px-8 py-3 text-base shadow-lg shadow-primary-500/30"
               >
                 {{ isAuthenticated ? t('home.goToDashboard') : t('home.getStarted') }}
                 <Icon name="arrowRight" size="md" class="ml-2" :stroke-width="2" />
+              </router-link>
+              <router-link
+                v-if="modelMarketplaceEnabled"
+                to="/models"
+                class="btn btn-secondary px-8 py-3 text-base shadow-lg shadow-slate-900/5 dark:shadow-primary-500/10"
+              >
+                <Icon name="cube" size="md" :stroke-width="2" />
+                {{ t('home.modelMarketplace') }}
               </router-link>
             </div>
           </div>
