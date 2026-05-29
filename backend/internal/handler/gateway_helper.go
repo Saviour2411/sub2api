@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -292,16 +291,6 @@ func startPreResponseStreamKeepalive(c *gin.Context, settingService *service.Set
 	initialDelay := time.Duration(settingService.GetPreResponseStreamKeepaliveInitialDelay(c.Request.Context())) * time.Second
 	interval := 10 * time.Second
 	return newPreResponseStreamKeepalive(c, true, isStream, streamFormat, initialDelay, interval)
-}
-
-func openAIStreamFailedEvent(message string) string {
-	now := time.Now().Unix()
-	payload := `{"type":"response.failed","sequence_number":1,"response":{"id":"resp_sub2api_error","object":"response","created_at":` +
-		strconv.FormatInt(now, 10) +
-		`,"status":"failed","error":{"code":"server_error","message":` +
-		strconv.Quote(message) +
-		`},"output":[],"usage":null,"metadata":{}}}`
-	return "event: response.failed\ndata: " + payload + "\n\n"
 }
 
 // NewConcurrencyHelper creates a new ConcurrencyHelper
