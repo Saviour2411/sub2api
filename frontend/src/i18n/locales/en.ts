@@ -3,6 +3,7 @@ export default {
   home: {
     viewOnGithub: 'View on GitHub',
     viewDocs: 'View Documentation',
+    modelMarketplace: 'Model Marketplace',
     docs: 'Docs',
     switchToLight: 'Switch to Light Mode',
     switchToDark: 'Switch to Dark Mode',

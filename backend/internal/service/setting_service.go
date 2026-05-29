@@ -446,6 +446,50 @@ func marshalLoginAgreementDocuments(docs []LoginAgreementDocument) (string, erro
 	return string(b), nil
 }
 
+func parseModelMarketplaceGroupIDs(raw string) []int64 {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var ids []int64
+	if err := json.Unmarshal([]byte(raw), &ids); err != nil {
+		return nil
+	}
+	out := make([]int64, 0, len(ids))
+	seen := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
+}
+
+func marshalModelMarketplaceGroupIDs(ids []int64) (string, error) {
+	out := make([]int64, 0, len(ids))
+	seen := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	b, err := json.Marshal(out)
+	if err != nil {
+		return "", fmt.Errorf("marshal model marketplace group ids: %w", err)
+	}
+	return string(b), nil
+}
+
 func buildLoginAgreementRevision(updatedAt string, docs []LoginAgreementDocument) string {
 	normalized := normalizeLoginAgreementDocuments(docs)
 	payload, err := json.Marshal(struct {
@@ -786,6 +830,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyChannelMonitorEnabled,
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
 		SettingKeyAvailableChannelsEnabled,
+		SettingKeyModelMarketplaceEnabled,
 		SettingKeyAffiliateEnabled,
 		SettingKeyRiskControlEnabled,
 	}
@@ -896,6 +941,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		ChannelMonitorDefaultIntervalSeconds: parseChannelMonitorInterval(settings[SettingKeyChannelMonitorDefaultIntervalSeconds]),
 
 		AvailableChannelsEnabled: settings[SettingKeyAvailableChannelsEnabled] == "true",
+		ModelMarketplaceEnabled:  !isFalseSettingValue(settings[SettingKeyModelMarketplaceEnabled]),
 
 		AffiliateEnabled: settings[SettingKeyAffiliateEnabled] == "true",
 
@@ -974,6 +1020,34 @@ func (s *SettingService) GetAvailableChannelsRuntime(ctx context.Context) Availa
 	}
 	return AvailableChannelsRuntime{
 		Enabled: vals[SettingKeyAvailableChannelsEnabled] == "true",
+	}
+}
+
+// ModelMarketplaceRuntime 是公开模型广场的轻量运行时配置。
+type ModelMarketplaceRuntime struct {
+	Enabled  bool
+	Intro    string
+	GroupIDs []int64
+}
+
+// GetModelMarketplaceRuntime 读取公开模型广场配置。开关默认启用；读取失败时不暴露
+// 显式分组，只让调用方按公开分组默认口径展示。
+func (s *SettingService) GetModelMarketplaceRuntime(ctx context.Context) ModelMarketplaceRuntime {
+	if s == nil || s.settingRepo == nil {
+		return ModelMarketplaceRuntime{Enabled: true}
+	}
+	vals, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeyModelMarketplaceEnabled,
+		SettingKeyModelMarketplaceIntro,
+		SettingKeyModelMarketplaceGroupIDs,
+	})
+	if err != nil {
+		return ModelMarketplaceRuntime{Enabled: true}
+	}
+	return ModelMarketplaceRuntime{
+		Enabled:  !isFalseSettingValue(vals[SettingKeyModelMarketplaceEnabled]),
+		Intro:    strings.TrimSpace(vals[SettingKeyModelMarketplaceIntro]),
+		GroupIDs: parseModelMarketplaceGroupIDs(vals[SettingKeyModelMarketplaceGroupIDs]),
 	}
 }
 
@@ -1152,6 +1226,7 @@ type PublicSettingsInjectionPayload struct {
 	ChannelMonitorEnabled                bool `json:"channel_monitor_enabled"`
 	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
 	AvailableChannelsEnabled             bool `json:"available_channels_enabled"`
+	ModelMarketplaceEnabled              bool `json:"model_marketplace_enabled"`
 	AffiliateEnabled                     bool `json:"affiliate_enabled"`
 	RiskControlEnabled                   bool `json:"risk_control_enabled"`
 }
@@ -1214,6 +1289,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ChannelMonitorEnabled:                settings.ChannelMonitorEnabled,
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
+		ModelMarketplaceEnabled:              settings.ModelMarketplaceEnabled,
 		AffiliateEnabled:                     settings.AffiliateEnabled,
 		RiskControlEnabled:                   settings.RiskControlEnabled,
 	}, nil
@@ -1862,6 +1938,15 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 
 	// Available channels feature switch
 	updates[SettingKeyAvailableChannelsEnabled] = strconv.FormatBool(settings.AvailableChannelsEnabled)
+
+	// Model marketplace public page
+	updates[SettingKeyModelMarketplaceEnabled] = strconv.FormatBool(settings.ModelMarketplaceEnabled)
+	updates[SettingKeyModelMarketplaceIntro] = strings.TrimSpace(settings.ModelMarketplaceIntro)
+	modelMarketplaceGroupIDsJSON, err := marshalModelMarketplaceGroupIDs(settings.ModelMarketplaceGroupIDs)
+	if err != nil {
+		return nil, err
+	}
+	updates[SettingKeyModelMarketplaceGroupIDs] = modelMarketplaceGroupIDsJSON
 
 	// Affiliate (邀请返利) feature switch
 	updates[SettingKeyAffiliateEnabled] = strconv.FormatBool(settings.AffiliateEnabled)
@@ -3075,6 +3160,11 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		// Available channels feature (default disabled; opt-in)
 		SettingKeyAvailableChannelsEnabled: "false",
 
+		// Model marketplace public page (default enabled, public groups only)
+		SettingKeyModelMarketplaceEnabled:  "true",
+		SettingKeyModelMarketplaceIntro:    "",
+		SettingKeyModelMarketplaceGroupIDs: "[]",
+
 		// Affiliate (邀请返利) feature (default disabled; opt-in)
 		SettingKeyAffiliateEnabled: "false",
 
@@ -3597,6 +3687,11 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// Available channels feature (default: disabled; strict true)
 	result.AvailableChannelsEnabled = settings[SettingKeyAvailableChannelsEnabled] == "true"
+
+	// Model marketplace public page (default: enabled; strict false disables)
+	result.ModelMarketplaceEnabled = !isFalseSettingValue(settings[SettingKeyModelMarketplaceEnabled])
+	result.ModelMarketplaceIntro = strings.TrimSpace(settings[SettingKeyModelMarketplaceIntro])
+	result.ModelMarketplaceGroupIDs = parseModelMarketplaceGroupIDs(settings[SettingKeyModelMarketplaceGroupIDs])
 
 	// Affiliate (邀请返利) feature (default: disabled; strict true)
 	result.AffiliateEnabled = settings[SettingKeyAffiliateEnabled] == "true"

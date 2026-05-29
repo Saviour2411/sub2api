@@ -232,7 +232,34 @@ export interface PublicSettings {
   channel_monitor_enabled: boolean
   channel_monitor_default_interval_seconds: number
   available_channels_enabled: boolean
+  model_marketplace_enabled?: boolean
   affiliate_enabled: boolean
+}
+
+export interface ModelMarketplaceRequestFormat {
+  name: string
+  method: string
+  path: string
+  content_type?: string
+  body?: string
+}
+
+export interface ModelMarketplaceGroup {
+  id: number
+  name: string
+  description: string
+  platform: GroupPlatform
+  subscription_type: string
+  is_exclusive: boolean
+  models: string[]
+  request_formats: ModelMarketplaceRequestFormat[]
+}
+
+export interface ModelMarketplaceResponse {
+  enabled: boolean
+  intro: string
+  generated_at: string
+  groups: ModelMarketplaceGroup[]
 }
 
 export interface AuthResponse {

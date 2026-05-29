@@ -639,6 +639,11 @@ export interface SystemSettings {
   // Available Channels feature switch
   available_channels_enabled: boolean;
 
+  // Model Marketplace feature switch
+  model_marketplace_enabled: boolean;
+  model_marketplace_intro: string;
+  model_marketplace_group_ids: number[];
+
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: boolean;
 
@@ -878,6 +883,11 @@ export interface UpdateSettingsRequest {
 
   // Available Channels feature switch
   available_channels_enabled?: boolean;
+
+  // Model Marketplace feature switch
+  model_marketplace_enabled?: boolean;
+  model_marketplace_intro?: string;
+  model_marketplace_group_ids?: number[];
 
   // Affiliate (邀请返利) feature switch
   affiliate_enabled?: boolean;

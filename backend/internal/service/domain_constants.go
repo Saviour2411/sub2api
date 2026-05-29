@@ -367,6 +367,12 @@ const (
 	// sidebar entry is hidden. Defaults to false (opt-in feature).
 	SettingKeyAvailableChannelsEnabled = "available_channels_enabled"
 
+	// SettingKeyModelMarketplaceEnabled controls the public model marketplace page.
+	// Defaults to true; the public API still only returns whitelisted fields.
+	SettingKeyModelMarketplaceEnabled  = "model_marketplace_enabled"
+	SettingKeyModelMarketplaceIntro    = "model_marketplace_intro"
+	SettingKeyModelMarketplaceGroupIDs = "model_marketplace_group_ids"
+
 	// =========================
 	// Overload Cooldown (529)
 	// =========================

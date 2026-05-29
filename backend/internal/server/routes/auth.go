@@ -216,6 +216,11 @@ func RegisterAuthRoutes(
 		settings.GET("/public", h.Setting.GetPublicSettings)
 		settings.GET("/email-unsubscribe", h.Setting.UnsubscribeNotificationEmail)
 	}
+	if h.ModelMarketplace != nil {
+		v1.GET("/model-marketplace", rateLimiter.LimitWithOptions("model-marketplace", 120, time.Minute, middleware.RateLimitOptions{
+			FailureMode: middleware.RateLimitFailOpen,
+		}), h.ModelMarketplace.List)
+	}
 
 	// 需要认证的当前用户信息
 	authenticated := v1.Group("")

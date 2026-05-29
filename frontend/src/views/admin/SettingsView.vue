@@ -5513,6 +5513,75 @@
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ localText('模型广场', 'Model Marketplace') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ localText('向未登录访客展示可公开查看的分组模型列表和请求接口格式。', 'Show public model lists and request formats to visitors before login.') }}
+            </p>
+          </div>
+          <div class="space-y-5 p-6">
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ localText('启用模型广场', 'Enable model marketplace') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ localText('关闭后公开接口返回空列表，首页入口隐藏。', 'When disabled, the public API returns an empty list and the home entry is hidden.') }}
+                </p>
+              </div>
+              <Toggle v-model="form.model_marketplace_enabled" />
+            </div>
+
+            <div>
+              <label class="input-label">
+                {{ localText('顶部描述文字', 'Intro text') }}
+              </label>
+              <textarea
+                v-model="form.model_marketplace_intro"
+                rows="4"
+                class="input text-sm"
+                :placeholder="localText('例如：这里展示当前可用模型和兼容接口。', 'Example: Browse currently available models and compatible API formats.')"
+              ></textarea>
+              <p class="mt-1 text-xs text-gray-400">
+                {{ localText('按纯文本渲染，支持换行，不执行 HTML。', 'Rendered as plain text with line breaks; HTML is not executed.') }}
+              </p>
+            </div>
+
+            <div>
+              <label class="input-label">
+                {{ localText('展示分组', 'Visible groups') }}
+              </label>
+              <div class="max-h-72 overflow-y-auto rounded-lg border border-gray-200 dark:border-dark-600">
+                <label
+                  v-for="option in modelMarketplaceGroupOptions"
+                  :key="option.value"
+                  class="flex cursor-pointer items-center gap-3 border-b border-gray-100 px-4 py-3 text-sm last:border-b-0 hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-800"
+                >
+                  <input
+                    v-model="form.model_marketplace_group_ids"
+                    type="checkbox"
+                    :value="option.value"
+                    class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  />
+                  <span class="text-gray-700 dark:text-gray-200">{{ option.label }}</span>
+                </label>
+                <div
+                  v-if="modelMarketplaceGroupOptions.length === 0"
+                  class="px-4 py-6 text-sm text-gray-500 dark:text-gray-400"
+                >
+                  {{ localText('暂无活跃分组。', 'No active groups.') }}
+                </div>
+              </div>
+              <p class="mt-1 text-xs text-gray-400">
+                {{ localText('不选择任何分组时，默认只展示活跃的公开标准分组。选择后，可显式展示任意活跃分组，但公开接口仍只返回白名单字段。', 'When no group is selected, only active public standard groups are shown. Selected active groups may include exclusive or subscription groups, but the public API still returns whitelisted fields only.') }}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
               {{ t('admin.settings.features.riskControl.title') }}
             </h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -7111,6 +7180,7 @@ const adminApiKeyMasked = ref("");
 const adminApiKeyOperating = ref(false);
 const newAdminApiKey = ref("");
 const subscriptionGroups = ref<AdminGroup[]>([]);
+const modelMarketplaceGroups = ref<AdminGroup[]>([]);
 
 // Overload Cooldown (529) 状态
 const overloadCooldownLoading = ref(true);
@@ -7472,6 +7542,10 @@ const form = reactive<SettingsForm>({
   channel_monitor_default_interval_seconds: 60,
   // Available Channels feature switch
   available_channels_enabled: false,
+  // Model Marketplace feature switch
+  model_marketplace_enabled: true,
+  model_marketplace_intro: "",
+  model_marketplace_group_ids: [],
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: false,
 });
@@ -7728,6 +7802,15 @@ const defaultSubscriptionGroupOptions = computed<
     platform: group.platform,
     subscriptionType: group.subscription_type,
     rate: group.rate_multiplier,
+  })),
+);
+
+const modelMarketplaceGroupOptions = computed(() =>
+  modelMarketplaceGroups.value.map((group) => ({
+    value: group.id,
+    label: `${group.name} · ${group.platform}${group.is_exclusive ? ` · ${localText("专属", "Exclusive")}` : ""}${
+      group.subscription_type === "subscription" ? ` · ${localText("订阅", "Subscription")}` : ""
+    }`,
   })),
 );
 
@@ -8335,11 +8418,13 @@ async function loadSettings() {
 async function loadSubscriptionGroups() {
   try {
     const groups = await adminAPI.groups.getAll();
+    modelMarketplaceGroups.value = groups.filter((group) => group.status === "active");
     subscriptionGroups.value = groups.filter(
       (group) =>
         group.subscription_type === "subscription" && group.status === "active",
     );
   } catch (_error: unknown) {
+    modelMarketplaceGroups.value = [];
     subscriptionGroups.value = [];
   }
 }
@@ -8789,6 +8874,14 @@ async function saveSettings() {
         Number(form.channel_monitor_default_interval_seconds) || 60,
       // Available Channels feature switch
       available_channels_enabled: form.available_channels_enabled,
+      // Model Marketplace feature switch
+      model_marketplace_enabled: form.model_marketplace_enabled,
+      model_marketplace_intro: form.model_marketplace_intro,
+      model_marketplace_group_ids: Array.isArray(form.model_marketplace_group_ids)
+        ? form.model_marketplace_group_ids
+            .map((id) => Number(id))
+            .filter((id) => Number.isInteger(id) && id > 0)
+        : [],
       // Affiliate (邀请返利) feature switch
       affiliate_enabled: form.affiliate_enabled,
     };

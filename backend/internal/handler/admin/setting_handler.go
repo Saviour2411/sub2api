@@ -321,6 +321,9 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
+		ModelMarketplaceEnabled:  settings.ModelMarketplaceEnabled,
+		ModelMarketplaceIntro:    settings.ModelMarketplaceIntro,
+		ModelMarketplaceGroupIDs: settings.ModelMarketplaceGroupIDs,
 
 		AffiliateEnabled: settings.AffiliateEnabled,
 	}
@@ -673,6 +676,11 @@ type UpdateSettingsRequest struct {
 
 	// Available Channels feature switch (user-facing)
 	AvailableChannelsEnabled *bool `json:"available_channels_enabled"`
+
+	// Model Marketplace feature switch (public)
+	ModelMarketplaceEnabled  *bool    `json:"model_marketplace_enabled"`
+	ModelMarketplaceIntro    *string  `json:"model_marketplace_intro"`
+	ModelMarketplaceGroupIDs *[]int64 `json:"model_marketplace_group_ids"`
 
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled *bool `json:"affiliate_enabled"`
@@ -1844,6 +1852,24 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.AvailableChannelsEnabled
 		}(),
+		ModelMarketplaceEnabled: func() bool {
+			if req.ModelMarketplaceEnabled != nil {
+				return *req.ModelMarketplaceEnabled
+			}
+			return previousSettings.ModelMarketplaceEnabled
+		}(),
+		ModelMarketplaceIntro: func() string {
+			if req.ModelMarketplaceIntro != nil {
+				return strings.TrimSpace(*req.ModelMarketplaceIntro)
+			}
+			return previousSettings.ModelMarketplaceIntro
+		}(),
+		ModelMarketplaceGroupIDs: func() []int64 {
+			if req.ModelMarketplaceGroupIDs != nil {
+				return normalizePositiveInt64IDs(*req.ModelMarketplaceGroupIDs)
+			}
+			return previousSettings.ModelMarketplaceGroupIDs
+		}(),
 		AffiliateEnabled: func() bool {
 			if req.AffiliateEnabled != nil {
 				return *req.AffiliateEnabled
@@ -2184,6 +2210,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,
 
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
+		ModelMarketplaceEnabled:  updatedSettings.ModelMarketplaceEnabled,
+		ModelMarketplaceIntro:    updatedSettings.ModelMarketplaceIntro,
+		ModelMarketplaceGroupIDs: updatedSettings.ModelMarketplaceGroupIDs,
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 
@@ -2692,6 +2721,15 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.AvailableChannelsEnabled != after.AvailableChannelsEnabled {
 		changed = append(changed, "available_channels_enabled")
 	}
+	if before.ModelMarketplaceEnabled != after.ModelMarketplaceEnabled {
+		changed = append(changed, "model_marketplace_enabled")
+	}
+	if before.ModelMarketplaceIntro != after.ModelMarketplaceIntro {
+		changed = append(changed, "model_marketplace_intro")
+	}
+	if !equalInt64Slice(before.ModelMarketplaceGroupIDs, after.ModelMarketplaceGroupIDs) {
+		changed = append(changed, "model_marketplace_group_ids")
+	}
 	if before.AffiliateEnabled != after.AffiliateEnabled {
 		changed = append(changed, "affiliate_enabled")
 	}
@@ -2779,6 +2817,25 @@ func normalizeOptionalDefaultSubscriptions(input *[]dto.DefaultSubscriptionSetti
 	}
 	normalized := normalizeDefaultSubscriptions(*input)
 	return &normalized
+}
+
+func normalizePositiveInt64IDs(input []int64) []int64 {
+	if len(input) == 0 {
+		return nil
+	}
+	out := make([]int64, 0, len(input))
+	seen := make(map[int64]struct{}, len(input))
+	for _, id := range input {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
 }
 
 func float64ValueOrDefault(value *float64, fallback float64) float64 {
@@ -2939,6 +2996,18 @@ func equalLoginAgreementDocuments(a, b []service.LoginAgreementDocument) bool {
 }
 
 func equalIntSlice(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func equalInt64Slice(a, b []int64) bool {
 	if len(a) != len(b) {
 		return false
 	}

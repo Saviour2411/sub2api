@@ -91,6 +91,39 @@ func TestSettingService_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t 
 	require.True(t, settings.ForceEmailOnThirdPartySignup)
 }
 
+func TestSettingService_GetPublicSettings_ExposesModelMarketplaceEnabled(t *testing.T) {
+	t.Run("default enabled", func(t *testing.T) {
+		svc := NewSettingService(&settingPublicRepoStub{values: map[string]string{}}, &config.Config{})
+
+		settings, err := svc.GetPublicSettings(context.Background())
+		require.NoError(t, err)
+		require.True(t, settings.ModelMarketplaceEnabled)
+	})
+
+	t.Run("explicit false disables", func(t *testing.T) {
+		svc := NewSettingService(&settingPublicRepoStub{values: map[string]string{
+			SettingKeyModelMarketplaceEnabled: "false",
+		}}, &config.Config{})
+
+		settings, err := svc.GetPublicSettings(context.Background())
+		require.NoError(t, err)
+		require.False(t, settings.ModelMarketplaceEnabled)
+	})
+}
+
+func TestSettingService_GetModelMarketplaceRuntime_NormalizesGroupIDs(t *testing.T) {
+	svc := NewSettingService(&settingPublicRepoStub{values: map[string]string{
+		SettingKeyModelMarketplaceEnabled:  "true",
+		SettingKeyModelMarketplaceIntro:    "  模型列表说明  ",
+		SettingKeyModelMarketplaceGroupIDs: `[3,0,2,3,-1]`,
+	}}, &config.Config{})
+
+	runtime := svc.GetModelMarketplaceRuntime(context.Background())
+	require.True(t, runtime.Enabled)
+	require.Equal(t, "模型列表说明", runtime.Intro)
+	require.Equal(t, []int64{3, 2}, runtime.GroupIDs)
+}
+
 func TestSettingService_GetPublicSettings_ExposesWeChatOAuthModeCapabilities(t *testing.T) {
 	svc := NewSettingService(&settingPublicRepoStub{
 		values: map[string]string{

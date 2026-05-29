@@ -182,6 +182,11 @@ type SystemSettings struct {
 	// Available Channels feature (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
+	// Model Marketplace feature (public model capability catalog)
+	ModelMarketplaceEnabled  bool    `json:"model_marketplace_enabled"`
+	ModelMarketplaceIntro    string  `json:"model_marketplace_intro"`
+	ModelMarketplaceGroupIDs []int64 `json:"model_marketplace_group_ids"`
+
 	// Claude Code version check
 	MinClaudeCodeVersion string
 	MaxClaudeCodeVersion string
@@ -307,6 +312,9 @@ type PublicSettings struct {
 
 	// Available Channels feature (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
+
+	// Model Marketplace feature (public model capability catalog)
+	ModelMarketplaceEnabled bool `json:"model_marketplace_enabled"`
 
 	// Affiliate (邀请返利) feature toggle
 	AffiliateEnabled bool `json:"affiliate_enabled"`

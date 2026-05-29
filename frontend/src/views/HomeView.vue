@@ -49,6 +49,15 @@
         <div class="flex items-center gap-3">
           <LocaleSwitcher />
 
+          <router-link
+            v-if="modelMarketplaceEnabled"
+            to="/models"
+            class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
+            :title="t('home.modelMarketplace')"
+          >
+            <Icon name="grid" size="md" />
+          </router-link>
+
           <a
             v-if="docUrl"
             :href="docUrl"
@@ -377,6 +386,7 @@ const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appS
 const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || 'AI API Gateway Platform')
 const docUrl = computed(() => appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '')
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
+const modelMarketplaceEnabled = computed(() => appStore.cachedPublicSettings?.model_marketplace_enabled !== false)
 
 const isHomeContentUrl = computed(() => {
   const content = homeContent.value.trim()

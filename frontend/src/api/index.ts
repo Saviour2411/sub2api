@@ -17,6 +17,7 @@ export { redeemAPI, type DailyCheckinResult, type DailyCheckinStatus, type Redee
 export { paymentAPI } from './payment'
 export { userGroupsAPI } from './groups'
 export { userChannelsAPI } from './channels'
+export * as modelMarketplaceAPI from './modelMarketplace'
 export { totpAPI } from './totp'
 export { default as announcementsAPI } from './announcements'
 export { channelMonitorUserAPI } from './channelMonitor'
