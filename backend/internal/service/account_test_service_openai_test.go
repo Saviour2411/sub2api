@@ -15,10 +15,10 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
-
-	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
+	"github.com/tidwall/gjson"
 )
 
 // --- shared test helpers ---
@@ -148,6 +148,8 @@ func TestAccountTestService_OpenAISuccessPersistsSnapshotFromHeaders(t *testing.
 
 	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
 	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileFromContext(upstream.requests[0].Context()))
 	require.NotEmpty(t, repo.updatedExtra)
 	require.Equal(t, 42.0, repo.updatedExtra["codex_5h_used_percent"])
 	require.Equal(t, 88.0, repo.updatedExtra["codex_7d_used_percent"])
@@ -355,19 +357,27 @@ func TestAccountTestService_OpenAI401SetsPermanentErrorOnly(t *testing.T) {
 	require.Nil(t, account.RateLimitResetAt)
 }
 
-func TestAccountTestService_OpenAIAPIKeyUnsupportedResponsesUsesChatCompletions(t *testing.T) {
+func TestAccountTestService_OpenAIAPIKeyResponsesUnsupportedUsesChatCompletionsPath(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, recorder := newTestContext()
 
-	resp := newJSONResponse(http.StatusOK, `data: {"choices":[{"delta":{"content":"ok"},"finish_reason":null}]}
-
-data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
-
-data: [DONE]
-
-`)
-	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
-	svc := &AccountTestService{httpUpstream: upstream, cfg: testAccountURLConfig()}
+	upstreamBody := strings.Join([]string{
+		`data: {"id":"chatcmpl_test","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"pong"},"finish_reason":null}]}`,
+		"",
+		`data: {"id":"chatcmpl_test","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
 	account := &Account{
 		ID:          91,
 		Platform:    PlatformOpenAI,
@@ -375,27 +385,27 @@ data: [DONE]
 		Concurrency: 1,
 		Credentials: map[string]any{
 			"api_key":  "sk-test",
-			"base_url": "http://chat-compatible.example",
+			"base_url": "https://compat-upstream.example/v1",
 		},
 		Extra: map[string]any{openai_compat.ExtraKeyResponsesSupported: false},
 	}
 
-	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-compatible", "ping", "")
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "hello", "")
 	require.NoError(t, err)
-	require.Len(t, upstream.requests, 1)
-	req := upstream.requests[0]
-	require.Equal(t, "/v1/chat/completions", req.URL.Path)
-	require.Equal(t, "Bearer sk-test", req.Header.Get("Authorization"))
-	require.Equal(t, "text/event-stream", req.Header.Get("Accept"))
-
-	payload := readQueuedRequestJSON(t, req)
-	require.Equal(t, "gpt-compatible", payload["model"])
-	require.Equal(t, true, payload["stream"])
-	require.Contains(t, payload, "messages")
-	require.NotContains(t, payload, "input")
-	require.NotContains(t, payload, "instructions")
-	require.Contains(t, recorder.Body.String(), "test_complete")
-	require.Contains(t, recorder.Body.String(), "ok")
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileFromContext(upstream.lastReq.Context()))
+	require.Equal(t, "https://compat-upstream.example/v1/chat/completions", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer sk-test", upstream.lastReq.Header.Get("Authorization"))
+	require.Equal(t, "text/event-stream", upstream.lastReq.Header.Get("Accept"))
+	require.Equal(t, "gpt-5.4", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
+	require.Equal(t, "hello", gjson.GetBytes(upstream.lastBody, "messages.0.content").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "input").Exists())
+	body := recorder.Body.String()
+	require.Contains(t, body, "pong")
+	require.Contains(t, body, "已通过 /v1/chat/completions 验证")
+	require.Contains(t, body, `"success":true`)
+	require.NotContains(t, body, "当前测试接口仅支持 Responses API 路径")
 }
 
 func TestAccountTestService_RunTestBackgroundOpenAIAPIKeyUnsupportedResponsesUsesChatCompletions(t *testing.T) {
@@ -432,4 +442,33 @@ data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
 	require.Empty(t, result.ErrorMessage)
 	require.Len(t, upstream.requests, 1)
 	require.Equal(t, "/v1/chat/completions", upstream.requests[0].URL.Path)
+}
+
+func TestAccountTestService_OpenAIChatCompletionsPathReturns4xx(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, recorder := newTestContext()
+
+	upstream := &httpUpstreamRecorder{resp: newJSONResponse(http.StatusBadRequest, `{"error":{"message":"bad request"}}`)}
+	svc := &AccountTestService{
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+	account := &Account{
+		ID:          93,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": "https://compat-upstream.example",
+		},
+		Extra: map[string]any{openai_compat.ExtraKeyResponsesSupported: false},
+	}
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
+	require.Error(t, err)
+	require.Equal(t, "https://compat-upstream.example/v1/chat/completions", upstream.lastReq.URL.String())
+	require.Contains(t, err.Error(), "Chat Completions API (/v1/chat/completions) returned 400")
+	require.Contains(t, recorder.Body.String(), "/v1/chat/completions")
+	require.NotContains(t, recorder.Body.String(), `"success":true`)
 }
