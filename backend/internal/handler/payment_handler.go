@@ -179,6 +179,88 @@ type checkoutPlan struct {
 	ProductName     string   `json:"product_name"`
 }
 
+type publicModelPricingResponse struct {
+	Enabled      bool                     `json:"enabled"`
+	GeneratedAt  string                   `json:"generated_at"`
+	Plans        []publicModelPricingPlan `json:"plans"`
+	HelpText     string                   `json:"help_text"`
+	HelpImageURL string                   `json:"help_image_url"`
+}
+
+type publicModelPricingPlan struct {
+	ID              int64    `json:"id"`
+	GroupPlatform   string   `json:"group_platform"`
+	GroupName       string   `json:"group_name"`
+	RateMultiplier  float64  `json:"rate_multiplier"`
+	DailyLimitUSD   *float64 `json:"daily_limit_usd"`
+	WeeklyLimitUSD  *float64 `json:"weekly_limit_usd"`
+	MonthlyLimitUSD *float64 `json:"monthly_limit_usd"`
+	ModelScopes     []string `json:"supported_model_scopes"`
+	Name            string   `json:"name"`
+	Description     string   `json:"description"`
+	Price           float64  `json:"price"`
+	OriginalPrice   *float64 `json:"original_price,omitempty"`
+	ValidityDays    int      `json:"validity_days"`
+	ValidityUnit    string   `json:"validity_unit"`
+	Features        []string `json:"features"`
+}
+
+// GetPublicModelPricing returns the public subscription pricing catalog.
+// GET /api/v1/model-pricing
+func (h *PaymentHandler) GetPublicModelPricing(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	cfg, err := h.configService.GetPaymentConfig(ctx)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	out := publicModelPricingResponse{
+		Enabled:      cfg.Enabled,
+		GeneratedAt:  time.Now().UTC().Format(time.RFC3339),
+		Plans:        []publicModelPricingPlan{},
+		HelpText:     cfg.HelpText,
+		HelpImageURL: cfg.HelpImageURL,
+	}
+	if !cfg.Enabled {
+		response.Success(c, out)
+		return
+	}
+
+	plans, err := h.configService.ListPlansForSale(ctx)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	groupInfo := h.configService.GetGroupInfoMap(ctx, plans)
+	for _, p := range plans {
+		gi, ok := groupInfo[p.GroupID]
+		if !ok || gi.Status != service.StatusActive || gi.SubscriptionType != service.SubscriptionTypeSubscription {
+			continue
+		}
+		out.Plans = append(out.Plans, publicModelPricingPlan{
+			ID:              int64(p.ID),
+			GroupPlatform:   gi.Platform,
+			GroupName:       gi.Name,
+			RateMultiplier:  gi.RateMultiplier,
+			DailyLimitUSD:   gi.DailyLimitUSD,
+			WeeklyLimitUSD:  gi.WeeklyLimitUSD,
+			MonthlyLimitUSD: gi.MonthlyLimitUSD,
+			ModelScopes:     gi.ModelScopes,
+			Name:            p.Name,
+			Description:     p.Description,
+			Price:           p.Price,
+			OriginalPrice:   p.OriginalPrice,
+			ValidityDays:    p.ValidityDays,
+			ValidityUnit:    p.ValidityUnit,
+			Features:        parseFeatures(p.Features),
+		})
+	}
+
+	response.Success(c, out)
+}
+
 // parseFeatures splits a newline-separated features string into a string slice.
 func parseFeatures(raw string) []string {
 	if raw == "" {

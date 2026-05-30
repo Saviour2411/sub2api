@@ -371,6 +371,29 @@ describe('PaymentView WeChat JSAPI flow', () => {
     })
   })
 
+  it('preselects a subscription plan from plan_id query', async () => {
+    routeState.query = {
+      tab: 'subscription',
+      plan_id: '7',
+    }
+    getCheckoutInfo.mockResolvedValue(checkoutInfoWithPlansFixture())
+
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          Teleport: true,
+          Transition: false,
+        },
+      },
+    })
+    await flushPromises()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Starter')
+    expect(wrapper.text()).toContain('payment.createOrder')
+  })
+
   it('falls back to QR flow when mobile WeChat payment is unavailable', async () => {
     routeState.query = {
       wechat_resume: '1',

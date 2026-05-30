@@ -1055,10 +1055,16 @@ onMounted(async () => {
     if (checkout.value.balance_disabled) {
       activeTab.value = 'subscription'
     }
-    // Handle renewal navigation: ?tab=subscription&group=123
-    if (route.query.tab === 'subscription') {
+    // Handle subscription navigation: ?tab=subscription&plan_id=123 or ?tab=subscription&group=123
+    if (route.query.tab === 'subscription' || route.query.plan_id) {
       activeTab.value = 'subscription'
-      if (route.query.group) {
+      const planId = typeof route.query.plan_id === 'string' ? Number(route.query.plan_id) : 0
+      if (Number.isFinite(planId) && planId > 0) {
+        const matchedPlan = checkout.value.plans.find(p => p.id === planId)
+        if (matchedPlan) {
+          selectedPlan.value = matchedPlan
+        }
+      } else if (route.query.group) {
         const groupId = Number(route.query.group)
         const groupPlans = checkout.value.plans.filter(p => p.group_id === groupId)
         if (groupPlans.length === 1) {

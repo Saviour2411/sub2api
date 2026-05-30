@@ -221,6 +221,11 @@ func RegisterAuthRoutes(
 			FailureMode: middleware.RateLimitFailOpen,
 		}), h.ModelMarketplace.List)
 	}
+	if h.Payment != nil {
+		v1.GET("/model-pricing", rateLimiter.LimitWithOptions("model-pricing", 120, time.Minute, middleware.RateLimitOptions{
+			FailureMode: middleware.RateLimitFailOpen,
+		}), h.Payment.GetPublicModelPricing)
+	}
 
 	// 需要认证的当前用户信息
 	authenticated := v1.Group("")

@@ -262,6 +262,32 @@ export interface ModelMarketplaceResponse {
   groups: ModelMarketplaceGroup[]
 }
 
+export interface PublicModelPricingPlan {
+  id: number
+  group_platform: GroupPlatform | string
+  group_name: string
+  rate_multiplier: number
+  daily_limit_usd?: number | null
+  weekly_limit_usd?: number | null
+  monthly_limit_usd?: number | null
+  supported_model_scopes?: string[]
+  name: string
+  description: string
+  price: number
+  original_price?: number
+  validity_days: number
+  validity_unit: string
+  features: string[]
+}
+
+export interface PublicModelPricingResponse {
+  enabled: boolean
+  generated_at: string
+  plans: PublicModelPricingPlan[]
+  help_text: string
+  help_image_url: string
+}
+
 export interface AuthResponse {
   access_token: string
   refresh_token?: string  // New: Refresh Token for token renewal

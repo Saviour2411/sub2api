@@ -58,6 +58,15 @@
             <Icon name="cube" size="sm" />
             <span>{{ t('home.modelMarketplace') }}</span>
           </router-link>
+          <router-link
+            v-if="modelPricingEnabled"
+            to="/pricing"
+            class="hidden items-center gap-2 rounded-full border border-primary-200/70 bg-white/80 px-3 py-1.5 text-xs font-semibold text-primary-700 shadow-sm backdrop-blur transition hover:border-primary-400 hover:bg-white dark:border-primary-400/25 dark:bg-dark-800/80 dark:text-primary-200 dark:hover:bg-dark-700 sm:inline-flex"
+            :title="t('home.modelPricing')"
+          >
+            <Icon name="dollar" size="sm" />
+            <span>{{ t('home.modelPricing') }}</span>
+          </router-link>
 
           <a
             v-if="docUrl"
@@ -146,6 +155,14 @@
               >
                 <Icon name="cube" size="md" :stroke-width="2" />
                 {{ t('home.modelMarketplace') }}
+              </router-link>
+              <router-link
+                v-if="modelPricingEnabled"
+                to="/pricing"
+                class="btn btn-secondary px-8 py-3 text-base shadow-lg shadow-slate-900/5 dark:shadow-primary-500/10"
+              >
+                <Icon name="dollar" size="md" :stroke-width="2" />
+                {{ t('home.modelPricing') }}
               </router-link>
             </div>
           </div>
@@ -396,6 +413,7 @@ const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle
 const docUrl = computed(() => appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '')
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
 const modelMarketplaceEnabled = computed(() => appStore.cachedPublicSettings?.model_marketplace_enabled !== false)
+const modelPricingEnabled = computed(() => appStore.cachedPublicSettings?.payment_enabled === true)
 
 const isHomeContentUrl = computed(() => {
   const content = homeContent.value.trim()
