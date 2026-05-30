@@ -19,7 +19,8 @@ import type {
   CodexSessionImportRequest,
   CodexSessionImportResult,
   CheckMixedChannelRequest,
-  CheckMixedChannelResponse
+  CheckMixedChannelResponse,
+  AccountPlatform
 } from '@/types'
 
 /**
@@ -488,6 +489,14 @@ export interface SyncUpstreamModelsResult {
   models: string[]
 }
 
+export interface SyncUpstreamModelsPreviewRequest {
+  platform: AccountPlatform
+  type: 'apikey'
+  credentials: Record<string, unknown>
+  proxy_id?: number | null
+  concurrency?: number
+}
+
 /**
  * Sync live supported models from the account's upstream model-list endpoint
  * @param id - Account ID
@@ -495,6 +504,20 @@ export interface SyncUpstreamModelsResult {
  */
 export async function syncUpstreamModels(id: number): Promise<SyncUpstreamModelsResult> {
   const { data } = await apiClient.post<SyncUpstreamModelsResult>(`/admin/accounts/${id}/models/sync-upstream`)
+  return data
+}
+
+/**
+ * 使用未保存的 API Key 账号凭证同步上游支持模型。
+ * 该接口只探测上游，不会持久化凭证。
+ */
+export async function syncUpstreamModelsPreview(
+  payload: SyncUpstreamModelsPreviewRequest
+): Promise<SyncUpstreamModelsResult> {
+  const { data } = await apiClient.post<SyncUpstreamModelsResult>(
+    '/admin/accounts/models/sync-upstream/preview',
+    payload
+  )
   return data
 }
 
@@ -715,6 +738,7 @@ export const accountsAPI = {
   setSchedulable,
   getAvailableModels,
   syncUpstreamModels,
+  syncUpstreamModelsPreview,
   generateAuthUrl,
   exchangeCode,
   refreshOpenAIToken,

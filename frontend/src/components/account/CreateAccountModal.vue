@@ -1124,7 +1124,11 @@
 
             <!-- Whitelist Mode -->
             <div v-if="modelRestrictionMode === 'whitelist'">
-              <ModelWhitelistSelector v-model="allowedModels" :platform="form.platform" />
+              <ModelWhitelistSelector
+                v-model="allowedModels"
+                :platform="form.platform"
+                :preview-sync-request="upstreamModelSyncPreviewRequest"
+              />
               <p class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
                 <span v-if="allowedModels.length === 0">{{
@@ -1575,7 +1579,11 @@
 
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" platform="anthropic" />
+            <ModelWhitelistSelector
+              v-model="allowedModels"
+              platform="anthropic"
+              :preview-sync-request="upstreamModelSyncPreviewRequest"
+            />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
               <span v-if="allowedModels.length === 0">{{ t('admin.accounts.supportsAllModels') }}</span>
@@ -1826,7 +1834,11 @@
 
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" :platform="form.platform" />
+            <ModelWhitelistSelector
+              v-model="allowedModels"
+              :platform="form.platform"
+              :preview-sync-request="upstreamModelSyncPreviewRequest"
+            />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
               <span v-if="allowedModels.length === 0">{{
@@ -3167,6 +3179,7 @@ import {
 } from '@/composables/useModelWhitelist'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
+import type { SyncUpstreamModelsPreviewRequest } from '@/api/admin/accounts'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import {
   useAccountOAuth,
@@ -3457,6 +3470,13 @@ const applyFailureSchedulingStrategy = (base?: Record<string, unknown>): Record<
 const buildOpenAICompactModelMapping = () =>
   buildModelMappingObject('mapping', [], openAICompactModelMappings.value)
 
+const getDefaultApiKeyBaseUrl = (platform: AccountPlatform) =>
+  platform === 'openai'
+    ? 'https://api.openai.com'
+    : platform === 'gemini'
+      ? 'https://generativelanguage.googleapis.com'
+      : 'https://api.anthropic.com'
+
 const showMixedChannelWarning = ref(false)
 const mixedChannelWarningDetails = ref<{ groupName: string; currentPlatform: string; otherPlatform: string } | null>(
   null
@@ -3608,6 +3628,28 @@ const form = reactive({
   rate_multiplier: 1,
   group_ids: [] as number[],
   expires_at: null as number | null
+})
+
+const upstreamModelSyncPreviewRequest = computed<SyncUpstreamModelsPreviewRequest | null>(() => {
+  if (form.type !== 'apikey' || form.platform === 'antigravity') {
+    return null
+  }
+
+  const apiKey = apiKeyValue.value.trim()
+  if (!apiKey) {
+    return null
+  }
+
+  return {
+    platform: form.platform,
+    type: 'apikey',
+    credentials: {
+      base_url: apiKeyBaseUrl.value.trim() || getDefaultApiKeyBaseUrl(form.platform),
+      api_key: apiKey
+    },
+    proxy_id: form.proxy_id,
+    concurrency: form.concurrency
+  }
 })
 
 // Helper to check if current type needs OAuth flow
@@ -4509,12 +4551,7 @@ const handleSubmit = async () => {
   }
 
   // Determine default base URL based on platform
-  const defaultBaseUrl =
-    form.platform === 'openai'
-      ? 'https://api.openai.com'
-      : form.platform === 'gemini'
-        ? 'https://generativelanguage.googleapis.com'
-        : 'https://api.anthropic.com'
+  const defaultBaseUrl = getDefaultApiKeyBaseUrl(form.platform)
 
   // Build credentials with optional model mapping
   const credentials: Record<string, unknown> = {

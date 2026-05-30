@@ -139,6 +139,15 @@ type UpdateAccountRequest struct {
 	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 }
 
+// SyncUpstreamModelsPreviewRequest 表示账号保存前的上游模型同步预览请求。
+type SyncUpstreamModelsPreviewRequest struct {
+	Platform    string         `json:"platform" binding:"required,oneof=openai anthropic gemini antigravity"`
+	Type        string         `json:"type" binding:"required,oneof=apikey"`
+	Credentials map[string]any `json:"credentials" binding:"required"`
+	ProxyID     *int64         `json:"proxy_id"`
+	Concurrency int            `json:"concurrency"`
+}
+
 // BulkUpdateAccountsRequest represents the payload for bulk editing accounts
 type BulkUpdateAccountsRequest struct {
 	AccountIDs              []int64                   `json:"account_ids"`
@@ -2194,6 +2203,71 @@ func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
 		}
 
 		slog.Warn("sync_upstream_models_failed", "account_id", accountID)
+		response.Error(c, http.StatusBadGateway, "Failed to sync upstream models from upstream")
+		return
+	}
+
+	response.Success(c, gin.H{"models": models})
+}
+
+// SyncUpstreamModelsPreview 在账号保存前按临时凭证同步上游支持的模型。
+// POST /api/v1/admin/accounts/models/sync-upstream/preview
+func (h *AccountHandler) SyncUpstreamModelsPreview(c *gin.Context) {
+	var req SyncUpstreamModelsPreviewRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if req.Type != service.AccountTypeAPIKey {
+		response.BadRequest(c, "Only API key accounts support preview model sync")
+		return
+	}
+
+	if h.accountTestService == nil {
+		response.InternalError(c, "Account test service is not configured")
+		return
+	}
+
+	if req.Concurrency <= 0 {
+		req.Concurrency = 1
+	}
+
+	account := &service.Account{
+		Platform:    req.Platform,
+		Type:        req.Type,
+		Credentials: req.Credentials,
+		ProxyID:     req.ProxyID,
+		Concurrency: req.Concurrency,
+	}
+
+	if req.ProxyID != nil && *req.ProxyID > 0 {
+		if h.adminService == nil {
+			response.InternalError(c, "Admin service is not configured")
+			return
+		}
+		proxy, err := h.adminService.GetProxy(c.Request.Context(), *req.ProxyID)
+		if err != nil || proxy == nil {
+			response.NotFound(c, "Proxy not found")
+			return
+		}
+		account.Proxy = proxy
+	}
+
+	models, err := h.accountTestService.FetchUpstreamSupportedModels(c.Request.Context(), account)
+	if err != nil {
+		var syncErr *service.UpstreamModelSyncError
+		if errors.As(err, &syncErr) {
+			switch syncErr.Kind {
+			case service.UpstreamModelSyncErrorConfiguration, service.UpstreamModelSyncErrorUnsupported:
+				response.BadRequest(c, syncErr.SafeMessage())
+			default:
+				slog.Warn("preview_sync_upstream_models_failed", "platform", req.Platform, "kind", syncErr.Kind)
+				response.Error(c, http.StatusBadGateway, syncErr.SafeMessage())
+			}
+			return
+		}
+
+		slog.Warn("preview_sync_upstream_models_failed", "platform", req.Platform)
 		response.Error(c, http.StatusBadGateway, "Failed to sync upstream models from upstream")
 		return
 	}

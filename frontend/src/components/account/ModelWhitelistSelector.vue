@@ -133,6 +133,7 @@ import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { accountsAPI } from '@/api/admin/accounts'
+import type { SyncUpstreamModelsPreviewRequest } from '@/api/admin/accounts'
 import ModelIcon from '@/components/common/ModelIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { allModels, getModelsByPlatform } from '@/composables/useModelWhitelist'
@@ -144,6 +145,7 @@ const props = defineProps<{
   platform?: string
   platforms?: string[]
   accountId?: number
+  previewSyncRequest?: SyncUpstreamModelsPreviewRequest | null
 }>()
 
 const emit = defineEmits<{
@@ -176,6 +178,7 @@ const normalizedPlatforms = computed(() => {
 
 const upstreamSyncPlatforms = new Set(['anthropic', 'openai', 'gemini', 'antigravity'])
 const canSyncUpstream = computed(() => {
+  if (props.previewSyncRequest) return true
   if (!props.accountId) return false
   if (normalizedPlatforms.value.length === 0) return true
   return normalizedPlatforms.value.some(platform => upstreamSyncPlatforms.has(platform.toLowerCase()))
@@ -249,11 +252,15 @@ const fillRelated = () => {
 }
 
 const syncUpstreamModels = async () => {
-  if (!props.accountId || isSyncingUpstream.value) return
+  if (isSyncingUpstream.value) return
+  const previewSyncRequest = props.previewSyncRequest
+  if (!props.accountId && !previewSyncRequest) return
 
   isSyncingUpstream.value = true
   try {
-    const result = await accountsAPI.syncUpstreamModels(props.accountId)
+    const result = props.accountId
+      ? await accountsAPI.syncUpstreamModels(props.accountId)
+      : await accountsAPI.syncUpstreamModelsPreview(previewSyncRequest!)
     const upstreamModels = result.models.map(model => model.trim()).filter(Boolean)
     if (upstreamModels.length === 0) {
       appStore.showInfo(t('admin.accounts.syncUpstreamModelsEmpty'))
