@@ -311,6 +311,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		upstreamModel := ""
 		if result != nil {
 			upstreamModel = result.UpstreamModel
+			h.recordSuccessfulConversationAudit(c, apiKey, subject, service.ContentModerationProtocolOpenAIImages, parsed.Model, upstreamModel, result.Stream, parsed.ModerationBody(), result.Usage)
 		}
 		h.submitMandatoryUsageRecordTask(func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{

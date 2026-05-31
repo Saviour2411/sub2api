@@ -230,6 +230,99 @@
           </div>
         </div>
 
+        <div v-if="status?.local_audit?.enabled" class="card">
+          <div class="flex flex-col gap-4 border-b border-gray-100 px-6 py-4 dark:border-dark-700 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.localAuditRecords') }}</h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.localAuditRecordsHint') }}</p>
+            </div>
+            <button type="button" class="btn btn-secondary inline-flex items-center gap-2" :disabled="localAuditsLoading" @click="loadLocalAudits">
+              <Icon name="refresh" size="sm" :class="localAuditsLoading ? 'animate-spin' : ''" />
+              {{ t('admin.riskControl.refresh') }}
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 gap-3 border-b border-gray-100 px-6 py-4 dark:border-dark-700 md:grid-cols-2 xl:grid-cols-6">
+            <Select v-model="localAuditFilters.group_id" :options="groupFilterOptions" @change="reloadLocalAuditsFromFirstPage" />
+            <Select v-model="localAuditFilters.endpoint" :options="endpointOptions" @change="reloadLocalAuditsFromFirstPage" />
+            <input v-model.trim="localAuditFilters.model" type="search" class="input" :placeholder="t('admin.riskControl.localAuditFilters.model')" @keyup.enter="reloadLocalAuditsFromFirstPage" />
+            <input v-model.trim="localAuditFilters.search" type="search" class="input" :placeholder="t('admin.riskControl.localAuditFilters.search')" @keyup.enter="reloadLocalAuditsFromFirstPage" />
+            <input v-model="localAuditFilters.from" type="datetime-local" class="input" :title="t('admin.riskControl.filters.from')" @change="reloadLocalAuditsFromFirstPage" />
+            <input v-model="localAuditFilters.to" type="datetime-local" class="input" :title="t('admin.riskControl.filters.to')" @change="reloadLocalAuditsFromFirstPage" />
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-dark-700">
+              <thead class="bg-gray-50 dark:bg-dark-800">
+                <tr>
+                  <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.table.time') }}</th>
+                  <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.table.group') }}</th>
+                  <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.table.user') }}</th>
+                  <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.table.endpoint') }}</th>
+                  <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.localAuditTable.counts') }}</th>
+                  <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.localAuditTable.size') }}</th>
+                  <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('common.actions') }}</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100 bg-white dark:divide-dark-800 dark:bg-dark-800">
+                <tr v-if="localAuditsLoading">
+                  <td colspan="7" class="px-5 py-12 text-center text-sm text-gray-500 dark:text-gray-400">{{ t('common.loading') }}</td>
+                </tr>
+                <tr v-else-if="localAudits.length === 0">
+                  <td colspan="7" class="px-5 py-12 text-center text-sm text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.localAuditEmpty') }}</td>
+                </tr>
+                <template v-else>
+                  <tr v-for="row in localAudits" :key="row.id" class="hover:bg-gray-50 dark:hover:bg-dark-700/60">
+                    <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">
+                      <div>{{ formatDateTime(row.created_at) }}</div>
+                      <div class="font-mono text-xs text-gray-400">{{ row.request_id || row.id }}</div>
+                    </td>
+                    <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">{{ row.group_name || '-' }}</td>
+                    <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">
+                      <div>{{ row.user_email || '-' }}</div>
+                      <div v-if="row.user_id" class="text-xs text-gray-400">UID {{ row.user_id }}</div>
+                    </td>
+                    <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">
+                      <div>{{ row.endpoint || '-' }}</div>
+                      <div class="text-xs text-gray-400">{{ row.provider || '-' }} / {{ row.model || '-' }}</div>
+                      <div v-if="row.session_id" class="max-w-[220px] truncate font-mono text-xs text-gray-400">{{ row.session_id }}</div>
+                    </td>
+                    <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">
+                      {{ t('admin.riskControl.localAuditCounts', { messages: row.message_count, tools: row.tool_count, calls: row.tool_call_count, results: row.tool_result_count }) }}
+                    </td>
+                    <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">{{ formatBytes(row.file_size_bytes) }}</td>
+                    <td class="whitespace-nowrap px-5 py-4 text-sm">
+                      <div class="flex items-center gap-2">
+                        <button type="button" class="btn btn-secondary btn-sm inline-flex items-center gap-1" @click="openLocalAudit(row)">
+                          <Icon name="eye" size="xs" />
+                          {{ t('common.view') }}
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm inline-flex items-center gap-1" @click="downloadLocalAudit(row)">
+                          <Icon name="download" size="xs" />
+                          {{ t('admin.riskControl.download') }}
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm inline-flex items-center gap-1 text-red-600 hover:text-red-700 dark:text-red-300" @click="deleteLocalAudit(row)">
+                          <Icon name="trash" size="xs" />
+                          {{ t('common.delete') }}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+
+          <Pagination
+            v-if="localAuditPagination.total > 0"
+            :page="localAuditPagination.page"
+            :total="localAuditPagination.total"
+            :page-size="localAuditPagination.page_size"
+            @update:page="onLocalAuditPageChange"
+            @update:pageSize="onLocalAuditPageSizeChange"
+          />
+        </div>
+
         <div class="card">
           <div class="flex flex-col gap-4 border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -811,6 +904,29 @@
               <Toggle v-model="configForm.record_non_hits" />
             </div>
             <div class="space-y-4 rounded-lg border border-gray-100 p-4 dark:border-dark-700 lg:col-span-2">
+              <div class="flex items-center justify-between gap-4 rounded-lg border border-gray-100 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-900/30">
+                <div>
+                  <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.riskControl.localAuditEnabled') }}</p>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.localAuditEnabledHint') }}</p>
+                </div>
+                <Toggle v-model="configForm.local_audit_enabled" />
+              </div>
+              <div v-if="configForm.local_audit_enabled" class="grid grid-cols-1 gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+                <div>
+                  <label class="input-label">{{ t('admin.riskControl.localAuditMaxStorage') }}</label>
+                  <div class="relative">
+                    <input v-model.number="configForm.local_audit_max_storage_gb" type="number" min="0.1" max="1024" step="0.1" class="input pr-10" />
+                    <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">GB</span>
+                  </div>
+                </div>
+                <div class="rounded-lg bg-gray-50 p-3 text-xs leading-5 text-gray-500 dark:bg-dark-900/30 dark:text-gray-400">
+                  <p class="font-medium text-gray-700 dark:text-gray-200">{{ t('admin.riskControl.localAuditStoragePath') }}</p>
+                  <p class="mt-1 break-all font-mono">{{ configForm.local_audit_storage_path || status?.local_audit?.storage_path || '-' }}</p>
+                  <p class="mt-2">
+                    {{ t('admin.riskControl.localAuditStorageStats', { records: formatNumber(status?.local_audit?.retained_records ?? 0), bytes: formatBytes(status?.local_audit?.retained_bytes ?? 0), max: configForm.local_audit_max_storage_gb }) }}
+                  </p>
+                </div>
+              </div>
               <div class="flex items-center justify-between gap-4">
                 <div>
                   <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.riskControl.preHashCheck') }}</p>
@@ -1044,6 +1160,57 @@
       </BaseDialog>
 
       <BaseDialog
+        :show="localAuditDetailOpen"
+        :title="t('admin.riskControl.localAuditDetailTitle')"
+        width="extra-wide"
+        @close="closeLocalAuditDetail"
+      >
+        <div v-if="localAuditDetail" class="space-y-5">
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div class="rounded-lg border border-gray-100 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-800/70">
+              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.table.time') }}</p>
+              <p class="mt-1 truncate text-sm font-semibold text-gray-900 dark:text-white">{{ formatDateTime(localAuditDetail.created_at) }}</p>
+            </div>
+            <div class="rounded-lg border border-gray-100 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-800/70">
+              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.table.user') }}</p>
+              <p class="mt-1 truncate text-sm font-semibold text-gray-900 dark:text-white">{{ localAuditDetail.user_email || '-' }}</p>
+            </div>
+            <div class="rounded-lg border border-gray-100 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-800/70">
+              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.table.endpoint') }}</p>
+              <p class="mt-1 truncate text-sm font-semibold text-gray-900 dark:text-white">{{ localAuditDetail.endpoint || '-' }}</p>
+            </div>
+            <div class="rounded-lg border border-gray-100 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-800/70">
+              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.localAuditTable.size') }}</p>
+              <p class="mt-1 truncate text-sm font-semibold text-gray-900 dark:text-white">{{ formatBytes(localAuditDetail.file_size_bytes) }}</p>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.localAuditDetailContent') }}</p>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ localAuditDetail.provider || '-' }} / {{ localAuditDetail.model || '-' }}
+                  <span v-if="localAuditDetail.upstream_model"> -> {{ localAuditDetail.upstream_model }}</span>
+                </p>
+              </div>
+              <button type="button" class="btn btn-secondary inline-flex items-center gap-2" @click="downloadLocalAudit(localAuditDetail)">
+                <Icon name="download" size="sm" />
+                {{ t('admin.riskControl.download') }}
+              </button>
+            </div>
+            <pre class="mt-4 max-h-[560px] overflow-auto whitespace-pre-wrap break-words rounded-lg bg-gray-950 p-4 text-sm leading-6 text-gray-100 shadow-inner dark:bg-black/50">{{ localAuditDetailText }}</pre>
+          </div>
+        </div>
+
+        <template #footer>
+          <div class="flex justify-end">
+            <button type="button" class="btn btn-secondary" @click="closeLocalAuditDetail">{{ t('common.close') }}</button>
+          </div>
+        </template>
+      </BaseDialog>
+
+      <BaseDialog
         :show="inputDetailRow !== null"
         :title="t('admin.riskControl.inputDetailTitle')"
         width="wide"
@@ -1114,6 +1281,8 @@ import type {
   ContentModerationAPIKeyLoad,
   ContentModerationAPIKeyStatus,
   ContentModerationConfig,
+  ContentModerationLocalAuditMetadata,
+  ContentModerationLocalAuditRecord,
   ContentModerationLog,
   ContentModerationModelFilter,
   ContentModerationModelFilterType,
@@ -1181,6 +1350,7 @@ const appStore = useAppStore()
 const loading = ref(true)
 const saving = ref(false)
 const logsLoading = ref(false)
+const localAuditsLoading = ref(false)
 const statusLoading = ref(false)
 const apiKeyTesting = ref(false)
 const hashActionLoading = ref(false)
@@ -1191,6 +1361,9 @@ const groupSearch = ref('')
 const flaggedHashInput = ref('')
 const groups = ref<AdminGroup[]>([])
 const logs = ref<ContentModerationLog[]>([])
+const localAudits = ref<ContentModerationLocalAuditMetadata[]>([])
+const localAuditDetail = ref<ContentModerationLocalAuditRecord | null>(null)
+const localAuditDetailOpen = ref(false)
 const status = ref<ContentModerationRuntimeStatus | null>(null)
 const testedApiKeyStatuses = ref<ContentModerationAPIKeyStatus[]>([])
 const pendingDeleteApiKeyHashes = ref<string[]>([])
@@ -1236,6 +1409,9 @@ const configForm = reactive({
   keyword_blocking_mode: 'keyword_and_api' as KeywordBlockingMode,
   model_filter_type: 'all' as ContentModerationModelFilterType,
   model_filter_models: [] as string[],
+  local_audit_enabled: false,
+  local_audit_max_storage_gb: 1,
+  local_audit_storage_path: '',
 })
 
 const pagination = reactive({
@@ -1245,10 +1421,26 @@ const pagination = reactive({
   pages: 1,
 })
 
+const localAuditPagination = reactive({
+  page: 1,
+  page_size: 10,
+  total: 0,
+  pages: 1,
+})
+
 const filters = reactive({
   result: '',
   group_id: 0,
   endpoint: '',
+  search: '',
+  from: '',
+  to: '',
+})
+
+const localAuditFilters = reactive({
+  group_id: 0,
+  endpoint: '',
+  model: '',
   search: '',
   from: '',
   to: '',
@@ -1565,6 +1757,11 @@ const inputDetailText = computed(() => {
   return inputDetailRow.value.input_excerpt || inputDetailRow.value.error || '-'
 })
 
+const localAuditDetailText = computed(() => {
+  if (!localAuditDetail.value) return ''
+  return JSON.stringify(localAuditDetail.value, null, 2)
+})
+
 const queueUsagePercent = computed(() => `${Math.min(100, Math.max(0, status.value?.queue_usage_percent ?? 0)).toFixed(1)}%`)
 
 const queueUsageStyle = computed(() => ({
@@ -1713,6 +1910,9 @@ function applyConfig(config: ContentModerationConfig) {
   const modelFilter = normalizeModelFilter(config.model_filter)
   configForm.model_filter_type = modelFilter.type
   configForm.model_filter_models = modelFilter.models
+  configForm.local_audit_enabled = config.local_audit_enabled ?? false
+  configForm.local_audit_max_storage_gb = config.local_audit_max_storage_gb || 1
+  configForm.local_audit_storage_path = config.local_audit_storage_path || ''
 }
 
 async function loadAll() {
@@ -1730,7 +1930,10 @@ async function loadAll() {
       configForm.api_key_statuses = [...runtimeStatus.api_key_statuses]
       prunePendingDeleteAPIKeyHashes()
     }
-    await loadLogs()
+    await Promise.all([
+      loadLogs(),
+      runtimeStatus.local_audit?.enabled ? loadLocalAudits() : Promise.resolve(),
+    ])
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('admin.riskControl.loadFailed')))
   } finally {
@@ -1746,6 +1949,9 @@ async function loadStatus(silent = true) {
     if (Array.isArray(runtimeStatus.api_key_statuses)) {
       configForm.api_key_statuses = [...runtimeStatus.api_key_statuses]
       prunePendingDeleteAPIKeyHashes()
+    }
+    if (runtimeStatus.local_audit?.storage_path) {
+      configForm.local_audit_storage_path = runtimeStatus.local_audit.storage_path
     }
   } catch (err: unknown) {
     if (!silent) {
@@ -1791,6 +1997,8 @@ async function saveConfig() {
       blocked_keywords: blockedKeywordList.value,
       keyword_blocking_mode: configForm.keyword_blocking_mode,
       model_filter: modelFilterPayload,
+      local_audit_enabled: configForm.local_audit_enabled,
+      local_audit_max_storage_gb: Number(configForm.local_audit_max_storage_gb) || 1,
     }
     const keys = parseApiKeys(configForm.api_keys_text)
     if (!payload.clear_api_key && configForm.api_keys_mode === 'replace' && keys.length === 0) {
@@ -1810,7 +2018,7 @@ async function saveConfig() {
     applyConfig(updated)
     settingsOpen.value = false
     appStore.showSuccess(t('admin.riskControl.saved'))
-    await Promise.all([loadStatus(true), loadLogs()])
+    await Promise.all([loadStatus(true), loadLogs(), configForm.local_audit_enabled ? loadLocalAudits() : Promise.resolve()])
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('admin.riskControl.saveFailed')))
   } finally {
@@ -1841,6 +2049,82 @@ async function loadLogs() {
     appStore.showError(extractApiErrorMessage(err, t('admin.riskControl.logsFailed')))
   } finally {
     logsLoading.value = false
+  }
+}
+
+async function loadLocalAudits() {
+  localAuditsLoading.value = true
+  try {
+    const params = {
+      page: localAuditPagination.page,
+      page_size: localAuditPagination.page_size,
+      group_id: localAuditFilters.group_id || undefined,
+      endpoint: localAuditFilters.endpoint || undefined,
+      model: localAuditFilters.model || undefined,
+      search: localAuditFilters.search || undefined,
+      from: normalizeDateTimeLocal(localAuditFilters.from),
+      to: normalizeDateTimeLocal(localAuditFilters.to),
+    }
+    const result = await adminAPI.riskControl.listLocalAudits(params)
+    localAudits.value = result.items
+    localAuditPagination.total = result.total
+    localAuditPagination.page = result.page
+    localAuditPagination.page_size = result.page_size
+    localAuditPagination.pages = result.pages
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('admin.riskControl.localAuditLoadFailed')))
+  } finally {
+    localAuditsLoading.value = false
+  }
+}
+
+function reloadLocalAuditsFromFirstPage() {
+  localAuditPagination.page = 1
+  void loadLocalAudits()
+}
+
+async function openLocalAudit(row: ContentModerationLocalAuditMetadata) {
+  localAuditDetailOpen.value = true
+  try {
+    localAuditDetail.value = await adminAPI.riskControl.getLocalAudit(row.id)
+  } catch (err: unknown) {
+    localAuditDetailOpen.value = false
+    appStore.showError(extractApiErrorMessage(err, t('admin.riskControl.localAuditDetailFailed')))
+  }
+}
+
+function closeLocalAuditDetail() {
+  localAuditDetailOpen.value = false
+  localAuditDetail.value = null
+}
+
+async function downloadLocalAudit(row: ContentModerationLocalAuditMetadata) {
+  try {
+    const blob = await adminAPI.riskControl.downloadLocalAudit(row.id)
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `conversation-audit-${row.id}.json`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('admin.riskControl.localAuditDownloadFailed')))
+  }
+}
+
+async function deleteLocalAudit(row: ContentModerationLocalAuditMetadata) {
+  if (!window.confirm(t('admin.riskControl.localAuditDeleteConfirm'))) return
+  try {
+    await adminAPI.riskControl.deleteLocalAudit(row.id)
+    if (localAuditDetail.value?.id === row.id) {
+      closeLocalAuditDetail()
+    }
+    await Promise.all([loadLocalAudits(), loadStatus(true)])
+    appStore.showSuccess(t('admin.riskControl.localAuditDeleted'))
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('admin.riskControl.localAuditDeleteFailed')))
   }
 }
 
@@ -1927,6 +2211,17 @@ function onPageSizeChange(pageSize: number) {
   pagination.page = 1
   pagination.page_size = pageSize
   void loadLogs()
+}
+
+function onLocalAuditPageChange(page: number) {
+  localAuditPagination.page = page
+  void loadLocalAudits()
+}
+
+function onLocalAuditPageSizeChange(pageSize: number) {
+  localAuditPagination.page = 1
+  localAuditPagination.page_size = pageSize
+  void loadLocalAudits()
 }
 
 function toggleClearApiKey() {
@@ -2319,6 +2614,15 @@ function formatDateTime(value: string): string {
 
 function formatNumber(value: number): string {
   return new Intl.NumberFormat().format(value)
+}
+
+function formatBytes(value: number): string {
+  const bytes = Number(value) || 0
+  if (bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const index = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)))
+  const amount = bytes / (1024 ** index)
+  return `${amount.toFixed(index === 0 ? 0 : 1)} ${units[index]}`
 }
 
 onMounted(() => {

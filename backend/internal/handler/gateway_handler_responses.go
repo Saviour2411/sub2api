@@ -275,6 +275,9 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		requestPayloadHash := service.HashUsageRequestPayload(body)
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
+		if !result.ClientDisconnect {
+			h.recordSuccessfulConversationAudit(c, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, result.UpstreamModel, result.Stream, body, result.Usage)
+		}
 
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 		h.submitUsageRecordTask(func(ctx context.Context) {

@@ -449,6 +449,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		requestPayloadHash := service.HashUsageRequestPayload(body)
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
+		if result != nil {
+			h.recordSuccessfulConversationAudit(c, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, result.UpstreamModel, result.Stream, body, result.Usage)
+		}
 
 		// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
 		h.submitOpenAIUsageRecordTask(result, func(ctx context.Context) {
@@ -845,6 +848,9 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		requestPayloadHash := service.HashUsageRequestPayload(body)
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
+		if result != nil {
+			h.recordSuccessfulConversationAudit(c, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, result.UpstreamModel, result.Stream, body, result.Usage)
+		}
 
 		h.submitOpenAIUsageRecordTask(result, func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{

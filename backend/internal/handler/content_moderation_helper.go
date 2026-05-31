@@ -19,6 +19,13 @@ func (h *GatewayHandler) checkContentModeration(c *gin.Context, reqLog *zap.Logg
 	return runContentModeration(c, reqLog, h.contentModerationService, apiKey, subject, protocol, model, body)
 }
 
+func (h *GatewayHandler) recordSuccessfulConversationAudit(c *gin.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, upstreamModel string, stream bool, body []byte, usage any) {
+	if h == nil || h.contentModerationService == nil {
+		return
+	}
+	recordSuccessfulConversationAudit(c, h.contentModerationService, apiKey, subject, protocol, model, upstreamModel, stream, body, usage)
+}
+
 func contentModerationStatus(decision *service.ContentModerationDecision) int {
 	if decision == nil || decision.StatusCode < 400 || decision.StatusCode > 599 {
 		return http.StatusForbidden
@@ -35,6 +42,13 @@ func (h *OpenAIGatewayHandler) checkContentModeration(c *gin.Context, reqLog *za
 		return nil
 	}
 	return runContentModeration(c, reqLog, h.contentModerationService, apiKey, subject, protocol, model, body)
+}
+
+func (h *OpenAIGatewayHandler) recordSuccessfulConversationAudit(c *gin.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, upstreamModel string, stream bool, body []byte, usage any) {
+	if h == nil || h.contentModerationService == nil {
+		return
+	}
+	recordSuccessfulConversationAudit(c, h.contentModerationService, apiKey, subject, protocol, model, upstreamModel, stream, body, usage)
 }
 
 func runContentModeration(c *gin.Context, reqLog *zap.Logger, svc *service.ContentModerationService, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, body []byte) *service.ContentModerationDecision {
@@ -110,6 +124,30 @@ func buildContentModerationInput(c *gin.Context, apiKey *service.APIKey, subject
 		input.Endpoint = c.Request.URL.Path
 	}
 	return input
+}
+
+func recordSuccessfulConversationAudit(c *gin.Context, svc *service.ContentModerationService, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, upstreamModel string, stream bool, body []byte, usage any) {
+	if svc == nil || c == nil || c.Request == nil || len(body) == 0 {
+		return
+	}
+	input := buildContentModerationInput(c, apiKey, subject, protocol, model, body)
+	svc.RecordSuccessfulConversation(c.Request.Context(), service.ContentModerationLocalAuditInput{
+		RequestID:     input.RequestID,
+		UserID:        input.UserID,
+		UserEmail:     input.UserEmail,
+		APIKeyID:      input.APIKeyID,
+		APIKeyName:    input.APIKeyName,
+		GroupID:       input.GroupID,
+		GroupName:     input.GroupName,
+		Endpoint:      input.Endpoint,
+		Provider:      input.Provider,
+		Model:         input.Model,
+		UpstreamModel: strings.TrimSpace(upstreamModel),
+		Protocol:      input.Protocol,
+		Stream:        stream,
+		Body:          body,
+		Usage:         usage,
+	})
 }
 
 func contentModerationProvider(apiKey *service.APIKey) string {

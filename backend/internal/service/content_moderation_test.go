@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -1690,6 +1692,124 @@ func TestContentModerationUnbanUser_ActiveUserOnlyInvalidatesAuthCache(t *testin
 	require.Equal(t, StatusActive, result.Status)
 	require.Empty(t, userRepo.updated)
 	require.Equal(t, []int64{1001}, invalidator.userIDs)
+}
+
+func TestContentModerationLocalAuditWriteAndReadRedactsSensitiveFields(t *testing.T) {
+	t.Setenv("DATA_DIR", t.TempDir())
+	cfg := defaultContentModerationConfig()
+	cfg.LocalAuditEnabled = true
+	rawCfg, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	svc := NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{
+			SettingKeyRiskControlEnabled:      "true",
+			SettingKeyContentModerationConfig: string(rawCfg),
+		}},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	err = svc.writeLocalAuditRecord(contentModerationLocalAuditTask{
+		config:    cfg,
+		createdAt: time.Date(2026, 5, 31, 10, 0, 0, 0, time.UTC),
+		input: ContentModerationLocalAuditInput{
+			RequestID:  "req_1",
+			UserID:     42,
+			UserEmail:  "user@example.com",
+			APIKeyID:   7,
+			APIKeyName: "prod",
+			Endpoint:   "/v1/chat/completions",
+			Provider:   "openai",
+			Model:      "gpt-4o",
+			Protocol:   ContentModerationProtocolOpenAIChat,
+			Body: []byte(`{
+				"model":"gpt-4o",
+				"api_key":"sk-test-secret",
+				"messages":[
+					{"role":"system","content":"follow policy"},
+					{"role":"user","content":"hello"},
+					{"role":"assistant","tool_calls":[{"id":"call_1","function":{"name":"lookup","arguments":"{\"token\":\"secret-token-value\"}"}}]},
+					{"role":"tool","tool_call_id":"call_1","content":"ok"}
+				],
+				"tools":[{"type":"function","function":{"name":"lookup"}}]
+			}`),
+			Usage: map[string]any{"input_tokens": 10, "output_tokens": 2},
+		},
+	})
+
+	require.NoError(t, err)
+	items, page, err := svc.ListLocalAuditRecords(context.Background(), ContentModerationLocalAuditListFilter{
+		Pagination: pagination.PaginationParams{Page: 1, PageSize: 10},
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), page.Total)
+	require.Len(t, items, 1)
+	require.Equal(t, 4, items[0].MessageCount)
+	require.Equal(t, 1, items[0].ToolCount)
+	require.Equal(t, 1, items[0].ToolCallCount)
+	require.Equal(t, 1, items[0].ToolResultCount)
+
+	record, err := svc.GetLocalAuditRecord(context.Background(), items[0].ID)
+	require.NoError(t, err)
+	raw, err := json.Marshal(record.RawRequest)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"api_key":"[REDACTED]"`)
+	require.NotContains(t, string(raw), "sk-test-secret")
+}
+
+func TestContentModerationLocalAuditCleanupDeletesOldestWhenStorageExceeded(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Setenv("DATA_DIR", dataDir)
+	cfg := defaultContentModerationConfig()
+	cfg.LocalAuditEnabled = true
+	cfg.LocalAuditMaxStorageGB = minContentModerationLocalAuditStorageGB
+	rawCfg, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	svc := NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{
+			SettingKeyRiskControlEnabled:      "true",
+			SettingKeyContentModerationConfig: string(rawCfg),
+		}},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+	root := svc.localAuditRoot()
+	oldDir := filepath.Join(root, "2026", "05", "30")
+	newDir := filepath.Join(root, "2026", "05", "31")
+	require.NoError(t, os.MkdirAll(oldDir, 0o700))
+	require.NoError(t, os.MkdirAll(newDir, 0o700))
+	oldID := "11111111-1111-4111-8111-111111111111"
+	newID := "22222222-2222-4222-8222-222222222222"
+	writeLocalAuditTestFiles(t, oldDir, oldID, time.Date(2026, 5, 30, 10, 0, 0, 0, time.UTC), 120*1024*1024)
+	writeLocalAuditTestFiles(t, newDir, newID, time.Date(2026, 5, 31, 10, 0, 0, 0, time.UTC), 1)
+
+	svc.runLocalAuditCleanupOnce()
+
+	_, err = os.Stat(filepath.Join(oldDir, oldID+".json"))
+	require.True(t, os.IsNotExist(err))
+	_, err = os.Stat(filepath.Join(newDir, newID+".json"))
+	require.NoError(t, err)
+}
+
+func writeLocalAuditTestFiles(t *testing.T, dir string, id string, createdAt time.Time, size int64) {
+	t.Helper()
+	meta := ContentModerationLocalAuditMetadata{
+		ID:            id,
+		FileSizeBytes: size,
+		CreatedAt:     createdAt,
+	}
+	rawMeta, err := json.Marshal(meta)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, id+".meta.json"), rawMeta, 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, id+".json"), []byte(strings.Repeat("x", int(size))), 0o600))
 }
 
 func contentModerationIntPtr(v int) *int {

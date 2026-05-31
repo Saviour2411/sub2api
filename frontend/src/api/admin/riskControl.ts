@@ -40,6 +40,9 @@ export interface ContentModerationConfig {
   blocked_keywords: string[]
   keyword_blocking_mode: KeywordBlockingMode
   model_filter: ContentModerationModelFilter
+  local_audit_enabled: boolean
+  local_audit_max_storage_gb: number
+  local_audit_storage_path: string
 }
 
 export type ContentModerationAPIKeyStatusValue = 'unknown' | 'ok' | 'error' | 'frozen'
@@ -115,6 +118,26 @@ export interface UpdateContentModerationConfig {
   blocked_keywords?: string[]
   keyword_blocking_mode?: KeywordBlockingMode
   model_filter?: ContentModerationModelFilter
+  local_audit_enabled?: boolean
+  local_audit_max_storage_gb?: number
+}
+
+export interface ContentModerationLocalAuditStats {
+  enabled: boolean
+  storage_path: string
+  max_storage_gb: number
+  retained_bytes: number
+  retained_records: number
+  queue_size: number
+  queue_length: number
+  active: number
+  enqueued: number
+  dropped: number
+  written: number
+  errors: number
+  last_cleanup_at?: string
+  last_cleanup_deleted: number
+  last_cleanup_deleted_bytes: number
 }
 
 export interface ContentModerationRuntimeStatus {
@@ -147,6 +170,7 @@ export interface ContentModerationRuntimeStatus {
   last_cleanup_at?: string
   last_cleanup_deleted_hit: number
   last_cleanup_deleted_non_hit: number
+  local_audit: ContentModerationLocalAuditStats
 }
 
 export interface ContentModerationAPIKeyLoad {
@@ -212,6 +236,60 @@ export interface ContentModerationLogsResponse {
   pages: number
 }
 
+export interface ContentModerationLocalAuditMetadata {
+  id: string
+  request_id: string
+  session_id: string
+  user_id?: number
+  user_email: string
+  api_key_id?: number
+  api_key_name: string
+  group_id?: number
+  group_name: string
+  endpoint: string
+  provider: string
+  model: string
+  upstream_model?: string
+  protocol: string
+  stream: boolean
+  system_prompt_excerpt: string
+  message_count: number
+  tool_count: number
+  tool_call_count: number
+  tool_result_count: number
+  file_size_bytes: number
+  created_at: string
+}
+
+export interface ContentModerationLocalAuditRecord extends ContentModerationLocalAuditMetadata {
+  system_prompt?: unknown
+  messages?: unknown
+  tools?: unknown
+  tool_calls?: unknown[]
+  tool_results?: unknown[]
+  usage?: unknown
+  raw_request?: unknown
+}
+
+export interface ListContentModerationLocalAuditParams {
+  page?: number
+  page_size?: number
+  group_id?: number
+  endpoint?: string
+  model?: string
+  search?: string
+  from?: string
+  to?: string
+}
+
+export interface ContentModerationLocalAuditsResponse {
+  items: ContentModerationLocalAuditMetadata[]
+  total: number
+  page: number
+  page_size: number
+  pages: number
+}
+
 export interface ContentModerationUnbanUserResponse {
   user_id: number
   status: string
@@ -259,6 +337,32 @@ export async function listLogs(
   return data
 }
 
+export async function listLocalAudits(
+  params: ListContentModerationLocalAuditParams = {}
+): Promise<ContentModerationLocalAuditsResponse> {
+  const { data } = await apiClient.get<ContentModerationLocalAuditsResponse>('/admin/risk-control/local-audits', {
+    params,
+  })
+  return data
+}
+
+export async function getLocalAudit(id: string): Promise<ContentModerationLocalAuditRecord> {
+  const { data } = await apiClient.get<ContentModerationLocalAuditRecord>(`/admin/risk-control/local-audits/${id}`)
+  return data
+}
+
+export async function deleteLocalAudit(id: string): Promise<{ deleted: boolean }> {
+  const { data } = await apiClient.delete<{ deleted: boolean }>(`/admin/risk-control/local-audits/${id}`)
+  return data
+}
+
+export async function downloadLocalAudit(id: string): Promise<Blob> {
+  const { data } = await apiClient.get<Blob>(`/admin/risk-control/local-audits/${id}/download`, {
+    responseType: 'blob',
+  })
+  return data
+}
+
 export async function unbanUser(userID: number): Promise<ContentModerationUnbanUserResponse> {
   const { data } = await apiClient.post<ContentModerationUnbanUserResponse>(
     `/admin/risk-control/users/${userID}/unban`
@@ -284,6 +388,10 @@ export const riskControlAPI = {
   getStatus,
   testAPIKeys,
   listLogs,
+  listLocalAudits,
+  getLocalAudit,
+  deleteLocalAudit,
+  downloadLocalAudit,
   unbanUser,
   deleteFlaggedHash,
   clearFlaggedHashes,

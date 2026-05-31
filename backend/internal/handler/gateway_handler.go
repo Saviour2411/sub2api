@@ -507,6 +507,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			if result.ReasoningEffort == nil {
 				result.ReasoningEffort = service.NormalizeClaudeOutputEffort(parsedReq.OutputEffort)
 			}
+			if !result.ClientDisconnect {
+				h.recordSuccessfulConversationAudit(c, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, result.UpstreamModel, result.Stream, body, result.Usage)
+			}
 
 			// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
 			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
@@ -911,6 +914,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 			if result.ReasoningEffort == nil {
 				result.ReasoningEffort = service.NormalizeClaudeOutputEffort(parsedReq.OutputEffort)
+			}
+			if !result.ClientDisconnect {
+				h.recordSuccessfulConversationAudit(c, currentAPIKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, result.UpstreamModel, result.Stream, body, result.Usage)
 			}
 
 			// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
