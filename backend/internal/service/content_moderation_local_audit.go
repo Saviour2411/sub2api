@@ -282,7 +282,6 @@ func (s *ContentModerationService) writeLocalAuditRecord(task contentModerationL
 	if err != nil {
 		return fmt.Errorf("marshal local audit metadata: %w", err)
 	}
-	record.ContentModerationLocalAuditMetadata.FileSizeBytes = record.FileSizeBytes
 	raw, err = json.MarshalIndent(record, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal local audit record with size: %w", err)
@@ -506,6 +505,9 @@ func (s *ContentModerationService) runLocalAuditCleanupOnce() {
 }
 
 func (s *ContentModerationService) localAuditStats(cfg *ContentModerationConfig) ContentModerationLocalAuditStats {
+	if s == nil {
+		return ContentModerationLocalAuditStats{}
+	}
 	s.refreshLocalAuditStats()
 	var lastCleanupAt *time.Time
 	if unix := s.localAuditLastCleanupUnix.Load(); unix > 0 {
@@ -514,7 +516,7 @@ func (s *ContentModerationService) localAuditStats(cfg *ContentModerationConfig)
 	}
 	queueLength := 0
 	queueSize := 0
-	if s != nil && s.localAuditQueue != nil {
+	if s.localAuditQueue != nil {
 		queueLength = len(s.localAuditQueue)
 		queueSize = cap(s.localAuditQueue)
 	}
