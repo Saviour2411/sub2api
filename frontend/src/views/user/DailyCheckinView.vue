@@ -14,16 +14,22 @@
               {{ statusText }}
             </p>
           </div>
-          <div class="grid grid-cols-2 gap-3 sm:min-w-[340px]">
+          <div
+            class="grid gap-3 sm:min-w-[340px]"
+            :class="showPoolCard ? 'grid-cols-2' : 'grid-cols-1'"
+          >
             <div class="rounded-lg border border-white/70 bg-white/80 p-4 shadow-sm dark:border-white/10 dark:bg-dark-950/55">
               <p class="text-xs text-gray-500 dark:text-dark-300">{{ t('dailyCheckin.balance') }}</p>
               <p class="mt-1 text-lg font-semibold text-gray-950 dark:text-white">
                 {{ formatCurrency(authStore.user?.balance || 0) }}
               </p>
             </div>
-            <div class="rounded-lg border border-white/70 bg-white/80 p-4 shadow-sm dark:border-white/10 dark:bg-dark-950/55">
+            <div
+              v-if="showPoolCard"
+              class="rounded-lg border border-white/70 bg-white/80 p-4 shadow-sm dark:border-white/10 dark:bg-dark-950/55"
+            >
               <p class="text-xs text-gray-500 dark:text-dark-300">{{ t('dailyCheckin.factor') }}</p>
-              <p class="mt-1 text-lg font-semibold text-gray-950 dark:text-white">{{ factorLabel }}</p>
+              <p class="mt-1 text-lg font-semibold text-gray-950 dark:text-white">{{ t('dailyCheckin.linuxdoPool') }}</p>
             </div>
           </div>
         </div>
@@ -48,7 +54,7 @@
                     class="wheel-label"
                     :style="labelStyle(index)"
                   >
-                    <span>{{ shortPrizeName(prize.name) }}</span>
+                    <span>{{ prize.name }}</span>
                   </div>
                   <div class="wheel-hub">
                     <span class="wheel-hub-ring"></span>
@@ -147,6 +153,7 @@ const spinning = ref(false)
 const wheelRotation = ref(0)
 const lastResult = ref<DailyCheckinReward | DailyCheckinRecord | null>(null)
 
+const WHEEL_START_DEG = -90
 const colors = ['#f59e0b', '#14b8a6', '#e11d48', '#2563eb', '#84cc16', '#a855f7', '#f97316', '#0f766e']
 
 const wheelPrizes = computed(() => status.value?.prizes ?? [])
@@ -158,17 +165,12 @@ const spinButtonText = computed(() => {
   if (status.value?.checked_in_today) return t('dailyCheckin.done')
   return t('dailyCheckin.spin')
 })
-const factorLabel = computed(() => {
-  const factor = status.value?.decay?.factor_bps ?? 10000
-  if (status.value?.decay?.paid || status.value?.decay?.exempt) return t('dailyCheckin.fullPool')
-  return `${Math.round(factor / 100)}%`
-})
+const showPoolCard = computed(() => status.value?.decay?.exempt_reason === 'linuxdo')
 const statusText = computed(() => {
   if (!status.value) return t('dailyCheckin.loading')
   if (!status.value.enabled) return t('dailyCheckin.disabled')
   if (status.value.checked_in_today) return t('dailyCheckin.doneHint')
   if (status.value.decay?.exempt_reason === 'linuxdo') return t('dailyCheckin.linuxdoExempt')
-  if (status.value.decay?.paid) return t('dailyCheckin.paid')
   return t('dailyCheckin.ready')
 })
 const wheelBackground = computed(() => {
@@ -181,7 +183,7 @@ const wheelBackground = computed(() => {
     const color = prizeColor(prize)
     return `${color} ${start}% ${end}%`
   })
-  return `conic-gradient(from -90deg, ${stops.join(', ')})`
+  return `conic-gradient(from ${WHEEL_START_DEG}deg, ${stops.join(', ')})`
 })
 
 async function loadStatus() {
@@ -229,18 +231,23 @@ async function spin() {
 function targetRotation(base: number, prizes: DailyCheckinPrize[], prizeID: string | undefined): number {
   if (!prizes.length) return base + 1440
   const index = Math.max(0, prizes.findIndex((prize) => prize.id === prizeID))
-  const segment = 360 / prizes.length
-  const segmentCenter = index * segment + segment / 2
+  const segmentCenter = segmentCenterAngle(index, prizes.length)
   const currentTurns = Math.ceil(base / 360)
   return currentTurns * 360 + 1440 - segmentCenter
 }
 
 function labelStyle(index: number) {
   const count = Math.max(1, wheelPrizes.value.length)
-  const angle = (360 / count) * index + 180 / count
+  const angle = segmentCenterAngle(index, count)
   return {
-    transform: `translate(-50%, -50%) rotate(${angle}deg) translateY(-40%)`
+    '--label-angle': `${angle}deg`,
+    transform: `rotate(${angle}deg)`
   }
+}
+
+function segmentCenterAngle(index: number, count: number): number {
+  const segment = 360 / Math.max(1, count)
+  return WHEEL_START_DEG + index * segment + segment / 2
 }
 
 function prizeColor(prize: DailyCheckinPrize): string {
@@ -248,16 +255,12 @@ function prizeColor(prize: DailyCheckinPrize): string {
   return colors[Math.max(0, index) % colors.length]
 }
 
-function shortPrizeName(name: string): string {
-  return name.length > 6 ? `${name.slice(0, 6)}` : name
-}
-
 function prizeDescription(prize: DailyCheckinPrize): string {
   if (prize.type === 'balance') {
     if (prize.balance_mode === 'range') {
-      return `${prizeTypeLabel(prize.type)} ${formatCurrency(prize.min_amount || 0)} - ${formatCurrency(prize.max_amount || 0)}`
+      return `${prizeTypeLabel(prize.type)} ${formatPrizeCurrency(prize.min_amount)} - ${formatPrizeCurrency(prize.max_amount)}`
     }
-    return `${prizeTypeLabel(prize.type)} ${formatCurrency(prize.amount || 0)}`
+    return `${prizeTypeLabel(prize.type)} ${formatPrizeCurrency(prize.amount)}`
   }
   if (prize.type === 'concurrency') return `${prizeTypeLabel(prize.type)} +${prize.concurrency || 0}`
   if (prize.type === 'subscription') return `${prizeTypeLabel(prize.type)} ${prize.validity_days || 0}${t('dailyCheckin.days')}`
@@ -273,10 +276,14 @@ function prizeTypeLabel(type: string): string {
 
 function rewardLabel(reward: DailyCheckinReward | DailyCheckinRecord | null | undefined): string {
   if (!reward) return ''
-  if (reward.type === 'balance') return `${reward.prize_name} ${formatCurrency(reward.amount || 0)}`
+  if (reward.type === 'balance') return `${reward.prize_name} ${formatPrizeCurrency(reward.amount)}`
   if (reward.type === 'concurrency') return `${reward.prize_name} +${reward.concurrency || 0}`
   if (reward.type === 'subscription') return `${reward.prize_name} ${reward.validity_days || 0}${t('dailyCheckin.days')}`
   return reward.prize_name || t('dailyCheckin.types.none')
+}
+
+function formatPrizeCurrency(amount: number | null | undefined): string {
+  return formatCurrency(amount || 0).replace('US$', '$')
 }
 
 function formatDate(value: string): string {
@@ -392,27 +399,29 @@ onMounted(loadStatus)
 
 .wheel-label {
   position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 86px;
-  height: 50%;
-  transform-origin: center bottom;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 18px;
+  inset: 0;
+  transform-origin: center center;
   pointer-events: none;
 }
 
 .wheel-label span {
-  max-width: 76px;
+  position: absolute;
+  left: 50%;
+  top: 18%;
+  display: -webkit-box;
+  width: clamp(58px, 19%, 86px);
+  max-height: 32px;
+  overflow: hidden;
+  transform: translate(-50%, -50%) rotate(calc(var(--label-angle) * -1));
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   border-radius: 9999px;
   background: rgba(255, 255, 255, 0.86);
-  padding: 4px 8px;
+  padding: 4px 7px;
   color: #111827;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
-  line-height: 1.1;
+  line-height: 1.05;
   text-align: center;
   box-shadow: 0 6px 14px rgba(15, 23, 42, 0.16);
 }
