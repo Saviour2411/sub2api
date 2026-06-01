@@ -1173,6 +1173,7 @@ export default {
     kicker: 'Daily Benefit',
     balance: 'Current Balance',
     factor: 'Current Pool',
+    fullPool: 'Full Pool',
     loading: 'Loading',
     spinning: 'Spinning',
     spin: 'Spin',

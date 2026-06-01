@@ -29,7 +29,7 @@ const (
 
 var (
 	ErrDailyCheckinDisabled = infraerrors.Forbidden("DAILY_CHECKIN_DISABLED", "daily check-in is disabled")
-	ErrDailyCheckinRole     = infraerrors.Forbidden("DAILY_CHECKIN_ROLE_FORBIDDEN", "only regular users can use daily check-in")
+	ErrDailyCheckinRole     = infraerrors.Forbidden("DAILY_CHECKIN_ROLE_FORBIDDEN", "only users and admins can use daily check-in")
 	ErrDailyCheckinDone     = infraerrors.Conflict("DAILY_CHECKIN_ALREADY_DONE", "already checked in today")
 )
 
@@ -57,6 +57,20 @@ type DailyCheckinDecayRule struct {
 type DailyCheckinPrizeView struct {
 	DailyCheckinPrizeConfig
 	EffectiveProbabilityBps int `json:"effective_probability_bps"`
+}
+
+type DailyCheckinPublicPrizeView struct {
+	ID           string  `json:"id"`
+	Name         string  `json:"name"`
+	Type         string  `json:"type"`
+	SortOrder    int     `json:"sort_order"`
+	BalanceMode  string  `json:"balance_mode,omitempty"`
+	Amount       float64 `json:"amount,omitempty"`
+	MinAmount    float64 `json:"min_amount,omitempty"`
+	MaxAmount    float64 `json:"max_amount,omitempty"`
+	Concurrency  int     `json:"concurrency,omitempty"`
+	GroupID      int64   `json:"group_id,omitempty"`
+	ValidityDays int     `json:"validity_days,omitempty"`
 }
 
 type DailyCheckinDecayStatus struct {
@@ -96,27 +110,27 @@ type DailyCheckinRecord struct {
 }
 
 type DailyCheckinStatus struct {
-	Enabled        bool                    `json:"enabled"`
-	CheckedInToday bool                    `json:"checked_in_today"`
-	RewardMode     string                  `json:"reward_mode"`
-	RewardAmount   float64                 `json:"reward_amount"`
-	RewardMin      float64                 `json:"reward_min"`
-	RewardMax      float64                 `json:"reward_max"`
-	TodayReward    *float64                `json:"today_reward,omitempty"`
-	CheckedInAt    *string                 `json:"checked_in_at,omitempty"`
-	Prizes         []DailyCheckinPrizeView `json:"prizes"`
-	Decay          DailyCheckinDecayStatus `json:"decay"`
-	TodayResult    *DailyCheckinRewardView `json:"today_result,omitempty"`
-	RecentRecords  []DailyCheckinRecord    `json:"recent_records"`
+	Enabled        bool                          `json:"enabled"`
+	CheckedInToday bool                          `json:"checked_in_today"`
+	RewardMode     string                        `json:"reward_mode"`
+	RewardAmount   float64                       `json:"reward_amount"`
+	RewardMin      float64                       `json:"reward_min"`
+	RewardMax      float64                       `json:"reward_max"`
+	TodayReward    *float64                      `json:"today_reward,omitempty"`
+	CheckedInAt    *string                       `json:"checked_in_at,omitempty"`
+	Prizes         []DailyCheckinPublicPrizeView `json:"prizes"`
+	Decay          DailyCheckinDecayStatus       `json:"decay"`
+	TodayResult    *DailyCheckinRewardView       `json:"today_result,omitempty"`
+	RecentRecords  []DailyCheckinRecord          `json:"recent_records"`
 }
 
 type DailyCheckinResult struct {
-	RewardAmount float64                 `json:"reward_amount"`
-	NewBalance   float64                 `json:"new_balance"`
-	CheckedInAt  string                  `json:"checked_in_at"`
-	Prize        DailyCheckinRewardView  `json:"prize"`
-	Prizes       []DailyCheckinPrizeView `json:"prizes,omitempty"`
-	Decay        DailyCheckinDecayStatus `json:"decay"`
+	RewardAmount float64                       `json:"reward_amount"`
+	NewBalance   float64                       `json:"new_balance"`
+	CheckedInAt  string                        `json:"checked_in_at"`
+	Prize        DailyCheckinRewardView        `json:"prize"`
+	Prizes       []DailyCheckinPublicPrizeView `json:"prizes,omitempty"`
+	Decay        DailyCheckinDecayStatus       `json:"decay"`
 }
 
 type DailyCheckinService struct {
@@ -154,7 +168,7 @@ func (s *DailyCheckinService) GetStatus(ctx context.Context, userID int64) (*Dai
 		RewardAmount: cfg.LegacyAmount,
 		RewardMin:    cfg.LegacyMin,
 		RewardMax:    cfg.LegacyMax,
-		Prizes:       buildEffectivePrizeViews(cfg.Prizes, DailyCheckinFactorFull),
+		Prizes:       publicPrizeViews(buildEffectivePrizeViews(cfg.Prizes, DailyCheckinFactorFull)),
 		Decay: DailyCheckinDecayStatus{
 			FactorBps: DailyCheckinFactorFull,
 			FullDays:  cfg.UnpaidFullDays,
@@ -168,7 +182,7 @@ func (s *DailyCheckinService) GetStatus(ctx context.Context, userID int64) (*Dai
 	if err != nil {
 		return nil, err
 	}
-	if user.Role != RoleUser {
+	if !canDailyCheckinRole(user.Role) {
 		cfg.Enabled = false
 	}
 
@@ -178,7 +192,7 @@ func (s *DailyCheckinService) GetStatus(ctx context.Context, userID int64) (*Dai
 	}
 	prizes := buildEffectivePrizeViews(cfg.Prizes, decay.FactorBps)
 	status.Enabled = cfg.Enabled
-	status.Prizes = prizes
+	status.Prizes = publicPrizeViews(prizes)
 	status.Decay = decay
 
 	today, err := s.getTodayRecord(ctx, s.client, userID)
@@ -231,7 +245,7 @@ func (s *DailyCheckinService) Checkin(ctx context.Context, userID int64) (*Daily
 	if err != nil {
 		return nil, err
 	}
-	if user.Role != RoleUser {
+	if !canDailyCheckinRole(user.Role) {
 		return nil, ErrDailyCheckinRole
 	}
 
@@ -274,9 +288,9 @@ RETURNING id`,
 		}
 		return nil, fmt.Errorf("create daily check-in record: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
 	if rows.Next() {
 		if err := rows.Scan(&recordID); err != nil {
+			_ = rows.Close()
 			if isDailyCheckinDuplicate(err) {
 				return nil, ErrDailyCheckinDone.WithCause(err)
 			}
@@ -284,10 +298,14 @@ RETURNING id`,
 		}
 	}
 	if err := rows.Err(); err != nil {
+		_ = rows.Close()
 		if isDailyCheckinDuplicate(err) {
 			return nil, ErrDailyCheckinDone.WithCause(err)
 		}
 		return nil, fmt.Errorf("read daily check-in record: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("close daily check-in record rows: %w", err)
 	}
 	if recordID == 0 {
 		return nil, fmt.Errorf("create daily check-in record: missing id")
@@ -307,7 +325,7 @@ RETURNING id`,
 		NewBalance:   grant.BalanceAfter,
 		CheckedInAt:  now.Format(time.RFC3339),
 		Prize:        result,
-		Prizes:       prizes,
+		Prizes:       publicPrizeViews(prizes),
 		Decay:        decay,
 	}, nil
 }
@@ -504,6 +522,29 @@ func buildEffectivePrizeViews(prizes []DailyCheckinPrizeConfig, factorBps int) [
 	return views
 }
 
+func publicPrizeViews(prizes []DailyCheckinPrizeView) []DailyCheckinPublicPrizeView {
+	out := make([]DailyCheckinPublicPrizeView, 0, len(prizes))
+	for _, prize := range prizes {
+		if prize.EffectiveProbabilityBps <= 0 {
+			continue
+		}
+		out = append(out, DailyCheckinPublicPrizeView{
+			ID:           prize.ID,
+			Name:         prize.Name,
+			Type:         prize.Type,
+			SortOrder:    prize.SortOrder,
+			BalanceMode:  prize.BalanceMode,
+			Amount:       prize.Amount,
+			MinAmount:    prize.MinAmount,
+			MaxAmount:    prize.MaxAmount,
+			Concurrency:  prize.Concurrency,
+			GroupID:      prize.GroupID,
+			ValidityDays: prize.ValidityDays,
+		})
+	}
+	return out
+}
+
 func chooseDailyCheckinPrize(prizes []DailyCheckinPrizeView) (DailyCheckinPrizeView, error) {
 	total := 0
 	for _, prize := range prizes {
@@ -530,6 +571,15 @@ func chooseDailyCheckinPrize(prizes []DailyCheckinPrizeView) (DailyCheckinPrizeV
 		}
 	}
 	return prizes[len(prizes)-1], nil
+}
+
+func canDailyCheckinRole(role string) bool {
+	switch role {
+	case RoleUser, RoleAdmin:
+		return true
+	default:
+		return false
+	}
 }
 
 type dailyCheckinUserContext struct {

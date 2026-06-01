@@ -44,7 +44,7 @@
       <div class="min-w-0 flex-1">
         <p class="font-medium">继续登录前需要先同意最新条款。</p>
         <p class="mt-1 text-primary-700 dark:text-primary-200/80">
-          未同意前，账号密码输入和快捷登录会保持禁用。
+          未同意前仍可填写账号密码，但无法提交或使用快捷登录。
         </p>
       </div>
       <button

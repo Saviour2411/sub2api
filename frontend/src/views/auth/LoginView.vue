@@ -28,7 +28,7 @@
               required
               autofocus
               autocomplete="email"
-              :disabled="authActionDisabled"
+              :disabled="authInputDisabled"
               class="input pl-11"
               :class="{ 'input-error': errors.email }"
               :placeholder="t('auth.emailPlaceholder')"
@@ -51,7 +51,7 @@
               :type="showPassword ? 'text' : 'password'"
               required
               autocomplete="current-password"
-              :disabled="authActionDisabled"
+              :disabled="authInputDisabled"
               class="input pl-11 pr-11"
               :class="{ 'input-error': errors.password }"
               :placeholder="t('auth.passwordPlaceholder')"
@@ -59,7 +59,7 @@
             <button
               type="button"
               @click="showPassword = !showPassword"
-              :disabled="authActionDisabled"
+              :disabled="authInputDisabled"
               class="absolute inset-y-0 right-0 flex items-center pr-3.5 text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-dark-300"
             >
               <Icon v-if="showPassword" name="eyeOff" size="md" />
@@ -92,7 +92,7 @@
         <!-- Submit Button -->
         <button
           type="submit"
-          :disabled="authActionDisabled || (turnstileEnabled && !turnstileToken)"
+          :disabled="authSubmitDisabled || (turnstileEnabled && !turnstileToken)"
           class="btn btn-primary w-full"
         >
           <svg
@@ -141,7 +141,7 @@
           </div>
 
           <EmailOAuthButtons
-            :disabled="authActionDisabled"
+            :disabled="authSubmitDisabled"
             :github-enabled="githubOAuthEnabled"
             :google-enabled="googleOAuthEnabled"
             :show-divider="false"
@@ -149,22 +149,22 @@
 
           <LinuxDoOAuthSection
             v-if="linuxdoOAuthEnabled"
-            :disabled="authActionDisabled"
+            :disabled="authSubmitDisabled"
             :show-divider="false"
           />
           <DingTalkOAuthSection
             v-if="dingtalkOAuthEnabled"
-            :disabled="authActionDisabled"
+            :disabled="authSubmitDisabled"
             :show-divider="false"
           />
           <WechatOAuthSection
             v-if="wechatOAuthEnabled"
-            :disabled="authActionDisabled"
+            :disabled="authSubmitDisabled"
             :show-divider="false"
           />
           <OidcOAuthSection
             v-if="oidcOAuthEnabled"
-            :disabled="authActionDisabled"
+            :disabled="authSubmitDisabled"
             :provider-name="oidcOAuthProviderName"
             :show-divider="false"
           />
@@ -283,8 +283,12 @@ const agreementGateActive = computed(
   () => loginAgreementEnabled.value && !agreementAccepted.value
 )
 
-const authActionDisabled = computed(
-  () => isLoading.value || !publicSettingsLoaded.value || agreementGateActive.value
+const authInputDisabled = computed(
+  () => isLoading.value || !publicSettingsLoaded.value
+)
+
+const authSubmitDisabled = computed(
+  () => authInputDisabled.value || agreementGateActive.value
 )
 
 const showOAuthLogin = computed(
@@ -403,7 +407,7 @@ function rejectLoginAgreement(): void {
   safeLocalStorage.removeItem(LOGIN_AGREEMENT_STORAGE_KEY)
   agreementAccepted.value = false
   showAgreementModal.value = false
-  appStore.showWarning('未同意最新条款前，无法输入账号密码或使用快捷登录。')
+  appStore.showWarning('未同意最新条款前，无法登录或使用快捷登录。')
 }
 
 // ==================== Turnstile Handlers ====================

@@ -1177,6 +1177,7 @@ export default {
     kicker: '每日福利',
     balance: '当前余额',
     factor: '当前奖池',
+    fullPool: '完整奖池',
     loading: '加载中',
     spinning: '抽奖中',
     spin: '开始抽奖',

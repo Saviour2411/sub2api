@@ -53,9 +53,6 @@ export interface DailyCheckinPrize {
   id: string
   name: string
   type: 'balance' | 'concurrency' | 'subscription' | 'none' | string
-  probability_bps: number
-  effective_probability_bps: number
-  enabled: boolean
   sort_order: number
   balance_mode?: 'fixed' | 'range' | string
   amount?: number
