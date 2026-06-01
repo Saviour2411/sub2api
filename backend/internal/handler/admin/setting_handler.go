@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"reflect"
 	"regexp"
 	"strings"
 
@@ -248,6 +249,10 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		DailyCheckinRewardAmount:               settings.DailyCheckinRewardAmount,
 		DailyCheckinRewardMin:                  settings.DailyCheckinRewardMin,
 		DailyCheckinRewardMax:                  settings.DailyCheckinRewardMax,
+		DailyCheckinPrizes:                     settings.DailyCheckinPrizes,
+		DailyCheckinUnpaidFullDays:             settings.DailyCheckinUnpaidFullDays,
+		DailyCheckinUnpaidDecayRules:           settings.DailyCheckinUnpaidDecayRules,
+		DailyCheckinLinuxDoExemptEnabled:       settings.DailyCheckinLinuxDoExemptEnabled,
 		RiskControlEnabled:                     settings.RiskControlEnabled,
 		AffiliateRebateRate:                    settings.AffiliateRebateRate,
 		AffiliateRebateFreezeHours:             settings.AffiliateRebateFreezeHours,
@@ -542,6 +547,10 @@ type UpdateSettingsRequest struct {
 	DailyCheckinRewardAmount                  float64                           `json:"daily_checkin_reward_amount"`
 	DailyCheckinRewardMin                     float64                           `json:"daily_checkin_reward_min"`
 	DailyCheckinRewardMax                     float64                           `json:"daily_checkin_reward_max"`
+	DailyCheckinPrizes                        []service.DailyCheckinPrizeConfig `json:"daily_checkin_prizes"`
+	DailyCheckinUnpaidFullDays                int                               `json:"daily_checkin_unpaid_full_days"`
+	DailyCheckinUnpaidDecayRules              []service.DailyCheckinDecayRule   `json:"daily_checkin_unpaid_decay_rules"`
+	DailyCheckinLinuxDoExemptEnabled          bool                              `json:"daily_checkin_linuxdo_exempt_enabled"`
 	AffiliateRebateRate                       *float64                          `json:"affiliate_rebate_rate"`
 	AffiliateRebateFreezeHours                *int                              `json:"affiliate_rebate_freeze_hours"`
 	AffiliateRebateDurationDays               *int                              `json:"affiliate_rebate_duration_days"`
@@ -1513,7 +1522,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, "daily check-in reward values must be greater than or equal to 0")
 		return
 	}
-	if req.DailyCheckinRewardMode == "fixed" && req.DailyCheckinEnabled && req.DailyCheckinRewardAmount <= 0 {
+	hasDailyCheckinPrizeConfigs := len(req.DailyCheckinPrizes) > 0
+	if req.DailyCheckinRewardMode == "fixed" && req.DailyCheckinEnabled && !hasDailyCheckinPrizeConfigs && req.DailyCheckinRewardAmount <= 0 {
 		response.Error(c, http.StatusBadRequest, "daily_checkin_reward_amount must be greater than 0 when daily check-in is enabled")
 		return
 	}
@@ -1522,10 +1532,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			response.Error(c, http.StatusBadRequest, "daily_checkin_reward_max must be greater than or equal to daily_checkin_reward_min")
 			return
 		}
-		if req.DailyCheckinEnabled && req.DailyCheckinRewardMax <= 0 {
+		if req.DailyCheckinEnabled && !hasDailyCheckinPrizeConfigs && req.DailyCheckinRewardMax <= 0 {
 			response.Error(c, http.StatusBadRequest, "daily_checkin_reward_max must be greater than 0 when daily check-in is enabled")
 			return
 		}
+	}
+	if err := service.ValidateDailyCheckinPrizeSettings(req.DailyCheckinPrizes, req.DailyCheckinEnabled); err != nil {
+		response.ErrorFrom(c, err)
+		return
 	}
 
 	settings := &service.SystemSettings{
@@ -1649,6 +1663,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		DailyCheckinRewardAmount:               req.DailyCheckinRewardAmount,
 		DailyCheckinRewardMin:                  req.DailyCheckinRewardMin,
 		DailyCheckinRewardMax:                  req.DailyCheckinRewardMax,
+		DailyCheckinPrizes:                     req.DailyCheckinPrizes,
+		DailyCheckinUnpaidFullDays:             req.DailyCheckinUnpaidFullDays,
+		DailyCheckinUnpaidDecayRules:           req.DailyCheckinUnpaidDecayRules,
+		DailyCheckinLinuxDoExemptEnabled:       req.DailyCheckinLinuxDoExemptEnabled,
 		AffiliateRebateRate:                    affiliateRebateRate,
 		AffiliateRebateFreezeHours:             affiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            affiliateRebateDurationDays,
@@ -2139,6 +2157,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		DailyCheckinRewardAmount:               updatedSettings.DailyCheckinRewardAmount,
 		DailyCheckinRewardMin:                  updatedSettings.DailyCheckinRewardMin,
 		DailyCheckinRewardMax:                  updatedSettings.DailyCheckinRewardMax,
+		DailyCheckinPrizes:                     updatedSettings.DailyCheckinPrizes,
+		DailyCheckinUnpaidFullDays:             updatedSettings.DailyCheckinUnpaidFullDays,
+		DailyCheckinUnpaidDecayRules:           updatedSettings.DailyCheckinUnpaidDecayRules,
+		DailyCheckinLinuxDoExemptEnabled:       updatedSettings.DailyCheckinLinuxDoExemptEnabled,
 		AffiliateRebateRate:                    updatedSettings.AffiliateRebateRate,
 		AffiliateRebateFreezeHours:             updatedSettings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            updatedSettings.AffiliateRebateDurationDays,
@@ -2560,6 +2582,18 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.DailyCheckinRewardMax != after.DailyCheckinRewardMax {
 		changed = append(changed, "daily_checkin_reward_max")
+	}
+	if !reflect.DeepEqual(before.DailyCheckinPrizes, after.DailyCheckinPrizes) {
+		changed = append(changed, "daily_checkin_prizes")
+	}
+	if before.DailyCheckinUnpaidFullDays != after.DailyCheckinUnpaidFullDays {
+		changed = append(changed, "daily_checkin_unpaid_full_days")
+	}
+	if !reflect.DeepEqual(before.DailyCheckinUnpaidDecayRules, after.DailyCheckinUnpaidDecayRules) {
+		changed = append(changed, "daily_checkin_unpaid_decay_rules")
+	}
+	if before.DailyCheckinLinuxDoExemptEnabled != after.DailyCheckinLinuxDoExemptEnabled {
+		changed = append(changed, "daily_checkin_linuxdo_exempt_enabled")
 	}
 	if before.AffiliateRebateRate != after.AffiliateRebateRate {
 		changed = append(changed, "affiliate_rebate_rate")

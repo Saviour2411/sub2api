@@ -795,6 +795,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyTablePageSizeOptions,
 		SettingKeyCustomMenuItems,
 		SettingKeyCustomEndpoints,
+		SettingKeyDailyCheckinEnabled,
 		SettingKeyLinuxDoConnectEnabled,
 		SettingKeyDingTalkConnectEnabled,
 		SettingKeyWeChatConnectEnabled,
@@ -920,6 +921,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		TablePageSizeOptions:             tablePageSizeOptions,
 		CustomMenuItems:                  settings[SettingKeyCustomMenuItems],
 		CustomEndpoints:                  settings[SettingKeyCustomEndpoints],
+		DailyCheckinEnabled:              settings[SettingKeyDailyCheckinEnabled] == "true",
 		LinuxDoOAuthEnabled:              linuxDoEnabled,
 		DingTalkOAuthEnabled:             dingTalkEnabled,
 		WeChatOAuthEnabled:               weChatEnabled,
@@ -1202,6 +1204,7 @@ type PublicSettingsInjectionPayload struct {
 	TablePageSizeOptions             []int                    `json:"table_page_size_options"`
 	CustomMenuItems                  json.RawMessage          `json:"custom_menu_items"`
 	CustomEndpoints                  json.RawMessage          `json:"custom_endpoints"`
+	DailyCheckinEnabled              bool                     `json:"daily_checkin_enabled"`
 	LinuxDoOAuthEnabled              bool                     `json:"linuxdo_oauth_enabled"`
 	DingTalkOAuthEnabled             bool                     `json:"dingtalk_oauth_enabled"`
 	WeChatOAuthEnabled               bool                     `json:"wechat_oauth_enabled"`
@@ -1268,6 +1271,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		TablePageSizeOptions:             settings.TablePageSizeOptions,
 		CustomMenuItems:                  filterUserVisibleMenuItems(settings.CustomMenuItems),
 		CustomEndpoints:                  safeRawJSONArray(settings.CustomEndpoints),
+		DailyCheckinEnabled:              settings.DailyCheckinEnabled,
 		LinuxDoOAuthEnabled:              settings.LinuxDoOAuthEnabled,
 		DingTalkOAuthEnabled:             settings.DingTalkOAuthEnabled,
 		WeChatOAuthEnabled:               settings.WeChatOAuthEnabled,
@@ -1884,6 +1888,21 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyDailyCheckinAmount] = strconv.FormatFloat(checkinAmount, 'f', 8, 64)
 	updates[SettingKeyDailyCheckinMin] = strconv.FormatFloat(checkinMin, 'f', 8, 64)
 	updates[SettingKeyDailyCheckinMax] = strconv.FormatFloat(checkinMax, 'f', 8, 64)
+	if err := ValidateDailyCheckinPrizeSettings(settings.DailyCheckinPrizes, settings.DailyCheckinEnabled); err != nil {
+		return nil, err
+	}
+	checkinPrizesJSON, err := json.Marshal(normalizeDailyCheckinPrizes(settings.DailyCheckinPrizes, checkinMode, checkinAmount, checkinMin, checkinMax))
+	if err != nil {
+		return nil, fmt.Errorf("marshal daily check-in prizes: %w", err)
+	}
+	checkinDecayRulesJSON, err := json.Marshal(normalizeDailyCheckinDecayRules(settings.DailyCheckinUnpaidDecayRules))
+	if err != nil {
+		return nil, fmt.Errorf("marshal daily check-in decay rules: %w", err)
+	}
+	updates[SettingKeyDailyCheckinPrizes] = string(checkinPrizesJSON)
+	updates[SettingKeyDailyCheckinUnpaidFullDays] = strconv.Itoa(normalizeDailyCheckinFullDays(settings.DailyCheckinUnpaidFullDays))
+	updates[SettingKeyDailyCheckinUnpaidDecayRules] = string(checkinDecayRulesJSON)
+	updates[SettingKeyDailyCheckinLinuxDoExemptEnabled] = strconv.FormatBool(settings.DailyCheckinLinuxDoExemptEnabled)
 	settings.AffiliateRebateRate = clampAffiliateRebateRate(settings.AffiliateRebateRate)
 	updates[SettingKeyAffiliateRebateRate] = strconv.FormatFloat(settings.AffiliateRebateRate, 'f', 8, 64)
 	if settings.AffiliateRebateFreezeHours < 0 {
@@ -3093,6 +3112,10 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyDailyCheckinAmount:                        "1.00000000",
 		SettingKeyDailyCheckinMin:                           "1.00000000",
 		SettingKeyDailyCheckinMax:                           "3.00000000",
+		SettingKeyDailyCheckinPrizes:                        `[{"id":"legacy_balance","name":"余额奖励","type":"balance","probability_bps":10000,"enabled":true,"sort_order":0,"balance_mode":"fixed","amount":1}]`,
+		SettingKeyDailyCheckinUnpaidFullDays:                "7",
+		SettingKeyDailyCheckinUnpaidDecayRules:              `[{"after_days":7,"factor_bps":5000},{"after_days":14,"factor_bps":2000},{"after_days":30,"factor_bps":0}]`,
+		SettingKeyDailyCheckinLinuxDoExemptEnabled:          "false",
 		SettingKeyAffiliateRebateRate:                       strconv.FormatFloat(AffiliateRebateRateDefault, 'f', 8, 64),
 		SettingKeyAffiliateRebateFreezeHours:                strconv.Itoa(AffiliateRebateFreezeHoursDefault),
 		SettingKeyAffiliateRebateDurationDays:               strconv.Itoa(AffiliateRebateDurationDaysDefault),
@@ -3286,6 +3309,10 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		checkinMax,
 	)
 	result.DailyCheckinEnabled = settings[SettingKeyDailyCheckinEnabled] == "true"
+	result.DailyCheckinPrizes = parseDailyCheckinPrizeSetting(settings[SettingKeyDailyCheckinPrizes], result.DailyCheckinRewardMode, result.DailyCheckinRewardAmount, result.DailyCheckinRewardMin, result.DailyCheckinRewardMax)
+	result.DailyCheckinUnpaidFullDays = normalizeDailyCheckinFullDays(parseIntSetting(settings[SettingKeyDailyCheckinUnpaidFullDays], 7))
+	result.DailyCheckinUnpaidDecayRules = parseDailyCheckinDecayRuleSetting(settings[SettingKeyDailyCheckinUnpaidDecayRules])
+	result.DailyCheckinLinuxDoExemptEnabled = settings[SettingKeyDailyCheckinLinuxDoExemptEnabled] == "true"
 	if rebateRate, err := strconv.ParseFloat(settings[SettingKeyAffiliateRebateRate], 64); err == nil {
 		result.AffiliateRebateRate = clampAffiliateRebateRate(rebateRate)
 	} else {
@@ -3797,6 +3824,30 @@ func parseFloatSetting(raw string, fallback float64) float64 {
 		return fallback
 	}
 	return value
+}
+
+func parseIntSetting(raw string, fallback int) int {
+	value, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return fallback
+	}
+	return value
+}
+
+func parseDailyCheckinPrizeSetting(raw, legacyMode string, legacyAmount, legacyMin, legacyMax float64) []DailyCheckinPrizeConfig {
+	var prizes []DailyCheckinPrizeConfig
+	if strings.TrimSpace(raw) != "" {
+		_ = json.Unmarshal([]byte(raw), &prizes)
+	}
+	return normalizeDailyCheckinPrizes(prizes, legacyMode, legacyAmount, legacyMin, legacyMax)
+}
+
+func parseDailyCheckinDecayRuleSetting(raw string) []DailyCheckinDecayRule {
+	var rules []DailyCheckinDecayRule
+	if strings.TrimSpace(raw) != "" {
+		_ = json.Unmarshal([]byte(raw), &rules)
+	}
+	return normalizeDailyCheckinDecayRules(rules)
 }
 
 func normalizeDailyCheckinSettings(mode string, amount, minAmount, maxAmount float64) (string, float64, float64, float64) {

@@ -3138,70 +3138,330 @@
                   <Toggle v-model="form.daily_checkin_enabled" />
                 </div>
 
-                <div
-                  v-if="form.daily_checkin_enabled"
-                  class="mt-5 grid grid-cols-1 gap-6 md:grid-cols-3"
-                >
-                  <div>
-                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      {{ t("admin.settings.defaults.dailyCheckinRewardMode") }}
-                    </label>
-                    <select v-model="form.daily_checkin_reward_mode" class="input">
-                      <option value="fixed">
-                        {{ t("admin.settings.defaults.dailyCheckinRewardModeFixed") }}
-                      </option>
-                      <option value="range">
-                        {{ t("admin.settings.defaults.dailyCheckinRewardModeRange") }}
-                      </option>
-                    </select>
-                  </div>
-                  <div v-if="form.daily_checkin_reward_mode !== 'range'">
-                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      {{ t("admin.settings.defaults.dailyCheckinRewardAmount") }}
-                    </label>
-                    <input
-                      v-model.number="form.daily_checkin_reward_amount"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      class="input"
-                      placeholder="1.00"
-                    />
-                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                      {{ t("admin.settings.defaults.dailyCheckinRewardAmountHint") }}
-                    </p>
-                  </div>
-                  <template v-else>
-                    <div>
-                      <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                        {{ t("admin.settings.defaults.dailyCheckinRewardMin") }}
-                      </label>
-                      <input
-                        v-model.number="form.daily_checkin_reward_min"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        class="input"
-                        placeholder="1.00"
-                      />
+                <div v-if="form.daily_checkin_enabled" class="mt-5 space-y-5">
+                  <div class="rounded border border-gray-200 p-4 dark:border-dark-600">
+                    <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <h4 class="font-medium text-gray-900 dark:text-white">
+                          {{ t("admin.settings.defaults.dailyCheckinPrizePool") }}
+                        </h4>
+                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                          {{ t("admin.settings.defaults.dailyCheckinPrizePoolHint") }}
+                        </p>
+                      </div>
+                      <div class="flex items-center gap-3">
+                        <span
+                          class="text-sm"
+                          :class="
+                            dailyCheckinProbabilityTotal === 10000
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : 'text-amber-600 dark:text-amber-400'
+                          "
+                        >
+                          {{
+                            t("admin.settings.defaults.dailyCheckinProbabilityTotal", {
+                              total: (dailyCheckinProbabilityTotal / 100).toFixed(2),
+                            })
+                          }}
+                        </span>
+                        <button
+                          type="button"
+                          class="btn btn-secondary btn-sm"
+                          @click="addDailyCheckinPrize"
+                        >
+                          {{ t("admin.settings.defaults.dailyCheckinAddPrize") }}
+                        </button>
+                      </div>
                     </div>
-                    <div>
-                      <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                        {{ t("admin.settings.defaults.dailyCheckinRewardMax") }}
-                      </label>
-                      <input
-                        v-model.number="form.daily_checkin_reward_max"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        class="input"
-                        placeholder="3.00"
-                      />
-                      <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                        {{ t("admin.settings.defaults.dailyCheckinRewardRangeHint") }}
+
+                    <div
+                      v-if="form.daily_checkin_prizes.length === 0"
+                      class="rounded border border-dashed border-gray-300 px-4 py-3 text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.defaults.dailyCheckinPrizeEmpty") }}
+                    </div>
+
+                    <div v-else class="space-y-3">
+                      <div
+                        v-for="(prize, index) in form.daily_checkin_prizes"
+                        :key="prize.id || index"
+                        class="rounded border border-gray-200 p-3 dark:border-dark-600"
+                      >
+                        <div class="grid grid-cols-1 gap-3 lg:grid-cols-[96px_1.2fr_160px_150px_auto]">
+                          <div>
+                            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                              {{ t("common.status") }}
+                            </label>
+                            <div class="flex h-[42px] items-center">
+                              <Toggle v-model="prize.enabled" />
+                            </div>
+                          </div>
+                          <div>
+                            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                              {{ t("admin.settings.defaults.dailyCheckinPrizeName") }}
+                            </label>
+                            <input
+                              v-model.trim="prize.name"
+                              type="text"
+                              class="input h-[42px]"
+                              :placeholder="t('admin.settings.defaults.dailyCheckinPrizeName')"
+                            />
+                          </div>
+                          <div>
+                            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                              {{ t("admin.settings.defaults.dailyCheckinPrizeType") }}
+                            </label>
+                            <select v-model="prize.type" class="input h-[42px]">
+                              <option value="balance">
+                                {{ t("admin.settings.defaults.dailyCheckinPrizeTypeBalance") }}
+                              </option>
+                              <option value="concurrency">
+                                {{ t("admin.settings.defaults.dailyCheckinPrizeTypeConcurrency") }}
+                              </option>
+                              <option value="subscription">
+                                {{ t("admin.settings.defaults.dailyCheckinPrizeTypeSubscription") }}
+                              </option>
+                              <option value="none">
+                                {{ t("admin.settings.defaults.dailyCheckinPrizeTypeNone") }}
+                              </option>
+                            </select>
+                          </div>
+                          <div>
+                            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                              {{ t("admin.settings.defaults.dailyCheckinProbabilityBps") }}
+                            </label>
+                            <input
+                              v-model.number="prize.probability_bps"
+                              type="number"
+                              min="0"
+                              max="10000"
+                              step="1"
+                              class="input h-[42px]"
+                            />
+                            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                              {{ ((Number(prize.probability_bps) || 0) / 100).toFixed(2) }}%
+                            </p>
+                          </div>
+                          <div class="flex items-end">
+                            <button
+                              type="button"
+                              class="btn btn-secondary w-full text-red-600 hover:text-red-700 dark:text-red-400"
+                              @click="removeDailyCheckinPrize(index)"
+                            >
+                              {{ t("common.delete") }}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div class="mt-3 border-t border-gray-100 pt-3 dark:border-dark-700">
+                          <div
+                            v-if="prize.type === 'balance'"
+                            class="grid grid-cols-1 gap-3 md:grid-cols-3"
+                          >
+                            <div>
+                              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                                {{ t("admin.settings.defaults.dailyCheckinBalanceMode") }}
+                              </label>
+                              <select v-model="prize.balance_mode" class="input h-[42px]">
+                                <option value="fixed">
+                                  {{ t("admin.settings.defaults.dailyCheckinRewardModeFixed") }}
+                                </option>
+                                <option value="range">
+                                  {{ t("admin.settings.defaults.dailyCheckinRewardModeRange") }}
+                                </option>
+                              </select>
+                            </div>
+                            <div v-if="prize.balance_mode !== 'range'">
+                              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                                {{ t("admin.settings.defaults.dailyCheckinRewardAmount") }}
+                              </label>
+                              <input
+                                v-model.number="prize.amount"
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                class="input h-[42px]"
+                              />
+                            </div>
+                            <template v-else>
+                              <div>
+                                <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                                  {{ t("admin.settings.defaults.dailyCheckinRewardMin") }}
+                                </label>
+                                <input
+                                  v-model.number="prize.min_amount"
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  class="input h-[42px]"
+                                />
+                              </div>
+                              <div>
+                                <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                                  {{ t("admin.settings.defaults.dailyCheckinRewardMax") }}
+                                </label>
+                                <input
+                                  v-model.number="prize.max_amount"
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  class="input h-[42px]"
+                                />
+                              </div>
+                            </template>
+                          </div>
+
+                          <div
+                            v-else-if="prize.type === 'concurrency'"
+                            class="grid grid-cols-1 gap-3 md:grid-cols-3"
+                          >
+                            <div>
+                              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                                {{ t("admin.settings.defaults.dailyCheckinConcurrency") }}
+                              </label>
+                              <input
+                                v-model.number="prize.concurrency"
+                                type="number"
+                                min="1"
+                                step="1"
+                                class="input h-[42px]"
+                              />
+                            </div>
+                          </div>
+
+                          <div
+                            v-else-if="prize.type === 'subscription'"
+                            class="grid grid-cols-1 gap-3 md:grid-cols-[1fr_180px]"
+                          >
+                            <div>
+                              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                                {{ t("admin.settings.defaults.subscriptionGroup") }}
+                              </label>
+                              <Select
+                                v-model="prize.group_id"
+                                :options="defaultSubscriptionGroupOptions"
+                                :placeholder="t('admin.settings.defaults.subscriptionGroup')"
+                              >
+                                <template #selected="{ option }">
+                                  <GroupBadge
+                                    v-if="option"
+                                    :name="(option as unknown as DefaultSubscriptionGroupOption).label"
+                                    :platform="(option as unknown as DefaultSubscriptionGroupOption).platform"
+                                    :subscription-type="(option as unknown as DefaultSubscriptionGroupOption).subscriptionType"
+                                    :rate-multiplier="(option as unknown as DefaultSubscriptionGroupOption).rate"
+                                  />
+                                  <span v-else class="text-gray-400">
+                                    {{ t("admin.settings.defaults.subscriptionGroup") }}
+                                  </span>
+                                </template>
+                                <template #option="{ option, selected }">
+                                  <GroupOptionItem
+                                    :name="(option as unknown as DefaultSubscriptionGroupOption).label"
+                                    :platform="(option as unknown as DefaultSubscriptionGroupOption).platform"
+                                    :subscription-type="(option as unknown as DefaultSubscriptionGroupOption).subscriptionType"
+                                    :rate-multiplier="(option as unknown as DefaultSubscriptionGroupOption).rate"
+                                    :description="(option as unknown as DefaultSubscriptionGroupOption).description"
+                                    :selected="selected"
+                                  />
+                                </template>
+                              </Select>
+                            </div>
+                            <div>
+                              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                                {{ t("admin.settings.defaults.subscriptionValidityDays") }}
+                              </label>
+                              <input
+                                v-model.number="prize.validity_days"
+                                type="number"
+                                min="1"
+                                max="36500"
+                                class="input h-[42px]"
+                              />
+                            </div>
+                          </div>
+
+                          <p v-else class="text-sm text-gray-500 dark:text-gray-400">
+                            {{ t("admin.settings.defaults.dailyCheckinNoneHint") }}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+                    <div class="rounded border border-gray-200 p-4 dark:border-dark-600">
+                      <h4 class="font-medium text-gray-900 dark:text-white">
+                        {{ t("admin.settings.defaults.dailyCheckinDecay") }}
+                      </h4>
+                      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        {{ t("admin.settings.defaults.dailyCheckinDecayHint") }}
                       </p>
+                      <div class="mt-4">
+                        <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                          {{ t("admin.settings.defaults.dailyCheckinUnpaidFullDays") }}
+                        </label>
+                        <input
+                          v-model.number="form.daily_checkin_unpaid_full_days"
+                          type="number"
+                          min="0"
+                          max="3650"
+                          step="1"
+                          class="input h-[42px]"
+                        />
+                      </div>
+                      <div class="mt-4 space-y-3">
+                        <div
+                          v-for="(rule, index) in form.daily_checkin_unpaid_decay_rules"
+                          :key="`checkin-decay-${index}`"
+                          class="grid grid-cols-1 gap-3 md:grid-cols-2"
+                        >
+                          <div>
+                            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                              {{ t("admin.settings.defaults.dailyCheckinDecayAfterDays") }}
+                            </label>
+                            <input
+                              v-model.number="rule.after_days"
+                              type="number"
+                              min="0"
+                              max="3650"
+                              step="1"
+                              class="input h-[42px]"
+                            />
+                          </div>
+                          <div>
+                            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                              {{ t("admin.settings.defaults.dailyCheckinDecayFactor") }}
+                            </label>
+                            <input
+                              v-model.number="rule.factor_bps"
+                              type="number"
+                              min="0"
+                              max="10000"
+                              step="1"
+                              class="input h-[42px]"
+                            />
+                            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                              {{ ((Number(rule.factor_bps) || 0) / 100).toFixed(2) }}%
+                            </p>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </template>
+
+                    <div class="rounded border border-gray-200 p-4 dark:border-dark-600">
+                      <div class="flex items-center justify-between gap-4">
+                        <div>
+                          <h4 class="font-medium text-gray-900 dark:text-white">
+                            {{ t("admin.settings.defaults.dailyCheckinLinuxDoExempt") }}
+                          </h4>
+                          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                            {{ t("admin.settings.defaults.dailyCheckinLinuxDoExemptHint") }}
+                          </p>
+                        </div>
+                        <Toggle v-model="form.daily_checkin_linuxdo_exempt_enabled" />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -7024,6 +7284,8 @@ import type {
   SystemSettings,
   UpdateSettingsRequest,
   DefaultSubscriptionSetting,
+  DailyCheckinPrizeConfig,
+  DailyCheckinDecayRule,
   DefaultPlatformQuotasMap,
   OpenAIFastPolicyRule,
   SemanticErrorPlatform,
@@ -7345,6 +7607,25 @@ const form = reactive<SettingsForm>({
   daily_checkin_reward_amount: 1,
   daily_checkin_reward_min: 1,
   daily_checkin_reward_max: 3,
+  daily_checkin_prizes: [
+    {
+      id: "legacy_balance",
+      name: "余额奖励",
+      type: "balance",
+      probability_bps: 10000,
+      enabled: true,
+      sort_order: 0,
+      balance_mode: "fixed",
+      amount: 1,
+    },
+  ] as DailyCheckinPrizeConfig[],
+  daily_checkin_unpaid_full_days: 7,
+  daily_checkin_unpaid_decay_rules: [
+    { after_days: 7, factor_bps: 5000 },
+    { after_days: 14, factor_bps: 2000 },
+    { after_days: 30, factor_bps: 0 },
+  ] as DailyCheckinDecayRule[],
+  daily_checkin_linuxdo_exempt_enabled: false,
   default_platform_quotas: normalizePlatformQuotasMap() as DefaultPlatformQuotasMap,
   affiliate_rebate_rate: 20,
   affiliate_rebate_freeze_hours: 0,
@@ -8312,6 +8593,13 @@ async function loadSettings() {
     form.default_subscriptions = normalizeDefaultSubscriptionSettings(
       settings.default_subscriptions,
     );
+    form.daily_checkin_prizes = normalizeDailyCheckinPrizesForForm(
+      settings.daily_checkin_prizes,
+    );
+    form.daily_checkin_unpaid_decay_rules =
+      normalizeDailyCheckinDecayRulesForForm(
+        settings.daily_checkin_unpaid_decay_rules,
+      );
     registrationEmailSuffixWhitelistTags.value =
       normalizeRegistrationEmailSuffixDomains(
         settings.registration_email_suffix_whitelist,
@@ -8452,6 +8740,105 @@ function removeDefaultSubscription(index: number) {
   form.default_subscriptions.splice(index, 1);
 }
 
+function normalizeDailyCheckinPrizesForForm(
+  prizes: DailyCheckinPrizeConfig[] | undefined,
+): DailyCheckinPrizeConfig[] {
+  const source = Array.isArray(prizes) && prizes.length > 0
+    ? prizes
+    : form.daily_checkin_prizes;
+  return source.map((prize, index) => ({
+    id: prize.id || `prize_${index + 1}`,
+    name: prize.name || localText("奖项", "Prize"),
+    type: prize.type || "balance",
+    probability_bps: Math.max(0, Math.min(10000, Number(prize.probability_bps) || 0)),
+    enabled: prize.enabled !== false,
+    sort_order: Number(prize.sort_order) || index,
+    balance_mode: prize.balance_mode === "range" ? "range" : "fixed",
+    amount: Math.max(0, Number(prize.amount) || 0),
+    min_amount: Math.max(0, Number(prize.min_amount) || 0),
+    max_amount: Math.max(0, Number(prize.max_amount) || 0),
+    concurrency: Math.max(0, Number(prize.concurrency) || 0),
+    group_id: Number(prize.group_id) || undefined,
+    validity_days: Math.max(0, Number(prize.validity_days) || 0),
+  }));
+}
+
+function normalizeDailyCheckinDecayRulesForForm(
+  rules: DailyCheckinDecayRule[] | undefined,
+): DailyCheckinDecayRule[] {
+  const source = Array.isArray(rules) && rules.length > 0
+    ? rules
+    : [
+        { after_days: 7, factor_bps: 5000 },
+        { after_days: 14, factor_bps: 2000 },
+        { after_days: 30, factor_bps: 0 },
+      ];
+  return source.map((rule) => ({
+    after_days: Math.max(0, Number(rule.after_days) || 0),
+    factor_bps: Math.max(0, Math.min(10000, Number(rule.factor_bps) || 0)),
+  }));
+}
+
+function normalizeDailyCheckinPrizesForSave(): DailyCheckinPrizeConfig[] {
+  return form.daily_checkin_prizes.map((prize, index) => {
+    const type = ["balance", "concurrency", "subscription", "none"].includes(
+      String(prize.type),
+    )
+      ? String(prize.type)
+      : "balance";
+    return {
+      id: String(prize.id || `prize_${index + 1}`).trim(),
+      name: String(prize.name || "").trim(),
+      type,
+      probability_bps: Math.max(
+        0,
+        Math.min(10000, Math.floor(Number(prize.probability_bps) || 0)),
+      ),
+      enabled: prize.enabled !== false,
+      sort_order: index,
+      balance_mode: prize.balance_mode === "range" ? "range" : "fixed",
+      amount: Math.max(0, Number(prize.amount) || 0),
+      min_amount: Math.max(0, Number(prize.min_amount) || 0),
+      max_amount: Math.max(0, Number(prize.max_amount) || 0),
+      concurrency: Math.max(0, Math.floor(Number(prize.concurrency) || 0)),
+      group_id: Math.max(0, Math.floor(Number(prize.group_id) || 0)) || undefined,
+      validity_days:
+        Math.max(0, Math.floor(Number(prize.validity_days) || 0)) || undefined,
+    };
+  });
+}
+
+function normalizeDailyCheckinDecayRulesForSave(): DailyCheckinDecayRule[] {
+  return form.daily_checkin_unpaid_decay_rules.map((rule) => ({
+    after_days: Math.max(0, Math.floor(Number(rule.after_days) || 0)),
+    factor_bps: Math.max(
+      0,
+      Math.min(10000, Math.floor(Number(rule.factor_bps) || 0)),
+    ),
+  }));
+}
+
+const dailyCheckinProbabilityTotal = computed(() =>
+  form.daily_checkin_prizes
+    .filter((prize) => prize.enabled !== false)
+    .reduce((sum, prize) => sum + (Number(prize.probability_bps) || 0), 0),
+);
+
+function addDailyCheckinPrize() {
+  form.daily_checkin_prizes.push({
+    id: `prize_${Date.now().toString(36)}`,
+    name: localText("新奖项", "New Prize"),
+    type: "none",
+    probability_bps: 0,
+    enabled: true,
+    sort_order: form.daily_checkin_prizes.length,
+  });
+}
+
+function removeDailyCheckinPrize(index: number) {
+  form.daily_checkin_prizes.splice(index, 1);
+}
+
 function addAuthSourceDefaultSubscription(source: AuthSourceType) {
   if (subscriptionGroups.value.length === 0) return;
   const candidate = findNextAvailableSubscriptionGroup(
@@ -8524,22 +8911,63 @@ async function saveSettings() {
     const checkinAmount = Math.max(0, Number(form.daily_checkin_reward_amount) || 0);
     const checkinMin = Math.max(0, Number(form.daily_checkin_reward_min) || 0);
     const checkinMax = Math.max(0, Number(form.daily_checkin_reward_max) || 0);
+    const normalizedDailyCheckinPrizes = normalizeDailyCheckinPrizesForSave();
+    const normalizedDailyCheckinDecayRules = normalizeDailyCheckinDecayRulesForSave();
+    const enabledDailyCheckinPrizes = normalizedDailyCheckinPrizes.filter(
+      (prize) => prize.enabled !== false,
+    );
     if (form.daily_checkin_enabled) {
-      if (checkinMode === "fixed" && checkinAmount <= 0) {
-        appStore.showError(t("admin.settings.defaults.dailyCheckinFixedInvalid"));
+      if (enabledDailyCheckinPrizes.length === 0) {
+        appStore.showError(t("admin.settings.defaults.dailyCheckinPrizesRequired"));
         return;
       }
-      if (checkinMode === "range") {
-        if (checkinMax < checkinMin) {
-          appStore.showError(t("admin.settings.defaults.dailyCheckinRangeInvalid"));
+      const probabilityTotal = enabledDailyCheckinPrizes.reduce(
+        (sum, prize) => sum + (Number(prize.probability_bps) || 0),
+        0,
+      );
+      if (probabilityTotal !== 10000) {
+        appStore.showError(t("admin.settings.defaults.dailyCheckinProbabilityInvalid"));
+        return;
+      }
+      for (const prize of enabledDailyCheckinPrizes) {
+        if (!prize.name) {
+          appStore.showError(t("admin.settings.defaults.dailyCheckinPrizeNameRequired"));
           return;
         }
-        if (checkinMax <= 0) {
-          appStore.showError(t("admin.settings.defaults.dailyCheckinRangeMaxInvalid"));
+        if (prize.type === "balance") {
+          if (prize.balance_mode === "range") {
+            if ((prize.max_amount || 0) < (prize.min_amount || 0)) {
+              appStore.showError(t("admin.settings.defaults.dailyCheckinBalanceRangeInvalid"));
+              return;
+            }
+            if ((prize.max_amount || 0) <= 0) {
+              appStore.showError(t("admin.settings.defaults.dailyCheckinBalanceRangeMaxInvalid"));
+              return;
+            }
+          } else if ((prize.amount || 0) <= 0) {
+            appStore.showError(t("admin.settings.defaults.dailyCheckinBalanceFixedInvalid"));
+            return;
+          }
+        }
+        if (prize.type === "concurrency" && (prize.concurrency || 0) <= 0) {
+          appStore.showError(t("admin.settings.defaults.dailyCheckinConcurrencyInvalid"));
+          return;
+        }
+        if (
+          prize.type === "subscription" &&
+          ((prize.group_id || 0) <= 0 || (prize.validity_days || 0) <= 0)
+        ) {
+          appStore.showError(t("admin.settings.defaults.dailyCheckinSubscriptionInvalid"));
           return;
         }
       }
     }
+    form.daily_checkin_prizes = normalizedDailyCheckinPrizes;
+    form.daily_checkin_unpaid_full_days = Math.max(
+      0,
+      Math.floor(Number(form.daily_checkin_unpaid_full_days) || 0),
+    );
+    form.daily_checkin_unpaid_decay_rules = normalizedDailyCheckinDecayRules;
 
     const normalizedLoginAgreementDocuments =
       normalizeLoginAgreementDocumentsForSave();
@@ -8671,6 +9099,11 @@ async function saveSettings() {
       daily_checkin_reward_amount: checkinAmount,
       daily_checkin_reward_min: checkinMin,
       daily_checkin_reward_max: checkinMax,
+      daily_checkin_prizes: normalizedDailyCheckinPrizes,
+      daily_checkin_unpaid_full_days: form.daily_checkin_unpaid_full_days,
+      daily_checkin_unpaid_decay_rules: normalizedDailyCheckinDecayRules,
+      daily_checkin_linuxdo_exempt_enabled:
+        form.daily_checkin_linuxdo_exempt_enabled,
       affiliate_rebate_rate: Math.min(
         100,
         Math.max(0, Number(form.affiliate_rebate_rate) || 0),

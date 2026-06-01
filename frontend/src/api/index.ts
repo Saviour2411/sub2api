@@ -13,7 +13,15 @@ export { authAPI, isTotp2FARequired, type LoginResponse } from './auth'
 export { keysAPI } from './keys'
 export { usageAPI } from './usage'
 export { userAPI } from './user'
-export { redeemAPI, type DailyCheckinResult, type DailyCheckinStatus, type RedeemHistoryItem } from './redeem'
+export {
+  redeemAPI,
+  type DailyCheckinPrize,
+  type DailyCheckinRecord,
+  type DailyCheckinResult,
+  type DailyCheckinReward,
+  type DailyCheckinStatus,
+  type RedeemHistoryItem,
+} from './redeem'
 export { paymentAPI } from './payment'
 export { userGroupsAPI } from './groups'
 export { userChannelsAPI } from './channels'

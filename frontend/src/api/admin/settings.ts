@@ -16,6 +16,30 @@ export interface DefaultSubscriptionSetting {
   validity_days: number;
 }
 
+export type DailyCheckinPrizeType = "balance" | "concurrency" | "subscription" | "none"
+export type DailyCheckinBalanceMode = "fixed" | "range"
+
+export interface DailyCheckinPrizeConfig {
+  id: string;
+  name: string;
+  type: DailyCheckinPrizeType | string;
+  probability_bps: number;
+  enabled: boolean;
+  sort_order: number;
+  balance_mode?: DailyCheckinBalanceMode | string;
+  amount?: number;
+  min_amount?: number;
+  max_amount?: number;
+  concurrency?: number;
+  group_id?: number;
+  validity_days?: number;
+}
+
+export interface DailyCheckinDecayRule {
+  after_days: number;
+  factor_bps: number;
+}
+
 // ── 平台限额类型 ──────────────────────────────────────────────────
 export type PlatformType = "anthropic" | "openai" | "gemini" | "antigravity"
 export type QuotaWindowType = "daily" | "weekly" | "monthly"
@@ -399,6 +423,10 @@ export interface SystemSettings {
   daily_checkin_reward_amount: number;
   daily_checkin_reward_min: number;
   daily_checkin_reward_max: number;
+  daily_checkin_prizes: DailyCheckinPrizeConfig[];
+  daily_checkin_unpaid_full_days: number;
+  daily_checkin_unpaid_decay_rules: DailyCheckinDecayRule[];
+  daily_checkin_linuxdo_exempt_enabled: boolean;
   affiliate_rebate_rate: number;
   affiliate_rebate_freeze_hours: number;
   affiliate_rebate_duration_days: number;
@@ -670,6 +698,10 @@ export interface UpdateSettingsRequest {
   daily_checkin_reward_amount?: number;
   daily_checkin_reward_min?: number;
   daily_checkin_reward_max?: number;
+  daily_checkin_prizes?: DailyCheckinPrizeConfig[];
+  daily_checkin_unpaid_full_days?: number;
+  daily_checkin_unpaid_decay_rules?: DailyCheckinDecayRule[];
+  daily_checkin_linuxdo_exempt_enabled?: boolean;
   affiliate_rebate_rate?: number;
   affiliate_rebate_freeze_hours?: number;
   affiliate_rebate_duration_days?: number;

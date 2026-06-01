@@ -142,21 +142,25 @@ type SystemSettings struct {
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
 
-	DefaultConcurrency           int
-	DefaultBalance               float64
-	DailyCheckinEnabled          bool
-	DailyCheckinRewardMode       string
-	DailyCheckinRewardAmount     float64
-	DailyCheckinRewardMin        float64
-	DailyCheckinRewardMax        float64
-	RiskControlEnabled           bool
-	AffiliateEnabled             bool
-	AffiliateRebateRate          float64
-	AffiliateRebateFreezeHours   int
-	AffiliateRebateDurationDays  int
-	AffiliateRebatePerInviteeCap float64
-	DefaultUserRPMLimit          int
-	DefaultSubscriptions         []DefaultSubscriptionSetting
+	DefaultConcurrency               int
+	DefaultBalance                   float64
+	DailyCheckinEnabled              bool
+	DailyCheckinRewardMode           string
+	DailyCheckinRewardAmount         float64
+	DailyCheckinRewardMin            float64
+	DailyCheckinRewardMax            float64
+	DailyCheckinPrizes               []DailyCheckinPrizeConfig
+	DailyCheckinUnpaidFullDays       int
+	DailyCheckinUnpaidDecayRules     []DailyCheckinDecayRule
+	DailyCheckinLinuxDoExemptEnabled bool
+	RiskControlEnabled               bool
+	AffiliateEnabled                 bool
+	AffiliateRebateRate              float64
+	AffiliateRebateFreezeHours       int
+	AffiliateRebateDurationDays      int
+	AffiliateRebatePerInviteeCap     float64
+	DefaultUserRPMLimit              int
+	DefaultSubscriptions             []DefaultSubscriptionSetting
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
@@ -286,6 +290,7 @@ type PublicSettings struct {
 	TablePageSizeOptions        []int
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
+	DailyCheckinEnabled         bool
 
 	LinuxDoOAuthEnabled      bool
 	DingTalkOAuthEnabled     bool

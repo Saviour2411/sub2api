@@ -323,6 +323,7 @@ export const useAppStore = defineStore('app', () => {
         force_email_on_third_party_signup: false,
         registration_email_suffix_whitelist: [],
         promo_code_enabled: true,
+        daily_checkin_enabled: false,
         password_reset_enabled: false,
         invitation_code_enabled: false,
         turnstile_enabled: false,

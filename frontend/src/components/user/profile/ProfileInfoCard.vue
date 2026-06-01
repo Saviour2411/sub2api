@@ -72,19 +72,7 @@
                       {{ formatCurrency(user?.balance || 0) }}
                     </p>
                   </div>
-                  <button
-                    v-if="checkinVisible"
-                    type="button"
-                    class="btn btn-secondary btn-sm shrink-0"
-                    :disabled="checkinButtonDisabled"
-                    @click="handleDailyCheckin"
-                  >
-                    {{ checkinButtonText }}
-                  </button>
                 </div>
-                <p v-if="checkinRewardText" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                  {{ checkinRewardText }}
-                </p>
               </div>
               <div
                 data-testid="profile-overview-metric-concurrency"
@@ -196,14 +184,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { redeemAPI, type DailyCheckinStatus } from '@/api'
 import Icon from '@/components/icons/Icon.vue'
 import ProfileAvatarCard from '@/components/user/profile/ProfileAvatarCard.vue'
 import ProfileEditForm from '@/components/user/profile/ProfileEditForm.vue'
 import ProfileIdentityBindingsSection from '@/components/user/profile/ProfileIdentityBindingsSection.vue'
-import { useAppStore, useAuthStore } from '@/stores'
 import type { User, UserAuthBindingStatus, UserAuthProvider, UserProfileSourceContext } from '@/types'
 
 const props = withDefaults(defineProps<{
@@ -226,101 +212,6 @@ const props = withDefaults(defineProps<{
 })
 
 const { t } = useI18n()
-const appStore = useAppStore()
-const authStore = useAuthStore()
-const checkinStatus = ref<DailyCheckinStatus | null>(null)
-const loadingCheckinStatus = ref(false)
-const checkinSubmitting = ref(false)
-
-const checkinVisible = computed(() => checkinStatus.value?.enabled === true)
-const checkinButtonDisabled = computed(() =>
-  loadingCheckinStatus.value ||
-  checkinSubmitting.value ||
-  checkinStatus.value?.checked_in_today === true
-)
-const checkinButtonText = computed(() => {
-  if (loadingCheckinStatus.value) return t('profile.checkin.loading')
-  if (checkinSubmitting.value) return t('profile.checkin.checkingIn')
-  if (checkinStatus.value?.checked_in_today) return t('profile.checkin.checkedInToday')
-  return t('profile.checkin.checkInNow')
-})
-const checkinRewardText = computed(() => {
-  if (!checkinStatus.value?.checked_in_today || checkinStatus.value.today_reward == null) {
-    return ''
-  }
-  return t('profile.checkin.rewardAmount', {
-    amount: formatCurrency(checkinStatus.value.today_reward)
-  })
-})
-
-async function loadDailyCheckinStatus() {
-  if (!props.user) {
-    checkinStatus.value = null
-    return
-  }
-  loadingCheckinStatus.value = true
-  try {
-    checkinStatus.value = await redeemAPI.getDailyCheckinStatus()
-  } catch (error) {
-    console.error('Failed to load daily check-in status:', error)
-    checkinStatus.value = null
-  } finally {
-    loadingCheckinStatus.value = false
-  }
-}
-
-async function handleDailyCheckin() {
-  if (!checkinStatus.value || checkinButtonDisabled.value) {
-    return
-  }
-  checkinSubmitting.value = true
-  try {
-    const result = await redeemAPI.dailyCheckin()
-    checkinStatus.value = {
-      ...checkinStatus.value,
-      checked_in_today: true,
-      today_reward: result.reward_amount,
-      checked_in_at: result.checked_in_at
-    }
-    appStore.showSuccess(t('profile.checkin.success', { amount: formatCurrency(result.reward_amount) }))
-    await authStore.refreshUser()
-  } catch (error: any) {
-    const statusCode = Number(error?.status || 0)
-    if (statusCode === 409) {
-      if (checkinStatus.value) {
-        checkinStatus.value.checked_in_today = true
-      }
-      appStore.showInfo(t('profile.checkin.checkedInToday'))
-      await loadDailyCheckinStatus()
-      return
-    }
-    if (statusCode === 403) {
-      appStore.showError(t('profile.checkin.unavailable'))
-      await loadDailyCheckinStatus()
-      return
-    }
-    appStore.showError(t('profile.checkin.failed') + ': ' + (error?.message || t('common.unknownError')))
-  } finally {
-    checkinSubmitting.value = false
-  }
-}
-
-watch(
-  () => props.user?.id,
-  (newID, oldID) => {
-    if (!newID) {
-      checkinStatus.value = null
-      return
-    }
-    if (newID !== oldID) {
-      loadDailyCheckinStatus()
-    }
-  }
-)
-
-onMounted(() => {
-  loadDailyCheckinStatus()
-})
 
 function normalizeBindingStatus(binding: boolean | UserAuthBindingStatus | undefined): boolean | null {
   if (typeof binding === 'boolean') {

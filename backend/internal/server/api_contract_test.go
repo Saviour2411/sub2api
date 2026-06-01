@@ -809,6 +809,10 @@ func TestAPIContracts(t *testing.T) {
 						"daily_checkin_reward_amount": 1,
 						"daily_checkin_reward_min": 1,
 						"daily_checkin_reward_max": 3,
+						"daily_checkin_prizes": [{"id":"legacy_balance","name":"余额奖励","type":"balance","probability_bps":10000,"enabled":true,"sort_order":0,"balance_mode":"fixed","amount":1,"min_amount":1,"max_amount":3}],
+						"daily_checkin_unpaid_full_days": 7,
+						"daily_checkin_unpaid_decay_rules": [{"after_days":7,"factor_bps":5000},{"after_days":14,"factor_bps":2000},{"after_days":30,"factor_bps":0}],
+						"daily_checkin_linuxdo_exempt_enabled": false,
 						"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null}},
 						"auth_source_default_email_platform_quotas": null,
 						"auth_source_default_github_platform_quotas": null,
@@ -1070,6 +1074,10 @@ func TestAPIContracts(t *testing.T) {
 					"daily_checkin_reward_amount": 1,
 					"daily_checkin_reward_min": 1,
 					"daily_checkin_reward_max": 3,
+					"daily_checkin_prizes": [{"id":"legacy_balance","name":"余额奖励","type":"balance","probability_bps":10000,"enabled":true,"sort_order":0,"balance_mode":"fixed","amount":1,"min_amount":1,"max_amount":3}],
+					"daily_checkin_unpaid_full_days": 7,
+					"daily_checkin_unpaid_decay_rules": [{"after_days":7,"factor_bps":5000},{"after_days":14,"factor_bps":2000},{"after_days":30,"factor_bps":0}],
+					"daily_checkin_linuxdo_exempt_enabled": false,
 					"affiliate_rebate_rate": 20,
 					"affiliate_rebate_freeze_hours": 0,
 					"affiliate_rebate_duration_days": 0,
@@ -1304,7 +1312,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 
 	settingRepo := newStubSettingRepo()
 	settingService := service.NewSettingService(settingRepo, cfg)
-	dailyCheckinService := service.NewDailyCheckinService(nil, settingService, nil, nil)
+	dailyCheckinService := service.NewDailyCheckinService(nil, settingService, nil, nil, nil)
 	dailyCheckinHandler := handler.NewDailyCheckinHandler(dailyCheckinService)
 
 	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)

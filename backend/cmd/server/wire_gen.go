@@ -93,7 +93,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	usageService := service.NewUsageService(usageLogRepository, userRepository, client, apiKeyAuthCacheInvalidator)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService)
 	redeemHandler := handler.NewRedeemHandler(redeemService)
-	dailyCheckinService := service.NewDailyCheckinService(client, settingService, apiKeyAuthCacheInvalidator, billingCacheService)
+	dailyCheckinService := service.NewDailyCheckinService(client, settingService, apiKeyAuthCacheInvalidator, billingCacheService, subscriptionService)
 	dailyCheckinHandler := handler.NewDailyCheckinHandler(dailyCheckinService)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
 	announcementRepository := repository.NewAnnouncementRepository(client)

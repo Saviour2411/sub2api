@@ -257,15 +257,19 @@ const (
 	SettingKeyCustomEndpoints             = "custom_endpoints"              // 自定义端点列表（JSON 数组）
 
 	// 默认配置
-	SettingKeyDefaultConcurrency   = "default_concurrency"    // 新用户默认并发量
-	SettingKeyDefaultBalance       = "default_balance"        // 新用户默认余额
-	SettingKeyDefaultSubscriptions = "default_subscriptions"  // 新用户默认订阅列表（JSON）
-	SettingKeyDefaultUserRPMLimit  = "default_user_rpm_limit" // 新用户默认 RPM 限制（0 = 不限制）
-	SettingKeyDailyCheckinEnabled  = "daily_checkin_enabled"  // 是否启用每日签到
-	SettingKeyDailyCheckinMode     = "daily_checkin_reward_mode"
-	SettingKeyDailyCheckinAmount   = "daily_checkin_reward_amount"
-	SettingKeyDailyCheckinMin      = "daily_checkin_reward_min"
-	SettingKeyDailyCheckinMax      = "daily_checkin_reward_max"
+	SettingKeyDefaultConcurrency               = "default_concurrency"    // 新用户默认并发量
+	SettingKeyDefaultBalance                   = "default_balance"        // 新用户默认余额
+	SettingKeyDefaultSubscriptions             = "default_subscriptions"  // 新用户默认订阅列表（JSON）
+	SettingKeyDefaultUserRPMLimit              = "default_user_rpm_limit" // 新用户默认 RPM 限制（0 = 不限制）
+	SettingKeyDailyCheckinEnabled              = "daily_checkin_enabled"  // 是否启用每日签到
+	SettingKeyDailyCheckinMode                 = "daily_checkin_reward_mode"
+	SettingKeyDailyCheckinAmount               = "daily_checkin_reward_amount"
+	SettingKeyDailyCheckinMin                  = "daily_checkin_reward_min"
+	SettingKeyDailyCheckinMax                  = "daily_checkin_reward_max"
+	SettingKeyDailyCheckinPrizes               = "daily_checkin_prizes"
+	SettingKeyDailyCheckinUnpaidFullDays       = "daily_checkin_unpaid_full_days"
+	SettingKeyDailyCheckinUnpaidDecayRules     = "daily_checkin_unpaid_decay_rules"
+	SettingKeyDailyCheckinLinuxDoExemptEnabled = "daily_checkin_linuxdo_exempt_enabled"
 
 	// 第三方认证来源默认授予配置
 	SettingKeyAuthSourceDefaultEmailBalance             = "auth_source_default_email_balance"

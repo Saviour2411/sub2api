@@ -34,11 +34,71 @@ export interface DailyCheckinStatus {
   reward_max: number
   today_reward?: number
   checked_in_at?: string
+  prizes?: DailyCheckinPrize[]
+  decay?: DailyCheckinDecay
+  today_result?: DailyCheckinReward
+  recent_records?: DailyCheckinRecord[]
 }
 
 export interface DailyCheckinResult {
   reward_amount: number
   new_balance: number
+  checked_in_at: string
+  prize?: DailyCheckinReward
+  prizes?: DailyCheckinPrize[]
+  decay?: DailyCheckinDecay
+}
+
+export interface DailyCheckinPrize {
+  id: string
+  name: string
+  type: 'balance' | 'concurrency' | 'subscription' | 'none' | string
+  probability_bps: number
+  effective_probability_bps: number
+  enabled: boolean
+  sort_order: number
+  balance_mode?: 'fixed' | 'range' | string
+  amount?: number
+  min_amount?: number
+  max_amount?: number
+  concurrency?: number
+  group_id?: number
+  validity_days?: number
+}
+
+export interface DailyCheckinDecay {
+  paid: boolean
+  exempt: boolean
+  exempt_reason?: string
+  account_age_days: number
+  factor_bps: number
+  full_days: number
+}
+
+export interface DailyCheckinReward {
+  prize_id: string
+  prize_name: string
+  type: string
+  amount?: number
+  new_balance?: number
+  concurrency?: number
+  new_concurrency?: number
+  group_id?: number
+  group_name?: string
+  validity_days?: number
+  subscription_expires_at?: string
+  checked_in_at: string
+}
+
+export interface DailyCheckinRecord {
+  id: number
+  prize_id: string
+  prize_name: string
+  type: string
+  amount?: number
+  concurrency?: number
+  group_id?: number
+  validity_days?: number
   checked_in_at: string
 }
 

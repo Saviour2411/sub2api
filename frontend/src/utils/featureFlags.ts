@@ -119,6 +119,11 @@ export const FeatureFlags = {
     mode: 'opt-in',
     label: 'Affiliate',
   }),
+  dailyCheckin: defineFlag({
+    key: 'daily_checkin_enabled',
+    mode: 'opt-in',
+    label: 'Daily Check-in',
+  }),
   modelMarketplace: defineFlag({
     key: 'model_marketplace_enabled',
     mode: 'opt-out',
