@@ -213,26 +213,58 @@ func (e *EasyPay) QueryOrder(ctx context.Context, tradeNo string) (*payment.Quer
 	if err != nil {
 		return nil, fmt.Errorf("easypay query: %w", err)
 	}
-	var resp struct {
-		Code   int    `json:"code"`
-		Msg    string `json:"msg"`
-		Status int    `json:"status"`
-		Money  string `json:"money"`
-	}
+	var resp easyPayQueryResponse
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("easypay parse query: %w", err)
 	}
 	status := payment.ProviderStatusPending
-	if resp.Status == easypayStatusPaid {
+	tradeStatus := easyPayFirstNonEmpty(resp.TradeStatus, resp.Data.TradeStatus)
+	statusCode := resp.Status
+	if statusCode == 0 {
+		statusCode = resp.Data.Status
+	}
+	if tradeStatus != "" {
+		if strings.EqualFold(tradeStatus, tradeStatusSuccess) {
+			status = payment.ProviderStatusPaid
+		}
+	} else if statusCode == easypayStatusPaid {
 		status = payment.ProviderStatusPaid
 	}
-	amount, _ := strconv.ParseFloat(resp.Money, 64)
+	money := easyPayFirstNonEmpty(resp.Money, resp.Data.Money)
+	amount, _ := strconv.ParseFloat(money, 64)
 	return &payment.QueryOrderResponse{
-		TradeNo:  tradeNo,
+		TradeNo:  easyPayFirstNonEmpty(resp.TradeNo, resp.Data.TradeNo, tradeNo),
 		Status:   status,
 		Amount:   amount,
 		Metadata: e.MerchantIdentityMetadata(),
 	}, nil
+}
+
+type easyPayQueryResponse struct {
+	Status      int              `json:"status"`
+	Money       string           `json:"money"`
+	TradeNo     string           `json:"trade_no"`
+	TradeStatus string           `json:"trade_status"`
+	Code        int              `json:"code"`
+	Msg         string           `json:"msg"`
+	Data        easyPayQueryData `json:"data"`
+}
+
+type easyPayQueryData struct {
+	Status      int    `json:"status"`
+	Money       string `json:"money"`
+	TradeNo     string `json:"trade_no"`
+	TradeStatus string `json:"trade_status"`
+}
+
+func easyPayFirstNonEmpty(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func (e *EasyPay) VerifyNotification(_ context.Context, rawBody string, _ map[string]string) (*payment.PaymentNotification, error) {
