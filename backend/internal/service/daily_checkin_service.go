@@ -274,7 +274,7 @@ RETURNING id`,
 		}
 		return nil, fmt.Errorf("create daily check-in record: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	if rows.Next() {
 		if err := rows.Scan(&recordID); err != nil {
 			if isDailyCheckinDuplicate(err) {
@@ -1086,7 +1086,7 @@ func sanitizeDailyPrizeID(id string, index int) string {
 	var b strings.Builder
 	for _, r := range id {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' {
-			b.WriteRune(r)
+			_, _ = b.WriteRune(r)
 		}
 	}
 	if b.Len() == 0 {
