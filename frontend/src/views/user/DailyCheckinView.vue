@@ -46,7 +46,7 @@
                 <div
                   class="checkin-wheel"
                   :class="{ 'is-spinning': spinning }"
-                  :style="{ background: wheelBackground, transform: `rotate(${wheelRotation}deg)` }"
+                  :style="wheelStyle"
                 >
                   <div
                     v-for="(prize, index) in wheelPrizes"
@@ -154,6 +154,8 @@ const wheelRotation = ref(0)
 const lastResult = ref<DailyCheckinReward | DailyCheckinRecord | null>(null)
 
 const WHEEL_START_DEG = -90
+const WHEEL_SPIN_DURATION_MS = 3200
+const WHEEL_SETTLE_BUFFER_MS = 100
 const colors = ['#f59e0b', '#14b8a6', '#e11d48', '#2563eb', '#84cc16', '#a855f7', '#f97316', '#0f766e']
 
 const wheelPrizes = computed(() => status.value?.prizes ?? [])
@@ -185,6 +187,11 @@ const wheelBackground = computed(() => {
   })
   return `conic-gradient(from ${WHEEL_START_DEG}deg, ${stops.join(', ')})`
 })
+const wheelStyle = computed(() => ({
+  '--wheel-spin-duration': `${WHEEL_SPIN_DURATION_MS}ms`,
+  background: wheelBackground.value,
+  transform: `rotate(${wheelRotation.value}deg)`
+}))
 
 async function loadStatus() {
   loading.value = true
@@ -201,6 +208,7 @@ async function loadStatus() {
 async function spin() {
   if (spinDisabled.value) return
   spinning.value = true
+  lastResult.value = null
   const baseRotation = wheelRotation.value
   wheelRotation.value = baseRotation + 720
   try {
@@ -209,14 +217,13 @@ async function spin() {
     if (result.prizes?.length) {
       status.value = status.value ? { ...status.value, prizes: result.prizes } : status.value
     }
-    lastResult.value = result.prize || null
     wheelRotation.value = targetRotation(baseRotation, prizes, result.prize?.prize_id)
+    await waitForWheelSettled()
+    lastResult.value = result.prize || null
     appStore.showSuccess(t('dailyCheckin.success', { reward: rewardLabel(result.prize) }))
     await authStore.refreshUser()
-    setTimeout(async () => {
-      await loadStatus()
-      spinning.value = false
-    }, 1200)
+    await loadStatus()
+    spinning.value = false
   } catch (error: any) {
     spinning.value = false
     if (Number(error?.status || 0) === 409) {
@@ -241,8 +248,15 @@ function labelStyle(index: number) {
   const angle = segmentCenterAngle(index, count)
   return {
     '--label-angle': `${angle}deg`,
+    '--label-counter-angle': `${-angle}deg`,
     transform: `rotate(${angle}deg)`
   }
+}
+
+function waitForWheelSettled(): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, WHEEL_SPIN_DURATION_MS + WHEEL_SETTLE_BUFFER_MS)
+  })
 }
 
 function segmentCenterAngle(index: number, count: number): number {
@@ -342,7 +356,7 @@ onMounted(loadStatus)
 }
 
 .checkin-wheel.is-spinning {
-  transition-duration: 3.2s;
+  transition-duration: var(--wheel-spin-duration, 3.2s);
 }
 
 .wheel-glass {
@@ -412,7 +426,7 @@ onMounted(loadStatus)
   width: clamp(58px, 19%, 86px);
   max-height: 32px;
   overflow: hidden;
-  transform: translate(-50%, -50%) rotate(calc(var(--label-angle) * -1));
+  transform: translate(-50%, -50%) rotate(var(--label-counter-angle));
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   border-radius: 9999px;
