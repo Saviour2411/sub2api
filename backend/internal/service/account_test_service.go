@@ -1932,7 +1932,7 @@ func (s *AccountTestService) matchSemanticErrorForText(ctx context.Context, acco
 
 func (s *AccountTestService) newSemanticTestFailure(match *SemanticErrorMatch, rawContent string) error {
 	if match == nil {
-		return errors.New("Upstream semantic error")
+		return errors.New("upstream semantic error")
 	}
 	return errors.New(s.formatSemanticFailureMessage(&testSemanticFailure{
 		ruleName:      match.RuleName,
