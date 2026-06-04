@@ -417,14 +417,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 		if match := semanticDetector.MatchIfComplete(); match != nil {
 			recordSemanticErrorOps(c, account, match, []byte(semanticBufferedSSE.String()), requestID)
 			handleSemanticErrorScheduling(s.rateLimitService, ctx, account, match)
-			if !clientDisconnected {
-				if _, werr := c.Writer.WriteString(chatCompletionsSemanticErrorSSE(match.CustomMessage)); werr != nil {
-					clientDisconnected = true
-				} else {
-					c.Writer.Flush()
-				}
-			}
-			return nil, fmt.Errorf("upstream semantic error: %s", match.RuleName)
+			return nil, newSemanticErrorFailoverError(match)
 		}
 		flushSemanticSSE()
 	}
@@ -508,9 +501,7 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 		if match := s.settingService.MatchSemanticError(ctx, account.Platform, respBody); match != nil {
 			recordSemanticErrorOps(c, account, match, respBody, requestID)
 			handleSemanticErrorScheduling(s.rateLimitService, ctx, account, match)
-			responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
-			writeChatCompletionsError(c, semanticErrorResponseStatus, "upstream_error", match.CustomMessage)
-			return nil, fmt.Errorf("upstream semantic error: %s", match.RuleName)
+			return nil, newSemanticErrorFailoverError(match)
 		}
 	}
 

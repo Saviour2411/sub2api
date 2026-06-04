@@ -219,7 +219,10 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 						return
 					}
 					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
-					strictFailureUnscheduled := h.gatewayService.HandleUpstreamFailoverError(c.Request.Context(), account, failoverErr)
+					strictFailureUnscheduled := failoverErr.SemanticError
+					if !strictFailureUnscheduled {
+						strictFailureUnscheduled = h.gatewayService.HandleUpstreamFailoverError(c.Request.Context(), account, failoverErr)
+					}
 					// Pool mode: retry on the same account
 					if failoverErr.RetryableOnSameAccount && !strictFailureUnscheduled {
 						retryLimit := account.GetPoolModeRetryCount()

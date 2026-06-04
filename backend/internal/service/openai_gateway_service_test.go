@@ -1134,7 +1134,7 @@ func TestOpenAIResponsesStreamFailedEventUsesResponsesSchema(t *testing.T) {
 	require.Equal(t, "上游未知异常，请稍后重试", gjson.Get(data, "response.error.message").String())
 }
 
-func TestOpenAIStreamingSemanticErrorUsesResponsesFailedEvent(t *testing.T) {
+func TestOpenAIStreamingSemanticErrorReturnsFailoverBeforeOutput(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
 		Gateway: config.GatewayConfig{
@@ -1188,12 +1188,13 @@ func TestOpenAIStreamingSemanticErrorUsesResponsesFailedEvent(t *testing.T) {
 	result, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"}, time.Now(), "model", "model")
 	require.Error(t, err)
 	require.NotNil(t, result)
-	body := rec.Body.String()
-	require.Contains(t, body, "event: response.failed")
-	require.Contains(t, body, `"type":"response.failed"`)
-	require.Contains(t, body, "上游额度异常")
-	require.NotContains(t, body, `"type":"error"`)
-	require.NotContains(t, body, "quota exceeded")
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.True(t, failoverErr.SemanticError)
+	require.Equal(t, "quota", failoverErr.SemanticErrorRuleName)
+	require.Equal(t, "上游额度异常", failoverErr.SemanticErrorMessage)
+	require.False(t, c.Writer.Written())
+	require.Empty(t, rec.Body.String())
 }
 
 func TestOpenAIStreamingResponseFailedBeforeOutputCapacityErrorReturnsFailover(t *testing.T) {

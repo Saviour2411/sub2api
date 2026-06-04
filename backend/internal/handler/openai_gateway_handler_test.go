@@ -128,6 +128,25 @@ func TestOpenAIHandleStreamingAwareError_NonStreaming(t *testing.T) {
 	assert.Equal(t, "test error", errorObj["message"])
 }
 
+func TestOpenAIHandleFailoverExhaustedSemanticErrorUsesCustomMessage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, EndpointResponses, nil)
+
+	h := &OpenAIGatewayHandler{}
+	h.handleFailoverExhausted(c, &service.UpstreamFailoverError{
+		StatusCode:            http.StatusBadGateway,
+		SemanticError:         true,
+		SemanticErrorRuleName: "dc.hhhl.cc",
+		SemanticErrorMessage:  "上游未知异常，请稍后重试",
+	}, false)
+
+	assert.Equal(t, http.StatusBadGateway, w.Code)
+	require.Equal(t, "upstream_error", gjson.Get(w.Body.String(), "error.type").String())
+	require.Equal(t, "上游未知异常，请稍后重试", gjson.Get(w.Body.String(), "error.message").String())
+}
+
 func TestOpenAIHandleStreamingAwareError_StreamUsesResponseFailed(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()

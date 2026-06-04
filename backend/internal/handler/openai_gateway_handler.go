@@ -375,7 +375,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						return
 					}
 					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
-					strictFailureUnscheduled := h.gatewayService.HandleUpstreamFailoverError(c.Request.Context(), account, failoverErr)
+					strictFailureUnscheduled := failoverErr.SemanticError
+					if !strictFailureUnscheduled {
+						strictFailureUnscheduled = h.gatewayService.HandleUpstreamFailoverError(c.Request.Context(), account, failoverErr)
+					}
 					// 池模式：同账号重试
 					if failoverErr.RetryableOnSameAccount && !strictFailureUnscheduled {
 						retryLimit := account.GetPoolModeRetryCount()
@@ -783,7 +786,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
 					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
-					strictFailureUnscheduled := h.gatewayService.HandleUpstreamFailoverError(c.Request.Context(), account, failoverErr)
+					strictFailureUnscheduled := failoverErr.SemanticError
+					if !strictFailureUnscheduled {
+						strictFailureUnscheduled = h.gatewayService.HandleUpstreamFailoverError(c.Request.Context(), account, failoverErr)
+					}
 					// 池模式：同账号重试
 					if failoverErr.RetryableOnSameAccount && !strictFailureUnscheduled {
 						retryLimit := account.GetPoolModeRetryCount()
@@ -1725,6 +1731,18 @@ func (h *OpenAIGatewayHandler) handleConcurrencyError(c *gin.Context, err error,
 func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, streamStarted bool) {
 	statusCode := failoverErr.StatusCode
 	responseBody := failoverErr.ResponseBody
+	if failoverErr.SemanticError {
+		msg := strings.TrimSpace(failoverErr.SemanticErrorMessage)
+		if msg == "" {
+			msg = service.ExtractUpstreamErrorMessage(responseBody)
+		}
+		if msg == "" {
+			msg = "Upstream semantic error"
+		}
+		service.SetOpsUpstreamError(c, statusCode, msg, "")
+		h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", msg, streamStarted)
+		return
+	}
 	if service.IsOpenAISilentRefusalErrorBody(responseBody) {
 		service.SetOpsUpstreamError(c, statusCode, service.OpenAISilentRefusalClientMessage(), "")
 		h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", service.OpenAISilentRefusalClientMessage(), streamStarted)

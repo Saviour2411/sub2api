@@ -4714,8 +4714,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			if match := semanticDetector.MatchIfComplete(); match != nil {
 				recordSemanticErrorOps(c, account, match, []byte(semanticBufferedStream.String()), upstreamRequestID)
 				handleSemanticErrorScheduling(s.rateLimitService, ctx, account, match)
-				sendErrorEvent(match.CustomMessage)
-				return resultWithUsage(), fmt.Errorf("upstream semantic error: %s", match.RuleName)
+				return resultWithUsage(), newSemanticErrorFailoverError(match)
 			}
 			semanticChecking = false
 			flushSemanticBuffered()
@@ -5204,9 +5203,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		if match := s.settingService.MatchSemanticError(ctx, account.Platform, body); match != nil {
 			recordSemanticErrorOps(c, account, match, body, resp.Header.Get("x-request-id"))
 			handleSemanticErrorScheduling(s.rateLimitService, ctx, account, match)
-			responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
-			writeOpenAISemanticErrorJSON(c, match.CustomMessage)
-			return nil, fmt.Errorf("upstream semantic error: %s", match.RuleName)
+			return nil, newSemanticErrorFailoverError(match)
 		}
 	}
 

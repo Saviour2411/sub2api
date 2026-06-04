@@ -108,15 +108,6 @@ func semanticErrorRuleAppliesToPlatform(rule CompiledSemanticErrorRule, platform
 	return false
 }
 
-func writeOpenAISemanticErrorJSON(c *gin.Context, message string) {
-	c.JSON(semanticErrorResponseStatus, gin.H{
-		"error": gin.H{
-			"type":    "upstream_error",
-			"message": message,
-		},
-	})
-}
-
 func writeAnthropicSemanticErrorJSON(c *gin.Context, message string) {
 	c.JSON(semanticErrorResponseStatus, gin.H{
 		"type": "error",
@@ -127,15 +118,28 @@ func writeAnthropicSemanticErrorJSON(c *gin.Context, message string) {
 	})
 }
 
-func chatCompletionsSemanticErrorSSE(message string) string {
-	payload := map[string]any{
+func newSemanticErrorFailoverError(match *SemanticErrorMatch) *UpstreamFailoverError {
+	message := "Upstream semantic error"
+	ruleName := ""
+	if match != nil {
+		ruleName = match.RuleName
+		if strings.TrimSpace(match.CustomMessage) != "" {
+			message = match.CustomMessage
+		}
+	}
+	body, _ := json.Marshal(map[string]any{
 		"error": map[string]string{
 			"type":    "upstream_error",
 			"message": message,
 		},
+	})
+	return &UpstreamFailoverError{
+		StatusCode:            semanticErrorResponseStatus,
+		ResponseBody:          body,
+		SemanticError:         true,
+		SemanticErrorRuleName: ruleName,
+		SemanticErrorMessage:  message,
 	}
-	body, _ := json.Marshal(payload)
-	return "data: " + string(body) + "\n\ndata: [DONE]\n\n"
 }
 
 func (s *RateLimitService) HandleSemanticFailureScheduling(ctx context.Context, account *Account, reason string) bool {
