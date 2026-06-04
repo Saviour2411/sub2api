@@ -73,6 +73,17 @@ type AccountTestService struct {
 	settingService            *SettingService
 }
 
+type testSemanticFailure struct {
+	ruleName      string
+	customMessage string
+	rawContent    string
+}
+
+type testSemanticStreamState struct {
+	detector *semanticErrorPrefixDetector
+	buffered []string
+}
+
 // NewAccountTestService creates a new AccountTestService
 func NewAccountTestService(
 	accountRepo AccountRepository,
@@ -324,7 +335,7 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 	}
 
 	// Process SSE stream
-	return s.processClaudeStream(c, resp.Body)
+	return s.processClaudeStream(c, resp.Body, account)
 }
 
 func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Context, ctx context.Context, account *Account, testModelID string, prompt string) error {
@@ -392,7 +403,7 @@ func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Con
 		return s.sendErrorAndEnd(c, errMsg)
 	}
 
-	return s.processClaudeStream(c, resp.Body)
+	return s.processClaudeStream(c, resp.Body, account)
 }
 
 // testBedrockAccountConnection tests a Bedrock (SigV4 or API Key) account using non-streaming invoke
@@ -473,6 +484,9 @@ func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx co
 
 	if resp.StatusCode != http.StatusOK {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
+	}
+	if semanticErr := s.matchSemanticErrorForBody(ctx, account, body); semanticErr != nil {
+		return s.sendErrorAndEnd(c, semanticErr.Error())
 	}
 
 	// Bedrock non-streaming response is standard Claude JSON, extract the text
@@ -635,7 +649,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	}
 
 	// Process SSE stream
-	return s.processOpenAIStream(c, resp.Body)
+	return s.processOpenAIStream(c, resp.Body, account)
 }
 
 // testOpenAIChatCompletionsConnection tests an OpenAI-compatible APIKey account
@@ -698,7 +712,7 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Chat Completions API (/v1/chat/completions) returned %d: %s", resp.StatusCode, string(body)))
 	}
 
-	return s.processOpenAIChatCompletionsStream(c, resp.Body)
+	return s.processOpenAIChatCompletionsStream(c, resp.Body, account)
 }
 
 // testOpenAICompactConnection probes /responses/compact and persists the
@@ -789,8 +803,18 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 
+	semanticMatch := s.matchSemanticError(ctx, account, body)
+
 	if s.accountRepo != nil {
 		updates := buildOpenAICompactProbeExtraUpdates(resp, body, nil, time.Now())
+		if semanticMatch != nil {
+			updates["openai_compact_supported"] = false
+			updates["openai_compact_last_error"] = truncateString(s.formatSemanticFailureMessage(&testSemanticFailure{
+				ruleName:      semanticMatch.RuleName,
+				customMessage: semanticMatch.CustomMessage,
+				rawContent:    string(body),
+			}), 2048)
+		}
 		if codexUpdates, err := extractOpenAICodexProbeUpdates(resp); err == nil && len(codexUpdates) > 0 {
 			updates = mergeExtraUpdates(updates, codexUpdates)
 		}
@@ -810,6 +834,13 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
 		}
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
+	}
+	if semanticMatch != nil {
+		return s.sendErrorAndEnd(c, s.formatSemanticFailureMessage(&testSemanticFailure{
+			ruleName:      semanticMatch.RuleName,
+			customMessage: semanticMatch.CustomMessage,
+			rawContent:    string(body),
+		}))
 	}
 
 	s.sendEvent(c, TestEvent{Type: "content", Text: "Compact probe succeeded"})
@@ -922,7 +953,7 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 	}
 
 	// Process SSE stream
-	return s.processGeminiStream(c, resp.Body)
+	return s.processGeminiStream(c, resp.Body, account, !isImageGenerationModel(testModelID))
 }
 
 // routeAntigravityTest 路由 Antigravity 账号的测试请求。
@@ -966,6 +997,9 @@ func (s *AccountTestService) testAntigravityAccountConnection(c *gin.Context, ac
 	result, err := s.antigravityGatewayService.TestConnection(ctx, account, testModelID, prompt)
 	if err != nil {
 		return s.sendErrorAndEnd(c, err.Error())
+	}
+	if semanticErr := s.matchSemanticErrorForText(ctx, account, result.Text); semanticErr != nil {
+		return s.sendErrorAndEnd(c, semanticErr.Error())
 	}
 
 	// 发送响应内容
@@ -1153,13 +1187,17 @@ func createGeminiTestPayload(modelID string, prompt string) []byte {
 }
 
 // processGeminiStream processes SSE stream from Gemini API
-func (s *AccountTestService) processGeminiStream(c *gin.Context, body io.Reader) error {
+func (s *AccountTestService) processGeminiStream(c *gin.Context, body io.Reader, account *Account, semanticEnabled bool) error {
 	reader := bufio.NewReader(body)
+	semanticState := s.newTestSemanticStreamState(c.Request.Context(), account, semanticEnabled)
 
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			if err == io.EOF {
+				if semanticErr := s.flushSemanticTestStream(c, semanticState); semanticErr != nil {
+					return s.sendErrorAndEnd(c, semanticErr.Error())
+				}
 				s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 				return nil
 			}
@@ -1173,6 +1211,9 @@ func (s *AccountTestService) processGeminiStream(c *gin.Context, body io.Reader)
 
 		jsonStr := strings.TrimPrefix(line, "data: ")
 		if jsonStr == "[DONE]" {
+			if semanticErr := s.flushSemanticTestStream(c, semanticState); semanticErr != nil {
+				return s.sendErrorAndEnd(c, semanticErr.Error())
+			}
 			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 			return nil
 		}
@@ -1196,7 +1237,9 @@ func (s *AccountTestService) processGeminiStream(c *gin.Context, body io.Reader)
 						for _, part := range parts {
 							if partMap, ok := part.(map[string]any); ok {
 								if text, ok := partMap["text"].(string); ok && text != "" {
-									s.sendEvent(c, TestEvent{Type: "content", Text: text})
+									if semanticErr := s.handleSemanticTestTextChunk(c, semanticState, text); semanticErr != nil {
+										return s.sendErrorAndEnd(c, semanticErr.Error())
+									}
 								}
 								if inlineData, ok := partMap["inlineData"].(map[string]any); ok {
 									mimeType, _ := inlineData["mimeType"].(string)
@@ -1216,6 +1259,9 @@ func (s *AccountTestService) processGeminiStream(c *gin.Context, body io.Reader)
 
 				// Check for completion after extracting content
 				if finishReason, ok := candidate["finishReason"].(string); ok && finishReason != "" {
+					if semanticErr := s.flushSemanticTestStream(c, semanticState); semanticErr != nil {
+						return s.sendErrorAndEnd(c, semanticErr.Error())
+					}
 					s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 					return nil
 				}
@@ -1284,13 +1330,17 @@ func createOpenAIChatCompletionsTestPayload(modelID string, prompt string) map[s
 }
 
 // processClaudeStream processes the SSE stream from Claude API
-func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader) error {
+func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader, account *Account) error {
 	reader := bufio.NewReader(body)
+	semanticState := s.newTestSemanticStreamState(c.Request.Context(), account, true)
 
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			if err == io.EOF {
+				if semanticErr := s.flushSemanticTestStream(c, semanticState); semanticErr != nil {
+					return s.sendErrorAndEnd(c, semanticErr.Error())
+				}
 				s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 				return nil
 			}
@@ -1304,6 +1354,9 @@ func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader)
 
 		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
 		if jsonStr == "[DONE]" {
+			if semanticErr := s.flushSemanticTestStream(c, semanticState); semanticErr != nil {
+				return s.sendErrorAndEnd(c, semanticErr.Error())
+			}
 			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 			return nil
 		}
@@ -1319,10 +1372,15 @@ func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader)
 		case "content_block_delta":
 			if delta, ok := data["delta"].(map[string]any); ok {
 				if text, ok := delta["text"].(string); ok {
-					s.sendEvent(c, TestEvent{Type: "content", Text: text})
+					if semanticErr := s.handleSemanticTestTextChunk(c, semanticState, text); semanticErr != nil {
+						return s.sendErrorAndEnd(c, semanticErr.Error())
+					}
 				}
 			}
 		case "message_stop":
+			if semanticErr := s.flushSemanticTestStream(c, semanticState); semanticErr != nil {
+				return s.sendErrorAndEnd(c, semanticErr.Error())
+			}
 			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 			return nil
 		case "error":
@@ -1339,16 +1397,20 @@ func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader)
 
 // processOpenAIChatCompletionsStream processes SSE chunks from the
 // OpenAI-compatible Chat Completions API.
-func (s *AccountTestService) processOpenAIChatCompletionsStream(c *gin.Context, body io.Reader) error {
+func (s *AccountTestService) processOpenAIChatCompletionsStream(c *gin.Context, body io.Reader, account *Account) error {
 	reader := bufio.NewReader(body)
 	seenJSON := false
 	seenFinish := false
+	semanticState := s.newTestSemanticStreamState(c.Request.Context(), account, true)
 
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			if err == io.EOF {
 				if seenFinish {
+					if semanticErr := s.flushSemanticTestStream(c, semanticState); semanticErr != nil {
+						return s.sendErrorAndEnd(c, semanticErr.Error())
+					}
 					s.sendEvent(c, TestEvent{Type: "status", Text: "已通过 /v1/chat/completions 验证"})
 					s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 					return nil
@@ -1368,6 +1430,9 @@ func (s *AccountTestService) processOpenAIChatCompletionsStream(c *gin.Context, 
 
 		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
 		if jsonStr == "[DONE]" {
+			if semanticErr := s.flushSemanticTestStream(c, semanticState); semanticErr != nil {
+				return s.sendErrorAndEnd(c, semanticErr.Error())
+			}
 			s.sendEvent(c, TestEvent{Type: "status", Text: "已通过 /v1/chat/completions 验证"})
 			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 			return nil
@@ -1398,12 +1463,16 @@ func (s *AccountTestService) processOpenAIChatCompletionsStream(c *gin.Context, 
 			}
 			if delta, ok := choice["delta"].(map[string]any); ok {
 				if text, ok := delta["content"].(string); ok && text != "" {
-					s.sendEvent(c, TestEvent{Type: "content", Text: text})
+					if semanticErr := s.handleSemanticTestTextChunk(c, semanticState, text); semanticErr != nil {
+						return s.sendErrorAndEnd(c, semanticErr.Error())
+					}
 				}
 			}
 			if message, ok := choice["message"].(map[string]any); ok {
 				if text, ok := message["content"].(string); ok && text != "" {
-					s.sendEvent(c, TestEvent{Type: "content", Text: text})
+					if semanticErr := s.handleSemanticTestTextChunk(c, semanticState, text); semanticErr != nil {
+						return s.sendErrorAndEnd(c, semanticErr.Error())
+					}
 				}
 			}
 			if finishReason, ok := choice["finish_reason"].(string); ok && finishReason != "" {
@@ -1414,15 +1483,19 @@ func (s *AccountTestService) processOpenAIChatCompletionsStream(c *gin.Context, 
 }
 
 // processOpenAIStream processes the SSE stream from OpenAI Responses API
-func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader) error {
+func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader, account *Account) error {
 	reader := bufio.NewReader(body)
 	seenCompleted := false
+	semanticState := s.newTestSemanticStreamState(c.Request.Context(), account, true)
 
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			if err == io.EOF {
 				if seenCompleted {
+					if semanticErr := s.flushSemanticTestStream(c, semanticState); semanticErr != nil {
+						return s.sendErrorAndEnd(c, semanticErr.Error())
+					}
 					s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 					return nil
 				}
@@ -1439,6 +1512,9 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
 		if jsonStr == "[DONE]" {
 			if seenCompleted {
+				if semanticErr := s.flushSemanticTestStream(c, semanticState); semanticErr != nil {
+					return s.sendErrorAndEnd(c, semanticErr.Error())
+				}
 				s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 				return nil
 			}
@@ -1456,9 +1532,14 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 		case "response.output_text.delta":
 			// OpenAI Responses API uses "delta" field for text content
 			if delta, ok := data["delta"].(string); ok && delta != "" {
-				s.sendEvent(c, TestEvent{Type: "content", Text: delta})
+				if semanticErr := s.handleSemanticTestTextChunk(c, semanticState, delta); semanticErr != nil {
+					return s.sendErrorAndEnd(c, semanticErr.Error())
+				}
 			}
 		case "response.completed", "response.done":
+			if semanticErr := s.flushSemanticTestStream(c, semanticState); semanticErr != nil {
+				return s.sendErrorAndEnd(c, semanticErr.Error())
+			}
 			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 			return nil
 		case "response.failed":
@@ -1772,6 +1853,110 @@ func scheduledTestUsesTextPrompt(account *Account, modelID string) bool {
 		return true
 	}
 	return true
+}
+
+func (s *AccountTestService) newTestSemanticStreamState(ctx context.Context, account *Account, enabled bool) *testSemanticStreamState {
+	if !enabled || s == nil || s.settingService == nil || account == nil {
+		return nil
+	}
+	detector := newSemanticErrorPrefixDetector(s.settingService.GetSemanticErrorConfig(ctx), account.Platform)
+	if detector == nil || !detector.Enabled() {
+		return nil
+	}
+	return &testSemanticStreamState{
+		detector: detector,
+		buffered: make([]string, 0, 8),
+	}
+}
+
+func (s *AccountTestService) handleSemanticTestTextChunk(c *gin.Context, state *testSemanticStreamState, text string) error {
+	if text == "" {
+		return nil
+	}
+	if state == nil || state.detector == nil {
+		s.sendEvent(c, TestEvent{Type: "content", Text: text})
+		return nil
+	}
+
+	state.buffered = append(state.buffered, text)
+	state.detector.Observe(text)
+	if match := state.detector.MatchIfComplete(); match != nil {
+		return s.newSemanticTestFailure(match, strings.Join(state.buffered, ""))
+	}
+	if state.detector.Released() {
+		for _, chunk := range state.buffered {
+			s.sendEvent(c, TestEvent{Type: "content", Text: chunk})
+		}
+		state.buffered = state.buffered[:0]
+	}
+	return nil
+}
+
+func (s *AccountTestService) flushSemanticTestStream(c *gin.Context, state *testSemanticStreamState) error {
+	if state == nil || state.detector == nil {
+		return nil
+	}
+	if match := state.detector.MatchIfComplete(); match != nil {
+		return s.newSemanticTestFailure(match, strings.Join(state.buffered, ""))
+	}
+	for _, chunk := range state.buffered {
+		s.sendEvent(c, TestEvent{Type: "content", Text: chunk})
+	}
+	state.buffered = state.buffered[:0]
+	return nil
+}
+
+func (s *AccountTestService) matchSemanticError(ctx context.Context, account *Account, body []byte) *SemanticErrorMatch {
+	if s == nil || s.settingService == nil || account == nil || len(body) == 0 {
+		return nil
+	}
+	return s.settingService.MatchSemanticError(ctx, account.Platform, body)
+}
+
+func (s *AccountTestService) matchSemanticErrorForBody(ctx context.Context, account *Account, body []byte) error {
+	if match := s.matchSemanticError(ctx, account, body); match != nil {
+		return s.newSemanticTestFailure(match, string(body))
+	}
+	return nil
+}
+
+func (s *AccountTestService) matchSemanticErrorForText(ctx context.Context, account *Account, text string) error {
+	if strings.TrimSpace(text) == "" {
+		return nil
+	}
+	if match := s.matchSemanticError(ctx, account, []byte(text)); match != nil {
+		return s.newSemanticTestFailure(match, text)
+	}
+	return nil
+}
+
+func (s *AccountTestService) newSemanticTestFailure(match *SemanticErrorMatch, rawContent string) error {
+	if match == nil {
+		return errors.New("Upstream semantic error")
+	}
+	return errors.New(s.formatSemanticFailureMessage(&testSemanticFailure{
+		ruleName:      match.RuleName,
+		customMessage: match.CustomMessage,
+		rawContent:    rawContent,
+	}))
+}
+
+func (s *AccountTestService) formatSemanticFailureMessage(failure *testSemanticFailure) string {
+	if failure == nil {
+		return "Upstream semantic error"
+	}
+	message := strings.TrimSpace(failure.customMessage)
+	if message == "" {
+		message = "Upstream semantic error"
+	}
+	parts := []string{message}
+	if ruleName := strings.TrimSpace(failure.ruleName); ruleName != "" {
+		parts = append(parts, "Rule: "+ruleName)
+	}
+	if raw := strings.TrimSpace(failure.rawContent); raw != "" {
+		parts = append(parts, "Upstream content: "+truncateString(raw, 2048))
+	}
+	return strings.Join(parts, "\n")
 }
 
 // parseTestSSEOutput extracts response text and error message from captured SSE output.

@@ -198,3 +198,49 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactAPIKeyDefaultBase
 	require.Equal(t, "https://api.openai.com/v1/responses/compact", upstream.lastReq.URL.String())
 	<-updateCalls
 }
+
+func TestAccountTestService_TestAccountConnection_OpenAICompactSemanticErrorMarksUnsupported(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	updateCalls := make(chan map[string]any, 1)
+	account := Account{
+		ID:          5,
+		Name:        "openai-oauth-semantic",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token":       "oauth-token",
+			"chatgpt_account_id": "chatgpt-acc",
+		},
+	}
+	repo := &snapshotUpdateAccountRepo{
+		stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}},
+		updateExtraCalls:      updateCalls,
+	}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"message":"Remember to join the new community! https://dc.hhhl.cc/chat/room/amlc1bekzi"}`)),
+	}}
+	svc := &AccountTestService{
+		accountRepo:    repo,
+		httpUpstream:   upstream,
+		settingService: testSemanticSettingService(t, PlatformOpenAI, "join the new community", "semantic blocked"),
+	}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/5/test", bytes.NewReader(nil))
+
+	err := svc.TestAccountConnection(c, account.ID, "gpt-5.4", "", AccountTestModeCompact)
+	require.Error(t, err)
+
+	updates := <-updateCalls
+	require.Equal(t, false, updates["openai_compact_supported"])
+	require.Equal(t, http.StatusOK, updates["openai_compact_last_status"])
+	require.Contains(t, updates["openai_compact_last_error"], "semantic blocked")
+	require.Contains(t, rec.Body.String(), `"type":"error"`)
+}

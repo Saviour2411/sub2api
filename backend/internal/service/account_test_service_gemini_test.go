@@ -47,7 +47,7 @@ func TestProcessGeminiStream_EmitsImageEvent(t *testing.T) {
 
 	stream := strings.NewReader("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ok\"},{\"inlineData\":{\"mimeType\":\"image/png\",\"data\":\"QUJD\"}}]}}]}\n\ndata: [DONE]\n\n")
 
-	err := svc.processGeminiStream(ctx, stream)
+	err := svc.processGeminiStream(ctx, stream, nil, false)
 	require.NoError(t, err)
 
 	body := recorder.Body.String()
@@ -56,4 +56,43 @@ func TestProcessGeminiStream_EmitsImageEvent(t *testing.T) {
 	require.Contains(t, body, "\"type\":\"image\"")
 	require.Contains(t, body, "\"image_url\":\"data:image/png;base64,QUJD\"")
 	require.Contains(t, body, "\"mime_type\":\"image/png\"")
+}
+
+func TestProcessGeminiStream_SemanticErrorFails(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	ctx, recorder := newTestContext()
+	svc := &AccountTestService{
+		settingService: testSemanticSettingService(t, PlatformGemini, "join the new community", "semantic blocked"),
+	}
+	account := &Account{Platform: PlatformGemini}
+
+	stream := strings.NewReader("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Remember to join the new community!\"}]},\"finishReason\":\"STOP\"}]}\n\n")
+
+	err := svc.processGeminiStream(ctx, stream, account, true)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "semantic blocked")
+	require.Contains(t, recorder.Body.String(), "\"type\":\"error\"")
+	require.NotContains(t, recorder.Body.String(), "\"success\":true")
+}
+
+func TestProcessGeminiStream_ImageFlowSkipsSemanticDetection(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	ctx, recorder := newTestContext()
+	svc := &AccountTestService{
+		settingService: testSemanticSettingService(t, PlatformGemini, "join the new community", "semantic blocked"),
+	}
+	account := &Account{Platform: PlatformGemini}
+
+	stream := strings.NewReader("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Remember to join the new community!\"},{\"inlineData\":{\"mimeType\":\"image/png\",\"data\":\"QUJD\"}}]},\"finishReason\":\"STOP\"}]}\n\n")
+
+	err := svc.processGeminiStream(ctx, stream, account, false)
+	require.NoError(t, err)
+	body := recorder.Body.String()
+	require.Contains(t, body, "\"type\":\"content\"")
+	require.Contains(t, body, "\"type\":\"image\"")
+	require.Contains(t, body, "\"success\":true")
 }

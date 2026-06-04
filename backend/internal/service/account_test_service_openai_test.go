@@ -472,3 +472,109 @@ func TestAccountTestService_OpenAIChatCompletionsPathReturns4xx(t *testing.T) {
 	require.Contains(t, recorder.Body.String(), "/v1/chat/completions")
 	require.NotContains(t, recorder.Body.String(), `"success":true`)
 }
+
+func TestAccountTestService_OpenAIResponsesSemanticErrorFails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, recorder := newTestContext()
+
+	resp := newJSONResponse(http.StatusOK, "")
+	resp.Body = io.NopCloser(strings.NewReader(
+		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"Remember to join the new community! https://dc.hhhl.cc/chat/room/amlc1bekzi\"}\n\n" +
+			"data: {\"type\":\"response.completed\"}\n\n",
+	))
+
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{
+		httpUpstream:   upstream,
+		settingService: testSemanticSettingService(t, PlatformOpenAI, "join the new community", "semantic blocked"),
+	}
+	account := &Account{
+		ID:          94,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{"access_token": "test-token"},
+	}
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "semantic blocked")
+	require.Contains(t, err.Error(), "Rule: test-rule")
+	require.Contains(t, recorder.Body.String(), "\"type\":\"error\"")
+	require.NotContains(t, recorder.Body.String(), "\"success\":true")
+}
+
+func TestAccountTestService_OpenAIChatCompletionsSemanticErrorFails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, recorder := newTestContext()
+
+	upstreamBody := strings.Join([]string{
+		`data: {"id":"chatcmpl_test","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"Remember to join the new community!"},"finish_reason":null}]}`,
+		"",
+		`data: {"id":"chatcmpl_test","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+	svc := &AccountTestService{
+		httpUpstream:   upstream,
+		cfg:            &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+		settingService: testSemanticSettingService(t, PlatformOpenAI, "join the new community", "semantic blocked"),
+	}
+	account := &Account{
+		ID:          95,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": "https://compat-upstream.example",
+		},
+		Extra: map[string]any{openai_compat.ExtraKeyResponsesSupported: false},
+	}
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "semantic blocked")
+	require.Contains(t, recorder.Body.String(), "\"type\":\"error\"")
+	require.NotContains(t, recorder.Body.String(), "\"success\":true")
+}
+
+func TestAccountTestService_RunTestBackgroundSemanticErrorFails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	resp := newJSONResponse(http.StatusOK, "")
+	resp.Body = io.NopCloser(strings.NewReader(
+		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"Remember to join the new community!\"}\n\n" +
+			"data: {\"type\":\"response.completed\"}\n\n",
+	))
+	account := &Account{
+		ID:          96,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{"access_token": "test-token"},
+	}
+	repo := &openAIAccountTestRepo{
+		mockAccountRepoForGemini: mockAccountRepoForGemini{
+			accountsByID: map[int64]*Account{account.ID: account},
+		},
+	}
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{
+		accountRepo:    repo,
+		httpUpstream:   upstream,
+		settingService: testSemanticSettingService(t, PlatformOpenAI, "join the new community", "semantic blocked"),
+	}
+
+	result, err := svc.RunTestBackground(context.Background(), account.ID, "gpt-5.4")
+	require.NoError(t, err)
+	require.Equal(t, "failed", result.Status)
+	require.Contains(t, result.ErrorMessage, "semantic blocked")
+	require.Empty(t, result.ResponseText)
+}
