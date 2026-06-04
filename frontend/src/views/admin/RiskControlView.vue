@@ -926,6 +926,65 @@
                     {{ t('admin.riskControl.localAuditMaxCaptureConcurrencyHint') }}
                   </p>
                 </div>
+                <div class="lg:col-span-2">
+                  <label class="input-label">{{ t('admin.riskControl.localAuditScenePolicy') }}</label>
+                  <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <button
+                      v-for="option in localAuditSceneOptions"
+                      :key="option.value"
+                      type="button"
+                      class="rounded-lg border p-3 text-left transition-colors"
+                      :class="configForm.local_audit_scene_policy === option.value
+                        ? 'border-primary-300 bg-primary-50 text-primary-900 shadow-sm dark:border-primary-700 dark:bg-primary-900/20 dark:text-primary-100'
+                        : 'border-gray-100 hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-700/60'"
+                      @click="setLocalAuditScenePolicy(option.value)"
+                    >
+                      <div class="flex items-center justify-between gap-2">
+                        <span class="text-sm font-semibold">{{ option.label }}</span>
+                        <span
+                          class="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border"
+                          :class="configForm.local_audit_scene_policy === option.value
+                            ? 'border-primary-500 bg-primary-500 text-white'
+                            : 'border-gray-300 text-transparent dark:border-dark-500'"
+                        >
+                          <Icon name="check" size="xs" :stroke-width="2" />
+                        </span>
+                      </div>
+                      <p class="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{{ option.description }}</p>
+                    </button>
+                  </div>
+                </div>
+                <div class="flex items-center justify-between gap-4 rounded-lg border border-gray-100 p-4 dark:border-dark-700 lg:col-span-2">
+                  <div>
+                    <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.riskControl.localAuditExcludeImage') }}</p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.localAuditExcludeImageHint') }}</p>
+                  </div>
+                  <Toggle v-model="configForm.local_audit_exclude_image_generation" data-test="local-audit-exclude-image" />
+                </div>
+                <div>
+                  <label class="input-label">{{ t('admin.riskControl.localAuditClientPatterns') }}</label>
+                  <textarea
+                    v-model="configForm.local_audit_programming_client_patterns_text"
+                    data-test="local-audit-client-patterns"
+                    class="input min-h-32 resize-y font-mono text-sm"
+                    :placeholder="localAuditClientPatternsPlaceholder"
+                  ></textarea>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.riskControl.localAuditPatternsHint') }}
+                  </p>
+                </div>
+                <div>
+                  <label class="input-label">{{ t('admin.riskControl.localAuditToolPatterns') }}</label>
+                  <textarea
+                    v-model="configForm.local_audit_programming_tool_patterns_text"
+                    data-test="local-audit-tool-patterns"
+                    class="input min-h-32 resize-y font-mono text-sm"
+                    :placeholder="localAuditToolPatternsPlaceholder"
+                  ></textarea>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.riskControl.localAuditToolPatternsHint') }}
+                  </p>
+                </div>
                 <div class="rounded-lg bg-gray-50 p-3 text-xs leading-5 text-gray-500 dark:bg-dark-900/30 dark:text-gray-400">
                   <p class="font-medium text-gray-700 dark:text-gray-200">{{ t('admin.riskControl.localAuditStoragePath') }}</p>
                   <p class="mt-1 break-all font-mono">{{ configForm.local_audit_storage_path || status?.local_audit?.storage_path || '-' }}</p>
@@ -1301,6 +1360,7 @@ import type {
   ContentModerationConfig,
   ContentModerationLocalAuditMetadata,
   ContentModerationLocalAuditRecord,
+  ContentModerationLocalAuditScenePolicy,
   ContentModerationLog,
   ContentModerationModelFilter,
   ContentModerationModelFilterType,
@@ -1318,6 +1378,42 @@ import { formatDateTime as formatDateTimeValue } from '@/utils/format'
 type SettingsTab = 'basic' | 'scope' | 'runtime' | 'response' | 'riskThresholds' | 'retention' | 'keywords'
 type WorkerSlotState = 'active' | 'idle' | 'disabled'
 type APIKeysWriteMode = 'append' | 'replace'
+
+const defaultLocalAuditClientPatterns = [
+  'codex_',
+  'codex ',
+  'claude-code',
+  'claude code',
+  'claude_cli',
+  'gemini-cli',
+  'gemini cli',
+  'aider',
+  'cursor',
+  'windsurf',
+  'continue',
+  'roo',
+  'cline',
+  'vscode',
+]
+
+const defaultLocalAuditToolPatterns = [
+  'read',
+  'file_read',
+  'open_file',
+  'grep',
+  'search',
+  'ls',
+  'glob',
+  'write',
+  'file_write',
+  'edit',
+  'patch',
+  'apply_patch',
+  'create_file',
+  'delete_file',
+  'rename_file',
+  'multi_tool_use',
+]
 type OverviewIcon = 'shield' | 'key' | 'users' | 'document'
 type OverviewItem = {
   key: string
@@ -1429,6 +1525,10 @@ const configForm = reactive({
   model_filter_models: [] as string[],
   local_audit_enabled: false,
   local_audit_max_storage_gb: 1,
+  local_audit_scene_policy: 'all' as ContentModerationLocalAuditScenePolicy,
+  local_audit_exclude_image_generation: false,
+  local_audit_programming_client_patterns_text: defaultLocalAuditClientPatterns.join('\n'),
+  local_audit_programming_tool_patterns_text: defaultLocalAuditToolPatterns.join('\n'),
   local_audit_max_capture_concurrency: 128,
   local_audit_storage_path: '',
 })
@@ -1514,6 +1614,19 @@ const modelFilterOptions = computed<Array<{ value: ContentModerationModelFilterT
     value: 'exclude',
     label: t('admin.riskControl.modelFilterExclude'),
     description: t('admin.riskControl.modelFilterExcludeDesc'),
+  },
+])
+
+const localAuditSceneOptions = computed<Array<{ value: ContentModerationLocalAuditScenePolicy; label: string; description: string }>>(() => [
+  {
+    value: 'all',
+    label: t('admin.riskControl.localAuditSceneAll'),
+    description: t('admin.riskControl.localAuditSceneAllDesc'),
+  },
+  {
+    value: 'programming_only',
+    label: t('admin.riskControl.localAuditSceneProgrammingOnly'),
+    description: t('admin.riskControl.localAuditSceneProgrammingOnlyDesc'),
   },
 ])
 
@@ -1628,6 +1741,14 @@ const inputApiKeyCount = computed(() => parseApiKeys(configForm.api_keys_text).l
 const blockedKeywordList = computed(() => parseBlockedKeywords(configForm.blocked_keywords_text))
 
 const blockedKeywordCount = computed(() => blockedKeywordList.value.length)
+
+const localAuditClientPatterns = computed(() => parseLocalAuditPatterns(configForm.local_audit_programming_client_patterns_text))
+
+const localAuditToolPatterns = computed(() => parseLocalAuditPatterns(configForm.local_audit_programming_tool_patterns_text))
+
+const localAuditClientPatternsPlaceholder = computed(() => defaultLocalAuditClientPatterns.join('\n'))
+
+const localAuditToolPatternsPlaceholder = computed(() => defaultLocalAuditToolPatterns.join('\n'))
 
 const pendingDeletedApiKeyCount = computed(() => pendingDeleteApiKeyHashes.value.length)
 
@@ -1931,6 +2052,10 @@ function applyConfig(config: ContentModerationConfig) {
   configForm.model_filter_models = modelFilter.models
   configForm.local_audit_enabled = config.local_audit_enabled ?? false
   configForm.local_audit_max_storage_gb = config.local_audit_max_storage_gb || 1
+  configForm.local_audit_scene_policy = normalizeLocalAuditScenePolicy(config.local_audit_scene_policy)
+  configForm.local_audit_exclude_image_generation = config.local_audit_exclude_image_generation ?? false
+  configForm.local_audit_programming_client_patterns_text = localAuditPatternsText(config.local_audit_programming_client_patterns, defaultLocalAuditClientPatterns)
+  configForm.local_audit_programming_tool_patterns_text = localAuditPatternsText(config.local_audit_programming_tool_patterns, defaultLocalAuditToolPatterns)
   configForm.local_audit_max_capture_concurrency = config.local_audit_max_capture_concurrency ?? 128
   configForm.local_audit_storage_path = config.local_audit_storage_path || ''
 }
@@ -2019,6 +2144,10 @@ async function saveConfig() {
       model_filter: modelFilterPayload,
       local_audit_enabled: configForm.local_audit_enabled,
       local_audit_max_storage_gb: Number(configForm.local_audit_max_storage_gb) || 1,
+      local_audit_scene_policy: configForm.local_audit_scene_policy,
+      local_audit_exclude_image_generation: configForm.local_audit_exclude_image_generation,
+      local_audit_programming_client_patterns: localAuditClientPatterns.value,
+      local_audit_programming_tool_patterns: localAuditToolPatterns.value,
       local_audit_max_capture_concurrency: Math.max(0, Number(configForm.local_audit_max_capture_concurrency) || 0),
     }
     const keys = parseApiKeys(configForm.api_keys_text)
@@ -2269,6 +2398,10 @@ function setModelFilterType(type: ContentModerationModelFilterType) {
   }
 }
 
+function setLocalAuditScenePolicy(policy: ContentModerationLocalAuditScenePolicy) {
+  configForm.local_audit_scene_policy = policy
+}
+
 async function testApiKeys(useInputKeys: boolean) {
   const keys = useInputKeys ? parseApiKeys(configForm.api_keys_text) : []
   if (useInputKeys && keys.length === 0) {
@@ -2516,6 +2649,25 @@ function parseApiKeys(value: string): string[] {
     .split(/\r?\n/)
     .map((item) => item.trim())
     .filter((item, index, arr) => item && arr.indexOf(item) === index)
+}
+
+function parseLocalAuditPatterns(value: string): string[] {
+  return value
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter((item, index, arr) => item && arr.indexOf(item) === index)
+}
+
+function localAuditPatternsText(values: unknown, defaults: string[]): string {
+  const patterns = Array.isArray(values) ? parseLocalAuditPatterns(values.map((item) => String(item ?? '')).join('\n')) : []
+  return (patterns.length > 0 ? patterns : defaults).join('\n')
+}
+
+function normalizeLocalAuditScenePolicy(value: unknown): ContentModerationLocalAuditScenePolicy {
+  if (value === 'programming_only') {
+    return 'programming_only'
+  }
+  return 'all'
 }
 
 function normalizeKeywordBlockingMode(value: unknown): KeywordBlockingMode {

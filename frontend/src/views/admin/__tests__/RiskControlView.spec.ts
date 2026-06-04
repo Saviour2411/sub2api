@@ -11,6 +11,7 @@ const {
   updateConfig,
   getStatus,
   listLogs,
+  listLocalAudits,
   getGroups,
   showError,
   showSuccess,
@@ -19,6 +20,7 @@ const {
   updateConfig: vi.fn(),
   getStatus: vi.fn(),
   listLogs: vi.fn(),
+  listLocalAudits: vi.fn(),
   getGroups: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn(),
@@ -31,6 +33,7 @@ vi.mock('@/api/admin', () => ({
       updateConfig,
       getStatus,
       listLogs,
+      listLocalAudits,
       testAPIKeys: vi.fn(),
       deleteFlaggedHash: vi.fn(),
       clearFlaggedHashes: vi.fn(),
@@ -177,6 +180,16 @@ const BaseDialogStub = defineComponent({
   },
   template: '<div v-if="show"><slot /><slot name="footer" /></div>',
 })
+const ToggleStub = defineComponent({
+  props: {
+    modelValue: {
+      type: Boolean,
+      default: false,
+    },
+  },
+  emits: ['update:modelValue'],
+  template: '<button type="button" @click="$emit(\'update:modelValue\', !modelValue)"><slot />{{ modelValue ? "on" : "off" }}</button>',
+})
 const ModelWhitelistSelectorStub = defineComponent({
   props: {
     modelValue: {
@@ -219,6 +232,7 @@ describe('admin RiskControlView', () => {
     updateConfig.mockReset()
     getStatus.mockReset()
     listLogs.mockReset()
+    listLocalAudits.mockReset()
     getGroups.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
@@ -226,6 +240,7 @@ describe('admin RiskControlView', () => {
     getConfig.mockResolvedValue(baseConfig())
     getStatus.mockResolvedValue(runtimeStatus())
     listLogs.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, pages: 1 })
+    listLocalAudits.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 10, pages: 1 })
     getGroups.mockResolvedValue([])
     updateConfig.mockImplementation(async (payload: UpdateContentModerationConfig) => ({
       ...baseConfig(),
@@ -301,6 +316,60 @@ describe('admin RiskControlView', () => {
         sexual: 0.72,
         harassment: 0.99,
       }),
+    }))
+    expect(showError).not.toHaveBeenCalled()
+  })
+
+  it('saves local audit scene and programming match settings', async () => {
+    getConfig.mockResolvedValue({
+      ...baseConfig(),
+      local_audit_enabled: true,
+      local_audit_scene_policy: 'programming_only',
+      local_audit_exclude_image_generation: false,
+      local_audit_programming_client_patterns: ['codex_', 'cursor'],
+      local_audit_programming_tool_patterns: ['read', 'apply_patch'],
+    })
+    getStatus.mockResolvedValue({
+      ...runtimeStatus(),
+      local_audit: {
+        ...runtimeStatus().local_audit,
+        enabled: true,
+      },
+    })
+    const wrapper = mount(RiskControlView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          BaseDialog: BaseDialogStub,
+          Icon: true,
+          Select: true,
+          Toggle: ToggleStub,
+          Pagination: true,
+          ModelWhitelistSelector: ModelWhitelistSelectorStub,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    await findButtonByText(wrapper, 'admin.riskControl.openSettings').trigger('click')
+    await findButtonByText(wrapper, 'admin.riskControl.tabs.runtime').trigger('click')
+
+    expect((wrapper.get('[data-test="local-audit-client-patterns"]').element as HTMLTextAreaElement).value).toBe('codex_\ncursor')
+    expect((wrapper.get('[data-test="local-audit-tool-patterns"]').element as HTMLTextAreaElement).value).toBe('read\napply_patch')
+
+    await findButtonByText(wrapper, 'admin.riskControl.localAuditSceneAll').trigger('click')
+    await wrapper.get('[data-test="local-audit-exclude-image"]').trigger('click')
+    await wrapper.get('[data-test="local-audit-client-patterns"]').setValue(' codex_ \n\n Cursor \n codex_ ')
+    await wrapper.get('[data-test="local-audit-tool-patterns"]').setValue(' read \n apply_patch \n\n read ')
+    await findButtonByText(wrapper, 'admin.riskControl.saveConfig').trigger('click')
+    await flushPromises()
+
+    expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+      local_audit_scene_policy: 'all',
+      local_audit_exclude_image_generation: true,
+      local_audit_programming_client_patterns: ['codex_', 'Cursor'],
+      local_audit_programming_tool_patterns: ['read', 'apply_patch'],
     }))
     expect(showError).not.toHaveBeenCalled()
   })
