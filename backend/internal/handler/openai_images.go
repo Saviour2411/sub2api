@@ -23,6 +23,8 @@ import (
 func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	streamStarted := false
 	defer h.recoverResponsesPanic(c, &streamStarted)
+	auditCapture, restoreAuditCapture := h.beginSuccessfulConversationAuditCapture(c)
+	defer restoreAuditCapture()
 
 	requestStart := time.Now()
 
@@ -134,6 +136,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	}
 
 	sessionHash := h.gatewayService.GenerateExplicitSessionHash(c, body)
+	explicitSessionID := h.gatewayService.ExtractSessionID(c, body)
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
@@ -314,7 +317,16 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		upstreamModel := ""
 		if result != nil {
 			upstreamModel = result.UpstreamModel
-			h.recordSuccessfulConversationAudit(c, apiKey, subject, service.ContentModerationProtocolOpenAIImages, parsed.Model, upstreamModel, result.Stream, parsed.ModerationBody(), result.Usage)
+			sessionID, clientSessionID, sessionSource := resolveOpenAISessionAuditFields(explicitSessionID, sessionHash)
+			h.recordSuccessfulConversationAudit(c, apiKey, subject, service.ContentModerationProtocolOpenAIImages, parsed.Model, upstreamModel, result.Stream, parsed.ModerationBody(), result.Usage, successfulConversationAuditOptions{
+				SessionID:       sessionID,
+				ClientSessionID: clientSessionID,
+				SessionSource:   sessionSource,
+				UserAgent:       userAgent,
+				Originator:      c.GetHeader("Originator"),
+				ResponseID:      result.ResponseID,
+				RawResponse:     auditCapture.Bytes(),
+			})
 		}
 		h.submitMandatoryUsageRecordTask(func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{

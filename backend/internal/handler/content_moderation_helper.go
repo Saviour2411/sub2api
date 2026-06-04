@@ -12,6 +12,54 @@ import (
 	"go.uber.org/zap"
 )
 
+type successfulConversationAuditOptions struct {
+	SessionID          string
+	ClientSessionID    string
+	SessionSource      string
+	UserAgent          string
+	Originator         string
+	ResponseID         string
+	PreviousResponseID string
+	RawResponse        []byte
+}
+
+const successfulConversationAuditCaptureEnabledKey = "successful_conversation_audit_capture_enabled"
+
+func (h *GatewayHandler) beginSuccessfulConversationAuditCapture(c *gin.Context) (*auditResponseCaptureWriter, func()) {
+	if h == nil {
+		return nil, func() {}
+	}
+	return beginSuccessfulConversationAuditCapture(c, h.contentModerationService)
+}
+
+func (h *OpenAIGatewayHandler) beginSuccessfulConversationAuditCapture(c *gin.Context) (*auditResponseCaptureWriter, func()) {
+	if h == nil {
+		return nil, func() {}
+	}
+	return beginSuccessfulConversationAuditCapture(c, h.contentModerationService)
+}
+
+func beginSuccessfulConversationAuditCapture(c *gin.Context, svc *service.ContentModerationService) (*auditResponseCaptureWriter, func()) {
+	if svc == nil || c == nil || c.Request == nil {
+		return nil, func() {}
+	}
+	release, ok := svc.TryBeginLocalAuditCapture(c.Request.Context())
+	if !ok {
+		return nil, func() {}
+	}
+	auditCapture, restoreAuditCapture := attachAuditResponseCapture(c)
+	if auditCapture == nil {
+		release()
+		return nil, func() {}
+	}
+	c.Set(successfulConversationAuditCaptureEnabledKey, true)
+	return auditCapture, func() {
+		c.Set(successfulConversationAuditCaptureEnabledKey, false)
+		restoreAuditCapture()
+		release()
+	}
+}
+
 func (h *GatewayHandler) checkContentModeration(c *gin.Context, reqLog *zap.Logger, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, body []byte) *service.ContentModerationDecision {
 	if h == nil || h.contentModerationService == nil {
 		return nil
@@ -19,11 +67,11 @@ func (h *GatewayHandler) checkContentModeration(c *gin.Context, reqLog *zap.Logg
 	return runContentModeration(c, reqLog, h.contentModerationService, apiKey, subject, protocol, model, body)
 }
 
-func (h *GatewayHandler) recordSuccessfulConversationAudit(c *gin.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, upstreamModel string, stream bool, body []byte, usage any) {
+func (h *GatewayHandler) recordSuccessfulConversationAudit(c *gin.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, upstreamModel string, stream bool, body []byte, usage any, opts ...successfulConversationAuditOptions) {
 	if h == nil || h.contentModerationService == nil {
 		return
 	}
-	recordSuccessfulConversationAudit(c, h.contentModerationService, apiKey, subject, protocol, model, upstreamModel, stream, body, usage)
+	recordSuccessfulConversationAudit(c, h.contentModerationService, apiKey, subject, protocol, model, upstreamModel, stream, body, usage, opts...)
 }
 
 func contentModerationStatus(decision *service.ContentModerationDecision) int {
@@ -44,11 +92,11 @@ func (h *OpenAIGatewayHandler) checkContentModeration(c *gin.Context, reqLog *za
 	return runContentModeration(c, reqLog, h.contentModerationService, apiKey, subject, protocol, model, body)
 }
 
-func (h *OpenAIGatewayHandler) recordSuccessfulConversationAudit(c *gin.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, upstreamModel string, stream bool, body []byte, usage any) {
+func (h *OpenAIGatewayHandler) recordSuccessfulConversationAudit(c *gin.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, upstreamModel string, stream bool, body []byte, usage any, opts ...successfulConversationAuditOptions) {
 	if h == nil || h.contentModerationService == nil {
 		return
 	}
-	recordSuccessfulConversationAudit(c, h.contentModerationService, apiKey, subject, protocol, model, upstreamModel, stream, body, usage)
+	recordSuccessfulConversationAudit(c, h.contentModerationService, apiKey, subject, protocol, model, upstreamModel, stream, body, usage, opts...)
 }
 
 func runContentModeration(c *gin.Context, reqLog *zap.Logger, svc *service.ContentModerationService, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, body []byte) *service.ContentModerationDecision {
@@ -126,28 +174,79 @@ func buildContentModerationInput(c *gin.Context, apiKey *service.APIKey, subject
 	return input
 }
 
-func recordSuccessfulConversationAudit(c *gin.Context, svc *service.ContentModerationService, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, upstreamModel string, stream bool, body []byte, usage any) {
+func recordSuccessfulConversationAudit(c *gin.Context, svc *service.ContentModerationService, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, upstreamModel string, stream bool, body []byte, usage any, opts ...successfulConversationAuditOptions) {
 	if svc == nil || c == nil || c.Request == nil || len(body) == 0 {
 		return
 	}
+	if enabled, ok := c.Get(successfulConversationAuditCaptureEnabledKey); !ok || enabled != true {
+		return
+	}
+	var opt successfulConversationAuditOptions
+	if len(opts) > 0 {
+		opt = opts[0]
+	}
 	input := buildContentModerationInput(c, apiKey, subject, protocol, model, body)
 	svc.RecordSuccessfulConversation(c.Request.Context(), service.ContentModerationLocalAuditInput{
-		RequestID:     input.RequestID,
-		UserID:        input.UserID,
-		UserEmail:     input.UserEmail,
-		APIKeyID:      input.APIKeyID,
-		APIKeyName:    input.APIKeyName,
-		GroupID:       input.GroupID,
-		GroupName:     input.GroupName,
-		Endpoint:      input.Endpoint,
-		Provider:      input.Provider,
-		Model:         input.Model,
-		UpstreamModel: strings.TrimSpace(upstreamModel),
-		Protocol:      input.Protocol,
-		Stream:        stream,
-		Body:          body,
-		Usage:         usage,
+		RequestID:          input.RequestID,
+		UserID:             input.UserID,
+		UserEmail:          input.UserEmail,
+		APIKeyID:           input.APIKeyID,
+		APIKeyName:         input.APIKeyName,
+		GroupID:            input.GroupID,
+		GroupName:          input.GroupName,
+		Endpoint:           input.Endpoint,
+		Provider:           input.Provider,
+		Model:              input.Model,
+		UpstreamModel:      strings.TrimSpace(upstreamModel),
+		Protocol:           input.Protocol,
+		SessionID:          strings.TrimSpace(opt.SessionID),
+		ClientSessionID:    strings.TrimSpace(opt.ClientSessionID),
+		SessionSource:      strings.TrimSpace(opt.SessionSource),
+		UserAgent:          strings.TrimSpace(firstHeaderValue(opt.UserAgent, c.GetHeader("User-Agent"))),
+		Originator:         strings.TrimSpace(firstHeaderValue(opt.Originator, c.GetHeader("Originator"))),
+		ResponseID:         strings.TrimSpace(opt.ResponseID),
+		PreviousResponseID: strings.TrimSpace(opt.PreviousResponseID),
+		Stream:             stream,
+		Body:               body,
+		RawResponse:        append([]byte(nil), opt.RawResponse...),
+		Usage:              usage,
 	})
+}
+
+func resolveOpenAISessionAuditFields(explicitSessionID, sessionHash string) (string, string, string) {
+	explicitSessionID = strings.TrimSpace(explicitSessionID)
+	sessionHash = strings.TrimSpace(sessionHash)
+	if explicitSessionID != "" {
+		return explicitSessionID, explicitSessionID, "explicit"
+	}
+	if sessionHash != "" {
+		return sessionHash, "", "hash_fallback"
+	}
+	return "", "", ""
+}
+
+func resolveParsedSessionAuditFields(parsedReq *service.ParsedRequest, sessionHash string) (string, string, string) {
+	if parsedReq != nil {
+		if parsed := service.ParseMetadataUserID(parsedReq.MetadataUserID); parsed != nil && strings.TrimSpace(parsed.SessionID) != "" {
+			sessionID := strings.TrimSpace(parsed.SessionID)
+			return sessionID, sessionID, "metadata_user_id"
+		}
+	}
+	sessionHash = strings.TrimSpace(sessionHash)
+	if sessionHash != "" {
+		return sessionHash, "", "hash_fallback"
+	}
+	return "", "", ""
+}
+
+func firstHeaderValue(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func contentModerationProvider(apiKey *service.APIKey) string {

@@ -105,6 +105,14 @@ const baseConfig = (): ContentModerationConfig => ({
     type: 'all',
     models: [],
   },
+  local_audit_enabled: false,
+  local_audit_max_storage_gb: 1,
+  local_audit_scene_policy: 'all',
+  local_audit_exclude_image_generation: false,
+  local_audit_programming_client_patterns: [],
+  local_audit_programming_tool_patterns: [],
+  local_audit_max_capture_concurrency: 128,
+  local_audit_storage_path: '',
 })
 
 const runtimeStatus = () => ({
@@ -136,6 +144,27 @@ const runtimeStatus = () => ({
   flagged_hash_count: 0,
   last_cleanup_deleted_hit: 0,
   last_cleanup_deleted_non_hit: 0,
+  local_audit: {
+    enabled: false,
+    storage_path: '',
+    max_storage_gb: 1,
+    capture_max_concurrency: 128,
+    response_capture_limit_bytes: 1048576,
+    retained_bytes: 0,
+    retained_records: 0,
+    queue_size: 4096,
+    queue_length: 0,
+    capture_active: 0,
+    overload_active: false,
+    overload_skipped: 0,
+    active: 0,
+    enqueued: 0,
+    dropped: 0,
+    written: 0,
+    errors: 0,
+    last_cleanup_deleted: 0,
+    last_cleanup_deleted_bytes: 0,
+  },
 })
 
 const AppLayoutStub = { template: '<div><slot /></div>' }

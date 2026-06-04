@@ -115,6 +115,9 @@ func NewGatewayHandler(
 // Messages handles Claude API compatible messages endpoint
 // POST /v1/messages
 func (h *GatewayHandler) Messages(c *gin.Context) {
+	auditCapture, restoreAuditCapture := h.beginSuccessfulConversationAuditCapture(c)
+	defer restoreAuditCapture()
+
 	// 从context获取apiKey和user（ApiKeyAuth中间件已设置）
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok {
@@ -508,7 +511,15 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				result.ReasoningEffort = service.NormalizeClaudeOutputEffort(parsedReq.OutputEffort)
 			}
 			if !result.ClientDisconnect {
-				h.recordSuccessfulConversationAudit(c, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, result.UpstreamModel, result.Stream, body, result.Usage)
+				sessionID, clientSessionID, sessionSource := resolveParsedSessionAuditFields(parsedReq, sessionHash)
+				h.recordSuccessfulConversationAudit(c, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, result.UpstreamModel, result.Stream, body, result.Usage, successfulConversationAuditOptions{
+					SessionID:       sessionID,
+					ClientSessionID: clientSessionID,
+					SessionSource:   sessionSource,
+					UserAgent:       userAgent,
+					Originator:      c.GetHeader("Originator"),
+					RawResponse:     auditCapture.Bytes(),
+				})
 			}
 
 			// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
@@ -916,7 +927,15 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				result.ReasoningEffort = service.NormalizeClaudeOutputEffort(parsedReq.OutputEffort)
 			}
 			if !result.ClientDisconnect {
-				h.recordSuccessfulConversationAudit(c, currentAPIKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, result.UpstreamModel, result.Stream, body, result.Usage)
+				sessionID, clientSessionID, sessionSource := resolveParsedSessionAuditFields(parsedReq, sessionHash)
+				h.recordSuccessfulConversationAudit(c, currentAPIKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, result.UpstreamModel, result.Stream, body, result.Usage, successfulConversationAuditOptions{
+					SessionID:       sessionID,
+					ClientSessionID: clientSessionID,
+					SessionSource:   sessionSource,
+					UserAgent:       userAgent,
+					Originator:      c.GetHeader("Originator"),
+					RawResponse:     auditCapture.Bytes(),
+				})
 			}
 
 			// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。

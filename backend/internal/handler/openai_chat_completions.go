@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
@@ -23,6 +24,8 @@ import (
 func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	streamStarted := false
 	defer h.recoverResponsesPanic(c, &streamStarted)
+	auditCapture, restoreAuditCapture := h.beginSuccessfulConversationAuditCapture(c)
+	defer restoreAuditCapture()
 
 	requestStart := time.Now()
 
@@ -286,7 +289,17 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		clientIP := ip.GetClientIP(c)
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := resolveRawCCUpstreamEndpoint(c, account)
-		h.recordSuccessfulConversationAudit(c, apiKey, subject, service.ContentModerationProtocolOpenAIChat, reqModel, result.UpstreamModel, result.Stream, body, result.Usage)
+		sessionID, clientSessionID, sessionSource := resolveOpenAISessionAuditFields(promptCacheKey, sessionHash)
+		h.recordSuccessfulConversationAudit(c, apiKey, subject, service.ContentModerationProtocolOpenAIChat, reqModel, result.UpstreamModel, result.Stream, body, result.Usage, successfulConversationAuditOptions{
+			SessionID:          sessionID,
+			ClientSessionID:    clientSessionID,
+			SessionSource:      sessionSource,
+			UserAgent:          userAgent,
+			Originator:         c.GetHeader("Originator"),
+			ResponseID:         result.ResponseID,
+			PreviousResponseID: strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String()),
+			RawResponse:        auditCapture.Bytes(),
+		})
 
 		h.submitOpenAIUsageRecordTask(result, func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{

@@ -135,6 +135,9 @@ func (h *GatewayHandler) GeminiV1BetaGetModel(c *gin.Context) {
 // POST /v1beta/models/{model}:generateContent
 // POST /v1beta/models/{model}:streamGenerateContent?alt=sse
 func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
+	auditCapture, restoreAuditCapture := h.beginSuccessfulConversationAuditCapture(c)
+	defer restoreAuditCapture()
+
 	apiKey, ok := middleware.GetAPIKeyFromContext(c)
 	if !ok || apiKey == nil {
 		googleError(c, http.StatusUnauthorized, "Invalid API key")
@@ -259,18 +262,19 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 
 	// 3) select account (sticky session based on request body)
 	// 优先使用 Gemini CLI 的会话标识（privileged-user-id + tmp 目录哈希）
+	var parsedReqForAudit *service.ParsedRequest
 	sessionHash := extractGeminiCLISessionHash(c, body)
 	if sessionHash == "" {
 		// Fallback: 使用通用的会话哈希生成逻辑（适用于其他客户端）
-		parsedReq, _ := service.ParseGatewayRequest(body, domain.PlatformGemini)
-		if parsedReq != nil {
-			parsedReq.SessionContext = &service.SessionContext{
+		parsedReqForAudit, _ = service.ParseGatewayRequest(body, domain.PlatformGemini)
+		if parsedReqForAudit != nil {
+			parsedReqForAudit.SessionContext = &service.SessionContext{
 				ClientIP:  ip.GetClientIP(c),
 				UserAgent: c.GetHeader("User-Agent"),
 				APIKeyID:  apiKey.ID,
 			}
 		}
-		sessionHash = h.gatewayService.GenerateSessionHash(parsedReq)
+		sessionHash = h.gatewayService.GenerateSessionHash(parsedReqForAudit)
 	}
 	sessionKey := sessionHash
 	if sessionHash != "" {
@@ -528,7 +532,17 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 		if !result.ClientDisconnect {
-			h.recordSuccessfulConversationAudit(c, apiKey, authSubject, service.ContentModerationProtocolGemini, reqModel, result.UpstreamModel, result.Stream, body, result.Usage)
+			sessionID, clientSessionID, sessionSource := resolveParsedSessionAuditFields(parsedReqForAudit, sessionHash)
+			if sessionSource == "" && sessionHash != "" {
+				sessionID, clientSessionID, sessionSource = sessionHash, "", "hash_fallback"
+			}
+			h.recordSuccessfulConversationAudit(c, apiKey, authSubject, service.ContentModerationProtocolGemini, reqModel, result.UpstreamModel, result.Stream, body, result.Usage, successfulConversationAuditOptions{
+				SessionID:       sessionID,
+				ClientSessionID: clientSessionID,
+				SessionSource:   sessionSource,
+				UserAgent:       userAgent,
+				RawResponse:     auditCapture.Bytes(),
+			})
 		}
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 		h.submitUsageRecordTask(func(ctx context.Context) {

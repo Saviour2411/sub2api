@@ -1761,6 +1761,187 @@ func TestContentModerationLocalAuditWriteAndReadRedactsSensitiveFields(t *testin
 	require.NotContains(t, string(raw), "sk-test-secret")
 }
 
+func TestContentModerationLocalAuditCaptureConcurrencySkipsOverload(t *testing.T) {
+	cfg := defaultContentModerationConfig()
+	cfg.LocalAuditEnabled = true
+	cfg.LocalAuditMaxCaptureConcurrency = 2
+	rawCfg, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	svc := NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{
+			SettingKeyRiskControlEnabled:      "true",
+			SettingKeyContentModerationConfig: string(rawCfg),
+		}},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	release1, ok := svc.TryBeginLocalAuditCapture(context.Background())
+	require.True(t, ok)
+	release2, ok := svc.TryBeginLocalAuditCapture(context.Background())
+	require.True(t, ok)
+	_, ok = svc.TryBeginLocalAuditCapture(context.Background())
+	require.False(t, ok)
+
+	stats := svc.localAuditStats(cfg)
+	require.Equal(t, int64(2), stats.CaptureActive)
+	require.True(t, stats.OverloadActive)
+	require.Equal(t, int64(1), stats.OverloadSkipped)
+	require.Equal(t, 2, stats.CaptureMaxConcurrency)
+	require.Equal(t, ContentModerationLocalAuditResponseCaptureLimitBytes, stats.ResponseCaptureLimitBytes)
+
+	release1()
+	stats = svc.localAuditStats(cfg)
+	require.Equal(t, int64(1), stats.CaptureActive)
+	require.False(t, stats.OverloadActive)
+
+	release3, ok := svc.TryBeginLocalAuditCapture(context.Background())
+	require.True(t, ok)
+	release2()
+	release3()
+	stats = svc.localAuditStats(cfg)
+	require.Equal(t, int64(0), stats.CaptureActive)
+}
+
+func TestContentModerationLocalAuditCaptureConcurrencyZeroIsUnlimited(t *testing.T) {
+	cfg := defaultContentModerationConfig()
+	cfg.LocalAuditEnabled = true
+	cfg.LocalAuditMaxCaptureConcurrency = 0
+	rawCfg, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	svc := NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{
+			SettingKeyRiskControlEnabled:      "true",
+			SettingKeyContentModerationConfig: string(rawCfg),
+		}},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	releases := make([]func(), 0, 3)
+	for i := 0; i < 3; i++ {
+		release, ok := svc.TryBeginLocalAuditCapture(context.Background())
+		require.True(t, ok)
+		releases = append(releases, release)
+	}
+	stats := svc.localAuditStats(cfg)
+	require.Equal(t, int64(3), stats.CaptureActive)
+	require.False(t, stats.OverloadActive)
+	require.Equal(t, int64(0), stats.OverloadSkipped)
+	for _, release := range releases {
+		release()
+	}
+}
+
+func TestContentModerationLocalAuditBuildRecordPersistsSessionAndResponseFields(t *testing.T) {
+	cfg := defaultContentModerationConfig()
+	cfg.LocalAuditEnabled = true
+	record, err := buildContentModerationLocalAuditRecord(cfg, ContentModerationLocalAuditInput{
+		RequestID:          "req_session",
+		UserID:             42,
+		UserEmail:          "user@example.com",
+		APIKeyID:           7,
+		APIKeyName:         "prod",
+		Endpoint:           "/v1/responses",
+		Provider:           "openai",
+		Model:              "gpt-5",
+		Protocol:           ContentModerationProtocolOpenAIResponses,
+		SessionID:          "sess_hash_1",
+		ClientSessionID:    "client_sess_1",
+		SessionSource:      "explicit",
+		ResponseID:         "resp_manual",
+		PreviousResponseID: "resp_prev",
+		UserAgent:          "codex_cli_rs/0.1.0",
+		Originator:         "codex_cli_rs",
+		Body: []byte(`{
+			"model":"gpt-5",
+			"instructions":"follow policy",
+			"input":[{"role":"user","content":"hello"}]
+		}`),
+		RawResponse: []byte(`{
+			"id":"resp_auto",
+			"output":[
+				{"type":"message","content":[{"type":"output_text","text":"done"}]}
+			]
+		}`),
+		Usage: map[string]any{"input_tokens": 10, "output_tokens": 2},
+	}, time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC))
+
+	require.NoError(t, err)
+	require.NotNil(t, record)
+	require.Equal(t, "sess_hash_1", record.SessionID)
+	require.Equal(t, "client_sess_1", record.ClientSessionID)
+	require.Equal(t, "explicit", record.SessionSource)
+	require.Equal(t, "resp_manual", record.ResponseID)
+	require.Equal(t, "resp_prev", record.PreviousResponseID)
+	require.Equal(t, "programming", record.Scene)
+	require.Contains(t, record.SceneSignals, "user_agent")
+	require.Equal(t, "done", record.AssistantOutput)
+}
+
+func TestContentModerationLocalAuditBuildRecordSkipsImageGenerationWhenExcluded(t *testing.T) {
+	cfg := defaultContentModerationConfig()
+	cfg.LocalAuditEnabled = true
+	cfg.LocalAuditExcludeImage = true
+
+	record, err := buildContentModerationLocalAuditRecord(cfg, ContentModerationLocalAuditInput{
+		RequestID: "req_img",
+		Endpoint:  "/v1/images/generations",
+		Model:     "gpt-image-1",
+		Protocol:  ContentModerationProtocolOpenAIImages,
+		Body:      []byte(`{"model":"gpt-image-1","prompt":"draw a cat"}`),
+	}, time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC))
+
+	require.NoError(t, err)
+	require.Nil(t, record)
+}
+
+func TestContentModerationLocalAuditProgrammingOnlyFiltersGeneralQA(t *testing.T) {
+	cfg := defaultContentModerationConfig()
+	cfg.LocalAuditEnabled = true
+	cfg.LocalAuditScenePolicy = ContentModerationLocalAuditSceneProgrammingOnly
+
+	record, err := buildContentModerationLocalAuditRecord(cfg, ContentModerationLocalAuditInput{
+		RequestID: "req_general",
+		Endpoint:  "/v1/chat/completions",
+		Model:     "gpt-4o",
+		Protocol:  ContentModerationProtocolOpenAIChat,
+		Body: []byte(`{
+			"model":"gpt-4o",
+			"messages":[{"role":"user","content":"what is the capital of france"}]
+		}`),
+		RawResponse: []byte(`{
+			"choices":[{"message":{"role":"assistant","content":"Paris"}}]
+		}`),
+	}, time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC))
+
+	require.NoError(t, err)
+	require.Nil(t, record)
+
+	record, err = buildContentModerationLocalAuditRecord(cfg, ContentModerationLocalAuditInput{
+		RequestID:   "req_prog",
+		Endpoint:    "/v1/chat/completions",
+		Model:       "gpt-4o",
+		Protocol:    ContentModerationProtocolOpenAIChat,
+		UserAgent:   "codex_cli_rs/0.1.0",
+		Body:        []byte(`{"model":"gpt-4o","messages":[{"role":"user","content":"open main.go"}],"tools":[{"type":"function","function":{"name":"read_file"}}]}`),
+		RawResponse: []byte(`{"choices":[{"message":{"role":"assistant","content":"opened"}}]}`),
+	}, time.Date(2026, 6, 1, 10, 1, 0, 0, time.UTC))
+
+	require.NoError(t, err)
+	require.NotNil(t, record)
+	require.Equal(t, "programming", record.Scene)
+	require.Equal(t, 1, record.FileReadCount)
+}
+
 func TestContentModerationLocalAuditCleanupDeletesOldestWhenStorageExceeded(t *testing.T) {
 	dataDir := t.TempDir()
 	t.Setenv("DATA_DIR", dataDir)

@@ -21,38 +21,43 @@ func NewContentModerationHandler(svc *service.ContentModerationService) *Content
 }
 
 type contentModerationConfigRequest struct {
-	Enabled                *bool                                 `json:"enabled"`
-	Mode                   *string                               `json:"mode"`
-	BaseURL                *string                               `json:"base_url"`
-	Model                  *string                               `json:"model"`
-	APIKey                 *string                               `json:"api_key"`
-	APIKeys                *[]string                             `json:"api_keys"`
-	APIKeysMode            string                                `json:"api_keys_mode"`
-	DeleteAPIKeyHashes     *[]string                             `json:"delete_api_key_hashes"`
-	ClearAPIKey            bool                                  `json:"clear_api_key"`
-	TimeoutMS              *int                                  `json:"timeout_ms"`
-	SampleRate             *int                                  `json:"sample_rate"`
-	AllGroups              *bool                                 `json:"all_groups"`
-	GroupIDs               *[]int64                              `json:"group_ids"`
-	RecordNonHits          *bool                                 `json:"record_non_hits"`
-	Thresholds             *map[string]float64                   `json:"thresholds"`
-	WorkerCount            *int                                  `json:"worker_count"`
-	QueueSize              *int                                  `json:"queue_size"`
-	BlockStatus            *int                                  `json:"block_status"`
-	BlockMessage           *string                               `json:"block_message"`
-	EmailOnHit             *bool                                 `json:"email_on_hit"`
-	AutoBanEnabled         *bool                                 `json:"auto_ban_enabled"`
-	BanThreshold           *int                                  `json:"ban_threshold"`
-	ViolationWindowHours   *int                                  `json:"violation_window_hours"`
-	RetryCount             *int                                  `json:"retry_count"`
-	HitRetentionDays       *int                                  `json:"hit_retention_days"`
-	NonHitRetentionDays    *int                                  `json:"non_hit_retention_days"`
-	PreHashCheckEnabled    *bool                                 `json:"pre_hash_check_enabled"`
-	BlockedKeywords        *[]string                             `json:"blocked_keywords"`
-	KeywordBlockingMode    *string                               `json:"keyword_blocking_mode"`
-	ModelFilter            *service.ContentModerationModelFilter `json:"model_filter"`
-	LocalAuditEnabled      *bool                                 `json:"local_audit_enabled"`
-	LocalAuditMaxStorageGB *float64                              `json:"local_audit_max_storage_gb"`
+	Enabled                         *bool                                 `json:"enabled"`
+	Mode                            *string                               `json:"mode"`
+	BaseURL                         *string                               `json:"base_url"`
+	Model                           *string                               `json:"model"`
+	APIKey                          *string                               `json:"api_key"`
+	APIKeys                         *[]string                             `json:"api_keys"`
+	APIKeysMode                     string                                `json:"api_keys_mode"`
+	DeleteAPIKeyHashes              *[]string                             `json:"delete_api_key_hashes"`
+	ClearAPIKey                     bool                                  `json:"clear_api_key"`
+	TimeoutMS                       *int                                  `json:"timeout_ms"`
+	SampleRate                      *int                                  `json:"sample_rate"`
+	AllGroups                       *bool                                 `json:"all_groups"`
+	GroupIDs                        *[]int64                              `json:"group_ids"`
+	RecordNonHits                   *bool                                 `json:"record_non_hits"`
+	Thresholds                      *map[string]float64                   `json:"thresholds"`
+	WorkerCount                     *int                                  `json:"worker_count"`
+	QueueSize                       *int                                  `json:"queue_size"`
+	BlockStatus                     *int                                  `json:"block_status"`
+	BlockMessage                    *string                               `json:"block_message"`
+	EmailOnHit                      *bool                                 `json:"email_on_hit"`
+	AutoBanEnabled                  *bool                                 `json:"auto_ban_enabled"`
+	BanThreshold                    *int                                  `json:"ban_threshold"`
+	ViolationWindowHours            *int                                  `json:"violation_window_hours"`
+	RetryCount                      *int                                  `json:"retry_count"`
+	HitRetentionDays                *int                                  `json:"hit_retention_days"`
+	NonHitRetentionDays             *int                                  `json:"non_hit_retention_days"`
+	PreHashCheckEnabled             *bool                                 `json:"pre_hash_check_enabled"`
+	BlockedKeywords                 *[]string                             `json:"blocked_keywords"`
+	KeywordBlockingMode             *string                               `json:"keyword_blocking_mode"`
+	ModelFilter                     *service.ContentModerationModelFilter `json:"model_filter"`
+	LocalAuditEnabled               *bool                                 `json:"local_audit_enabled"`
+	LocalAuditMaxStorageGB          *float64                              `json:"local_audit_max_storage_gb"`
+	LocalAuditScenePolicy           *string                               `json:"local_audit_scene_policy"`
+	LocalAuditExcludeImage          *bool                                 `json:"local_audit_exclude_image_generation"`
+	LocalAuditClientPatterns        *[]string                             `json:"local_audit_programming_client_patterns"`
+	LocalAuditToolPatterns          *[]string                             `json:"local_audit_programming_tool_patterns"`
+	LocalAuditMaxCaptureConcurrency *int                                  `json:"local_audit_max_capture_concurrency"`
 }
 
 type contentModerationAPIKeyTestRequest struct {
@@ -84,38 +89,43 @@ func (h *ContentModerationHandler) UpdateConfig(c *gin.Context) {
 		return
 	}
 	cfg, err := h.service.UpdateConfig(c.Request.Context(), service.UpdateContentModerationConfigInput{
-		Enabled:                req.Enabled,
-		Mode:                   req.Mode,
-		BaseURL:                req.BaseURL,
-		Model:                  req.Model,
-		APIKey:                 req.APIKey,
-		APIKeys:                req.APIKeys,
-		APIKeysMode:            req.APIKeysMode,
-		DeleteAPIKeyHashes:     req.DeleteAPIKeyHashes,
-		ClearAPIKey:            req.ClearAPIKey,
-		TimeoutMS:              req.TimeoutMS,
-		SampleRate:             req.SampleRate,
-		AllGroups:              req.AllGroups,
-		GroupIDs:               req.GroupIDs,
-		RecordNonHits:          req.RecordNonHits,
-		Thresholds:             req.Thresholds,
-		WorkerCount:            req.WorkerCount,
-		QueueSize:              req.QueueSize,
-		BlockStatus:            req.BlockStatus,
-		BlockMessage:           req.BlockMessage,
-		EmailOnHit:             req.EmailOnHit,
-		AutoBanEnabled:         req.AutoBanEnabled,
-		BanThreshold:           req.BanThreshold,
-		ViolationWindowHours:   req.ViolationWindowHours,
-		RetryCount:             req.RetryCount,
-		HitRetentionDays:       req.HitRetentionDays,
-		NonHitRetentionDays:    req.NonHitRetentionDays,
-		PreHashCheckEnabled:    req.PreHashCheckEnabled,
-		BlockedKeywords:        req.BlockedKeywords,
-		KeywordBlockingMode:    req.KeywordBlockingMode,
-		ModelFilter:            req.ModelFilter,
-		LocalAuditEnabled:      req.LocalAuditEnabled,
-		LocalAuditMaxStorageGB: req.LocalAuditMaxStorageGB,
+		Enabled:                         req.Enabled,
+		Mode:                            req.Mode,
+		BaseURL:                         req.BaseURL,
+		Model:                           req.Model,
+		APIKey:                          req.APIKey,
+		APIKeys:                         req.APIKeys,
+		APIKeysMode:                     req.APIKeysMode,
+		DeleteAPIKeyHashes:              req.DeleteAPIKeyHashes,
+		ClearAPIKey:                     req.ClearAPIKey,
+		TimeoutMS:                       req.TimeoutMS,
+		SampleRate:                      req.SampleRate,
+		AllGroups:                       req.AllGroups,
+		GroupIDs:                        req.GroupIDs,
+		RecordNonHits:                   req.RecordNonHits,
+		Thresholds:                      req.Thresholds,
+		WorkerCount:                     req.WorkerCount,
+		QueueSize:                       req.QueueSize,
+		BlockStatus:                     req.BlockStatus,
+		BlockMessage:                    req.BlockMessage,
+		EmailOnHit:                      req.EmailOnHit,
+		AutoBanEnabled:                  req.AutoBanEnabled,
+		BanThreshold:                    req.BanThreshold,
+		ViolationWindowHours:            req.ViolationWindowHours,
+		RetryCount:                      req.RetryCount,
+		HitRetentionDays:                req.HitRetentionDays,
+		NonHitRetentionDays:             req.NonHitRetentionDays,
+		PreHashCheckEnabled:             req.PreHashCheckEnabled,
+		BlockedKeywords:                 req.BlockedKeywords,
+		KeywordBlockingMode:             req.KeywordBlockingMode,
+		ModelFilter:                     req.ModelFilter,
+		LocalAuditEnabled:               req.LocalAuditEnabled,
+		LocalAuditMaxStorageGB:          req.LocalAuditMaxStorageGB,
+		LocalAuditScenePolicy:           req.LocalAuditScenePolicy,
+		LocalAuditExcludeImage:          req.LocalAuditExcludeImage,
+		LocalAuditClientPatterns:        req.LocalAuditClientPatterns,
+		LocalAuditToolPatterns:          req.LocalAuditToolPatterns,
+		LocalAuditMaxCaptureConcurrency: req.LocalAuditMaxCaptureConcurrency,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

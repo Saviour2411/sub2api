@@ -88,6 +88,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// 局部兜底：确保该 handler 内部任何 panic 都不会击穿到进程级。
 	streamStarted := false
 	defer h.recoverResponsesPanic(c, &streamStarted)
+	auditCapture, restoreAuditCapture := h.beginSuccessfulConversationAuditCapture(c)
+	defer restoreAuditCapture()
 	compactStartedAt := time.Now()
 	defer h.logOpenAIRemoteCompactOutcome(c, compactStartedAt)
 	setOpenAIClientTransportHTTP(c)
@@ -258,6 +260,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 	// Generate session hash (header first; fallback to prompt_cache_key)
 	sessionHash := h.gatewayService.GenerateSessionHash(c, sessionHashBody)
+	explicitSessionID := h.gatewayService.ExtractSessionID(c, body)
 	requireCompact := isOpenAIRemoteCompactPath(c)
 
 	maxAccountSwitches := h.maxAccountSwitches
@@ -453,7 +456,17 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 		if result != nil {
-			h.recordSuccessfulConversationAudit(c, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, result.UpstreamModel, result.Stream, body, result.Usage)
+			sessionID, clientSessionID, sessionSource := resolveOpenAISessionAuditFields(explicitSessionID, sessionHash)
+			h.recordSuccessfulConversationAudit(c, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, result.UpstreamModel, result.Stream, body, result.Usage, successfulConversationAuditOptions{
+				SessionID:          sessionID,
+				ClientSessionID:    clientSessionID,
+				SessionSource:      sessionSource,
+				UserAgent:          userAgent,
+				Originator:         c.GetHeader("Originator"),
+				ResponseID:         result.ResponseID,
+				PreviousResponseID: strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String()),
+				RawResponse:        auditCapture.Bytes(),
+			})
 		}
 
 		// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
@@ -575,6 +588,8 @@ func (h *OpenAIGatewayHandler) logOpenAIRemoteCompactOutcome(c *gin.Context, sta
 func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	streamStarted := false
 	defer h.recoverAnthropicMessagesPanic(c, &streamStarted)
+	auditCapture, restoreAuditCapture := h.beginSuccessfulConversationAuditCapture(c)
+	defer restoreAuditCapture()
 
 	requestStart := time.Now()
 
@@ -855,7 +870,16 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 		if result != nil {
-			h.recordSuccessfulConversationAudit(c, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, result.UpstreamModel, result.Stream, body, result.Usage)
+			sessionID, clientSessionID, sessionSource := resolveOpenAISessionAuditFields(promptCacheKey, sessionHash)
+			h.recordSuccessfulConversationAudit(c, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, result.UpstreamModel, result.Stream, body, result.Usage, successfulConversationAuditOptions{
+				SessionID:       sessionID,
+				ClientSessionID: clientSessionID,
+				SessionSource:   sessionSource,
+				UserAgent:       userAgent,
+				Originator:      c.GetHeader("Originator"),
+				ResponseID:      result.ResponseID,
+				RawResponse:     auditCapture.Bytes(),
+			})
 		}
 
 		h.submitOpenAIUsageRecordTask(result, func(ctx context.Context) {

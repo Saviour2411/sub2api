@@ -22,6 +22,8 @@ import (
 // upstream, and converts responses back to Responses format.
 func (h *GatewayHandler) Responses(c *gin.Context) {
 	streamStarted := false
+	auditCapture, restoreAuditCapture := h.beginSuccessfulConversationAuditCapture(c)
+	defer restoreAuditCapture()
 
 	requestStart := time.Now()
 
@@ -276,7 +278,15 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 		if !result.ClientDisconnect {
-			h.recordSuccessfulConversationAudit(c, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, result.UpstreamModel, result.Stream, body, result.Usage)
+			sessionID, clientSessionID, sessionSource := resolveParsedSessionAuditFields(parsedReq, sessionHash)
+			h.recordSuccessfulConversationAudit(c, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, result.UpstreamModel, result.Stream, body, result.Usage, successfulConversationAuditOptions{
+				SessionID:       sessionID,
+				ClientSessionID: clientSessionID,
+				SessionSource:   sessionSource,
+				UserAgent:       userAgent,
+				Originator:      c.GetHeader("Originator"),
+				RawResponse:     auditCapture.Bytes(),
+			})
 		}
 
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)

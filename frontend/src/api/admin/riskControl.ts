@@ -3,6 +3,7 @@ import { apiClient } from '../client'
 export type ModerationMode = 'off' | 'observe' | 'pre_block'
 export type KeywordBlockingMode = 'keyword_only' | 'keyword_and_api' | 'api_only'
 export type ContentModerationModelFilterType = 'all' | 'include' | 'exclude'
+export type ContentModerationLocalAuditScenePolicy = 'all' | 'programming_only'
 
 export interface ContentModerationModelFilter {
   type: ContentModerationModelFilterType
@@ -42,6 +43,11 @@ export interface ContentModerationConfig {
   model_filter: ContentModerationModelFilter
   local_audit_enabled: boolean
   local_audit_max_storage_gb: number
+  local_audit_scene_policy: ContentModerationLocalAuditScenePolicy
+  local_audit_exclude_image_generation: boolean
+  local_audit_programming_client_patterns: string[]
+  local_audit_programming_tool_patterns: string[]
+  local_audit_max_capture_concurrency: number
   local_audit_storage_path: string
 }
 
@@ -120,16 +126,26 @@ export interface UpdateContentModerationConfig {
   model_filter?: ContentModerationModelFilter
   local_audit_enabled?: boolean
   local_audit_max_storage_gb?: number
+  local_audit_scene_policy?: ContentModerationLocalAuditScenePolicy
+  local_audit_exclude_image_generation?: boolean
+  local_audit_programming_client_patterns?: string[]
+  local_audit_programming_tool_patterns?: string[]
+  local_audit_max_capture_concurrency?: number
 }
 
 export interface ContentModerationLocalAuditStats {
   enabled: boolean
   storage_path: string
   max_storage_gb: number
+  capture_max_concurrency: number
+  response_capture_limit_bytes: number
   retained_bytes: number
   retained_records: number
   queue_size: number
   queue_length: number
+  capture_active: number
+  overload_active: boolean
+  overload_skipped: number
   active: number
   enqueued: number
   dropped: number
@@ -240,6 +256,8 @@ export interface ContentModerationLocalAuditMetadata {
   id: string
   request_id: string
   session_id: string
+  client_session_id?: string
+  session_source?: string
   user_id?: number
   user_email: string
   api_key_id?: number
@@ -251,6 +269,14 @@ export interface ContentModerationLocalAuditMetadata {
   model: string
   upstream_model?: string
   protocol: string
+  response_id?: string
+  previous_response_id?: string
+  scene?: string
+  scene_signals?: string[]
+  input_tool_call_count: number
+  output_tool_call_count: number
+  file_read_count: number
+  file_write_count: number
   stream: boolean
   system_prompt_excerpt: string
   message_count: number
@@ -267,8 +293,12 @@ export interface ContentModerationLocalAuditRecord extends ContentModerationLoca
   tools?: unknown
   tool_calls?: unknown[]
   tool_results?: unknown[]
+  assistant_output?: unknown
+  output_tool_calls?: unknown[]
+  output_tool_results?: unknown[]
   usage?: unknown
   raw_request?: unknown
+  raw_response?: unknown
 }
 
 export interface ListContentModerationLocalAuditParams {

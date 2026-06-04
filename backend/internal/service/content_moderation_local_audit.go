@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -16,6 +17,7 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/google/uuid"
+	"github.com/tidwall/gjson"
 )
 
 const (
@@ -24,78 +26,116 @@ const (
 )
 
 var contentModerationLocalAuditIDPattern = regexp.MustCompile(`^[a-f0-9-]{36}$`)
+var errContentModerationLocalAuditSkipped = errors.New("content moderation local audit skipped")
 
 type ContentModerationLocalAuditInput struct {
-	RequestID     string
-	UserID        int64
-	UserEmail     string
-	APIKeyID      int64
-	APIKeyName    string
-	GroupID       *int64
-	GroupName     string
-	Endpoint      string
-	Provider      string
-	Model         string
-	UpstreamModel string
-	Protocol      string
-	SessionID     string
-	Stream        bool
-	Body          []byte
-	Usage         any
+	RequestID          string
+	UserID             int64
+	UserEmail          string
+	APIKeyID           int64
+	APIKeyName         string
+	GroupID            *int64
+	GroupName          string
+	Endpoint           string
+	Provider           string
+	Model              string
+	UpstreamModel      string
+	Protocol           string
+	SessionID          string
+	ClientSessionID    string
+	SessionSource      string
+	UserAgent          string
+	Originator         string
+	ResponseID         string
+	PreviousResponseID string
+	Stream             bool
+	Body               []byte
+	RawResponse        []byte
+	Usage              any
 }
 
 type ContentModerationLocalAuditMetadata struct {
-	ID              string    `json:"id"`
-	RequestID       string    `json:"request_id"`
-	SessionID       string    `json:"session_id"`
-	UserID          *int64    `json:"user_id,omitempty"`
-	UserEmail       string    `json:"user_email"`
-	APIKeyID        *int64    `json:"api_key_id,omitempty"`
-	APIKeyName      string    `json:"api_key_name"`
-	GroupID         *int64    `json:"group_id,omitempty"`
-	GroupName       string    `json:"group_name"`
-	Endpoint        string    `json:"endpoint"`
-	Provider        string    `json:"provider"`
-	Model           string    `json:"model"`
-	UpstreamModel   string    `json:"upstream_model,omitempty"`
-	Protocol        string    `json:"protocol"`
-	Stream          bool      `json:"stream"`
-	SystemPrompt    string    `json:"system_prompt_excerpt"`
-	MessageCount    int       `json:"message_count"`
-	ToolCount       int       `json:"tool_count"`
-	ToolCallCount   int       `json:"tool_call_count"`
-	ToolResultCount int       `json:"tool_result_count"`
-	FileSizeBytes   int64     `json:"file_size_bytes"`
-	CreatedAt       time.Time `json:"created_at"`
+	ID                  string    `json:"id"`
+	RequestID           string    `json:"request_id"`
+	SessionID           string    `json:"session_id"`
+	ClientSessionID     string    `json:"client_session_id,omitempty"`
+	SessionSource       string    `json:"session_source,omitempty"`
+	UserID              *int64    `json:"user_id,omitempty"`
+	UserEmail           string    `json:"user_email"`
+	APIKeyID            *int64    `json:"api_key_id,omitempty"`
+	APIKeyName          string    `json:"api_key_name"`
+	GroupID             *int64    `json:"group_id,omitempty"`
+	GroupName           string    `json:"group_name"`
+	Endpoint            string    `json:"endpoint"`
+	Provider            string    `json:"provider"`
+	Model               string    `json:"model"`
+	UpstreamModel       string    `json:"upstream_model,omitempty"`
+	Protocol            string    `json:"protocol"`
+	ResponseID          string    `json:"response_id,omitempty"`
+	PreviousResponseID  string    `json:"previous_response_id,omitempty"`
+	Scene               string    `json:"scene,omitempty"`
+	SceneSignals        []string  `json:"scene_signals,omitempty"`
+	InputToolCallCount  int       `json:"input_tool_call_count"`
+	OutputToolCallCount int       `json:"output_tool_call_count"`
+	FileReadCount       int       `json:"file_read_count"`
+	FileWriteCount      int       `json:"file_write_count"`
+	Stream              bool      `json:"stream"`
+	SystemPrompt        string    `json:"system_prompt_excerpt"`
+	MessageCount        int       `json:"message_count"`
+	ToolCount           int       `json:"tool_count"`
+	ToolCallCount       int       `json:"tool_call_count"`
+	ToolResultCount     int       `json:"tool_result_count"`
+	FileSizeBytes       int64     `json:"file_size_bytes"`
+	CreatedAt           time.Time `json:"created_at"`
 }
 
 type ContentModerationLocalAuditRecord struct {
 	ContentModerationLocalAuditMetadata
-	SystemPrompt any   `json:"system_prompt,omitempty"`
-	Messages     any   `json:"messages,omitempty"`
-	Tools        any   `json:"tools,omitempty"`
-	ToolCalls    []any `json:"tool_calls,omitempty"`
-	ToolResults  []any `json:"tool_results,omitempty"`
-	Usage        any   `json:"usage,omitempty"`
-	RawRequest   any   `json:"raw_request,omitempty"`
+	UserAgent         string `json:"user_agent,omitempty"`
+	Originator        string `json:"originator,omitempty"`
+	SystemPrompt      any    `json:"system_prompt,omitempty"`
+	Messages          any    `json:"messages,omitempty"`
+	Tools             any    `json:"tools,omitempty"`
+	ToolCalls         []any  `json:"tool_calls,omitempty"`
+	ToolResults       []any  `json:"tool_results,omitempty"`
+	AssistantOutput   any    `json:"assistant_output,omitempty"`
+	OutputToolCalls   []any  `json:"output_tool_calls,omitempty"`
+	OutputToolResults []any  `json:"output_tool_results,omitempty"`
+	Usage             any    `json:"usage,omitempty"`
+	RawRequest        any    `json:"raw_request,omitempty"`
+	RawResponse       any    `json:"raw_response,omitempty"`
+}
+
+type localAuditSceneAssessment struct {
+	Scene               string
+	Signals             []string
+	InputToolCallCount  int
+	OutputToolCallCount int
+	FileReadCount       int
+	FileWriteCount      int
 }
 
 type ContentModerationLocalAuditStats struct {
-	Enabled                 bool       `json:"enabled"`
-	StoragePath             string     `json:"storage_path"`
-	MaxStorageGB            float64    `json:"max_storage_gb"`
-	RetainedBytes           int64      `json:"retained_bytes"`
-	RetainedRecords         int64      `json:"retained_records"`
-	QueueSize               int        `json:"queue_size"`
-	QueueLength             int        `json:"queue_length"`
-	Active                  int64      `json:"active"`
-	Enqueued                int64      `json:"enqueued"`
-	Dropped                 int64      `json:"dropped"`
-	Written                 int64      `json:"written"`
-	Errors                  int64      `json:"errors"`
-	LastCleanupAt           *time.Time `json:"last_cleanup_at,omitempty"`
-	LastCleanupDeleted      int64      `json:"last_cleanup_deleted"`
-	LastCleanupDeletedBytes int64      `json:"last_cleanup_deleted_bytes"`
+	Enabled                   bool       `json:"enabled"`
+	StoragePath               string     `json:"storage_path"`
+	MaxStorageGB              float64    `json:"max_storage_gb"`
+	CaptureMaxConcurrency     int        `json:"capture_max_concurrency"`
+	ResponseCaptureLimitBytes int        `json:"response_capture_limit_bytes"`
+	RetainedBytes             int64      `json:"retained_bytes"`
+	RetainedRecords           int64      `json:"retained_records"`
+	QueueSize                 int        `json:"queue_size"`
+	QueueLength               int        `json:"queue_length"`
+	CaptureActive             int64      `json:"capture_active"`
+	OverloadActive            bool       `json:"overload_active"`
+	OverloadSkipped           int64      `json:"overload_skipped"`
+	Active                    int64      `json:"active"`
+	Enqueued                  int64      `json:"enqueued"`
+	Dropped                   int64      `json:"dropped"`
+	Written                   int64      `json:"written"`
+	Errors                    int64      `json:"errors"`
+	LastCleanupAt             *time.Time `json:"last_cleanup_at,omitempty"`
+	LastCleanupDeleted        int64      `json:"last_cleanup_deleted"`
+	LastCleanupDeletedBytes   int64      `json:"last_cleanup_deleted_bytes"`
 }
 
 type ContentModerationLocalAuditListFilter struct {
@@ -151,6 +191,57 @@ func (s *ContentModerationService) RecordSuccessfulConversation(ctx context.Cont
 	default:
 		s.localAuditDropped.Add(1)
 		slog.Warn("content_moderation.local_audit_queue_full", "request_id", input.RequestID, "endpoint", input.Endpoint)
+	}
+}
+
+func (s *ContentModerationService) TryBeginLocalAuditCapture(ctx context.Context) (func(), bool) {
+	if s == nil || s.settingRepo == nil {
+		return func() {}, false
+	}
+	if !s.isRiskControlEnabled(ctx) {
+		return func() {}, false
+	}
+	cfg, err := s.loadConfig(ctx)
+	if err != nil {
+		slog.Warn("content_moderation.local_audit_capture_config_failed", "error", err)
+		return func() {}, false
+	}
+	if !cfg.LocalAuditEnabled {
+		return func() {}, false
+	}
+	maxCapture := cfg.LocalAuditMaxCaptureConcurrency
+	if maxCapture > 0 {
+		for {
+			active := s.localAuditCaptureActive.Load()
+			if active >= int64(maxCapture) {
+				s.localAuditOverloadSkipped.Add(1)
+				slog.Warn("content_moderation.local_audit_capture_overload",
+					"active", active,
+					"capture_max_concurrency", maxCapture,
+				)
+				return func() {}, false
+			}
+			if s.localAuditCaptureActive.CompareAndSwap(active, active+1) {
+				return s.releaseLocalAuditCapture, true
+			}
+		}
+	}
+	s.localAuditCaptureActive.Add(1)
+	return s.releaseLocalAuditCapture, true
+}
+
+func (s *ContentModerationService) releaseLocalAuditCapture() {
+	if s == nil {
+		return
+	}
+	for {
+		active := s.localAuditCaptureActive.Load()
+		if active <= 0 {
+			return
+		}
+		if s.localAuditCaptureActive.CompareAndSwap(active, active-1) {
+			return
+		}
 	}
 }
 
@@ -239,6 +330,9 @@ func (s *ContentModerationService) localAuditWorker() {
 		func() {
 			defer s.localAuditActive.Add(-1)
 			if err := s.writeLocalAuditRecord(task); err != nil {
+				if errors.Is(err, errContentModerationLocalAuditSkipped) {
+					return
+				}
 				s.localAuditErrors.Add(1)
 				slog.Warn("content_moderation.local_audit_write_failed", "request_id", task.input.RequestID, "error", err)
 				return
@@ -264,9 +358,12 @@ func (s *ContentModerationService) writeLocalAuditRecord(task contentModerationL
 	if cfg == nil || !cfg.LocalAuditEnabled {
 		return nil
 	}
-	record, err := buildContentModerationLocalAuditRecord(task.input, task.createdAt)
+	record, err := buildContentModerationLocalAuditRecord(cfg, task.input, task.createdAt)
 	if err != nil {
 		return err
+	}
+	if record == nil {
+		return errContentModerationLocalAuditSkipped
 	}
 	dir := filepath.Join(s.localAuditRoot(), record.CreatedAt.Format("2006"), record.CreatedAt.Format("01"), record.CreatedAt.Format("02"))
 	recordPath := filepath.Join(dir, record.ID+".json")
@@ -296,16 +393,33 @@ func (s *ContentModerationService) writeLocalAuditRecord(task contentModerationL
 	return nil
 }
 
-func buildContentModerationLocalAuditRecord(input ContentModerationLocalAuditInput, createdAt time.Time) (*ContentModerationLocalAuditRecord, error) {
+func buildContentModerationLocalAuditRecord(cfg *ContentModerationConfig, input ContentModerationLocalAuditInput, createdAt time.Time) (*ContentModerationLocalAuditRecord, error) {
 	var decoded any
 	if err := json.Unmarshal(input.Body, &decoded); err != nil {
 		return nil, fmt.Errorf("parse local audit request: %w", err)
 	}
 	root, _ := decoded.(map[string]any)
+	if shouldSkipContentModerationLocalAuditRecord(cfg, input, root) {
+		return nil, nil
+	}
 	safeRequest := redactSensitiveJSON(decoded)
 	systemPrompt, messages, tools, toolCalls, toolResults := extractLocalAuditConversation(input.Protocol, root)
 	if input.SessionID == "" {
 		input.SessionID = inferLocalAuditSessionID(root)
+	}
+	if input.ClientSessionID == "" {
+		input.ClientSessionID = inferLocalAuditSessionID(root)
+	}
+	if input.PreviousResponseID == "" {
+		input.PreviousResponseID = strings.TrimSpace(fmt.Sprint(firstExistingLocalAuditValue(root, "previous_response_id")))
+		if input.PreviousResponseID == "<nil>" {
+			input.PreviousResponseID = ""
+		}
+	}
+	safeResponse, assistantOutput, outputToolCalls, outputToolResults := extractLocalAuditResponseArtifacts(input.Protocol, input.RawResponse)
+	scene := assessLocalAuditScene(cfg, input, tools, toolCalls, toolResults, outputToolCalls, outputToolResults)
+	if cfg != nil && cfg.LocalAuditScenePolicy == ContentModerationLocalAuditSceneProgrammingOnly && scene.Scene != "programming" {
+		return nil, nil
 	}
 	var userID *int64
 	if input.UserID > 0 {
@@ -316,38 +430,67 @@ func buildContentModerationLocalAuditRecord(input ContentModerationLocalAuditInp
 		apiKeyID = &input.APIKeyID
 	}
 	meta := ContentModerationLocalAuditMetadata{
-		ID:              uuid.NewString(),
-		RequestID:       strings.TrimSpace(input.RequestID),
-		SessionID:       strings.TrimSpace(input.SessionID),
-		UserID:          userID,
-		UserEmail:       strings.TrimSpace(input.UserEmail),
-		APIKeyID:        apiKeyID,
-		APIKeyName:      strings.TrimSpace(input.APIKeyName),
-		GroupID:         cloneInt64Ptr(input.GroupID),
-		GroupName:       strings.TrimSpace(input.GroupName),
-		Endpoint:        strings.TrimSpace(input.Endpoint),
-		Provider:        strings.TrimSpace(input.Provider),
-		Model:           strings.TrimSpace(input.Model),
-		UpstreamModel:   strings.TrimSpace(input.UpstreamModel),
-		Protocol:        strings.TrimSpace(input.Protocol),
-		Stream:          input.Stream,
-		SystemPrompt:    trimRunes(localAuditTextExcerpt(systemPrompt), maxModerationExcerptRunes),
-		MessageCount:    localAuditCount(messages),
-		ToolCount:       localAuditCount(tools),
-		ToolCallCount:   len(toolCalls),
-		ToolResultCount: len(toolResults),
-		CreatedAt:       createdAt,
+		ID:                  uuid.NewString(),
+		RequestID:           strings.TrimSpace(input.RequestID),
+		SessionID:           strings.TrimSpace(input.SessionID),
+		ClientSessionID:     strings.TrimSpace(input.ClientSessionID),
+		SessionSource:       strings.TrimSpace(input.SessionSource),
+		UserID:              userID,
+		UserEmail:           strings.TrimSpace(input.UserEmail),
+		APIKeyID:            apiKeyID,
+		APIKeyName:          strings.TrimSpace(input.APIKeyName),
+		GroupID:             cloneInt64Ptr(input.GroupID),
+		GroupName:           strings.TrimSpace(input.GroupName),
+		Endpoint:            strings.TrimSpace(input.Endpoint),
+		Provider:            strings.TrimSpace(input.Provider),
+		Model:               strings.TrimSpace(input.Model),
+		UpstreamModel:       strings.TrimSpace(input.UpstreamModel),
+		Protocol:            strings.TrimSpace(input.Protocol),
+		ResponseID:          firstNonEmptyLocalAuditString(input.ResponseID, strings.TrimSpace(gjson.GetBytes(input.RawResponse, "id").String())),
+		PreviousResponseID:  strings.TrimSpace(input.PreviousResponseID),
+		Scene:               scene.Scene,
+		SceneSignals:        append([]string(nil), scene.Signals...),
+		InputToolCallCount:  len(toolCalls),
+		OutputToolCallCount: len(outputToolCalls),
+		FileReadCount:       scene.FileReadCount,
+		FileWriteCount:      scene.FileWriteCount,
+		Stream:              input.Stream,
+		SystemPrompt:        trimRunes(localAuditTextExcerpt(systemPrompt), maxModerationExcerptRunes),
+		MessageCount:        localAuditCount(messages),
+		ToolCount:           localAuditCount(tools),
+		ToolCallCount:       len(toolCalls),
+		ToolResultCount:     len(toolResults),
+		CreatedAt:           createdAt,
 	}
 	return &ContentModerationLocalAuditRecord{
 		ContentModerationLocalAuditMetadata: meta,
+		UserAgent:                           strings.TrimSpace(input.UserAgent),
+		Originator:                          strings.TrimSpace(input.Originator),
 		SystemPrompt:                        systemPrompt,
 		Messages:                            messages,
 		Tools:                               tools,
 		ToolCalls:                           redactSensitiveJSONArray(toolCalls),
 		ToolResults:                         redactSensitiveJSONArray(toolResults),
+		AssistantOutput:                     redactSensitiveJSON(assistantOutput),
+		OutputToolCalls:                     redactSensitiveJSONArray(outputToolCalls),
+		OutputToolResults:                   redactSensitiveJSONArray(outputToolResults),
 		Usage:                               input.Usage,
 		RawRequest:                          safeRequest,
+		RawResponse:                         redactSensitiveJSON(safeResponse),
 	}, nil
+}
+
+func shouldSkipContentModerationLocalAuditRecord(cfg *ContentModerationConfig, input ContentModerationLocalAuditInput, root map[string]any) bool {
+	if cfg == nil {
+		return false
+	}
+	if !cfg.LocalAuditExcludeImage {
+		return false
+	}
+	if input.Protocol == ContentModerationProtocolOpenAIImages {
+		return true
+	}
+	return IsImageGenerationIntentMap(input.Endpoint, input.Model, root)
 }
 
 func redactSensitiveJSONArray(items []any) []any {
@@ -452,6 +595,369 @@ func collectLocalAuditToolArtifacts(value any, calls *[]any, results *[]any) {
 	}
 }
 
+func extractLocalAuditResponseArtifacts(protocol string, raw []byte) (any, any, []any, []any) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return nil, nil, nil, nil
+	}
+	if trimmed[0] == '{' || trimmed[0] == '[' {
+		var decoded any
+		if err := json.Unmarshal(trimmed, &decoded); err == nil {
+			assistantOutput, outputToolCalls, outputToolResults := extractLocalAuditResponseJSONArtifacts(protocol, decoded)
+			return decoded, assistantOutput, outputToolCalls, outputToolResults
+		}
+	}
+	if bytes.Contains(trimmed, []byte("data:")) {
+		return extractLocalAuditSSEResponseArtifacts(protocol, trimmed)
+	}
+	return string(trimmed), nil, nil, nil
+}
+
+func extractLocalAuditResponseJSONArtifacts(protocol string, decoded any) (any, []any, []any) {
+	root, _ := decoded.(map[string]any)
+	switch protocol {
+	case ContentModerationProtocolOpenAIChat:
+		return extractOpenAIChatResponseArtifacts(root)
+	case ContentModerationProtocolOpenAIResponses:
+		return extractOpenAIResponsesResponseArtifacts(root)
+	case ContentModerationProtocolAnthropicMessages:
+		return extractAnthropicResponseArtifacts(root)
+	case ContentModerationProtocolGemini:
+		return extractGeminiResponseArtifacts(root)
+	default:
+		var toolCalls []any
+		var toolResults []any
+		collectLocalAuditToolArtifacts(decoded, &toolCalls, &toolResults)
+		return decoded, toolCalls, toolResults
+	}
+}
+
+func extractLocalAuditSSEResponseArtifacts(protocol string, raw []byte) (any, any, []any, []any) {
+	lines := strings.Split(string(raw), "\n")
+	events := make([]any, 0)
+	textParts := make([]string, 0)
+	var latestTerminal any
+	var outputToolCalls []any
+	var outputToolResults []any
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if payload == "" || payload == "[DONE]" || !gjson.Valid(payload) {
+			continue
+		}
+		var decoded any
+		if err := json.Unmarshal([]byte(payload), &decoded); err != nil {
+			continue
+		}
+		events = append(events, decoded)
+		if text := extractLocalAuditSSETextDelta(protocol, payload); text != "" {
+			textParts = append(textParts, text)
+		}
+		if openAIStreamEventIsTerminal(payload) || anthropicStreamEventIsTerminal("", payload) {
+			latestTerminal = decoded
+			assistantOutput, toolCalls, toolResults := extractLocalAuditResponseJSONArtifacts(protocol, decoded)
+			if assistantOutput != nil && len(textParts) == 0 {
+				textParts = append(textParts, localAuditTextExcerpt(assistantOutput))
+			}
+			outputToolCalls = append(outputToolCalls, toolCalls...)
+			outputToolResults = append(outputToolResults, toolResults...)
+		}
+	}
+	var assistantOutput any
+	if len(textParts) > 0 {
+		assistantOutput = strings.Join(textParts, "")
+	}
+	if latestTerminal == nil {
+		latestTerminal = events
+	}
+	return latestTerminal, assistantOutput, outputToolCalls, outputToolResults
+}
+
+func extractLocalAuditSSETextDelta(protocol string, payload string) string {
+	switch protocol {
+	case ContentModerationProtocolOpenAIResponses:
+		return gjson.Get(payload, "delta").String()
+	case ContentModerationProtocolOpenAIChat:
+		if value := gjson.Get(payload, "choices.0.delta.content"); value.Exists() {
+			return value.String()
+		}
+	case ContentModerationProtocolAnthropicMessages:
+		if value := gjson.Get(payload, "delta.text"); value.Exists() {
+			return value.String()
+		}
+	case ContentModerationProtocolGemini:
+		if value := gjson.Get(payload, "candidates.0.content.parts.0.text"); value.Exists() {
+			return value.String()
+		}
+	}
+	return ""
+}
+
+func extractOpenAIChatResponseArtifacts(root map[string]any) (any, []any, []any) {
+	if root == nil {
+		return nil, nil, nil
+	}
+	choices, _ := root["choices"].([]any)
+	var assistant []any
+	var toolCalls []any
+	var toolResults []any
+	for _, choice := range choices {
+		choiceMap, _ := choice.(map[string]any)
+		message, _ := choiceMap["message"].(map[string]any)
+		if message == nil {
+			continue
+		}
+		if content := message["content"]; content != nil {
+			assistant = append(assistant, content)
+		}
+		collectLocalAuditToolArtifacts(message, &toolCalls, &toolResults)
+	}
+	return singleOrSlice(assistant), toolCalls, toolResults
+}
+
+func extractOpenAIResponsesResponseArtifacts(root map[string]any) (any, []any, []any) {
+	if root == nil {
+		return nil, nil, nil
+	}
+	output, _ := root["output"].([]any)
+	texts := make([]string, 0)
+	var toolCalls []any
+	var toolResults []any
+	for _, item := range output {
+		itemMap, _ := item.(map[string]any)
+		if itemMap == nil {
+			continue
+		}
+		switch strings.TrimSpace(fmt.Sprint(itemMap["type"])) {
+		case "message":
+			if content, ok := itemMap["content"].([]any); ok {
+				for _, part := range content {
+					if text := extractResponseContentText(part); text != "" {
+						texts = append(texts, text)
+					}
+				}
+			}
+		}
+		collectLocalAuditToolArtifacts(itemMap, &toolCalls, &toolResults)
+	}
+	if outputText := strings.TrimSpace(gjson.GetBytes(mustJSON(root), "output_text").String()); outputText != "" {
+		texts = append(texts, outputText)
+	}
+	return strings.Join(texts, "\n"), toolCalls, toolResults
+}
+
+func extractAnthropicResponseArtifacts(root map[string]any) (any, []any, []any) {
+	if root == nil {
+		return nil, nil, nil
+	}
+	content, _ := root["content"].([]any)
+	texts := make([]string, 0)
+	var toolCalls []any
+	var toolResults []any
+	for _, item := range content {
+		itemMap, _ := item.(map[string]any)
+		if itemMap == nil {
+			continue
+		}
+		if strings.TrimSpace(fmt.Sprint(itemMap["type"])) == "text" {
+			if text := strings.TrimSpace(fmt.Sprint(itemMap["text"])); text != "" && text != "<nil>" {
+				texts = append(texts, text)
+			}
+		}
+		collectLocalAuditToolArtifacts(itemMap, &toolCalls, &toolResults)
+	}
+	return strings.Join(texts, "\n"), toolCalls, toolResults
+}
+
+func extractGeminiResponseArtifacts(root map[string]any) (any, []any, []any) {
+	if root == nil {
+		return nil, nil, nil
+	}
+	candidates, _ := root["candidates"].([]any)
+	texts := make([]string, 0)
+	var toolCalls []any
+	var toolResults []any
+	for _, candidate := range candidates {
+		candidateMap, _ := candidate.(map[string]any)
+		content, _ := candidateMap["content"].(map[string]any)
+		parts, _ := content["parts"].([]any)
+		for _, part := range parts {
+			partMap, _ := part.(map[string]any)
+			if text := strings.TrimSpace(fmt.Sprint(partMap["text"])); text != "" && text != "<nil>" {
+				texts = append(texts, text)
+			}
+			collectLocalAuditToolArtifacts(partMap, &toolCalls, &toolResults)
+		}
+	}
+	return strings.Join(texts, "\n"), toolCalls, toolResults
+}
+
+func extractResponseContentText(value any) string {
+	part, _ := value.(map[string]any)
+	if part == nil {
+		return strings.TrimSpace(fmt.Sprint(value))
+	}
+	if text := strings.TrimSpace(fmt.Sprint(part["text"])); text != "" && text != "<nil>" {
+		return text
+	}
+	return strings.TrimSpace(fmt.Sprint(part["content"]))
+}
+
+func assessLocalAuditScene(cfg *ContentModerationConfig, input ContentModerationLocalAuditInput, tools any, inputToolCalls []any, inputToolResults []any, outputToolCalls []any, outputToolResults []any) localAuditSceneAssessment {
+	names := collectLocalAuditToolNames(tools)
+	names = append(names, collectLocalAuditToolNames(inputToolCalls)...)
+	names = append(names, collectLocalAuditToolNames(inputToolResults)...)
+	names = append(names, collectLocalAuditToolNames(outputToolCalls)...)
+	names = append(names, collectLocalAuditToolNames(outputToolResults)...)
+	scene := localAuditSceneAssessment{
+		Scene:               "general",
+		InputToolCallCount:  len(inputToolCalls),
+		OutputToolCallCount: len(outputToolCalls),
+	}
+	if matchesAnyLocalAuditPattern(strings.ToLower(strings.TrimSpace(input.UserAgent)), cfg.LocalAuditClientPatterns) {
+		scene.Signals = append(scene.Signals, "user_agent")
+	}
+	if matchesAnyLocalAuditPattern(strings.ToLower(strings.TrimSpace(input.Originator)), cfg.LocalAuditClientPatterns) {
+		scene.Signals = append(scene.Signals, "originator")
+	}
+	for _, name := range names {
+		if matchesAnyLocalAuditPattern(name, cfg.LocalAuditToolPatterns) {
+			scene.Signals = append(scene.Signals, "tool:"+name)
+		}
+		if isLocalAuditFileReadTool(name) {
+			scene.FileReadCount++
+		}
+		if isLocalAuditFileWriteTool(name) {
+			scene.FileWriteCount++
+		}
+	}
+	scene.Signals = dedupeLocalAuditStrings(scene.Signals)
+	if len(scene.Signals) > 0 || scene.FileReadCount > 0 || scene.FileWriteCount > 0 || len(inputToolCalls) > 0 || len(outputToolCalls) > 0 {
+		scene.Scene = "programming"
+	}
+	return scene
+}
+
+func collectLocalAuditToolNames(value any) []string {
+	out := make([]string, 0)
+	collectLocalAuditToolNamesInto(value, &out)
+	return dedupeLocalAuditStrings(out)
+}
+
+func collectLocalAuditToolNamesInto(value any, out *[]string) {
+	switch v := value.(type) {
+	case []any:
+		for _, item := range v {
+			collectLocalAuditToolNamesInto(item, out)
+		}
+	case map[string]any:
+		if fn, ok := v["function"].(map[string]any); ok {
+			if name := strings.ToLower(strings.TrimSpace(fmt.Sprint(fn["name"]))); name != "" && name != "<nil>" {
+				*out = append(*out, name)
+			}
+		}
+		if name := strings.ToLower(strings.TrimSpace(fmt.Sprint(v["tool_name"]))); name != "" && name != "<nil>" {
+			*out = append(*out, name)
+		}
+		if name := strings.ToLower(strings.TrimSpace(fmt.Sprint(v["name"]))); name != "" && name != "<nil>" {
+			if _, hasType := v["type"]; hasType {
+				*out = append(*out, name)
+			} else if _, hasInput := v["input"]; hasInput {
+				*out = append(*out, name)
+			} else if _, hasArgs := v["arguments"]; hasArgs {
+				*out = append(*out, name)
+			}
+		}
+		for _, child := range v {
+			collectLocalAuditToolNamesInto(child, out)
+		}
+	}
+}
+
+func matchesAnyLocalAuditPattern(value string, patterns []string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return false
+	}
+	for _, pattern := range patterns {
+		pattern = strings.ToLower(strings.TrimSpace(pattern))
+		if pattern == "" {
+			continue
+		}
+		if strings.Contains(value, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+func isLocalAuditFileReadTool(name string) bool {
+	for _, token := range []string{"read", "open", "cat", "grep", "search", "glob", "ls"} {
+		if strings.Contains(name, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func isLocalAuditFileWriteTool(name string) bool {
+	for _, token := range []string{"write", "edit", "patch", "apply", "create", "delete", "rename"} {
+		if strings.Contains(name, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func dedupeLocalAuditStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}
+
+func singleOrSlice(values []any) any {
+	switch len(values) {
+	case 0:
+		return nil
+	case 1:
+		return values[0]
+	default:
+		return values
+	}
+}
+
+func mustJSON(value any) []byte {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	return raw
+}
+
+func firstNonEmptyLocalAuditString(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 func (s *ContentModerationService) runLocalAuditCleanupOnce() {
 	if s == nil || s.settingRepo == nil {
 		return
@@ -521,23 +1027,28 @@ func (s *ContentModerationService) localAuditStats(cfg *ContentModerationConfig)
 		queueSize = cap(s.localAuditQueue)
 	}
 	stats := ContentModerationLocalAuditStats{
-		StoragePath:             s.localAuditRoot(),
-		QueueSize:               queueSize,
-		QueueLength:             queueLength,
-		Active:                  s.localAuditActive.Load(),
-		Enqueued:                s.localAuditEnqueued.Load(),
-		Dropped:                 s.localAuditDropped.Load(),
-		Written:                 s.localAuditWritten.Load(),
-		Errors:                  s.localAuditErrors.Load(),
-		RetainedBytes:           s.localAuditRetainedBytes.Load(),
-		RetainedRecords:         s.localAuditRetainedRecords.Load(),
-		LastCleanupAt:           lastCleanupAt,
-		LastCleanupDeleted:      s.localAuditLastCleanupDeleted.Load(),
-		LastCleanupDeletedBytes: s.localAuditLastCleanupDeletedBytes.Load(),
+		StoragePath:               s.localAuditRoot(),
+		ResponseCaptureLimitBytes: ContentModerationLocalAuditResponseCaptureLimitBytes,
+		QueueSize:                 queueSize,
+		QueueLength:               queueLength,
+		CaptureActive:             s.localAuditCaptureActive.Load(),
+		OverloadSkipped:           s.localAuditOverloadSkipped.Load(),
+		Active:                    s.localAuditActive.Load(),
+		Enqueued:                  s.localAuditEnqueued.Load(),
+		Dropped:                   s.localAuditDropped.Load(),
+		Written:                   s.localAuditWritten.Load(),
+		Errors:                    s.localAuditErrors.Load(),
+		RetainedBytes:             s.localAuditRetainedBytes.Load(),
+		RetainedRecords:           s.localAuditRetainedRecords.Load(),
+		LastCleanupAt:             lastCleanupAt,
+		LastCleanupDeleted:        s.localAuditLastCleanupDeleted.Load(),
+		LastCleanupDeletedBytes:   s.localAuditLastCleanupDeletedBytes.Load(),
 	}
 	if cfg != nil {
 		stats.Enabled = cfg.LocalAuditEnabled
 		stats.MaxStorageGB = cfg.LocalAuditMaxStorageGB
+		stats.CaptureMaxConcurrency = cfg.LocalAuditMaxCaptureConcurrency
+		stats.OverloadActive = cfg.LocalAuditMaxCaptureConcurrency > 0 && stats.CaptureActive >= int64(cfg.LocalAuditMaxCaptureConcurrency)
 	}
 	return stats
 }
@@ -663,6 +1174,7 @@ func writeLocalAuditFileAtomic(path string, data []byte) error {
 
 func cloneContentModerationLocalAuditInput(input ContentModerationLocalAuditInput) ContentModerationLocalAuditInput {
 	input.Body = append([]byte(nil), input.Body...)
+	input.RawResponse = append([]byte(nil), input.RawResponse...)
 	input.GroupID = cloneInt64Ptr(input.GroupID)
 	return input
 }
@@ -721,6 +1233,8 @@ func localAuditMetadataMatches(meta ContentModerationLocalAuditMetadata, filter 
 			meta.ID,
 			meta.RequestID,
 			meta.SessionID,
+			meta.ClientSessionID,
+			meta.SessionSource,
 			meta.UserEmail,
 			meta.APIKeyName,
 			meta.GroupName,
@@ -728,6 +1242,10 @@ func localAuditMetadataMatches(meta ContentModerationLocalAuditMetadata, filter 
 			meta.Provider,
 			meta.Model,
 			meta.UpstreamModel,
+			meta.ResponseID,
+			meta.PreviousResponseID,
+			meta.Scene,
+			strings.Join(meta.SceneSignals, " "),
 			meta.SystemPrompt,
 		}, " "))
 		if !strings.Contains(haystack, search) {

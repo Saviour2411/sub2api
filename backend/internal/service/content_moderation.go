@@ -54,6 +54,9 @@ const (
 	ContentModerationProtocolGemini            = "gemini"
 	ContentModerationProtocolOpenAIImages      = "openai_images"
 
+	ContentModerationLocalAuditSceneAll             = "all"
+	ContentModerationLocalAuditSceneProgrammingOnly = "programming_only"
+
 	defaultContentModerationBaseURL   = "https://api.openai.com"
 	defaultContentModerationModel     = "omni-moderation-latest"
 	defaultContentModerationTimeoutMS = 3000
@@ -61,35 +64,39 @@ const (
 	maxModerationInputRunes           = 12000
 	maxModerationExcerptRunes         = 240
 
-	defaultContentModerationWorkerCount          = 4
-	maxContentModerationWorkerCount              = 32
-	defaultContentModerationQueueSize            = 32768
-	maxContentModerationQueueSize                = 100000
-	defaultContentModerationBanThreshold         = 10
-	defaultContentModerationViolationWindowHours = 720
-	defaultContentModerationBlockHTTPStatus      = http.StatusForbidden
-	defaultContentModerationBlockMessage         = "内容审计命中风险规则，请调整输入后重试"
-	defaultContentModerationRetryCount           = 2
-	maxContentModerationRetryCount               = 5
-	defaultContentModerationHitRetentionDays     = 180
-	defaultContentModerationNonHitRetentionDays  = 3
-	maxContentModerationRetentionDays            = 3650
-	maxContentModerationNonHitRetentionDays      = 3
-	contentModerationKeyRateLimitFreezeDuration  = time.Minute
-	contentModerationKeyAuthFreezeDuration       = 10 * time.Minute
-	contentModerationKeyHTTPErrorFreezeDuration  = 10 * time.Second
-	maxContentModerationInputImages              = 1
-	maxContentModerationTestImages               = maxContentModerationInputImages
-	maxContentModerationTestImageBytes           = 8 * 1024 * 1024
-	maxContentModerationTestImageDataURLBytes    = 12 * 1024 * 1024
-	maxContentModerationBlockedKeywords          = 10000
-	maxContentModerationBlockedKeywordRunes      = 200
-	maxContentModerationModelFilterModels        = 1000
-	maxContentModerationModelFilterRunes         = 200
-	defaultContentModerationLocalAuditStorageGB  = 1.0
-	minContentModerationLocalAuditStorageGB      = 0.1
-	maxContentModerationLocalAuditStorageGB      = 1024.0
-	defaultContentModerationLocalAuditQueueSize  = 4096
+	defaultContentModerationWorkerCount                  = 4
+	maxContentModerationWorkerCount                      = 32
+	defaultContentModerationQueueSize                    = 32768
+	maxContentModerationQueueSize                        = 100000
+	defaultContentModerationBanThreshold                 = 10
+	defaultContentModerationViolationWindowHours         = 720
+	defaultContentModerationBlockHTTPStatus              = http.StatusForbidden
+	defaultContentModerationBlockMessage                 = "内容审计命中风险规则，请调整输入后重试"
+	defaultContentModerationRetryCount                   = 2
+	maxContentModerationRetryCount                       = 5
+	defaultContentModerationHitRetentionDays             = 180
+	defaultContentModerationNonHitRetentionDays          = 3
+	maxContentModerationRetentionDays                    = 3650
+	maxContentModerationNonHitRetentionDays              = 3
+	contentModerationKeyRateLimitFreezeDuration          = time.Minute
+	contentModerationKeyAuthFreezeDuration               = 10 * time.Minute
+	contentModerationKeyHTTPErrorFreezeDuration          = 10 * time.Second
+	maxContentModerationInputImages                      = 1
+	maxContentModerationTestImages                       = maxContentModerationInputImages
+	maxContentModerationTestImageBytes                   = 8 * 1024 * 1024
+	maxContentModerationTestImageDataURLBytes            = 12 * 1024 * 1024
+	maxContentModerationBlockedKeywords                  = 10000
+	maxContentModerationBlockedKeywordRunes              = 200
+	maxContentModerationModelFilterModels                = 1000
+	maxContentModerationModelFilterRunes                 = 200
+	defaultContentModerationLocalAuditStorageGB          = 1.0
+	minContentModerationLocalAuditStorageGB              = 0.1
+	maxContentModerationLocalAuditStorageGB              = 1024.0
+	defaultContentModerationLocalAuditQueueSize          = 4096
+	maxContentModerationLocalAuditPatterns               = 128
+	defaultContentModerationLocalAuditCaptureConcurrency = 128
+	maxContentModerationLocalAuditCaptureConcurrency     = 100000
+	ContentModerationLocalAuditResponseCaptureLimitBytes = 1 << 20
 
 	contentModerationCleanupInterval = 24 * time.Hour
 	contentModerationCleanupTimeout  = 30 * time.Minute
@@ -137,71 +144,81 @@ func ContentModerationCategories() []string {
 }
 
 type ContentModerationConfig struct {
-	Enabled                bool                         `json:"enabled"`
-	Mode                   string                       `json:"mode"`
-	BaseURL                string                       `json:"base_url"`
-	Model                  string                       `json:"model"`
-	APIKey                 string                       `json:"api_key,omitempty"`
-	APIKeys                []string                     `json:"api_keys,omitempty"`
-	TimeoutMS              int                          `json:"timeout_ms"`
-	SampleRate             int                          `json:"sample_rate"`
-	AllGroups              bool                         `json:"all_groups"`
-	GroupIDs               []int64                      `json:"group_ids"`
-	RecordNonHits          bool                         `json:"record_non_hits"`
-	Thresholds             map[string]float64           `json:"thresholds"`
-	WorkerCount            int                          `json:"worker_count"`
-	QueueSize              int                          `json:"queue_size"`
-	BlockStatus            int                          `json:"block_status"`
-	BlockMessage           string                       `json:"block_message"`
-	EmailOnHit             bool                         `json:"email_on_hit"`
-	AutoBanEnabled         bool                         `json:"auto_ban_enabled"`
-	BanThreshold           int                          `json:"ban_threshold"`
-	ViolationWindowHours   int                          `json:"violation_window_hours"`
-	RetryCount             int                          `json:"retry_count"`
-	HitRetentionDays       int                          `json:"hit_retention_days"`
-	NonHitRetentionDays    int                          `json:"non_hit_retention_days"`
-	PreHashCheckEnabled    bool                         `json:"pre_hash_check_enabled"`
-	BlockedKeywords        []string                     `json:"blocked_keywords"`
-	KeywordBlockingMode    string                       `json:"keyword_blocking_mode"`
-	ModelFilter            ContentModerationModelFilter `json:"model_filter"`
-	LocalAuditEnabled      bool                         `json:"local_audit_enabled"`
-	LocalAuditMaxStorageGB float64                      `json:"local_audit_max_storage_gb"`
+	Enabled                         bool                         `json:"enabled"`
+	Mode                            string                       `json:"mode"`
+	BaseURL                         string                       `json:"base_url"`
+	Model                           string                       `json:"model"`
+	APIKey                          string                       `json:"api_key,omitempty"`
+	APIKeys                         []string                     `json:"api_keys,omitempty"`
+	TimeoutMS                       int                          `json:"timeout_ms"`
+	SampleRate                      int                          `json:"sample_rate"`
+	AllGroups                       bool                         `json:"all_groups"`
+	GroupIDs                        []int64                      `json:"group_ids"`
+	RecordNonHits                   bool                         `json:"record_non_hits"`
+	Thresholds                      map[string]float64           `json:"thresholds"`
+	WorkerCount                     int                          `json:"worker_count"`
+	QueueSize                       int                          `json:"queue_size"`
+	BlockStatus                     int                          `json:"block_status"`
+	BlockMessage                    string                       `json:"block_message"`
+	EmailOnHit                      bool                         `json:"email_on_hit"`
+	AutoBanEnabled                  bool                         `json:"auto_ban_enabled"`
+	BanThreshold                    int                          `json:"ban_threshold"`
+	ViolationWindowHours            int                          `json:"violation_window_hours"`
+	RetryCount                      int                          `json:"retry_count"`
+	HitRetentionDays                int                          `json:"hit_retention_days"`
+	NonHitRetentionDays             int                          `json:"non_hit_retention_days"`
+	PreHashCheckEnabled             bool                         `json:"pre_hash_check_enabled"`
+	BlockedKeywords                 []string                     `json:"blocked_keywords"`
+	KeywordBlockingMode             string                       `json:"keyword_blocking_mode"`
+	ModelFilter                     ContentModerationModelFilter `json:"model_filter"`
+	LocalAuditEnabled               bool                         `json:"local_audit_enabled"`
+	LocalAuditMaxStorageGB          float64                      `json:"local_audit_max_storage_gb"`
+	LocalAuditScenePolicy           string                       `json:"local_audit_scene_policy"`
+	LocalAuditExcludeImage          bool                         `json:"local_audit_exclude_image_generation"`
+	LocalAuditClientPatterns        []string                     `json:"local_audit_programming_client_patterns"`
+	LocalAuditToolPatterns          []string                     `json:"local_audit_programming_tool_patterns"`
+	LocalAuditMaxCaptureConcurrency int                          `json:"local_audit_max_capture_concurrency"`
 }
 
 type ContentModerationConfigView struct {
-	Enabled                bool                            `json:"enabled"`
-	Mode                   string                          `json:"mode"`
-	BaseURL                string                          `json:"base_url"`
-	Model                  string                          `json:"model"`
-	APIKeyConfigured       bool                            `json:"api_key_configured"`
-	APIKeyMasked           string                          `json:"api_key_masked"`
-	APIKeyCount            int                             `json:"api_key_count"`
-	APIKeyMasks            []string                        `json:"api_key_masks"`
-	APIKeyStatuses         []ContentModerationAPIKeyStatus `json:"api_key_statuses"`
-	TimeoutMS              int                             `json:"timeout_ms"`
-	SampleRate             int                             `json:"sample_rate"`
-	AllGroups              bool                            `json:"all_groups"`
-	GroupIDs               []int64                         `json:"group_ids"`
-	RecordNonHits          bool                            `json:"record_non_hits"`
-	Thresholds             map[string]float64              `json:"thresholds"`
-	WorkerCount            int                             `json:"worker_count"`
-	QueueSize              int                             `json:"queue_size"`
-	BlockStatus            int                             `json:"block_status"`
-	BlockMessage           string                          `json:"block_message"`
-	EmailOnHit             bool                            `json:"email_on_hit"`
-	AutoBanEnabled         bool                            `json:"auto_ban_enabled"`
-	BanThreshold           int                             `json:"ban_threshold"`
-	ViolationWindowHours   int                             `json:"violation_window_hours"`
-	RetryCount             int                             `json:"retry_count"`
-	HitRetentionDays       int                             `json:"hit_retention_days"`
-	NonHitRetentionDays    int                             `json:"non_hit_retention_days"`
-	PreHashCheckEnabled    bool                            `json:"pre_hash_check_enabled"`
-	BlockedKeywords        []string                        `json:"blocked_keywords"`
-	KeywordBlockingMode    string                          `json:"keyword_blocking_mode"`
-	ModelFilter            ContentModerationModelFilter    `json:"model_filter"`
-	LocalAuditEnabled      bool                            `json:"local_audit_enabled"`
-	LocalAuditMaxStorageGB float64                         `json:"local_audit_max_storage_gb"`
-	LocalAuditStoragePath  string                          `json:"local_audit_storage_path"`
+	Enabled                         bool                            `json:"enabled"`
+	Mode                            string                          `json:"mode"`
+	BaseURL                         string                          `json:"base_url"`
+	Model                           string                          `json:"model"`
+	APIKeyConfigured                bool                            `json:"api_key_configured"`
+	APIKeyMasked                    string                          `json:"api_key_masked"`
+	APIKeyCount                     int                             `json:"api_key_count"`
+	APIKeyMasks                     []string                        `json:"api_key_masks"`
+	APIKeyStatuses                  []ContentModerationAPIKeyStatus `json:"api_key_statuses"`
+	TimeoutMS                       int                             `json:"timeout_ms"`
+	SampleRate                      int                             `json:"sample_rate"`
+	AllGroups                       bool                            `json:"all_groups"`
+	GroupIDs                        []int64                         `json:"group_ids"`
+	RecordNonHits                   bool                            `json:"record_non_hits"`
+	Thresholds                      map[string]float64              `json:"thresholds"`
+	WorkerCount                     int                             `json:"worker_count"`
+	QueueSize                       int                             `json:"queue_size"`
+	BlockStatus                     int                             `json:"block_status"`
+	BlockMessage                    string                          `json:"block_message"`
+	EmailOnHit                      bool                            `json:"email_on_hit"`
+	AutoBanEnabled                  bool                            `json:"auto_ban_enabled"`
+	BanThreshold                    int                             `json:"ban_threshold"`
+	ViolationWindowHours            int                             `json:"violation_window_hours"`
+	RetryCount                      int                             `json:"retry_count"`
+	HitRetentionDays                int                             `json:"hit_retention_days"`
+	NonHitRetentionDays             int                             `json:"non_hit_retention_days"`
+	PreHashCheckEnabled             bool                            `json:"pre_hash_check_enabled"`
+	BlockedKeywords                 []string                        `json:"blocked_keywords"`
+	KeywordBlockingMode             string                          `json:"keyword_blocking_mode"`
+	ModelFilter                     ContentModerationModelFilter    `json:"model_filter"`
+	LocalAuditEnabled               bool                            `json:"local_audit_enabled"`
+	LocalAuditMaxStorageGB          float64                         `json:"local_audit_max_storage_gb"`
+	LocalAuditScenePolicy           string                          `json:"local_audit_scene_policy"`
+	LocalAuditExcludeImage          bool                            `json:"local_audit_exclude_image_generation"`
+	LocalAuditClientPatterns        []string                        `json:"local_audit_programming_client_patterns"`
+	LocalAuditToolPatterns          []string                        `json:"local_audit_programming_tool_patterns"`
+	LocalAuditMaxCaptureConcurrency int                             `json:"local_audit_max_capture_concurrency"`
+	LocalAuditStoragePath           string                          `json:"local_audit_storage_path"`
 }
 
 type ContentModerationAPIKeyStatus struct {
@@ -259,38 +276,43 @@ type ContentModerationTestAuditResult struct {
 }
 
 type UpdateContentModerationConfigInput struct {
-	Enabled                *bool                         `json:"enabled"`
-	Mode                   *string                       `json:"mode"`
-	BaseURL                *string                       `json:"base_url"`
-	Model                  *string                       `json:"model"`
-	APIKey                 *string                       `json:"api_key"`
-	APIKeys                *[]string                     `json:"api_keys"`
-	APIKeysMode            string                        `json:"api_keys_mode"`
-	DeleteAPIKeyHashes     *[]string                     `json:"delete_api_key_hashes"`
-	ClearAPIKey            bool                          `json:"clear_api_key"`
-	TimeoutMS              *int                          `json:"timeout_ms"`
-	SampleRate             *int                          `json:"sample_rate"`
-	AllGroups              *bool                         `json:"all_groups"`
-	GroupIDs               *[]int64                      `json:"group_ids"`
-	RecordNonHits          *bool                         `json:"record_non_hits"`
-	Thresholds             *map[string]float64           `json:"thresholds"`
-	WorkerCount            *int                          `json:"worker_count"`
-	QueueSize              *int                          `json:"queue_size"`
-	BlockStatus            *int                          `json:"block_status"`
-	BlockMessage           *string                       `json:"block_message"`
-	EmailOnHit             *bool                         `json:"email_on_hit"`
-	AutoBanEnabled         *bool                         `json:"auto_ban_enabled"`
-	BanThreshold           *int                          `json:"ban_threshold"`
-	ViolationWindowHours   *int                          `json:"violation_window_hours"`
-	RetryCount             *int                          `json:"retry_count"`
-	HitRetentionDays       *int                          `json:"hit_retention_days"`
-	NonHitRetentionDays    *int                          `json:"non_hit_retention_days"`
-	PreHashCheckEnabled    *bool                         `json:"pre_hash_check_enabled"`
-	BlockedKeywords        *[]string                     `json:"blocked_keywords"`
-	KeywordBlockingMode    *string                       `json:"keyword_blocking_mode"`
-	ModelFilter            *ContentModerationModelFilter `json:"model_filter"`
-	LocalAuditEnabled      *bool                         `json:"local_audit_enabled"`
-	LocalAuditMaxStorageGB *float64                      `json:"local_audit_max_storage_gb"`
+	Enabled                         *bool                         `json:"enabled"`
+	Mode                            *string                       `json:"mode"`
+	BaseURL                         *string                       `json:"base_url"`
+	Model                           *string                       `json:"model"`
+	APIKey                          *string                       `json:"api_key"`
+	APIKeys                         *[]string                     `json:"api_keys"`
+	APIKeysMode                     string                        `json:"api_keys_mode"`
+	DeleteAPIKeyHashes              *[]string                     `json:"delete_api_key_hashes"`
+	ClearAPIKey                     bool                          `json:"clear_api_key"`
+	TimeoutMS                       *int                          `json:"timeout_ms"`
+	SampleRate                      *int                          `json:"sample_rate"`
+	AllGroups                       *bool                         `json:"all_groups"`
+	GroupIDs                        *[]int64                      `json:"group_ids"`
+	RecordNonHits                   *bool                         `json:"record_non_hits"`
+	Thresholds                      *map[string]float64           `json:"thresholds"`
+	WorkerCount                     *int                          `json:"worker_count"`
+	QueueSize                       *int                          `json:"queue_size"`
+	BlockStatus                     *int                          `json:"block_status"`
+	BlockMessage                    *string                       `json:"block_message"`
+	EmailOnHit                      *bool                         `json:"email_on_hit"`
+	AutoBanEnabled                  *bool                         `json:"auto_ban_enabled"`
+	BanThreshold                    *int                          `json:"ban_threshold"`
+	ViolationWindowHours            *int                          `json:"violation_window_hours"`
+	RetryCount                      *int                          `json:"retry_count"`
+	HitRetentionDays                *int                          `json:"hit_retention_days"`
+	NonHitRetentionDays             *int                          `json:"non_hit_retention_days"`
+	PreHashCheckEnabled             *bool                         `json:"pre_hash_check_enabled"`
+	BlockedKeywords                 *[]string                     `json:"blocked_keywords"`
+	KeywordBlockingMode             *string                       `json:"keyword_blocking_mode"`
+	ModelFilter                     *ContentModerationModelFilter `json:"model_filter"`
+	LocalAuditEnabled               *bool                         `json:"local_audit_enabled"`
+	LocalAuditMaxStorageGB          *float64                      `json:"local_audit_max_storage_gb"`
+	LocalAuditScenePolicy           *string                       `json:"local_audit_scene_policy"`
+	LocalAuditExcludeImage          *bool                         `json:"local_audit_exclude_image_generation"`
+	LocalAuditClientPatterns        *[]string                     `json:"local_audit_programming_client_patterns"`
+	LocalAuditToolPatterns          *[]string                     `json:"local_audit_programming_tool_patterns"`
+	LocalAuditMaxCaptureConcurrency *int                          `json:"local_audit_max_capture_concurrency"`
 }
 
 type ContentModerationModelFilter struct {
@@ -517,6 +539,8 @@ type ContentModerationService struct {
 	localAuditDropped                 atomic.Int64
 	localAuditWritten                 atomic.Int64
 	localAuditErrors                  atomic.Int64
+	localAuditCaptureActive           atomic.Int64
+	localAuditOverloadSkipped         atomic.Int64
 	localAuditRetainedBytes           atomic.Int64
 	localAuditRetainedRecords         atomic.Int64
 	localAuditLastCleanupUnix         atomic.Int64
@@ -672,6 +696,21 @@ func (s *ContentModerationService) UpdateConfig(ctx context.Context, input Updat
 	}
 	if input.LocalAuditMaxStorageGB != nil {
 		cfg.LocalAuditMaxStorageGB = *input.LocalAuditMaxStorageGB
+	}
+	if input.LocalAuditScenePolicy != nil {
+		cfg.LocalAuditScenePolicy = strings.TrimSpace(*input.LocalAuditScenePolicy)
+	}
+	if input.LocalAuditExcludeImage != nil {
+		cfg.LocalAuditExcludeImage = *input.LocalAuditExcludeImage
+	}
+	if input.LocalAuditClientPatterns != nil {
+		cfg.LocalAuditClientPatterns = append([]string(nil), (*input.LocalAuditClientPatterns)...)
+	}
+	if input.LocalAuditToolPatterns != nil {
+		cfg.LocalAuditToolPatterns = append([]string(nil), (*input.LocalAuditToolPatterns)...)
+	}
+	if input.LocalAuditMaxCaptureConcurrency != nil {
+		cfg.LocalAuditMaxCaptureConcurrency = *input.LocalAuditMaxCaptureConcurrency
 	}
 	if input.AllGroups != nil {
 		cfg.AllGroups = *input.AllGroups
@@ -1506,6 +1545,12 @@ func (s *ContentModerationService) validateConfig(ctx context.Context, cfg *Cont
 	if cfg.LocalAuditEnabled && cfg.LocalAuditMaxStorageGB < minContentModerationLocalAuditStorageGB {
 		return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_LOCAL_AUDIT_STORAGE", "本地人工审计保留空间不能小于 0.1GB")
 	}
+	if cfg.LocalAuditScenePolicy != ContentModerationLocalAuditSceneAll && cfg.LocalAuditScenePolicy != ContentModerationLocalAuditSceneProgrammingOnly {
+		return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_LOCAL_AUDIT_SCENE_POLICY", "本地人工审计场景策略无效")
+	}
+	if cfg.LocalAuditMaxCaptureConcurrency < 0 {
+		return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_LOCAL_AUDIT_CAPTURE_CONCURRENCY", "本地人工审计捕获并发不能小于 0")
+	}
 	if !cfg.AllGroups && len(cfg.GroupIDs) > 0 && s.groupRepo != nil {
 		for _, groupID := range cfg.GroupIDs {
 			if _, err := s.groupRepo.GetByIDLite(ctx, groupID); err != nil {
@@ -1840,32 +1885,37 @@ func (s *ContentModerationService) siteName(ctx context.Context) string {
 
 func defaultContentModerationConfig() *ContentModerationConfig {
 	return &ContentModerationConfig{
-		Enabled:                false,
-		Mode:                   ContentModerationModePreBlock,
-		BaseURL:                defaultContentModerationBaseURL,
-		Model:                  defaultContentModerationModel,
-		TimeoutMS:              defaultContentModerationTimeoutMS,
-		SampleRate:             100,
-		AllGroups:              true,
-		GroupIDs:               []int64{},
-		RecordNonHits:          false,
-		Thresholds:             ContentModerationDefaultThresholds(),
-		WorkerCount:            defaultContentModerationWorkerCount,
-		QueueSize:              defaultContentModerationQueueSize,
-		BlockStatus:            defaultContentModerationBlockHTTPStatus,
-		BlockMessage:           defaultContentModerationBlockMessage,
-		EmailOnHit:             true,
-		AutoBanEnabled:         true,
-		BanThreshold:           defaultContentModerationBanThreshold,
-		ViolationWindowHours:   defaultContentModerationViolationWindowHours,
-		RetryCount:             defaultContentModerationRetryCount,
-		HitRetentionDays:       defaultContentModerationHitRetentionDays,
-		NonHitRetentionDays:    defaultContentModerationNonHitRetentionDays,
-		PreHashCheckEnabled:    false,
-		BlockedKeywords:        []string{},
-		KeywordBlockingMode:    ContentModerationKeywordModeKeywordAndAPI,
-		LocalAuditEnabled:      false,
-		LocalAuditMaxStorageGB: defaultContentModerationLocalAuditStorageGB,
+		Enabled:                         false,
+		Mode:                            ContentModerationModePreBlock,
+		BaseURL:                         defaultContentModerationBaseURL,
+		Model:                           defaultContentModerationModel,
+		TimeoutMS:                       defaultContentModerationTimeoutMS,
+		SampleRate:                      100,
+		AllGroups:                       true,
+		GroupIDs:                        []int64{},
+		RecordNonHits:                   false,
+		Thresholds:                      ContentModerationDefaultThresholds(),
+		WorkerCount:                     defaultContentModerationWorkerCount,
+		QueueSize:                       defaultContentModerationQueueSize,
+		BlockStatus:                     defaultContentModerationBlockHTTPStatus,
+		BlockMessage:                    defaultContentModerationBlockMessage,
+		EmailOnHit:                      true,
+		AutoBanEnabled:                  true,
+		BanThreshold:                    defaultContentModerationBanThreshold,
+		ViolationWindowHours:            defaultContentModerationViolationWindowHours,
+		RetryCount:                      defaultContentModerationRetryCount,
+		HitRetentionDays:                defaultContentModerationHitRetentionDays,
+		NonHitRetentionDays:             defaultContentModerationNonHitRetentionDays,
+		PreHashCheckEnabled:             false,
+		BlockedKeywords:                 []string{},
+		KeywordBlockingMode:             ContentModerationKeywordModeKeywordAndAPI,
+		LocalAuditEnabled:               false,
+		LocalAuditMaxStorageGB:          defaultContentModerationLocalAuditStorageGB,
+		LocalAuditScenePolicy:           ContentModerationLocalAuditSceneAll,
+		LocalAuditExcludeImage:          false,
+		LocalAuditClientPatterns:        defaultContentModerationLocalAuditProgrammingClientPatterns(),
+		LocalAuditToolPatterns:          defaultContentModerationLocalAuditProgrammingToolPatterns(),
+		LocalAuditMaxCaptureConcurrency: defaultContentModerationLocalAuditCaptureConcurrency,
 		ModelFilter: ContentModerationModelFilter{
 			Type:   ContentModerationModelFilterAll,
 			Models: []string{},
@@ -1881,6 +1931,8 @@ func cloneContentModerationConfig(cfg *ContentModerationConfig) *ContentModerati
 	clone.APIKeys = append([]string(nil), cfg.APIKeys...)
 	clone.GroupIDs = append([]int64(nil), cfg.GroupIDs...)
 	clone.BlockedKeywords = append([]string(nil), cfg.BlockedKeywords...)
+	clone.LocalAuditClientPatterns = append([]string(nil), cfg.LocalAuditClientPatterns...)
+	clone.LocalAuditToolPatterns = append([]string(nil), cfg.LocalAuditToolPatterns...)
 	clone.Thresholds = cloneFloatMap(cfg.Thresholds)
 	clone.ModelFilter = ContentModerationModelFilter{
 		Type:   cfg.ModelFilter.Type,
@@ -1975,6 +2027,15 @@ func (cfg *ContentModerationConfig) normalize() {
 	}
 	if cfg.LocalAuditMaxStorageGB > maxContentModerationLocalAuditStorageGB {
 		cfg.LocalAuditMaxStorageGB = maxContentModerationLocalAuditStorageGB
+	}
+	cfg.LocalAuditScenePolicy = normalizeContentModerationLocalAuditScenePolicy(cfg.LocalAuditScenePolicy)
+	cfg.LocalAuditClientPatterns = normalizeContentModerationLocalAuditPatterns(cfg.LocalAuditClientPatterns, defaultContentModerationLocalAuditProgrammingClientPatterns())
+	cfg.LocalAuditToolPatterns = normalizeContentModerationLocalAuditPatterns(cfg.LocalAuditToolPatterns, defaultContentModerationLocalAuditProgrammingToolPatterns())
+	if cfg.LocalAuditMaxCaptureConcurrency < 0 {
+		cfg.LocalAuditMaxCaptureConcurrency = 0
+	}
+	if cfg.LocalAuditMaxCaptureConcurrency > maxContentModerationLocalAuditCaptureConcurrency {
+		cfg.LocalAuditMaxCaptureConcurrency = maxContentModerationLocalAuditCaptureConcurrency
 	}
 }
 
@@ -2175,39 +2236,119 @@ func (s *ContentModerationService) configView(cfg *ContentModerationConfig) *Con
 		apiKeyMasked = masks[0]
 	}
 	return &ContentModerationConfigView{
-		Enabled:                cfg.Enabled,
-		Mode:                   cfg.Mode,
-		BaseURL:                cfg.BaseURL,
-		Model:                  cfg.Model,
-		APIKeyConfigured:       len(keys) > 0,
-		APIKeyMasked:           apiKeyMasked,
-		APIKeyCount:            len(keys),
-		APIKeyMasks:            masks,
-		APIKeyStatuses:         s.apiKeyStatuses(keys),
-		TimeoutMS:              cfg.TimeoutMS,
-		SampleRate:             cfg.SampleRate,
-		AllGroups:              cfg.AllGroups,
-		GroupIDs:               append([]int64(nil), cfg.GroupIDs...),
-		RecordNonHits:          cfg.RecordNonHits,
-		Thresholds:             cloneFloatMap(cfg.Thresholds),
-		WorkerCount:            cfg.WorkerCount,
-		QueueSize:              cfg.QueueSize,
-		BlockStatus:            cfg.BlockStatus,
-		BlockMessage:           cfg.BlockMessage,
-		EmailOnHit:             cfg.EmailOnHit,
-		AutoBanEnabled:         cfg.AutoBanEnabled,
-		BanThreshold:           cfg.BanThreshold,
-		ViolationWindowHours:   cfg.ViolationWindowHours,
-		RetryCount:             cfg.RetryCount,
-		HitRetentionDays:       cfg.HitRetentionDays,
-		NonHitRetentionDays:    cfg.NonHitRetentionDays,
-		PreHashCheckEnabled:    cfg.PreHashCheckEnabled,
-		BlockedKeywords:        append([]string(nil), cfg.BlockedKeywords...),
-		KeywordBlockingMode:    cfg.KeywordBlockingMode,
-		ModelFilter:            cloneContentModerationModelFilter(cfg.ModelFilter),
-		LocalAuditEnabled:      cfg.LocalAuditEnabled,
-		LocalAuditMaxStorageGB: cfg.LocalAuditMaxStorageGB,
-		LocalAuditStoragePath:  s.localAuditRoot(),
+		Enabled:                         cfg.Enabled,
+		Mode:                            cfg.Mode,
+		BaseURL:                         cfg.BaseURL,
+		Model:                           cfg.Model,
+		APIKeyConfigured:                len(keys) > 0,
+		APIKeyMasked:                    apiKeyMasked,
+		APIKeyCount:                     len(keys),
+		APIKeyMasks:                     masks,
+		APIKeyStatuses:                  s.apiKeyStatuses(keys),
+		TimeoutMS:                       cfg.TimeoutMS,
+		SampleRate:                      cfg.SampleRate,
+		AllGroups:                       cfg.AllGroups,
+		GroupIDs:                        append([]int64(nil), cfg.GroupIDs...),
+		RecordNonHits:                   cfg.RecordNonHits,
+		Thresholds:                      cloneFloatMap(cfg.Thresholds),
+		WorkerCount:                     cfg.WorkerCount,
+		QueueSize:                       cfg.QueueSize,
+		BlockStatus:                     cfg.BlockStatus,
+		BlockMessage:                    cfg.BlockMessage,
+		EmailOnHit:                      cfg.EmailOnHit,
+		AutoBanEnabled:                  cfg.AutoBanEnabled,
+		BanThreshold:                    cfg.BanThreshold,
+		ViolationWindowHours:            cfg.ViolationWindowHours,
+		RetryCount:                      cfg.RetryCount,
+		HitRetentionDays:                cfg.HitRetentionDays,
+		NonHitRetentionDays:             cfg.NonHitRetentionDays,
+		PreHashCheckEnabled:             cfg.PreHashCheckEnabled,
+		BlockedKeywords:                 append([]string(nil), cfg.BlockedKeywords...),
+		KeywordBlockingMode:             cfg.KeywordBlockingMode,
+		ModelFilter:                     cloneContentModerationModelFilter(cfg.ModelFilter),
+		LocalAuditEnabled:               cfg.LocalAuditEnabled,
+		LocalAuditMaxStorageGB:          cfg.LocalAuditMaxStorageGB,
+		LocalAuditScenePolicy:           cfg.LocalAuditScenePolicy,
+		LocalAuditExcludeImage:          cfg.LocalAuditExcludeImage,
+		LocalAuditClientPatterns:        append([]string(nil), cfg.LocalAuditClientPatterns...),
+		LocalAuditToolPatterns:          append([]string(nil), cfg.LocalAuditToolPatterns...),
+		LocalAuditMaxCaptureConcurrency: cfg.LocalAuditMaxCaptureConcurrency,
+		LocalAuditStoragePath:           s.localAuditRoot(),
+	}
+}
+
+func normalizeContentModerationLocalAuditScenePolicy(value string) string {
+	switch strings.TrimSpace(value) {
+	case ContentModerationLocalAuditSceneProgrammingOnly:
+		return ContentModerationLocalAuditSceneProgrammingOnly
+	default:
+		return ContentModerationLocalAuditSceneAll
+	}
+}
+
+func normalizeContentModerationLocalAuditPatterns(values []string, defaults []string) []string {
+	if len(values) == 0 {
+		return append([]string(nil), defaults...)
+	}
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.ToLower(strings.TrimSpace(value))
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+		if len(out) >= maxContentModerationLocalAuditPatterns {
+			break
+		}
+	}
+	if len(out) == 0 {
+		return append([]string(nil), defaults...)
+	}
+	return out
+}
+
+func defaultContentModerationLocalAuditProgrammingClientPatterns() []string {
+	return []string{
+		"codex_",
+		"codex ",
+		"claude-code",
+		"claude code",
+		"claude_cli",
+		"gemini-cli",
+		"gemini cli",
+		"aider",
+		"cursor",
+		"windsurf",
+		"continue",
+		"roo",
+		"cline",
+		"vscode",
+	}
+}
+
+func defaultContentModerationLocalAuditProgrammingToolPatterns() []string {
+	return []string{
+		"read",
+		"file_read",
+		"open_file",
+		"grep",
+		"search",
+		"ls",
+		"glob",
+		"write",
+		"file_write",
+		"edit",
+		"patch",
+		"apply_patch",
+		"create_file",
+		"delete_file",
+		"rename_file",
+		"multi_tool_use",
 	}
 }
 

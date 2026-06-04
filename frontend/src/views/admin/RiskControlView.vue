@@ -919,11 +919,29 @@
                     <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">GB</span>
                   </div>
                 </div>
+                <div>
+                  <label class="input-label">{{ t('admin.riskControl.localAuditMaxCaptureConcurrency') }}</label>
+                  <input v-model.number="configForm.local_audit_max_capture_concurrency" type="number" min="0" max="100000" step="1" class="input" />
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.riskControl.localAuditMaxCaptureConcurrencyHint') }}
+                  </p>
+                </div>
                 <div class="rounded-lg bg-gray-50 p-3 text-xs leading-5 text-gray-500 dark:bg-dark-900/30 dark:text-gray-400">
                   <p class="font-medium text-gray-700 dark:text-gray-200">{{ t('admin.riskControl.localAuditStoragePath') }}</p>
                   <p class="mt-1 break-all font-mono">{{ configForm.local_audit_storage_path || status?.local_audit?.storage_path || '-' }}</p>
                   <p class="mt-2">
                     {{ t('admin.riskControl.localAuditStorageStats', { records: formatNumber(status?.local_audit?.retained_records ?? 0), bytes: formatBytes(status?.local_audit?.retained_bytes ?? 0), max: configForm.local_audit_max_storage_gb }) }}
+                  </p>
+                </div>
+                <div class="rounded-lg bg-amber-50 p-3 text-xs leading-5 text-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+                  <p class="font-medium">{{ t('admin.riskControl.localAuditStabilityTitle') }}</p>
+                  <p class="mt-1">
+                    {{ t('admin.riskControl.localAuditStabilityHint', {
+                      active: formatNumber(status?.local_audit?.capture_active ?? 0),
+                      skipped: formatNumber(status?.local_audit?.overload_skipped ?? 0),
+                      limit: formatBytes(status?.local_audit?.response_capture_limit_bytes ?? 1048576),
+                      concurrency: configForm.local_audit_max_capture_concurrency || 0,
+                    }) }}
                   </p>
                 </div>
               </div>
@@ -1411,6 +1429,7 @@ const configForm = reactive({
   model_filter_models: [] as string[],
   local_audit_enabled: false,
   local_audit_max_storage_gb: 1,
+  local_audit_max_capture_concurrency: 128,
   local_audit_storage_path: '',
 })
 
@@ -1912,6 +1931,7 @@ function applyConfig(config: ContentModerationConfig) {
   configForm.model_filter_models = modelFilter.models
   configForm.local_audit_enabled = config.local_audit_enabled ?? false
   configForm.local_audit_max_storage_gb = config.local_audit_max_storage_gb || 1
+  configForm.local_audit_max_capture_concurrency = config.local_audit_max_capture_concurrency ?? 128
   configForm.local_audit_storage_path = config.local_audit_storage_path || ''
 }
 
@@ -1999,6 +2019,7 @@ async function saveConfig() {
       model_filter: modelFilterPayload,
       local_audit_enabled: configForm.local_audit_enabled,
       local_audit_max_storage_gb: Number(configForm.local_audit_max_storage_gb) || 1,
+      local_audit_max_capture_concurrency: Math.max(0, Number(configForm.local_audit_max_capture_concurrency) || 0),
     }
     const keys = parseApiKeys(configForm.api_keys_text)
     if (!payload.clear_api_key && configForm.api_keys_mode === 'replace' && keys.length === 0) {
