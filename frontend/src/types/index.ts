@@ -285,6 +285,7 @@ export interface PublicModelPricingResponse {
   enabled: boolean
   generated_at: string
   plans: PublicModelPricingPlan[]
+  balance_recharge_multiplier: number
   help_text: string
   help_image_url: string
 }

@@ -140,9 +140,10 @@ func TestPaymentHandler_GetPublicModelPricingSanitizesAndFiltersPlans(t *testing
 	require.NoError(t, err)
 
 	configSvc := service.NewPaymentConfigService(client, publicPricingSettingRepo{values: map[string]string{
-		service.SettingPaymentEnabled: "true",
-		service.SettingHelpText:       "请扫码联系客服",
-		service.SettingHelpImageURL:   "https://example.com/help.png",
+		service.SettingPaymentEnabled:      "true",
+		service.SettingBalanceRechargeMult: "8",
+		service.SettingHelpText:            "请扫码联系客服",
+		service.SettingHelpImageURL:        "https://example.com/help.png",
 	}}, nil)
 	h := NewPaymentHandler(nil, configSvc, nil)
 
@@ -156,11 +157,12 @@ func TestPaymentHandler_GetPublicModelPricingSanitizesAndFiltersPlans(t *testing
 	var resp struct {
 		Code int `json:"code"`
 		Data struct {
-			Enabled      bool   `json:"enabled"`
-			GeneratedAt  string `json:"generated_at"`
-			HelpText     string `json:"help_text"`
-			HelpImageURL string `json:"help_image_url"`
-			Plans        []struct {
+			Enabled                   bool    `json:"enabled"`
+			GeneratedAt               string  `json:"generated_at"`
+			BalanceRechargeMultiplier float64 `json:"balance_recharge_multiplier"`
+			HelpText                  string  `json:"help_text"`
+			HelpImageURL              string  `json:"help_image_url"`
+			Plans                     []struct {
 				ID              int64    `json:"id"`
 				GroupPlatform   string   `json:"group_platform"`
 				GroupName       string   `json:"group_name"`
@@ -180,6 +182,7 @@ func TestPaymentHandler_GetPublicModelPricingSanitizesAndFiltersPlans(t *testing
 	require.Equal(t, 0, resp.Code)
 	require.True(t, resp.Data.Enabled)
 	require.NotEmpty(t, resp.Data.GeneratedAt)
+	require.Equal(t, 8.0, resp.Data.BalanceRechargeMultiplier)
 	require.Equal(t, "请扫码联系客服", resp.Data.HelpText)
 	require.Equal(t, "https://example.com/help.png", resp.Data.HelpImageURL)
 	require.Len(t, resp.Data.Plans, 1)

@@ -180,11 +180,12 @@ type checkoutPlan struct {
 }
 
 type publicModelPricingResponse struct {
-	Enabled      bool                     `json:"enabled"`
-	GeneratedAt  string                   `json:"generated_at"`
-	Plans        []publicModelPricingPlan `json:"plans"`
-	HelpText     string                   `json:"help_text"`
-	HelpImageURL string                   `json:"help_image_url"`
+	Enabled                   bool                     `json:"enabled"`
+	GeneratedAt               string                   `json:"generated_at"`
+	Plans                     []publicModelPricingPlan `json:"plans"`
+	BalanceRechargeMultiplier float64                  `json:"balance_recharge_multiplier"`
+	HelpText                  string                   `json:"help_text"`
+	HelpImageURL              string                   `json:"help_image_url"`
 }
 
 type publicModelPricingPlan struct {
@@ -217,11 +218,12 @@ func (h *PaymentHandler) GetPublicModelPricing(c *gin.Context) {
 	}
 
 	out := publicModelPricingResponse{
-		Enabled:      cfg.Enabled,
-		GeneratedAt:  time.Now().UTC().Format(time.RFC3339),
-		Plans:        []publicModelPricingPlan{},
-		HelpText:     cfg.HelpText,
-		HelpImageURL: cfg.HelpImageURL,
+		Enabled:                   cfg.Enabled,
+		GeneratedAt:               time.Now().UTC().Format(time.RFC3339),
+		Plans:                     []publicModelPricingPlan{},
+		BalanceRechargeMultiplier: cfg.BalanceRechargeMultiplier,
+		HelpText:                  cfg.HelpText,
+		HelpImageURL:              cfg.HelpImageURL,
 	}
 	if !cfg.Enabled {
 		response.Success(c, out)

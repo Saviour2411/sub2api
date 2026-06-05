@@ -47,7 +47,7 @@
             {{ localText('模型定价', 'Model Pricing') }}
           </h1>
           <p class="mt-4 max-w-3xl text-base leading-7 text-slate-600 dark:text-dark-300">
-            {{ localText('查看当前可购买的模型订阅套餐、倍率和额度配置。套餐内容由管理员维护，页面会读取最新配置。', 'View live subscription plans, rates, and quota limits maintained by the administrator.') }}
+            {{ pricingIntroText }}
           </p>
         </div>
 
@@ -227,6 +227,20 @@ const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appS
 const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '')
 const visiblePlans = computed(() => pricing.value?.plans ?? [])
 const platformCount = computed(() => new Set(visiblePlans.value.map((plan) => plan.group_platform || 'api')).size)
+const pricingIntroText = computed(() => {
+  const multiplier = pricing.value?.balance_recharge_multiplier
+  if (typeof multiplier === 'number' && Number.isFinite(multiplier) && multiplier > 0) {
+    const formatted = formatMultiplier(multiplier)
+    return localText(
+      `充值倍率为 1 人民币 = ${formatted} 美元。所有模型的输入、输出和缓存价格与官方保持一致；生图模型单独按次收费。`,
+      `Top-ups convert at RMB 1 = USD ${formatted}. Input, output, and cache pricing for all models matches official rates. Image generation models are billed separately per image.`
+    )
+  }
+  return localText(
+    '充值倍率以系统配置为准。所有模型的输入、输出和缓存价格与官方保持一致；生图模型单独按次收费。',
+    'Top-up conversion follows the system configuration. Input, output, and cache pricing for all models matches official rates. Image generation models are billed separately per image.'
+  )
+})
 const formattedGeneratedAt = computed(() => {
   if (!pricing.value?.generated_at) return '-'
   return new Date(pricing.value.generated_at).toLocaleString()
@@ -244,6 +258,11 @@ function formatPrice(value: number): string {
 function formatRate(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return '1'
   return Number(value.toPrecision(10)).toString()
+}
+
+function formatMultiplier(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '1'
+  return Number(value.toFixed(2)).toString()
 }
 
 function validitySuffix(plan: PublicModelPricingPlan): string {
