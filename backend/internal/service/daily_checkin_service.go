@@ -993,7 +993,7 @@ LIMIT $2`, userID, limit)
 func queryDailyCheckinRecords(ctx context.Context, client *dbent.Client, where string, args ...any) ([]DailyCheckinRecord, error) {
 	rows, err := client.QueryContext(ctx, `
 SELECT id, prize_id, prize_name, reward_type, reward_amount::double precision,
-       concurrency_after, subscription_group_id, subscription_validity_days, created_at
+       concurrency_before, concurrency_after, subscription_group_id, subscription_validity_days, created_at
 FROM daily_checkins
 `+where, args...)
 	if err != nil {
@@ -1003,13 +1003,14 @@ FROM daily_checkins
 	out := make([]DailyCheckinRecord, 0)
 	for rows.Next() {
 		var (
-			record          DailyCheckinRecord
-			concurrency     sql.NullInt64
-			groupID         sql.NullInt64
-			validityDays    sql.NullInt64
-			checkedInAtTime time.Time
+			record            DailyCheckinRecord
+			concurrencyBefore sql.NullInt64
+			concurrencyAfter  sql.NullInt64
+			groupID           sql.NullInt64
+			validityDays      sql.NullInt64
+			checkedInAtTime   time.Time
 		)
-		if err := rows.Scan(&record.ID, &record.PrizeID, &record.PrizeName, &record.Type, &record.Amount, &concurrency, &groupID, &validityDays, &checkedInAtTime); err != nil {
+		if err := rows.Scan(&record.ID, &record.PrizeID, &record.PrizeName, &record.Type, &record.Amount, &concurrencyBefore, &concurrencyAfter, &groupID, &validityDays, &checkedInAtTime); err != nil {
 			return nil, fmt.Errorf("scan daily check-in record: %w", err)
 		}
 		if record.PrizeID == "" {
@@ -1021,8 +1022,8 @@ FROM daily_checkins
 		if record.Type == "" {
 			record.Type = DailyCheckinPrizeTypeBalance
 		}
-		if concurrency.Valid {
-			record.Concurrency = int(concurrency.Int64)
+		if v, ok := dailyCheckinConcurrencyDelta(concurrencyBefore, concurrencyAfter); ok {
+			record.Concurrency = v
 		}
 		if groupID.Valid {
 			v := groupID.Int64
@@ -1035,6 +1036,16 @@ FROM daily_checkins
 		out = append(out, record)
 	}
 	return out, rows.Err()
+}
+
+func dailyCheckinConcurrencyDelta(before, after sql.NullInt64) (int, bool) {
+	if before.Valid && after.Valid {
+		return int(after.Int64 - before.Int64), true
+	}
+	if after.Valid {
+		return int(after.Int64), true
+	}
+	return 0, false
 }
 
 func (p DailyCheckinPrizeView) balanceReward() (float64, error) {

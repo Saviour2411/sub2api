@@ -26,6 +26,7 @@ const messages: Record<string, string> = {
   'dailyCheckin.factor': '专属奖池',
   'dailyCheckin.kicker': '每日福利',
   'dailyCheckin.loading': '加载中',
+  'dailyCheckin.days': '天',
   'dailyCheckin.prizePool': '奖品列表',
   'dailyCheckin.ready': '今日可签到',
   'dailyCheckin.recent': '最近记录',
@@ -35,6 +36,7 @@ const messages: Record<string, string> = {
   'dailyCheckin.title': '每日签到',
   'dailyCheckin.types.balance': '余额',
   'dailyCheckin.types.concurrency': '并发',
+  'dailyCheckin.types.subscription': '订阅',
   'dailyCheckin.types.none': '谢谢参与'
 }
 
@@ -169,9 +171,91 @@ describe('DailyCheckinView', () => {
     await vi.advanceTimersByTimeAsync(3300)
     await flushPromises()
 
-    expect(showSuccess).toHaveBeenCalledWith('签到成功：余额10刀 $10.00')
+    expect(showSuccess).toHaveBeenCalledWith('签到成功：余额10刀')
     expect(wrapper.text()).toContain('中奖结果')
-    expect(wrapper.text()).toContain('余额10刀 $10.00')
+    expect(wrapper.text()).toContain('余额10刀')
+    expect(wrapper.text()).not.toContain('余额10刀 $10.00')
+  })
+
+  it('自定义奖品名不会重复追加奖励数值', async () => {
+    const customConcurrency = {
+      prize_id: 'p4',
+      prize_name: '永久并发+1',
+      type: 'concurrency',
+      concurrency: 6,
+      checked_in_at: '2026-06-02T00:00:00Z'
+    }
+    getDailyCheckinStatus.mockResolvedValue(status({
+      checked_in_today: true,
+      today_result: customConcurrency,
+      recent_records: [
+        customConcurrency,
+        {
+          id: 5,
+          prize_id: 'p5',
+          prize_name: '余额10刀',
+          type: 'balance',
+          amount: 10,
+          checked_in_at: '2026-06-01T00:00:00Z'
+        },
+        {
+          id: 6,
+          prize_id: 'p6',
+          prize_name: '月卡30天',
+          type: 'subscription',
+          validity_days: 30,
+          checked_in_at: '2026-05-31T00:00:00Z'
+        }
+      ]
+    }))
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('永久并发+1')
+    expect(wrapper.text()).not.toContain('永久并发+1 +6')
+    expect(wrapper.text()).toContain('余额10刀')
+    expect(wrapper.text()).not.toContain('余额10刀 $10.00')
+    expect(wrapper.text()).toContain('月卡30天')
+    expect(wrapper.text()).not.toContain('月卡30天 30天')
+  })
+
+  it('默认奖品名仍会追加奖励数值', async () => {
+    getDailyCheckinStatus.mockResolvedValue(status({
+      checked_in_today: true,
+      today_result: {
+        prize_id: 'p4',
+        prize_name: '并发奖励',
+        type: 'concurrency',
+        concurrency: 1,
+        checked_in_at: '2026-06-02T00:00:00Z'
+      },
+      recent_records: [
+        {
+          id: 7,
+          prize_id: 'p1',
+          prize_name: '余额奖励',
+          type: 'balance',
+          amount: 2,
+          checked_in_at: '2026-06-01T00:00:00Z'
+        },
+        {
+          id: 8,
+          prize_id: 'p2',
+          prize_name: '订阅奖励',
+          type: 'subscription',
+          validity_days: 7,
+          checked_in_at: '2026-05-31T00:00:00Z'
+        }
+      ]
+    }))
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('并发奖励 +1')
+    expect(wrapper.text()).toContain('余额奖励 $2.00')
+    expect(wrapper.text()).toContain('订阅奖励 7天')
   })
 
   it('签到失败时立即显示错误通知', async () => {

@@ -3,6 +3,7 @@
 package service
 
 import (
+	"database/sql"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -65,5 +66,43 @@ func TestPublicPrizeViewsHideProbabilityFields(t *testing.T) {
 		if strings.Contains(body, forbidden) {
 			t.Fatalf("公开奖品不应包含 %s 字段: %s", forbidden, body)
 		}
+	}
+}
+
+func TestQueryDailyCheckinRecordsReturnsConcurrencyDelta(t *testing.T) {
+	tests := []struct {
+		name      string
+		before    sql.NullInt64
+		after     sql.NullInt64
+		wantValue int
+		wantOK    bool
+	}{
+		{
+			name:      "returns delta when before and after exist",
+			before:    sql.NullInt64{Int64: 5, Valid: true},
+			after:     sql.NullInt64{Int64: 6, Valid: true},
+			wantValue: 1,
+			wantOK:    true,
+		},
+		{
+			name:      "keeps legacy after value when before is missing",
+			after:     sql.NullInt64{Int64: 6, Valid: true},
+			wantValue: 6,
+			wantOK:    true,
+		},
+		{
+			name:   "returns empty when no concurrency values exist",
+			before: sql.NullInt64{Int64: 5, Valid: true},
+			wantOK: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotValue, gotOK := dailyCheckinConcurrencyDelta(tt.before, tt.after)
+			if gotValue != tt.wantValue || gotOK != tt.wantOK {
+				t.Fatalf("dailyCheckinConcurrencyDelta() = (%d, %v), want (%d, %v)", gotValue, gotOK, tt.wantValue, tt.wantOK)
+			}
+		})
 	}
 }

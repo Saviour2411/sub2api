@@ -290,10 +290,26 @@ function prizeTypeLabel(type: string): string {
 
 function rewardLabel(reward: DailyCheckinReward | DailyCheckinRecord | null | undefined): string {
   if (!reward) return ''
-  if (reward.type === 'balance') return `${reward.prize_name} ${formatPrizeCurrency(reward.amount)}`
-  if (reward.type === 'concurrency') return `${reward.prize_name} +${reward.concurrency || 0}`
-  if (reward.type === 'subscription') return `${reward.prize_name} ${reward.validity_days || 0}${t('dailyCheckin.days')}`
-  return reward.prize_name || t('dailyCheckin.types.none')
+  const name = reward.prize_name || defaultRewardName(reward.type)
+  if (!isDefaultRewardName(name, reward.type)) return name
+  if (reward.type === 'balance') return `${name} ${formatPrizeCurrency(reward.amount)}`
+  if (reward.type === 'concurrency') return `${name} +${reward.concurrency || 0}`
+  if (reward.type === 'subscription') return `${name} ${reward.validity_days || 0}${t('dailyCheckin.days')}`
+  return name
+}
+
+function defaultRewardName(type: string): string {
+  return prizeTypeLabel(type)
+}
+
+function isDefaultRewardName(name: string, type: string): boolean {
+  const defaultsByType: Record<string, string[]> = {
+    balance: [defaultRewardName(type), '余额奖励', 'Balance Reward'],
+    concurrency: [defaultRewardName(type), '并发奖励', 'Concurrency Reward'],
+    subscription: [defaultRewardName(type), '订阅奖励', 'Subscription Reward'],
+    none: [defaultRewardName(type)]
+  }
+  return (defaultsByType[type] || [defaultRewardName(type)]).includes(name)
 }
 
 function formatPrizeCurrency(amount: number | null | undefined): string {
