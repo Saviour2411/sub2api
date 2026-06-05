@@ -195,6 +195,7 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Account not found")
 	}
+	prompt = s.manualTextTestPrompt(ctx, account, modelID, prompt)
 
 	// Route to platform-specific test method
 	if account.IsOpenAI() {
@@ -1925,6 +1926,16 @@ func (s *AccountTestService) scheduledTextTestPrompt(ctx context.Context, accoun
 		return ""
 	}
 	if s.settingService != nil {
+		return s.settingService.GetScheduledTestDefaultPrompt(ctx)
+	}
+	return DefaultScheduledTestPrompt
+}
+
+func (s *AccountTestService) manualTextTestPrompt(ctx context.Context, account *Account, modelID string, prompt string) string {
+	if strings.TrimSpace(prompt) != "" || !scheduledTestUsesTextPrompt(account, modelID) {
+		return prompt
+	}
+	if s != nil && s.settingService != nil {
 		return s.settingService.GetScheduledTestDefaultPrompt(ctx)
 	}
 	return DefaultScheduledTestPrompt

@@ -70,6 +70,23 @@ func readQueuedRequestJSON(t *testing.T, req *http.Request) map[string]any {
 	return payload
 }
 
+func openAITestPayloadUserText(t *testing.T, payload map[string]any) string {
+	t.Helper()
+	input, ok := payload["input"].([]any)
+	require.True(t, ok)
+	require.Len(t, input, 1)
+	item, ok := input[0].(map[string]any)
+	require.True(t, ok)
+	content, ok := item["content"].([]any)
+	require.True(t, ok)
+	require.Len(t, content, 1)
+	textItem, ok := content[0].(map[string]any)
+	require.True(t, ok)
+	text, ok := textItem["text"].(string)
+	require.True(t, ok)
+	return text
+}
+
 // --- test functions ---
 
 func newTestContext() (*gin.Context, *httptest.ResponseRecorder) {
@@ -406,6 +423,121 @@ func TestAccountTestService_OpenAIAPIKeyResponsesUnsupportedUsesChatCompletionsP
 	require.Contains(t, body, "已通过 /v1/chat/completions 验证")
 	require.Contains(t, body, `"success":true`)
 	require.NotContains(t, body, "当前测试接口仅支持 Responses API 路径")
+}
+
+func TestAccountTestService_ManualOpenAITextTestUsesScheduledDefaultPrompt(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	resp := newJSONResponse(http.StatusOK, "")
+	resp.Body = io.NopCloser(strings.NewReader(`data: {"type":"response.completed"}
+
+`))
+	account := &Account{
+		ID:          97,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{"access_token": "test-token"},
+	}
+	repo := &openAIAccountTestRepo{
+		mockAccountRepoForGemini: mockAccountRepoForGemini{
+			accountsByID: map[int64]*Account{account.ID: account},
+		},
+	}
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{
+		accountRepo:  repo,
+		httpUpstream: upstream,
+		settingService: NewSettingService(&settingRepoStub{values: map[string]string{
+			SettingKeyScheduledTestDefaultPrompt: "configured manual prompt",
+		}}, &config.Config{}),
+	}
+
+	err := svc.TestAccountConnection(ctx, account.ID, "gpt-5.4", "", AccountTestModeDefault)
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1)
+	payload := readQueuedRequestJSON(t, upstream.requests[0])
+	require.Equal(t, "configured manual prompt", openAITestPayloadUserText(t, payload))
+}
+
+func TestAccountTestService_ManualOpenAITextTestKeepsExplicitPrompt(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	resp := newJSONResponse(http.StatusOK, "")
+	resp.Body = io.NopCloser(strings.NewReader(`data: {"type":"response.completed"}
+
+`))
+	account := &Account{
+		ID:          98,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{"access_token": "test-token"},
+	}
+	repo := &openAIAccountTestRepo{
+		mockAccountRepoForGemini: mockAccountRepoForGemini{
+			accountsByID: map[int64]*Account{account.ID: account},
+		},
+	}
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{
+		accountRepo:  repo,
+		httpUpstream: upstream,
+		settingService: NewSettingService(&settingRepoStub{values: map[string]string{
+			SettingKeyScheduledTestDefaultPrompt: "configured manual prompt",
+		}}, &config.Config{}),
+	}
+
+	err := svc.TestAccountConnection(ctx, account.ID, "gpt-5.4", "explicit prompt", AccountTestModeDefault)
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1)
+	payload := readQueuedRequestJSON(t, upstream.requests[0])
+	require.Equal(t, "explicit prompt", openAITestPayloadUserText(t, payload))
+}
+
+func TestAccountTestService_ManualOpenAIImageTestSkipsScheduledDefaultPrompt(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"data":[{"b64_json":"aGVsbG8=","revised_prompt":"draw a cat"}]}`)),
+		},
+	}
+	account := &Account{
+		ID:          99,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "test-api-key",
+			"base_url": "https://image-upstream.example/v1",
+		},
+	}
+	repo := &openAIAccountTestRepo{
+		mockAccountRepoForGemini: mockAccountRepoForGemini{
+			accountsByID: map[int64]*Account{account.ID: account},
+		},
+	}
+	svc := &AccountTestService{
+		accountRepo:  repo,
+		httpUpstream: upstream,
+		cfg:          &config.Config{},
+		settingService: NewSettingService(&settingRepoStub{values: map[string]string{
+			SettingKeyScheduledTestDefaultPrompt: "configured text prompt",
+		}}, &config.Config{}),
+	}
+
+	err := svc.TestAccountConnection(ctx, account.ID, "gpt-image-2", "", AccountTestModeDefault)
+	require.NoError(t, err)
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://image-upstream.example/v1/images/generations", upstream.lastReq.URL.String())
+	require.Equal(t, defaultOpenAIImageTestPrompt, gjson.GetBytes(upstream.lastBody, "prompt").String())
+	require.NotEqual(t, "configured text prompt", gjson.GetBytes(upstream.lastBody, "prompt").String())
 }
 
 func TestAccountTestService_RunTestBackgroundOpenAIAPIKeyUnsupportedResponsesUsesChatCompletions(t *testing.T) {
