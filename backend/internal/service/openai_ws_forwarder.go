@@ -1176,6 +1176,7 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	if account != nil && account.Type == AccountTypeOAuth && !openai.IsCodexCLIRequest(headers.Get("user-agent")) {
 		headers.Set("user-agent", codexCLIUserAgent)
 	}
+	applyOpenAICodexCLIEmulationHeaders(context.Background(), headers, account, s.settingService, true)
 
 	return headers, sessionResolution
 }

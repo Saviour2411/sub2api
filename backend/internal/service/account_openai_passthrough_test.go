@@ -135,6 +135,56 @@ func TestAccount_IsCodexCLIOnlyEnabled(t *testing.T) {
 	})
 }
 
+func TestAccount_IsOpenAICodexCLIEmulationEnabled(t *testing.T) {
+	t.Run("openai account enabled", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeAPIKey,
+			Extra: map[string]any{
+				openAICodexCLIEmulationExtraKey: true,
+			},
+		}
+		require.True(t, account.IsOpenAICodexCLIEmulationEnabled())
+	})
+
+	t.Run("missing or non-openai disabled", func(t *testing.T) {
+		require.False(t, (&Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}).IsOpenAICodexCLIEmulationEnabled())
+		require.False(t, (&Account{
+			Platform: PlatformAnthropic,
+			Type:     AccountTypeAPIKey,
+			Extra: map[string]any{
+				openAICodexCLIEmulationExtraKey: true,
+			},
+		}).IsOpenAICodexCLIEmulationEnabled())
+	})
+}
+
+func TestAccount_ShouldUseOpenAIResponsesAPI(t *testing.T) {
+	t.Run("apikey emulation defaults to responses", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeAPIKey,
+			Extra: map[string]any{
+				openAICodexCLIEmulationExtraKey: true,
+				"openai_responses_supported":    false,
+			},
+		}
+		require.True(t, account.ShouldUseOpenAIResponsesAPI())
+	})
+
+	t.Run("apikey emulation respects forced chat completions", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeAPIKey,
+			Extra: map[string]any{
+				openAICodexCLIEmulationExtraKey: true,
+				"openai_responses_mode":         "force_chat_completions",
+			},
+		}
+		require.False(t, account.ShouldUseOpenAIResponsesAPI())
+	})
+}
+
 func TestAccount_IsOpenAIResponsesWebSocketV2Enabled(t *testing.T) {
 	t.Run("OAuth使用OAuth专用开关", func(t *testing.T) {
 		account := &Account{

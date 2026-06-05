@@ -3629,6 +3629,8 @@ export default {
         responsesStatusAutoUnknown: '自动探测：未探测',
         responsesStatusForcedResponses: '已强制 Responses',
         responsesStatusForcedChatCompletions: '已强制 Chat Completions',
+        codexCLIEmulation: 'Codex CLI 模拟',
+        codexCLIEmulationDesc: '对该 OpenAI 账号的真实转发、手动测试和账号定时检测统一注入 Codex CLI 特征请求头。API Key 默认优先走 Responses，除非显式强制 Chat Completions。',
         codexCLIOnly: '仅允许 Codex 官方客户端',
         codexCLIOnlyDesc: '仅对 OpenAI OAuth 生效。开启后仅允许 Codex 官方客户端家族访问；关闭后完全绕过并保持原逻辑。',
         codexImageGenerationBridge: 'Codex 图片生成桥接',
@@ -5945,7 +5947,7 @@ export default {
         antigravityUserAgentVersionPlaceholder: '1.23.2',
         antigravityUserAgentVersionHint: '留空时使用 ANTIGRAVITY_USER_AGENT_VERSION 或内置默认值 1.23.2；填写后后台设置优先。',
         openaiCodexUserAgent: 'OpenAI Codex UA',
-        openaiCodexUserAgentPlaceholder: 'codex-tui/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color (codex-tui; 0.125.0)',
+        openaiCodexUserAgentPlaceholder: 'codex-tui/0.137.0 (Ubuntu 24.4.0; x86_64) xterm-256color (codex-tui; 0.137.0)',
         openaiCodexUserAgentHint: '用于规避 OpenAI 上游 Cloudflare 对浏览器 UA 的访问质询。仅在检测到客户端 User-Agent 为浏览器（Mozilla/...）时生效，其他客户端原样透传。留空使用内置默认值。',
       },
       semanticErrorDetection: {

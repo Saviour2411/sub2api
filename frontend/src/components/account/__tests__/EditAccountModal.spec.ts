@@ -270,6 +270,24 @@ describe('EditAccountModal', () => {
     })
   })
 
+  it('submits account-level Codex CLI emulation flag', async () => {
+    const account = buildAccount()
+    account.extra = {
+      openai_codex_cli_emulation_enabled: true
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_codex_cli_emulation_enabled).toBe(true)
+  })
+
   it('submits OpenAI APIKey Responses support override mode', async () => {
     const account = buildAccount()
     account.extra = {
