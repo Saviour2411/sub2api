@@ -479,6 +479,33 @@ func (s *RedeemCodeRepoSuite) TestListByUser_DefaultLimit() {
 	s.Require().Len(codes, 1)
 }
 
+func (s *RedeemCodeRepoSuite) TestListByUserIncludesAdminAdjustmentWithoutUsageRow() {
+	user := s.createUser(uniqueTestValue(s.T(), "admin-adjust") + "@example.com")
+	usedAt := time.Date(2026, 6, 7, 12, 0, 0, 0, time.UTC)
+	code := &service.RedeemCode{
+		Code:   "ADMIN-ADJ",
+		Type:   service.AdjustmentTypeAdminBalance,
+		Value:  5.25,
+		Status: service.StatusUsed,
+		UsedBy: &user.ID,
+		UsedAt: &usedAt,
+		Notes:  "manual top-up",
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, code))
+
+	codes, err := s.repo.ListByUser(s.ctx, user.ID, 10)
+	s.Require().NoError(err)
+	s.Require().Len(codes, 1)
+	s.Require().Equal("ADMIN-ADJ", codes[0].Code)
+	s.Require().Equal(service.AdjustmentTypeAdminBalance, codes[0].Type)
+	s.Require().Equal(5.25, codes[0].Value)
+	s.Require().Equal("manual top-up", codes[0].Notes)
+
+	total, err := s.repo.SumPositiveBalanceByUser(s.ctx, user.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(5.25, total)
+}
+
 // --- Combined original test ---
 
 func (s *RedeemCodeRepoSuite) TestCreateBatch_Filters_Use_Idempotency_ListByUser() {

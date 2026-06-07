@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -833,7 +834,90 @@ func (s *RedeemService) GetUserHistory(ctx context.Context, userID int64, limit 
 	if err != nil {
 		return nil, fmt.Errorf("get user redeem history: %w", err)
 	}
+	dailyCodes, err := s.listDailyCheckinBalanceHistory(ctx, userID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("get user daily check-in history: %w", err)
+	}
+	return mergeRedeemHistory(limit, codes, dailyCodes), nil
+}
+
+func (s *RedeemService) listDailyCheckinBalanceHistory(ctx context.Context, userID int64, limit int) ([]RedeemCode, error) {
+	if s == nil || s.entClient == nil || userID <= 0 {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+
+	rows, err := s.entClient.QueryContext(ctx, `
+SELECT id,
+       reward_amount::double precision,
+       prize_name,
+       created_at
+FROM daily_checkins
+WHERE user_id = $1
+  AND reward_type = $2
+  AND reward_amount <> 0
+ORDER BY created_at DESC, id DESC
+LIMIT $3`, userID, DailyCheckinPrizeTypeBalance, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	codes := make([]RedeemCode, 0, limit)
+	for rows.Next() {
+		var (
+			id        int64
+			amount    float64
+			prizeName string
+			createdAt time.Time
+		)
+		if err := rows.Scan(&id, &amount, &prizeName, &createdAt); err != nil {
+			return nil, err
+		}
+		usedBy := userID
+		usedAt := createdAt
+		codes = append(codes, RedeemCode{
+			ID:        -1000000000000 - id,
+			Code:      fmt.Sprintf("CHK-%d", id),
+			Type:      RedeemTypeDailyCheckin,
+			Value:     amount,
+			Status:    StatusUsed,
+			UsedBy:    &usedBy,
+			UsedAt:    &usedAt,
+			CreatedAt: createdAt,
+			Notes:     prizeName,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return codes, nil
+}
+
+func mergeRedeemHistory(limit int, sets ...[]RedeemCode) []RedeemCode {
+	if limit <= 0 {
+		limit = 10
+	}
+	var combined []RedeemCode
+	for _, set := range sets {
+		combined = append(combined, set...)
+	}
+	sort.SliceStable(combined, func(i, j int) bool {
+		return redeemHistoryTime(combined[i]).After(redeemHistoryTime(combined[j]))
+	})
+	if len(combined) > limit {
+		return combined[:limit]
+	}
+	return combined
+}
+
+func redeemHistoryTime(code RedeemCode) time.Time {
+	if code.UsedAt != nil {
+		return *code.UsedAt
+	}
+	return code.CreatedAt
 }
 
 func (s *RedeemService) ListRedeemUsages(ctx context.Context, redeemCodeID int64, params pagination.PaginationParams) ([]RedeemCodeUsage, *pagination.PaginationResult, error) {

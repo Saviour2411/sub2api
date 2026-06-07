@@ -171,10 +171,10 @@ describe('DailyCheckinView', () => {
     await vi.advanceTimersByTimeAsync(3300)
     await flushPromises()
 
-    expect(showSuccess).toHaveBeenCalledWith('签到成功：余额10刀')
+    expect(showSuccess).toHaveBeenCalledWith('签到成功：余额10刀 $10.00')
     expect(wrapper.text()).toContain('中奖结果')
     expect(wrapper.text()).toContain('余额10刀')
-    expect(wrapper.text()).not.toContain('余额10刀 $10.00')
+    expect(wrapper.text()).toContain('余额10刀 $10.00')
   })
 
   it('自定义奖品名不会重复追加奖励数值', async () => {
@@ -215,7 +215,7 @@ describe('DailyCheckinView', () => {
     expect(wrapper.text()).toContain('永久并发+1')
     expect(wrapper.text()).not.toContain('永久并发+1 +6')
     expect(wrapper.text()).toContain('余额10刀')
-    expect(wrapper.text()).not.toContain('余额10刀 $10.00')
+    expect(wrapper.text()).toContain('余额10刀 $10.00')
     expect(wrapper.text()).toContain('月卡30天')
     expect(wrapper.text()).not.toContain('月卡30天 30天')
   })

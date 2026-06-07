@@ -304,10 +304,13 @@
                   {{ formatHistoryValue(item) }}
                 </p>
                 <p
-                  v-if="!isAdminAdjustment(item.type)"
+                  v-if="shouldShowCode(item)"
                   class="font-mono text-xs text-gray-400 dark:text-dark-500"
                 >
                   {{ item.code.slice(0, 8) }}...
+                </p>
+                <p v-else-if="isDailyCheckinReward(item.type)" class="text-xs text-gray-400 dark:text-dark-500">
+                  {{ t('redeem.dailyCheckinReward') }}
                 </p>
                 <p v-else class="text-xs text-gray-400 dark:text-dark-500">
                   {{ t('redeem.adminAdjustment') }}
@@ -379,7 +382,7 @@ const contactInfo = ref('')
 
 // Helper functions for history display
 const isBalanceType = (type: string) => {
-  return type === 'balance' || type === 'admin_balance'
+  return type === 'balance' || type === 'admin_balance' || type === 'daily_checkin_balance'
 }
 
 const isSubscriptionType = (type: string) => {
@@ -390,9 +393,19 @@ const isAdminAdjustment = (type: string) => {
   return type === 'admin_balance' || type === 'admin_concurrency'
 }
 
+const isDailyCheckinReward = (type: string) => {
+  return type === 'daily_checkin_balance'
+}
+
+const shouldShowCode = (item: RedeemHistoryItem) => {
+  return !isAdminAdjustment(item.type) && !isDailyCheckinReward(item.type)
+}
+
 const getHistoryItemTitle = (item: RedeemHistoryItem) => {
   if (item.type === 'balance') {
     return t('redeem.balanceAddedRedeem')
+  } else if (item.type === 'daily_checkin_balance') {
+    return t('redeem.balanceAddedDailyCheckin')
   } else if (item.type === 'admin_balance') {
     return item.value >= 0 ? t('redeem.balanceAddedAdmin') : t('redeem.balanceDeductedAdmin')
   } else if (item.type === 'concurrency') {

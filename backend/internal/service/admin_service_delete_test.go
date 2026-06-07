@@ -333,6 +333,7 @@ type redeemRepoStub struct {
 	batchUpdateResult int64
 	batchUpdateErr    error
 	batchUpdateCalled bool
+	listByUserCodes   []RedeemCode
 }
 
 func (s *redeemRepoStub) Create(ctx context.Context, code *RedeemCode) error {
@@ -401,7 +402,14 @@ func (s *redeemRepoStub) ListWithFilters(ctx context.Context, params pagination.
 }
 
 func (s *redeemRepoStub) ListByUser(ctx context.Context, userID int64, limit int) ([]RedeemCode, error) {
-	panic("unexpected ListByUser call")
+	if s.listByUserCodes == nil {
+		panic("unexpected ListByUser call")
+	}
+	out := append([]RedeemCode(nil), s.listByUserCodes...)
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
 }
 
 func (s *redeemRepoStub) ListByUserPaginated(ctx context.Context, userID int64, params pagination.PaginationParams, codeType string) ([]RedeemCode, *pagination.PaginationResult, error) {

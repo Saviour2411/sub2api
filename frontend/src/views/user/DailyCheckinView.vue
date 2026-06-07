@@ -291,8 +291,10 @@ function prizeTypeLabel(type: string): string {
 function rewardLabel(reward: DailyCheckinReward | DailyCheckinRecord | null | undefined): string {
   if (!reward) return ''
   const name = reward.prize_name || defaultRewardName(reward.type)
+  if (reward.type === 'balance') {
+    return `${name} ${formatPrizeCurrency(reward.amount)}`
+  }
   if (!isDefaultRewardName(name, reward.type)) return name
-  if (reward.type === 'balance') return `${name} ${formatPrizeCurrency(reward.amount)}`
   if (reward.type === 'concurrency') return `${name} +${reward.concurrency || 0}`
   if (reward.type === 'subscription') return `${name} ${reward.validity_days || 0}${t('dailyCheckin.days')}`
   return name

@@ -73,3 +73,27 @@ func TestRedeemService_BatchUpdate_RejectsCoreFieldsForUsedCodes(t *testing.T) {
 	require.True(t, infraerrors.IsBadRequest(err))
 	require.False(t, repo.batchUpdateCalled)
 }
+
+func TestMergeRedeemHistoryOrdersAndLimitsCombinedSources(t *testing.T) {
+	base := time.Date(2026, 6, 7, 12, 0, 0, 0, time.UTC)
+	at := func(minutes int) *time.Time {
+		v := base.Add(time.Duration(minutes) * time.Minute)
+		return &v
+	}
+
+	got := mergeRedeemHistory(3,
+		[]RedeemCode{
+			{Code: "REDEEM-OLD", Type: RedeemTypeBalance, UsedAt: at(1)},
+			{Code: "REDEEM-NEW", Type: AdjustmentTypeAdminBalance, UsedAt: at(4)},
+		},
+		[]RedeemCode{
+			{Code: "CHK-1", Type: RedeemTypeDailyCheckin, UsedAt: at(3)},
+			{Code: "CHK-2", Type: RedeemTypeDailyCheckin, UsedAt: at(2)},
+		},
+	)
+
+	require.Len(t, got, 3)
+	require.Equal(t, "REDEEM-NEW", got[0].Code)
+	require.Equal(t, "CHK-1", got[1].Code)
+	require.Equal(t, "CHK-2", got[2].Code)
+}

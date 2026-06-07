@@ -547,14 +547,72 @@ func (r *redeemCodeRepository) SumPositiveBalanceByUser(ctx context.Context, use
 
 func (r *redeemCodeRepository) listUsageHistoryByUser(ctx context.Context, userID int64, params pagination.PaginationParams, codeType string) ([]service.RedeemCode, *pagination.PaginationResult, error) {
 	client := clientFromContext(ctx, r.client)
-	filterSQL := "WHERE rcu.user_id = $1"
+	filterSQL := "WHERE user_id = $1"
 	args := []any{userID}
 	if codeType != "" {
-		filterSQL += " AND rcu.type = $2"
+		filterSQL += " AND type = $2"
 		args = append(args, codeType)
 	}
 
-	countRows, err := client.QueryContext(ctx, "SELECT COUNT(*) FROM redeem_code_usages rcu "+filterSQL, args...)
+	historySQL := `
+SELECT rcu.redeem_code_id AS id,
+       rc.code,
+       rcu.type,
+       rcu.value,
+       rc.status,
+       rc.max_uses,
+       rc.used_count,
+       rcu.user_id,
+       rcu.used_at,
+       rc.created_at,
+       rc.expires_at,
+       rcu.group_id,
+       rcu.validity_days,
+       rc.notes,
+       g.id AS group_row_id,
+       g.name AS group_name,
+       g.platform AS group_platform,
+       g.rate_multiplier AS group_rate_multiplier,
+       g.subscription_type AS group_subscription_type,
+       rcu.id AS sort_id
+FROM redeem_code_usages rcu
+JOIN redeem_codes rc ON rc.id = rcu.redeem_code_id
+LEFT JOIN groups g ON g.id = rcu.group_id
+UNION ALL
+SELECT rc.id AS id,
+       rc.code,
+       rc.type,
+       rc.value,
+       rc.status,
+       rc.max_uses,
+       rc.used_count,
+       rc.used_by AS user_id,
+       rc.used_at,
+       rc.created_at,
+       rc.expires_at,
+       rc.group_id,
+       rc.validity_days,
+       rc.notes,
+       g.id AS group_row_id,
+       g.name AS group_name,
+       g.platform AS group_platform,
+       g.rate_multiplier AS group_rate_multiplier,
+       g.subscription_type AS group_subscription_type,
+       rc.id AS sort_id
+FROM redeem_codes rc
+LEFT JOIN groups g ON g.id = rc.group_id
+WHERE rc.used_by IS NOT NULL
+  AND rc.used_at IS NOT NULL
+  AND rc.status = 'used'
+  AND rc.type IN ('admin_balance', 'admin_concurrency')
+  AND NOT EXISTS (
+      SELECT 1
+      FROM redeem_code_usages rcu
+      WHERE rcu.redeem_code_id = rc.id
+        AND rcu.user_id = rc.used_by
+  )`
+
+	countRows, err := client.QueryContext(ctx, "SELECT COUNT(*) FROM ("+historySQL+") h "+filterSQL, args...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -574,30 +632,28 @@ func (r *redeemCodeRepository) listUsageHistoryByUser(ctx context.Context, userI
 	offsetArg := len(queryArgs) + 2
 	queryArgs = append(queryArgs, params.Limit(), params.Offset())
 	rows, err := client.QueryContext(ctx, fmt.Sprintf(`
-SELECT rcu.redeem_code_id,
-       rc.code,
-       rcu.type,
-       rcu.value,
-       rc.status,
-       rc.max_uses,
-       rc.used_count,
-       rcu.user_id,
-       rcu.used_at,
-       rc.created_at,
-       rc.expires_at,
-       rcu.group_id,
-       rcu.validity_days,
-       rc.notes,
-       g.id,
-       g.name,
-       g.platform,
-       g.rate_multiplier,
-       g.subscription_type
-FROM redeem_code_usages rcu
-JOIN redeem_codes rc ON rc.id = rcu.redeem_code_id
-LEFT JOIN groups g ON g.id = rcu.group_id
+SELECT id,
+       code,
+       type,
+       value,
+       status,
+       max_uses,
+       used_count,
+       user_id,
+       used_at,
+       created_at,
+       expires_at,
+       group_id,
+       validity_days,
+       notes,
+       group_row_id,
+       group_name,
+       group_platform,
+       group_rate_multiplier,
+       group_subscription_type
+FROM (`+historySQL+`) h
 %s
-ORDER BY rcu.used_at DESC, rcu.id DESC
+ORDER BY used_at DESC, sort_id DESC
 LIMIT $%d OFFSET $%d
 `, filterSQL, limitArg, offsetArg), queryArgs...)
 	if err != nil {
@@ -623,7 +679,23 @@ func (r *redeemCodeRepository) sumPositiveBalanceUsageByUser(ctx context.Context
 	client := clientFromContext(ctx, r.client)
 	rows, err := client.QueryContext(ctx, `
 SELECT COALESCE(SUM(value), 0)
-FROM redeem_code_usages
+FROM (
+    SELECT rcu.user_id, rcu.type, rcu.value
+    FROM redeem_code_usages rcu
+    UNION ALL
+    SELECT rc.used_by AS user_id, rc.type, rc.value
+    FROM redeem_codes rc
+    WHERE rc.used_by IS NOT NULL
+      AND rc.used_at IS NOT NULL
+      AND rc.status = 'used'
+      AND rc.type = 'admin_balance'
+      AND NOT EXISTS (
+          SELECT 1
+          FROM redeem_code_usages rcu
+          WHERE rcu.redeem_code_id = rc.id
+            AND rcu.user_id = rc.used_by
+      )
+) h
 WHERE user_id = $1
   AND value > 0
   AND type IN ('balance', 'admin_balance')
