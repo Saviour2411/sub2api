@@ -482,6 +482,20 @@ func (s *ChannelService) GetChannelModelPricing(ctx context.Context, groupID int
 	return &cp
 }
 
+// GetChannelDefaultPricing 获取指定分组的渠道默认 token 定价。
+func (s *ChannelService) GetChannelDefaultPricing(ctx context.Context, groupID int64) *ChannelDefaultPricing {
+	lk, err := s.lookupGroupChannel(ctx, groupID)
+	if err != nil {
+		slog.Warn("failed to load channel cache for default pricing", "group_id", groupID, "error", err)
+		return nil
+	}
+	if lk == nil || !lk.channel.DefaultPricingEnabled || !lk.channel.DefaultPricing.HasAnyPrice() {
+		return nil
+	}
+	cp := lk.channel.DefaultPricing
+	return &cp
+}
+
 // ResolveChannelMapping 解析渠道级模型映射（热路径 O(1)）
 // 返回映射结果，包含映射后的模型名、渠道 ID、计费模型来源。
 func (s *ChannelService) ResolveChannelMapping(ctx context.Context, groupID int64, model string) ChannelMappingResult {
@@ -641,6 +655,27 @@ func checkPricesNotNegative(p ChannelModelPricing) error {
 	return nil
 }
 
+func validateDefaultPricing(enabled bool, p ChannelDefaultPricing) error {
+	checks := []struct {
+		field string
+		val   *float64
+	}{
+		{"default_input_price", p.InputPrice},
+		{"default_output_price", p.OutputPrice},
+		{"default_cache_write_price", p.CacheWritePrice},
+		{"default_cache_read_price", p.CacheReadPrice},
+	}
+	for _, c := range checks {
+		if c.val != nil && *c.val < 0 {
+			return infraerrors.BadRequest("NEGATIVE_PRICE", fmt.Sprintf("%s must be >= 0", c.field))
+		}
+	}
+	if enabled && !p.HasAnyPrice() {
+		return infraerrors.BadRequest("DEFAULT_PRICING_MISSING_PRICE", "default pricing requires at least one price")
+	}
+	return nil
+}
+
 func checkIntervalsHavePrices(p ChannelModelPricing) error {
 	for _, iv := range p.Intervals {
 		if iv.InputPrice == nil && iv.OutputPrice == nil &&
@@ -690,11 +725,16 @@ func (s *ChannelService) Create(ctx context.Context, input *CreateChannelInput) 
 		ModelMapping:               input.ModelMapping,
 		Features:                   input.Features,
 		FeaturesConfig:             input.FeaturesConfig,
+		DefaultPricingEnabled:      input.DefaultPricingEnabled,
+		DefaultPricing:             input.DefaultPricing,
 		ApplyPricingToAccountStats: input.ApplyPricingToAccountStats,
 		AccountStatsPricingRules:   input.AccountStatsPricingRules,
 	}
 	channel.normalizeBillingModelSource()
 
+	if err := validateDefaultPricing(channel.DefaultPricingEnabled, channel.DefaultPricing); err != nil {
+		return nil, err
+	}
 	if err := validateChannelConfig(channel.ModelPricing, channel.ModelMapping); err != nil {
 		return nil, err
 	}
@@ -739,6 +779,9 @@ func (s *ChannelService) Update(ctx context.Context, id int64, input *UpdateChan
 		return nil, err
 	}
 
+	if err := validateDefaultPricing(channel.DefaultPricingEnabled, channel.DefaultPricing); err != nil {
+		return nil, err
+	}
 	if err := validateChannelConfig(channel.ModelPricing, channel.ModelMapping); err != nil {
 		return nil, err
 	}
@@ -806,6 +849,12 @@ func (s *ChannelService) applyUpdateInput(ctx context.Context, channel *Channel,
 	}
 	if input.FeaturesConfig != nil {
 		channel.FeaturesConfig = input.FeaturesConfig
+	}
+	if input.DefaultPricingEnabled != nil {
+		channel.DefaultPricingEnabled = *input.DefaultPricingEnabled
+	}
+	if input.DefaultPricing != nil {
+		channel.DefaultPricing = *input.DefaultPricing
 	}
 	if input.ApplyPricingToAccountStats != nil {
 		channel.ApplyPricingToAccountStats = *input.ApplyPricingToAccountStats
@@ -989,6 +1038,8 @@ type CreateChannelInput struct {
 	RestrictModels             bool
 	Features                   string
 	FeaturesConfig             map[string]any
+	DefaultPricingEnabled      bool
+	DefaultPricing             ChannelDefaultPricing
 	ApplyPricingToAccountStats bool
 	AccountStatsPricingRules   []AccountStatsPricingRule
 }
@@ -1005,6 +1056,8 @@ type UpdateChannelInput struct {
 	RestrictModels             *bool
 	Features                   *string
 	FeaturesConfig             map[string]any
+	DefaultPricingEnabled      *bool
+	DefaultPricing             *ChannelDefaultPricing
 	ApplyPricingToAccountStats *bool
 	AccountStatsPricingRules   *[]AccountStatsPricingRule
 }

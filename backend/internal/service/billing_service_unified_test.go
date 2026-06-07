@@ -147,6 +147,37 @@ func TestCalculateCostUnified_ImageMode(t *testing.T) {
 	require.Equal(t, string(BillingModeImage), cost.BillingMode)
 }
 
+func TestCalculateCostUnified_ChannelDefaultPricingForUnknownModel(t *testing.T) {
+	cs := newTestChannelServiceWithCache(t, &channelCache{
+		pricingByGroupModel:     map[channelModelKey]*ChannelModelPricing{},
+		channelByGroupID:        map[int64]*Channel{3: {ID: 3, Status: StatusActive, DefaultPricingEnabled: true, DefaultPricing: ChannelDefaultPricing{InputPrice: testPtrFloat64(2e-6), OutputPrice: testPtrFloat64(8e-6)}}},
+		groupPlatform:           map[int64]string{3: ""},
+		wildcardByGroupPlatform: map[channelGroupPlatformKey][]*wildcardPricingEntry{},
+		mappingByGroupModel:     map[channelModelKey]string{},
+		wildcardMappingByGP:     map[channelGroupPlatformKey][]*wildcardMappingEntry{},
+		byID:                    map[int64]*Channel{},
+	})
+	bs := newTestBillingService()
+	resolver := NewModelPricingResolver(cs, bs)
+	groupID := int64(3)
+
+	cost, err := bs.CalculateCostUnified(CostInput{
+		Ctx:            context.Background(),
+		Model:          "deepseek-v4-pro",
+		GroupID:        &groupID,
+		Tokens:         UsageTokens{InputTokens: 1000, OutputTokens: 250},
+		RateMultiplier: 1.5,
+		Resolver:       resolver,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, cost)
+	expectedTotal := 1000*2e-6 + 250*8e-6
+	require.InDelta(t, expectedTotal, cost.TotalCost, 1e-12)
+	require.InDelta(t, expectedTotal*1.5, cost.ActualCost, 1e-12)
+	require.Equal(t, string(BillingModeToken), cost.BillingMode)
+}
+
 // TestCalculateCostUnified_RateMultiplierZeroProducesZero 锁定新行为：
 // 保存时强制 > 0；若 0 仍泄漏到计费层，按 0 计费（而非历史上的 1.0）。
 func TestCalculateCostUnified_RateMultiplierZeroProducesZero(t *testing.T) {

@@ -33,16 +33,18 @@ const (
 
 // Channel 渠道实体
 type Channel struct {
-	ID                 int64
-	Name               string
-	Description        string
-	Status             string
-	BillingModelSource string         // "requested", "upstream", or "channel_mapped"
-	RestrictModels     bool           // 是否限制模型（仅允许定价列表中的模型）
-	Features           string         // 渠道特性描述（JSON 数组），用于支付页面展示
-	FeaturesConfig     map[string]any // 渠道功能配置（如 web search emulation）
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	ID                    int64
+	Name                  string
+	Description           string
+	Status                string
+	BillingModelSource    string         // "requested", "upstream", or "channel_mapped"
+	RestrictModels        bool           // 是否限制模型（仅允许定价列表中的模型）
+	Features              string         // 渠道特性描述（JSON 数组），用于支付页面展示
+	FeaturesConfig        map[string]any // 渠道功能配置（如 web search emulation）
+	DefaultPricingEnabled bool           // 未命中模型是否使用渠道默认 token 定价
+	DefaultPricing        ChannelDefaultPricing
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
 
 	// 关联的分组 ID 列表
 	GroupIDs []int64
@@ -54,6 +56,43 @@ type Channel struct {
 	// 账号统计定价
 	ApplyPricingToAccountStats bool                      // 是否应用渠道模型定价到账号统计
 	AccountStatsPricingRules   []AccountStatsPricingRule // 自定义账号统计定价规则（按 SortOrder 排序，先命中为准）
+}
+
+// ChannelDefaultPricing 是渠道级未命中模型默认 token 定价。
+type ChannelDefaultPricing struct {
+	InputPrice      *float64
+	OutputPrice     *float64
+	CacheWritePrice *float64
+	CacheReadPrice  *float64
+}
+
+func (p ChannelDefaultPricing) HasAnyPrice() bool {
+	return p.InputPrice != nil || p.OutputPrice != nil || p.CacheWritePrice != nil || p.CacheReadPrice != nil
+}
+
+func (p ChannelDefaultPricing) ToModelPricing() *ModelPricing {
+	if !p.HasAnyPrice() {
+		return nil
+	}
+	pricing := &ModelPricing{}
+	if p.InputPrice != nil {
+		pricing.InputPricePerToken = *p.InputPrice
+		pricing.InputPricePerTokenPriority = *p.InputPrice
+	}
+	if p.OutputPrice != nil {
+		pricing.OutputPricePerToken = *p.OutputPrice
+		pricing.OutputPricePerTokenPriority = *p.OutputPrice
+	}
+	if p.CacheWritePrice != nil {
+		pricing.CacheCreationPricePerToken = *p.CacheWritePrice
+		pricing.CacheCreation5mPrice = *p.CacheWritePrice
+		pricing.CacheCreation1hPrice = *p.CacheWritePrice
+	}
+	if p.CacheReadPrice != nil {
+		pricing.CacheReadPricePerToken = *p.CacheReadPrice
+		pricing.CacheReadPricePerTokenPriority = *p.CacheReadPrice
+	}
+	return pricing
 }
 
 // AccountStatsPricingRule 账号统计定价规则

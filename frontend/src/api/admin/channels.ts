@@ -35,6 +35,13 @@ export interface ChannelModelPricing {
   intervals: PricingInterval[]
 }
 
+export interface ChannelDefaultPricing {
+  input_price: number | null
+  output_price: number | null
+  cache_write_price: number | null
+  cache_read_price: number | null
+}
+
 export interface AccountStatsPricingRule {
   id?: number
   name: string
@@ -51,6 +58,8 @@ export interface Channel {
   billing_model_source: BillingModelSource
   restrict_models: boolean
   features_config?: Record<string, unknown>
+  default_pricing_enabled: boolean
+  default_pricing: ChannelDefaultPricing
   group_ids: number[]
   model_pricing: ChannelModelPricing[]
   model_mapping: Record<string, Record<string, string>> // platform → {src→dst}
@@ -69,6 +78,8 @@ export interface CreateChannelRequest {
   billing_model_source?: string
   restrict_models?: boolean
   features_config?: Record<string, unknown>
+  default_pricing_enabled?: boolean
+  default_pricing?: ChannelDefaultPricing
   apply_pricing_to_account_stats?: boolean
   account_stats_pricing_rules?: AccountStatsPricingRule[]
 }
@@ -83,6 +94,8 @@ export interface UpdateChannelRequest {
   billing_model_source?: string
   restrict_models?: boolean
   features_config?: Record<string, unknown>
+  default_pricing_enabled?: boolean
+  default_pricing?: ChannelDefaultPricing
   apply_pricing_to_account_stats?: boolean
   account_stats_pricing_rules?: AccountStatsPricingRule[]
 }

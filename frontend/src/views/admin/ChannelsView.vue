@@ -228,6 +228,48 @@
               </p>
             </div>
 
+            <!-- Default Pricing -->
+            <div class="border-t border-gray-200 pt-4 dark:border-dark-700">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.channels.form.defaultPricing', 'Default Pricing') }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.channels.form.defaultPricingHint', 'Use these token prices when no model-specific or global pricing is found.') }}
+                  </p>
+                </div>
+                <Toggle
+                  :modelValue="form.default_pricing_enabled"
+                  @update:modelValue="form.default_pricing_enabled = $event"
+                />
+              </div>
+              <div v-if="form.default_pricing_enabled" class="mt-3">
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">
+                  {{ t('admin.channels.form.defaultPrices', 'Default prices') }}
+                  <span class="ml-1 font-normal text-gray-400">$/MTok</span>
+                </label>
+                <div class="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <div>
+                    <label class="text-xs text-gray-400">{{ t('admin.channels.form.inputPrice', 'Input') }}</label>
+                    <input v-model="form.default_pricing.input_price" type="number" step="any" min="0" class="input mt-0.5 text-sm" :placeholder="t('admin.channels.form.pricePlaceholder', 'Default')" />
+                  </div>
+                  <div>
+                    <label class="text-xs text-gray-400">{{ t('admin.channels.form.outputPrice', 'Output') }}</label>
+                    <input v-model="form.default_pricing.output_price" type="number" step="any" min="0" class="input mt-0.5 text-sm" :placeholder="t('admin.channels.form.pricePlaceholder', 'Default')" />
+                  </div>
+                  <div>
+                    <label class="text-xs text-gray-400">{{ t('admin.channels.form.cacheWritePrice', 'Cache Write') }}</label>
+                    <input v-model="form.default_pricing.cache_write_price" type="number" step="any" min="0" class="input mt-0.5 text-sm" :placeholder="t('admin.channels.form.pricePlaceholder', 'Default')" />
+                  </div>
+                  <div>
+                    <label class="text-xs text-gray-400">{{ t('admin.channels.form.cacheReadPrice', 'Cache Read') }}</label>
+                    <input v-model="form.default_pricing.cache_read_price" type="number" step="any" min="0" class="input mt-0.5 text-sm" :placeholder="t('admin.channels.form.pricePlaceholder', 'Default')" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <!-- Platform Management -->
             <div class="space-y-3">
               <label class="input-label mb-0">{{ t('admin.channels.form.platformConfig', '平台配置') }}</label>
@@ -630,9 +672,9 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { adminAPI } from '@/api/admin'
-import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest, AccountStatsPricingRule } from '@/api/admin/channels'
-import type { PricingFormEntry } from '@/components/admin/channel/types'
-import { mTokToPerToken, perTokenToMTok, apiIntervalsToForm, formIntervalsToAPI, findModelConflict, validateIntervals } from '@/components/admin/channel/types'
+import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest, AccountStatsPricingRule, ChannelDefaultPricing } from '@/api/admin/channels'
+import type { PricingFormEntry, DefaultPricingFormEntry } from '@/components/admin/channel/types'
+import { mTokToPerToken, perTokenToMTok, apiIntervalsToForm, formIntervalsToAPI, findModelConflict, validateIntervals, toNullableNumber } from '@/components/admin/channel/types'
 import type { AdminGroup, GroupPlatform } from '@/types'
 import type { Column } from '@/components/common/types'
 import { platformTextClass, platformBadgeLightClass } from '@/utils/platformColors'
@@ -753,6 +795,13 @@ const form = reactive({
   status: 'active',
   restrict_models: false,
   billing_model_source: 'channel_mapped' as string,
+  default_pricing_enabled: false,
+  default_pricing: {
+    input_price: null,
+    output_price: null,
+    cache_write_price: null,
+    cache_read_price: null,
+  } as DefaultPricingFormEntry,
   platforms: [] as PlatformSection[],
   apply_pricing_to_account_stats: false,
 })
@@ -1076,6 +1125,31 @@ function accountStatsRulesToAPI(): AccountStatsPricingRule[] {
   return rules
 }
 
+function defaultPricingToAPI(): ChannelDefaultPricing {
+  return {
+    input_price: mTokToPerToken(form.default_pricing.input_price),
+    output_price: mTokToPerToken(form.default_pricing.output_price),
+    cache_write_price: mTokToPerToken(form.default_pricing.cache_write_price),
+    cache_read_price: mTokToPerToken(form.default_pricing.cache_read_price),
+  }
+}
+
+function defaultPricingToForm(pricing?: ChannelDefaultPricing | null): DefaultPricingFormEntry {
+  return {
+    input_price: perTokenToMTok(pricing?.input_price ?? null),
+    output_price: perTokenToMTok(pricing?.output_price ?? null),
+    cache_write_price: perTokenToMTok(pricing?.cache_write_price ?? null),
+    cache_read_price: perTokenToMTok(pricing?.cache_read_price ?? null),
+  }
+}
+
+function hasAnyDefaultPricingValue(pricing: DefaultPricingFormEntry): boolean {
+  return toNullableNumber(pricing.input_price) !== null ||
+    toNullableNumber(pricing.output_price) !== null ||
+    toNullableNumber(pricing.cache_write_price) !== null ||
+    toNullableNumber(pricing.cache_read_price) !== null
+}
+
 // ── Form ↔ API conversion ──
 function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[], model_mapping: Record<string, Record<string, string>>, features_config: Record<string, unknown> } {
   const group_ids: number[] = []
@@ -1310,6 +1384,8 @@ function resetForm() {
   form.status = 'active'
   form.restrict_models = false
   form.billing_model_source = 'channel_mapped'
+  form.default_pricing_enabled = false
+  form.default_pricing = defaultPricingToForm(null)
   form.platforms = []
   form.apply_pricing_to_account_stats = false
   activeTab.value = 'basic'
@@ -1332,6 +1408,8 @@ async function openEditDialog(channel: Channel) {
   form.status = channel.status
   form.restrict_models = channel.restrict_models || false
   form.billing_model_source = channel.billing_model_source || 'channel_mapped'
+  form.default_pricing_enabled = channel.default_pricing_enabled || false
+  form.default_pricing = defaultPricingToForm(channel.default_pricing)
   form.apply_pricing_to_account_stats = channel.apply_pricing_to_account_stats || false
   // Must load groups first so apiToForm can map groupID → platform
   await Promise.all([loadGroups(), loadAllChannelsForConflict()])
@@ -1495,6 +1573,13 @@ async function handleSubmit() {
     }
   }
 
+  // 校验未命中模型默认计费配置
+  if (form.default_pricing_enabled && !hasAnyDefaultPricingValue(form.default_pricing)) {
+    appStore.showError(t('admin.channels.form.defaultPricingRequired', 'Default pricing requires at least one price'))
+    activeTab.value = 'basic'
+    return
+  }
+
   // 校验区间合法性（范围、重叠等）
   for (const section of form.platforms.filter(s => s.enabled)) {
     for (const entry of section.model_pricing) {
@@ -1524,6 +1609,8 @@ async function handleSubmit() {
         model_mapping: Object.keys(model_mapping).length > 0 ? model_mapping : {},
         billing_model_source: form.billing_model_source,
         restrict_models: form.restrict_models,
+        default_pricing_enabled: form.default_pricing_enabled,
+        default_pricing: defaultPricingToAPI(),
         features_config,
         apply_pricing_to_account_stats: form.apply_pricing_to_account_stats,
         account_stats_pricing_rules: accountStatsRulesToAPI()
@@ -1539,6 +1626,8 @@ async function handleSubmit() {
         model_mapping: Object.keys(model_mapping).length > 0 ? model_mapping : {},
         billing_model_source: form.billing_model_source,
         restrict_models: form.restrict_models,
+        default_pricing_enabled: form.default_pricing_enabled,
+        default_pricing: defaultPricingToAPI(),
         features_config,
         apply_pricing_to_account_stats: form.apply_pricing_to_account_stats,
         account_stats_pricing_rules: accountStatsRulesToAPI()

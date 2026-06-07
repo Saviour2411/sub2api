@@ -1050,6 +1050,25 @@ func TestIsModelRestricted_ModelNotFound(t *testing.T) {
 	require.True(t, restricted)
 }
 
+func TestIsModelRestricted_DefaultPricingDoesNotAllowUnknownModel(t *testing.T) {
+	ch := Channel{
+		ID:                    1,
+		Status:                StatusActive,
+		GroupIDs:              []int64{10},
+		RestrictModels:        true,
+		DefaultPricingEnabled: true,
+		DefaultPricing:        ChannelDefaultPricing{InputPrice: testPtrFloat64(1e-6)},
+		ModelPricing: []ChannelModelPricing{
+			{Platform: "anthropic", Models: []string{"claude-opus-4"}},
+		},
+	}
+	repo := makeStandardRepo(ch, map[int64]string{10: "anthropic"})
+	svc := newTestChannelService(repo)
+
+	restricted := svc.IsModelRestricted(context.Background(), 10, "unknown-model")
+	require.True(t, restricted)
+}
+
 func TestIsModelRestricted_CaseInsensitive(t *testing.T) {
 	ch := Channel{
 		ID:             1,

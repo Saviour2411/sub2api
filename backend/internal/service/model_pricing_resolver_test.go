@@ -189,6 +189,30 @@ func newResolverWithChannel(t *testing.T, pricing []ChannelModelPricing) *ModelP
 	return NewModelPricingResolver(cs, bs)
 }
 
+func newResolverWithChannelDefaults(t *testing.T, pricing []ChannelModelPricing, enabled bool, defaults ChannelDefaultPricing) *ModelPricingResolver {
+	t.Helper()
+	const groupID = 100
+	repo := &mockChannelRepository{
+		listAllFn: func(_ context.Context) ([]Channel, error) {
+			return []Channel{{
+				ID:                    1,
+				Name:                  "test-channel",
+				Status:                StatusActive,
+				GroupIDs:              []int64{groupID},
+				ModelPricing:          pricing,
+				DefaultPricingEnabled: enabled,
+				DefaultPricing:        defaults,
+			}}, nil
+		},
+		getGroupPlatformsFn: func(_ context.Context, _ []int64) (map[int64]string, error) {
+			return map[int64]string{groupID: "anthropic"}, nil
+		},
+	}
+	cs := NewChannelService(repo, nil, nil, nil)
+	bs := newTestBillingServiceForResolver()
+	return NewModelPricingResolver(cs, bs)
+}
+
 // groupIDPtr returns a pointer to groupID 100 (the test constant).
 func groupIDPtr() *int64 { v := int64(100); return &v }
 
@@ -297,6 +321,62 @@ func TestResolve_WithChannelOverride_TokenNilBasePricing(t *testing.T) {
 	require.NotNil(t, resolved.BasePricing)
 	require.InDelta(t, 7e-6, resolved.BasePricing.InputPricePerToken, 1e-12)
 	require.InDelta(t, 21e-6, resolved.BasePricing.OutputPricePerToken, 1e-12)
+}
+
+func TestResolve_WithChannelDefaultPricingForUnknownModel(t *testing.T) {
+	r := newResolverWithChannelDefaults(t, nil, true, ChannelDefaultPricing{
+		InputPrice:      testPtrFloat64(1.5e-6),
+		OutputPrice:     testPtrFloat64(6e-6),
+		CacheWritePrice: testPtrFloat64(2e-6),
+		CacheReadPrice:  testPtrFloat64(0.2e-6),
+	})
+
+	resolved := r.Resolve(context.Background(), PricingInput{
+		Model:   "unknown-model-xyz",
+		GroupID: groupIDPtr(),
+	})
+
+	require.NotNil(t, resolved)
+	require.Equal(t, BillingModeToken, resolved.Mode)
+	require.Equal(t, PricingSourceChannel, resolved.Source)
+	require.NotNil(t, resolved.BasePricing)
+	require.InDelta(t, 1.5e-6, resolved.BasePricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 6e-6, resolved.BasePricing.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 2e-6, resolved.BasePricing.CacheCreationPricePerToken, 1e-12)
+	require.InDelta(t, 0.2e-6, resolved.BasePricing.CacheReadPricePerToken, 1e-12)
+}
+
+func TestResolve_ChannelDefaultPricingDoesNotOverrideGlobalPricing(t *testing.T) {
+	r := newResolverWithChannelDefaults(t, nil, true, ChannelDefaultPricing{
+		InputPrice:  testPtrFloat64(99e-6),
+		OutputPrice: testPtrFloat64(199e-6),
+	})
+
+	resolved := r.Resolve(context.Background(), PricingInput{
+		Model:   "claude-sonnet-4",
+		GroupID: groupIDPtr(),
+	})
+
+	require.NotNil(t, resolved)
+	require.Equal(t, PricingSourceLiteLLM, resolved.Source)
+	require.NotNil(t, resolved.BasePricing)
+	require.InDelta(t, 3e-6, resolved.BasePricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 15e-6, resolved.BasePricing.OutputPricePerToken, 1e-12)
+}
+
+func TestResolve_ChannelDefaultPricingDisabledStillUnknown(t *testing.T) {
+	r := newResolverWithChannelDefaults(t, nil, false, ChannelDefaultPricing{
+		InputPrice: testPtrFloat64(1e-6),
+	})
+
+	resolved := r.Resolve(context.Background(), PricingInput{
+		Model:   "unknown-model-xyz",
+		GroupID: groupIDPtr(),
+	})
+
+	require.NotNil(t, resolved)
+	require.Equal(t, PricingSourceFallback, resolved.Source)
+	require.Nil(t, resolved.BasePricing)
 }
 
 // ---------------------------------------------------------------------------

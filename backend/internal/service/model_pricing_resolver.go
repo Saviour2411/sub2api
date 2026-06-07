@@ -82,6 +82,14 @@ func (r *ModelPricingResolver) Resolve(ctx context.Context, input PricingInput) 
 
 	// 1. 获取基础定价
 	basePricing, source := r.resolveBasePricing(input.Model)
+	if basePricing == nil && input.GroupID != nil && r.channelService != nil {
+		if defaultPricing := r.channelService.GetChannelDefaultPricing(ctx, *input.GroupID); defaultPricing != nil {
+			if modelPricing := defaultPricing.ToModelPricing(); modelPricing != nil {
+				basePricing = modelPricing
+				source = PricingSourceChannel
+			}
+		}
+	}
 
 	resolved := &ResolvedPricing{
 		Mode:                   BillingModeToken,

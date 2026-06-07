@@ -37,6 +37,8 @@ type createChannelRequest struct {
 	RestrictModels             bool                             `json:"restrict_models"`
 	Features                   string                           `json:"features"`
 	FeaturesConfig             map[string]any                   `json:"features_config"`
+	DefaultPricingEnabled      bool                             `json:"default_pricing_enabled"`
+	DefaultPricing             channelDefaultPricingRequest     `json:"default_pricing"`
 	ApplyPricingToAccountStats bool                             `json:"apply_pricing_to_account_stats"`
 	AccountStatsPricingRules   []accountStatsPricingRuleRequest `json:"account_stats_pricing_rules"`
 }
@@ -52,8 +54,17 @@ type updateChannelRequest struct {
 	RestrictModels             *bool                             `json:"restrict_models"`
 	Features                   *string                           `json:"features"`
 	FeaturesConfig             map[string]any                    `json:"features_config"`
+	DefaultPricingEnabled      *bool                             `json:"default_pricing_enabled"`
+	DefaultPricing             *channelDefaultPricingRequest     `json:"default_pricing"`
 	ApplyPricingToAccountStats *bool                             `json:"apply_pricing_to_account_stats"`
 	AccountStatsPricingRules   *[]accountStatsPricingRuleRequest `json:"account_stats_pricing_rules"`
+}
+
+type channelDefaultPricingRequest struct {
+	InputPrice      *float64 `json:"input_price" binding:"omitempty,min=0"`
+	OutputPrice     *float64 `json:"output_price" binding:"omitempty,min=0"`
+	CacheWritePrice *float64 `json:"cache_write_price" binding:"omitempty,min=0"`
+	CacheReadPrice  *float64 `json:"cache_read_price" binding:"omitempty,min=0"`
 }
 
 type channelModelPricingRequest struct {
@@ -97,6 +108,8 @@ type channelResponse struct {
 	RestrictModels             bool                              `json:"restrict_models"`
 	Features                   string                            `json:"features"`
 	FeaturesConfig             map[string]any                    `json:"features_config"`
+	DefaultPricingEnabled      bool                              `json:"default_pricing_enabled"`
+	DefaultPricing             channelDefaultPricingResponse     `json:"default_pricing"`
 	GroupIDs                   []int64                           `json:"group_ids"`
 	ModelPricing               []channelModelPricingResponse     `json:"model_pricing"`
 	ModelMapping               map[string]map[string]string      `json:"model_mapping"`
@@ -104,6 +117,13 @@ type channelResponse struct {
 	AccountStatsPricingRules   []accountStatsPricingRuleResponse `json:"account_stats_pricing_rules"`
 	CreatedAt                  string                            `json:"created_at"`
 	UpdatedAt                  string                            `json:"updated_at"`
+}
+
+type channelDefaultPricingResponse struct {
+	InputPrice      *float64 `json:"input_price"`
+	OutputPrice     *float64 `json:"output_price"`
+	CacheWritePrice *float64 `json:"cache_write_price"`
+	CacheReadPrice  *float64 `json:"cache_read_price"`
 }
 
 type channelModelPricingResponse struct {
@@ -146,17 +166,24 @@ func channelToResponse(ch *service.Channel) *channelResponse {
 		return nil
 	}
 	resp := &channelResponse{
-		ID:             ch.ID,
-		Name:           ch.Name,
-		Description:    ch.Description,
-		Status:         ch.Status,
-		RestrictModels: ch.RestrictModels,
-		Features:       ch.Features,
-		FeaturesConfig: ch.FeaturesConfig,
-		GroupIDs:       ch.GroupIDs,
-		ModelMapping:   ch.ModelMapping,
-		CreatedAt:      ch.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		UpdatedAt:      ch.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+		ID:                    ch.ID,
+		Name:                  ch.Name,
+		Description:           ch.Description,
+		Status:                ch.Status,
+		RestrictModels:        ch.RestrictModels,
+		Features:              ch.Features,
+		FeaturesConfig:        ch.FeaturesConfig,
+		DefaultPricingEnabled: ch.DefaultPricingEnabled,
+		DefaultPricing: channelDefaultPricingResponse{
+			InputPrice:      ch.DefaultPricing.InputPrice,
+			OutputPrice:     ch.DefaultPricing.OutputPrice,
+			CacheWritePrice: ch.DefaultPricing.CacheWritePrice,
+			CacheReadPrice:  ch.DefaultPricing.CacheReadPrice,
+		},
+		GroupIDs:     ch.GroupIDs,
+		ModelMapping: ch.ModelMapping,
+		CreatedAt:    ch.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		UpdatedAt:    ch.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 	}
 	resp.BillingModelSource = ch.BillingModelSource
 	if resp.GroupIDs == nil {
@@ -281,6 +308,23 @@ func pricingRequestToService(reqs []channelModelPricingRequest) []service.Channe
 	return result
 }
 
+func defaultPricingRequestToService(r channelDefaultPricingRequest) service.ChannelDefaultPricing {
+	return service.ChannelDefaultPricing{
+		InputPrice:      r.InputPrice,
+		OutputPrice:     r.OutputPrice,
+		CacheWritePrice: r.CacheWritePrice,
+		CacheReadPrice:  r.CacheReadPrice,
+	}
+}
+
+func defaultPricingRequestPtrToService(r *channelDefaultPricingRequest) *service.ChannelDefaultPricing {
+	if r == nil {
+		return nil
+	}
+	out := defaultPricingRequestToService(*r)
+	return &out
+}
+
 func accountStatsPricingRuleRequestToService(r accountStatsPricingRuleRequest) service.AccountStatsPricingRule {
 	return service.AccountStatsPricingRule{
 		Name:       r.Name,
@@ -382,6 +426,8 @@ func (h *ChannelHandler) Create(c *gin.Context) {
 		RestrictModels:             req.RestrictModels,
 		Features:                   req.Features,
 		FeaturesConfig:             req.FeaturesConfig,
+		DefaultPricingEnabled:      req.DefaultPricingEnabled,
+		DefaultPricing:             defaultPricingRequestToService(req.DefaultPricing),
 		ApplyPricingToAccountStats: req.ApplyPricingToAccountStats,
 		AccountStatsPricingRules:   statsRules,
 	})
@@ -418,6 +464,8 @@ func (h *ChannelHandler) Update(c *gin.Context) {
 		RestrictModels:             req.RestrictModels,
 		Features:                   req.Features,
 		FeaturesConfig:             req.FeaturesConfig,
+		DefaultPricingEnabled:      req.DefaultPricingEnabled,
+		DefaultPricing:             defaultPricingRequestPtrToService(req.DefaultPricing),
 		ApplyPricingToAccountStats: req.ApplyPricingToAccountStats,
 	}
 	if req.ModelPricing != nil {

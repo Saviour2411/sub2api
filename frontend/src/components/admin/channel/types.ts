@@ -24,6 +24,13 @@ export interface PricingFormEntry {
   intervals: IntervalFormEntry[]
 }
 
+export interface DefaultPricingFormEntry {
+  input_price: number | string | null
+  output_price: number | string | null
+  cache_write_price: number | string | null
+  cache_read_price: number | string | null
+}
+
 // 价格转换：后端存 per-token，前端显示 per-MTok ($/1M tokens)
 const MTOK = 1_000_000
 

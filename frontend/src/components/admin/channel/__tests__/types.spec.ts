@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { validateIntervals, type IntervalFormEntry } from '../types'
+import { mTokToPerToken, perTokenToMTok, validateIntervals, type IntervalFormEntry } from '../types'
 
 function makeInterval(over: Partial<IntervalFormEntry>): IntervalFormEntry {
   return {
@@ -75,5 +75,15 @@ describe('validateIntervals', () => {
       ]
       expect(validateIntervals(intervals, 'image')).toMatch(/必须大于/)
     })
+  })
+})
+
+describe('price conversion', () => {
+  it('converts default pricing units between MTok and per-token', () => {
+    expect(mTokToPerToken(2.5)).toBe(0.0000025)
+    expect(mTokToPerToken('0.25')).toBe(0.00000025)
+    expect(mTokToPerToken('')).toBeNull()
+    expect(perTokenToMTok(0.0000025)).toBe(2.5)
+    expect(perTokenToMTok(null)).toBeNull()
   })
 })
