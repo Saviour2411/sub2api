@@ -100,7 +100,7 @@ func (h *ModelMarketplaceHandler) List(c *gin.Context) {
 			SubscriptionType: group.SubscriptionType,
 			IsExclusive:      group.IsExclusive,
 			Models:           models,
-			RequestFormats:   requestFormatsForGroup(group),
+			RequestFormats:   requestFormatsForGroup(group, models),
 		})
 	}
 
@@ -147,9 +147,27 @@ func cloneModelMarketplaceModels(models []string) []string {
 	return out
 }
 
-func requestFormatsForGroup(group service.Group) []modelMarketplaceRequestFormat {
+func requestFormatsForGroup(group service.Group, models []string) []modelMarketplaceRequestFormat {
 	switch group.Platform {
 	case service.PlatformOpenAI:
+		if modelMarketplaceGroupIsOpenAIImageOnly(group, models) {
+			return []modelMarketplaceRequestFormat{
+				{
+					Name:        "OpenAI Image Generations",
+					Method:      "POST",
+					Path:        "/v1/images/generations",
+					ContentType: "application/json",
+					Body:        "{\n  \"model\": \"{model}\",\n  \"prompt\": \"Draw a clean product mockup\",\n  \"size\": \"1024x1024\",\n  \"response_format\": \"b64_json\"\n}",
+				},
+				{
+					Name:        "OpenAI Image Edits",
+					Method:      "POST",
+					Path:        "/v1/images/edits",
+					ContentType: "application/json",
+					Body:        "{\n  \"model\": \"{model}\",\n  \"prompt\": \"Replace the background with a studio setup\",\n  \"images\": [{\"image_url\": \"https://example.com/source.png\"}],\n  \"size\": \"1024x1024\",\n  \"response_format\": \"b64_json\"\n}",
+				},
+			}
+		}
 		formats := []modelMarketplaceRequestFormat{
 			{
 				Name:        "OpenAI Chat Completions",
@@ -214,4 +232,20 @@ func requestFormatsForGroup(group service.Group) []modelMarketplaceRequestFormat
 			},
 		}
 	}
+}
+
+func modelMarketplaceGroupIsOpenAIImageOnly(group service.Group, models []string) bool {
+	if group.Platform != service.PlatformOpenAI || !group.AllowImageGeneration || len(models) == 0 {
+		return false
+	}
+	for _, model := range models {
+		if !modelMarketplaceModelIsOpenAIImage(model) {
+			return false
+		}
+	}
+	return true
+}
+
+func modelMarketplaceModelIsOpenAIImage(model string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "gpt-image-")
 }
