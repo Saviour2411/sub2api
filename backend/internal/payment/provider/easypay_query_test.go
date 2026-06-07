@@ -2,9 +2,9 @@ package provider
 
 import (
 	"context"
-	"io"
 	"net/http"
-	"strings"
+	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
@@ -13,6 +13,7 @@ import (
 func TestEasyPayQueryOrderStatusMapping(t *testing.T) {
 	t.Parallel()
 
+	const orderID = "out-123"
 	tests := []struct {
 		name        string
 		body        string
@@ -35,6 +36,13 @@ func TestEasyPayQueryOrderStatusMapping(t *testing.T) {
 			wantAmount:  20,
 		},
 		{
+			name:        "empty trade status with paid numeric status stays pending",
+			body:        `{"code":1,"trade_status":"","status":1,"money":"12.34"}`,
+			wantStatus:  payment.ProviderStatusPending,
+			wantTradeNo: orderID,
+			wantAmount:  12.34,
+		},
+		{
 			name:        "nested data fields are accepted",
 			body:        `{"code":1,"status":1,"data":{"trade_no":"B789","money":"28.00","trade_status":"TRADE_SUCCESS"}}`,
 			wantStatus:  payment.ProviderStatusPaid,
@@ -42,65 +50,89 @@ func TestEasyPayQueryOrderStatusMapping(t *testing.T) {
 			wantAmount:  28,
 		},
 		{
+			name:        "nested data trade success is paid",
+			body:        `{"code":1,"data":{"trade_status":"TRADE_SUCCESS","status":0,"money":"9.99","trade_no":"data-456"}}`,
+			wantStatus:  payment.ProviderStatusPaid,
+			wantTradeNo: "data-456",
+			wantAmount:  9.99,
+		},
+		{
 			name:        "legacy numeric paid without trade status remains compatible",
 			body:        `{"code":1,"status":1,"money":"10.00"}`,
 			wantStatus:  payment.ProviderStatusPaid,
-			wantTradeNo: "out-123",
+			wantTradeNo: orderID,
 			wantAmount:  10,
 		},
 		{
 			name:        "legacy numeric pending without trade status remains pending",
 			body:        `{"code":1,"status":0,"money":"10.00"}`,
 			wantStatus:  payment.ProviderStatusPending,
-			wantTradeNo: "out-123",
+			wantTradeNo: orderID,
 			wantAmount:  10,
+		},
+		{
+			name:        "query failure with missing status is pending",
+			body:        `{"code":0,"msg":"订单不存在"}`,
+			wantStatus:  payment.ProviderStatusPending,
+			wantTradeNo: orderID,
+		},
+		{
+			name:        "missing fields are pending",
+			body:        `{}`,
+			wantStatus:  payment.ProviderStatusPending,
+			wantTradeNo: orderID,
 		},
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			provider := newTestEasyPay(t, "https://easypay.test")
-			provider.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			var gotForm url.Values
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPost {
+					t.Errorf("method = %q, want %q", r.Method, http.MethodPost)
+				}
 				if r.URL.Path != "/api.php" {
-					t.Errorf("query path = %q, want /api.php", r.URL.Path)
+					t.Errorf("path = %q, want /api.php", r.URL.Path)
 				}
 				if err := r.ParseForm(); err != nil {
 					t.Errorf("ParseForm: %v", err)
 				}
-				if got := r.PostForm.Get("act"); got != "order" {
-					t.Errorf("form[act] = %q, want order", got)
+				gotForm = make(url.Values, len(r.PostForm))
+				for key, values := range r.PostForm {
+					gotForm[key] = append([]string(nil), values...)
 				}
-				if got := r.PostForm.Get("out_trade_no"); got != "out-123" {
-					t.Errorf("form[out_trade_no] = %q, want out-123", got)
-				}
-				return &http.Response{
-					StatusCode: http.StatusOK,
-					Header:     http.Header{"Content-Type": []string{"application/json"}},
-					Body:       io.NopCloser(strings.NewReader(tt.body)),
-				}, nil
-			})}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer server.Close()
 
-			resp, err := provider.QueryOrder(context.Background(), "out-123")
+			provider := newTestEasyPay(t, server.URL)
+			resp, err := provider.QueryOrder(context.Background(), orderID)
 			if err != nil {
 				t.Fatalf("QueryOrder returned error: %v", err)
 			}
 			if resp.Status != tt.wantStatus {
-				t.Fatalf("status = %q, want %q", resp.Status, tt.wantStatus)
+				t.Fatalf("status = %q, want %q (response=%+v)", resp.Status, tt.wantStatus, resp)
 			}
 			if resp.TradeNo != tt.wantTradeNo {
-				t.Fatalf("trade no = %q, want %q", resp.TradeNo, tt.wantTradeNo)
+				t.Fatalf("trade_no = %q, want %q", resp.TradeNo, tt.wantTradeNo)
 			}
 			if resp.Amount != tt.wantAmount {
 				t.Fatalf("amount = %v, want %v", resp.Amount, tt.wantAmount)
 			}
+			for key, want := range map[string]string{
+				"act":          "order",
+				"pid":          "pid-1",
+				"key":          "pkey-1",
+				"out_trade_no": orderID,
+			} {
+				if got := gotForm.Get(key); got != want {
+					t.Fatalf("form[%s] = %q, want %q (form=%v)", key, got, want, gotForm)
+				}
+			}
 		})
 	}
-}
-
-type roundTripFunc func(*http.Request) (*http.Response, error)
-
-func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
-	return f(r)
 }

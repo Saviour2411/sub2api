@@ -492,7 +492,9 @@ export interface SyncUpstreamModelsResult {
 export interface SyncUpstreamModelsPreviewRequest {
   platform: AccountPlatform
   type: 'apikey'
-  credentials: Record<string, unknown>
+  credentials?: Record<string, unknown>
+  base_url?: string
+  api_key?: string
   proxy_id?: number | null
   concurrency?: number
 }

@@ -287,6 +287,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		SemanticErrorMatchMaxChars:             settings.SemanticErrorMatchMaxChars,
 		SemanticErrorRules:                     semanticErrorRulesToDTO(settings.SemanticErrorRules),
 		OpenAICodexUserAgent:                   settings.OpenAICodexUserAgent,
+		OpenAIAllowClaudeCodeCodexPlugin:       settings.OpenAIAllowClaudeCodeCodexPlugin,
 		ScheduledTestDefaultPrompt:             settings.ScheduledTestDefaultPrompt,
 		WebSearchEmulationEnabled:              settings.WebSearchEmulationEnabled,
 		PaymentVisibleMethodAlipaySource:       settings.PaymentVisibleMethodAlipaySource,
@@ -331,6 +332,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ModelMarketplaceGroupIDs: settings.ModelMarketplaceGroupIDs,
 
 		AffiliateEnabled: settings.AffiliateEnabled,
+
+		AllowUserViewErrorRequests: settings.AllowUserViewErrorRequests,
 	}
 
 	// OpenAI fast policy (stored under a dedicated setting key)
@@ -633,6 +636,7 @@ type UpdateSettingsRequest struct {
 	SemanticErrorMatchMaxChars             *int                         `json:"semantic_error_match_max_chars"`
 	SemanticErrorRules                     *[]service.SemanticErrorRule `json:"semantic_error_rules"`
 	OpenAICodexUserAgent                   *string                      `json:"openai_codex_user_agent"`
+	OpenAIAllowClaudeCodeCodexPlugin       *bool                        `json:"openai_allow_claude_code_codex_plugin"`
 	ScheduledTestDefaultPrompt             *string                      `json:"scheduled_test_default_prompt"`
 
 	// Payment visible method routing
@@ -711,6 +715,8 @@ type UpdateSettingsRequest struct {
 	AuthSourceGitHubPlatformQuotas   map[string]*service.DefaultPlatformQuotaSetting `json:"auth_source_default_github_platform_quotas"`
 	AuthSourceGooglePlatformQuotas   map[string]*service.DefaultPlatformQuotaSetting `json:"auth_source_default_google_platform_quotas"`
 	AuthSourceDingTalkPlatformQuotas map[string]*service.DefaultPlatformQuotaSetting `json:"auth_source_default_dingtalk_platform_quotas"`
+
+	AllowUserViewErrorRequests *bool `json:"allow_user_view_error_requests"`
 }
 
 // UpdateSettings 更新系统设置
@@ -1684,6 +1690,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		MaxClaudeCodeVersion:                   req.MaxClaudeCodeVersion,
 		AllowUngroupedKeyScheduling:            req.AllowUngroupedKeyScheduling,
 		BackendModeEnabled:                     req.BackendModeEnabled,
+		AllowUserViewErrorRequests: func() bool {
+			if req.AllowUserViewErrorRequests != nil {
+				return *req.AllowUserViewErrorRequests
+			}
+			return previousSettings.AllowUserViewErrorRequests
+		}(),
 		OpsMonitoringEnabled: func() bool {
 			if req.OpsMonitoringEnabled != nil {
 				return *req.OpsMonitoringEnabled
@@ -1779,6 +1791,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.OpenAICodexUserAgent
 			}
 			return previousSettings.OpenAICodexUserAgent
+		}(),
+		OpenAIAllowClaudeCodeCodexPlugin: func() bool {
+			if req.OpenAIAllowClaudeCodeCodexPlugin != nil {
+				return *req.OpenAIAllowClaudeCodeCodexPlugin
+			}
+			return previousSettings.OpenAIAllowClaudeCodeCodexPlugin
 		}(),
 		ScheduledTestDefaultPrompt: func() string {
 			if req.ScheduledTestDefaultPrompt != nil {
@@ -2194,6 +2212,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SemanticErrorMatchMaxChars:             updatedSettings.SemanticErrorMatchMaxChars,
 		SemanticErrorRules:                     semanticErrorRulesToDTO(updatedSettings.SemanticErrorRules),
 		OpenAICodexUserAgent:                   updatedSettings.OpenAICodexUserAgent,
+		OpenAIAllowClaudeCodeCodexPlugin:       updatedSettings.OpenAIAllowClaudeCodeCodexPlugin,
 		ScheduledTestDefaultPrompt:             updatedSettings.ScheduledTestDefaultPrompt,
 		PaymentVisibleMethodAlipaySource:       updatedSettings.PaymentVisibleMethodAlipaySource,
 		PaymentVisibleMethodWxpaySource:        updatedSettings.PaymentVisibleMethodWxpaySource,
@@ -2238,7 +2257,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 
-		RiskControlEnabled: updatedSettings.RiskControlEnabled,
+		RiskControlEnabled:         updatedSettings.RiskControlEnabled,
+		AllowUserViewErrorRequests: updatedSettings.AllowUserViewErrorRequests,
 	}
 	if fastPolicy, err := h.settingService.GetOpenAIFastPolicySettings(c.Request.Context()); err != nil {
 		slog.Error("openai_fast_policy_settings_get_failed", "error", err)
@@ -2708,6 +2728,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.OpenAICodexUserAgent != after.OpenAICodexUserAgent {
 		changed = append(changed, "openai_codex_user_agent")
+	}
+	if before.OpenAIAllowClaudeCodeCodexPlugin != after.OpenAIAllowClaudeCodeCodexPlugin {
+		changed = append(changed, "openai_allow_claude_code_codex_plugin")
 	}
 	if before.ScheduledTestDefaultPrompt != after.ScheduledTestDefaultPrompt {
 		changed = append(changed, "scheduled_test_default_prompt")

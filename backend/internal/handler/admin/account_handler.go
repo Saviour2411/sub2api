@@ -142,8 +142,10 @@ type UpdateAccountRequest struct {
 // SyncUpstreamModelsPreviewRequest 表示账号保存前的上游模型同步预览请求。
 type SyncUpstreamModelsPreviewRequest struct {
 	Platform    string         `json:"platform" binding:"required,oneof=openai anthropic gemini antigravity"`
-	Type        string         `json:"type" binding:"required,oneof=apikey"`
-	Credentials map[string]any `json:"credentials" binding:"required"`
+	Type        string         `json:"type" binding:"required"`
+	Credentials map[string]any `json:"credentials"`
+	BaseURL     string         `json:"base_url"`
+	APIKey      string         `json:"api_key"`
 	ProxyID     *int64         `json:"proxy_id"`
 	Concurrency int            `json:"concurrency"`
 }
@@ -2212,6 +2214,7 @@ func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
 
 // SyncUpstreamModelsPreview 在账号保存前按临时凭证同步上游支持的模型。
 // POST /api/v1/admin/accounts/models/sync-upstream/preview
+// POST /api/v1/admin/accounts/models/sync-upstream-preview
 func (h *AccountHandler) SyncUpstreamModelsPreview(c *gin.Context) {
 	var req SyncUpstreamModelsPreviewRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -2230,6 +2233,19 @@ func (h *AccountHandler) SyncUpstreamModelsPreview(c *gin.Context) {
 
 	if req.Concurrency <= 0 {
 		req.Concurrency = 1
+	}
+	if req.Credentials == nil {
+		req.Credentials = map[string]any{}
+	}
+	if req.APIKey != "" {
+		req.Credentials["api_key"] = req.APIKey
+	}
+	if req.BaseURL != "" {
+		req.Credentials["base_url"] = req.BaseURL
+	}
+	if strings.TrimSpace(fmt.Sprint(req.Credentials["api_key"])) == "" {
+		response.BadRequest(c, "api_key is required")
+		return
 	}
 
 	account := &service.Account{
@@ -2261,13 +2277,13 @@ func (h *AccountHandler) SyncUpstreamModelsPreview(c *gin.Context) {
 			case service.UpstreamModelSyncErrorConfiguration, service.UpstreamModelSyncErrorUnsupported:
 				response.BadRequest(c, syncErr.SafeMessage())
 			default:
-				slog.Warn("preview_sync_upstream_models_failed", "platform", req.Platform, "kind", syncErr.Kind)
+				slog.Warn("sync_upstream_models_preview_failed", "platform", req.Platform, "kind", syncErr.Kind)
 				response.Error(c, http.StatusBadGateway, syncErr.SafeMessage())
 			}
 			return
 		}
 
-		slog.Warn("preview_sync_upstream_models_failed", "platform", req.Platform)
+		slog.Warn("sync_upstream_models_preview_failed", "platform", req.Platform)
 		response.Error(c, http.StatusBadGateway, "Failed to sync upstream models from upstream")
 		return
 	}

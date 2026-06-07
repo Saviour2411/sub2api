@@ -784,6 +784,7 @@
         </div>
       </div>
 
+
       <div v-if="allOpenAIPassthroughCapable" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
           <label
@@ -821,6 +822,49 @@
               :class="[
                 'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
                 codexCLIEmulationEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
+      <div v-if="allOpenAIOAuth" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between">
+          <label
+            id="bulk-edit-openai-codex-allow-claude-code-label"
+            class="input-label mb-0"
+            for="bulk-edit-openai-codex-allow-claude-code-enabled"
+          >
+            {{ t('admin.accounts.openai.codexCLIOnlyAllowClaudeCode') }}
+          </label>
+          <input
+            v-model="enableCodexCLIOnlyAllowClaudeCode"
+            id="bulk-edit-openai-codex-allow-claude-code-enabled"
+            type="checkbox"
+            aria-controls="bulk-edit-openai-codex-allow-claude-code"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </div>
+        <div
+          id="bulk-edit-openai-codex-allow-claude-code"
+          :class="!enableCodexCLIOnlyAllowClaudeCode && 'pointer-events-none opacity-50'"
+        >
+          <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.openai.codexCLIOnlyAllowClaudeCodeDesc') }}
+          </p>
+          <button
+            id="bulk-edit-openai-codex-allow-claude-code-toggle"
+            type="button"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              codexCLIOnlyAllowClaudeCodeEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+            @click="codexCLIOnlyAllowClaudeCodeEnabled = !codexCLIOnlyAllowClaudeCodeEnabled"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                codexCLIOnlyAllowClaudeCodeEnabled ? 'translate-x-5' : 'translate-x-0'
               ]"
             />
           </button>
@@ -1312,6 +1356,7 @@ const enableOpenAIWSMode = ref(false)
 const enableOpenAIAPIKeyWSMode = ref(false)
 const enableCodexCLIEmulation = ref(false)
 const enableCodexCLIOnly = ref(false)
+const enableCodexCLIOnlyAllowClaudeCode = ref(false)
 const enableOpenAICompactMode = ref(false)
 const enableOpenAICompactModelMapping = ref(false)
 const enableRpmLimit = ref(false)
@@ -1341,6 +1386,7 @@ const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIEmulationEnabled = ref(false)
 const codexCLIOnlyEnabled = ref(false)
+const codexCLIOnlyAllowClaudeCodeEnabled = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const rpmLimitEnabled = ref(false)
@@ -1597,6 +1643,11 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     extra.openai_codex_cli_emulation_enabled = codexCLIEmulationEnabled.value
   }
 
+  if (enableCodexCLIOnlyAllowClaudeCode.value) {
+    const extra = ensureExtra()
+    extra.codex_cli_only_allowed_clients = codexCLIOnlyAllowClaudeCodeEnabled.value ? ['claude_code'] : []
+  }
+
   if (enableOpenAICompactMode.value) {
     const extra = ensureExtra()
     extra.openai_compact_mode = openAICompactMode.value
@@ -1714,6 +1765,7 @@ const handleSubmit = async () => {
     enableOpenAIAPIKeyWSMode.value ||
     enableCodexCLIOnly.value ||
     enableCodexCLIEmulation.value ||
+    enableCodexCLIOnlyAllowClaudeCode.value ||
     enableOpenAICompactMode.value ||
     enableOpenAICompactModelMapping.value ||
     enableRpmLimit.value ||
@@ -1818,6 +1870,7 @@ watch(
       enableOpenAIAPIKeyWSMode.value = false
       enableCodexCLIOnly.value = false
       enableCodexCLIEmulation.value = false
+      enableCodexCLIOnlyAllowClaudeCode.value = false
       enableOpenAICompactMode.value = false
       enableOpenAICompactModelMapping.value = false
       enableRpmLimit.value = false
@@ -1843,6 +1896,7 @@ watch(
       openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       codexCLIEmulationEnabled.value = false
       codexCLIOnlyEnabled.value = false
+      codexCLIOnlyAllowClaudeCodeEnabled.value = false
       openAICompactMode.value = 'auto'
       openAICompactModelMappings.value = []
       rpmLimitEnabled.value = false

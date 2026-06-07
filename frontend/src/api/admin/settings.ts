@@ -620,6 +620,7 @@ export interface SystemSettings {
   semantic_error_match_max_chars: number;
   semantic_error_rules: SemanticErrorRule[];
   openai_codex_user_agent: string;
+  openai_allow_claude_code_codex_plugin: boolean;
   scheduled_test_default_prompt: string;
   web_search_emulation_enabled?: boolean;
 
@@ -677,6 +678,9 @@ export interface SystemSettings {
 
   // OpenAI fast/flex policy
   openai_fast_policy_settings?: OpenAIFastPolicySettings;
+
+  // Allow user view error requests
+  allow_user_view_error_requests: boolean;
 }
 
 export interface UpdateSettingsRequest {
@@ -872,6 +876,7 @@ export interface UpdateSettingsRequest {
   semantic_error_match_max_chars?: number;
   semantic_error_rules?: SemanticErrorRule[];
   openai_codex_user_agent?: string;
+  openai_allow_claude_code_codex_plugin?: boolean;
   scheduled_test_default_prompt?: string;
   // Payment configuration
   payment_enabled?: boolean;
@@ -926,6 +931,8 @@ export interface UpdateSettingsRequest {
 
   // OpenAI fast/flex policy
   openai_fast_policy_settings?: OpenAIFastPolicySettings;
+
+  allow_user_view_error_requests?: boolean;
 }
 
 /**

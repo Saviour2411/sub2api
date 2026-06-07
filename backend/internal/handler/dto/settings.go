@@ -199,6 +199,7 @@ type SystemSettings struct {
 	SemanticErrorMatchMaxChars             int                 `json:"semantic_error_match_max_chars"`
 	SemanticErrorRules                     []SemanticErrorRule `json:"semantic_error_rules"`
 	OpenAICodexUserAgent                   string              `json:"openai_codex_user_agent"`
+	OpenAIAllowClaudeCodeCodexPlugin       bool                `json:"openai_allow_claude_code_codex_plugin"`
 	ScheduledTestDefaultPrompt             string              `json:"scheduled_test_default_prompt"`
 
 	// Web Search Emulation
@@ -271,6 +272,9 @@ type SystemSettings struct {
 
 	// 系统全局默认平台配额（key = platform，nil/缺省 = 不限制）
 	DefaultPlatformQuotas map[string]*service.DefaultPlatformQuotaSetting `json:"default_platform_quotas,omitempty"`
+
+	// 允许终端用户在用量页查看自己的失败请求
+	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
 }
 
 type SemanticErrorRule struct {
@@ -348,6 +352,8 @@ type PublicSettings struct {
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 
 	RiskControlEnabled bool `json:"risk_control_enabled"`
+
+	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
 }
 
 type LoginAgreementDocument struct {

@@ -218,12 +218,12 @@ func (e *EasyPay) QueryOrder(ctx context.Context, tradeNo string) (*payment.Quer
 		return nil, fmt.Errorf("easypay parse query: %w", err)
 	}
 	status := payment.ProviderStatusPending
-	tradeStatus := easyPayFirstNonEmpty(resp.TradeStatus, resp.Data.TradeStatus)
+	tradeStatus, hasTradeStatus := easyPayTradeStatus(resp.TradeStatus, resp.Data.TradeStatus)
 	statusCode := resp.Status
 	if statusCode == 0 {
 		statusCode = resp.Data.Status
 	}
-	if tradeStatus != "" {
+	if hasTradeStatus {
 		if strings.EqualFold(tradeStatus, tradeStatusSuccess) {
 			status = payment.ProviderStatusPaid
 		}
@@ -244,17 +244,17 @@ type easyPayQueryResponse struct {
 	Status      int              `json:"status"`
 	Money       string           `json:"money"`
 	TradeNo     string           `json:"trade_no"`
-	TradeStatus string           `json:"trade_status"`
+	TradeStatus *string          `json:"trade_status"`
 	Code        int              `json:"code"`
 	Msg         string           `json:"msg"`
 	Data        easyPayQueryData `json:"data"`
 }
 
 type easyPayQueryData struct {
-	Status      int    `json:"status"`
-	Money       string `json:"money"`
-	TradeNo     string `json:"trade_no"`
-	TradeStatus string `json:"trade_status"`
+	Status      int     `json:"status"`
+	Money       string  `json:"money"`
+	TradeNo     string  `json:"trade_no"`
+	TradeStatus *string `json:"trade_status"`
 }
 
 func easyPayFirstNonEmpty(values ...string) string {
@@ -265,6 +265,20 @@ func easyPayFirstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func easyPayTradeStatus(values ...*string) (string, bool) {
+	hasTradeStatus := false
+	for _, value := range values {
+		if value == nil {
+			continue
+		}
+		hasTradeStatus = true
+		if trimmed := strings.TrimSpace(*value); trimmed != "" {
+			return trimmed, true
+		}
+	}
+	return "", hasTradeStatus
 }
 
 func (e *EasyPay) VerifyNotification(_ context.Context, rawBody string, _ map[string]string) (*payment.PaymentNotification, error) {

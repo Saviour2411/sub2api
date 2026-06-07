@@ -134,6 +134,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { accountsAPI } from '@/api/admin/accounts'
 import type { SyncUpstreamModelsPreviewRequest } from '@/api/admin/accounts'
+import type { AccountPlatform } from '@/types'
 import ModelIcon from '@/components/common/ModelIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { allModels, getModelsByPlatform } from '@/composables/useModelWhitelist'
@@ -146,6 +147,12 @@ const props = defineProps<{
   platforms?: string[]
   accountId?: number
   previewSyncRequest?: SyncUpstreamModelsPreviewRequest | null
+  syncCredentials?: {
+    platform: string
+    type: string
+    base_url?: string
+    api_key: string
+  }
 }>()
 
 const emit = defineEmits<{
@@ -177,8 +184,26 @@ const normalizedPlatforms = computed(() => {
 })
 
 const upstreamSyncPlatforms = new Set(['anthropic', 'openai', 'gemini', 'antigravity'])
+const legacyPreviewSyncRequest = computed<SyncUpstreamModelsPreviewRequest | null>(() => {
+  const credentials = props.syncCredentials
+  if (!credentials) return null
+
+  const platform = credentials.platform.trim().toLowerCase()
+  if (!upstreamSyncPlatforms.has(platform) || credentials.type !== 'apikey') {
+    return null
+  }
+
+  return {
+    platform: platform as AccountPlatform,
+    type: 'apikey',
+    base_url: credentials.base_url,
+    api_key: credentials.api_key
+  }
+})
+
 const canSyncUpstream = computed(() => {
   if (props.previewSyncRequest) return true
+  if (legacyPreviewSyncRequest.value) return true
   if (!props.accountId) return false
   if (normalizedPlatforms.value.length === 0) return true
   return normalizedPlatforms.value.some(platform => upstreamSyncPlatforms.has(platform.toLowerCase()))
@@ -254,13 +279,22 @@ const fillRelated = () => {
 const syncUpstreamModels = async () => {
   if (isSyncingUpstream.value) return
   const previewSyncRequest = props.previewSyncRequest
-  if (!props.accountId && !previewSyncRequest) return
+  const legacyRequest = legacyPreviewSyncRequest.value
+  if (!props.accountId && !previewSyncRequest && !legacyRequest) return
 
   isSyncingUpstream.value = true
   try {
-    const result = props.accountId
-      ? await accountsAPI.syncUpstreamModels(props.accountId)
-      : await accountsAPI.syncUpstreamModelsPreview(previewSyncRequest!)
+    let result
+    if (props.accountId) {
+      result = await accountsAPI.syncUpstreamModels(props.accountId)
+    } else if (previewSyncRequest) {
+      result = await accountsAPI.syncUpstreamModelsPreview(previewSyncRequest)
+    } else if (legacyRequest) {
+      result = await accountsAPI.syncUpstreamModelsPreview(legacyRequest)
+    } else {
+      return
+    }
+
     const upstreamModels = result.models.map(model => model.trim()).filter(Boolean)
     if (upstreamModels.length === 0) {
       appStore.showInfo(t('admin.accounts.syncUpstreamModelsEmpty'))
