@@ -254,6 +254,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		}
 		if imageCount > 0 {
 			result.ImageCount = imageCount
+			result.ImageDelivered = true
 			result.ImageSize = imageSizeTier
 			result.ImageInputSize = imageInputSize
 			result.ImageOutputSizes = imageCounter.Sizes()

@@ -336,6 +336,13 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				RawResponse:     auditCapture.Bytes(),
 			})
 		}
+		if result != nil && !result.ImageDelivered {
+			reqLog.Warn("openai.images.skip_usage_record_not_delivered",
+				zap.Int64("account_id", account.ID),
+				zap.Int("image_count", result.ImageCount),
+			)
+			return
+		}
 		h.submitMandatoryUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 				Result:             result,

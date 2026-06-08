@@ -2410,6 +2410,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		Model:            originalModel,
 		UpstreamModel:    mappedModel,
 		ImageCount:       imageCounter.Count(),
+		ImageDelivered:   imageCounter.Count() > 0,
 		ImageOutputSizes: imageCounter.Sizes(),
 		ServiceTier:      extractOpenAIServiceTier(reqBody),
 		ReasoningEffort:  extractOpenAIReasoningEffort(reqBody, originalModel),
@@ -3290,6 +3291,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				}
 				if imageCount > 0 {
 					result.ImageCount = imageCount
+					result.ImageDelivered = true
 					result.ImageSize = imageSizeTier
 					result.ImageInputSize = imageInputSize
 					result.ImageOutputSizes = imageCounter.Sizes()

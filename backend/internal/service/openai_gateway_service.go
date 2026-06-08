@@ -241,6 +241,7 @@ type OpenAIForwardResult struct {
 	FirstTokenMs       *int
 	ClientDisconnect   bool
 	ImageCount         int
+	ImageDelivered     bool
 	ImageSize          string
 	ImageInputSize     string
 	ImageOutputSize    string
@@ -3121,6 +3122,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 		if imageCount > 0 {
 			forwardResult.ImageCount = imageCount
+			forwardResult.ImageDelivered = true
 			forwardResult.ImageSize = imageSizeTier
 			forwardResult.ImageInputSize = imageInputSize
 			forwardResult.ImageOutputSizes = imageOutputSizes
@@ -3370,6 +3372,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 	if imageCount > 0 {
 		forwardResult.ImageCount = imageCount
+		forwardResult.ImageDelivered = true
 		forwardResult.ImageSize = imageSizeTier
 		forwardResult.ImageInputSize = imageInputSize
 		forwardResult.ImageOutputSizes = imageOutputSizes

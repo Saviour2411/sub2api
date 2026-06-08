@@ -624,6 +624,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthPassesNAndReturnsAllImages(t *te
 	require.Equal(t, "gpt-image-2", result.Model)
 	require.Equal(t, "gpt-image-2", result.UpstreamModel)
 	require.Equal(t, 3, result.ImageCount)
+	require.True(t, result.ImageDelivered)
 	require.Equal(t, 11, result.Usage.InputTokens)
 	require.Equal(t, 22, result.Usage.OutputTokens)
 	require.Equal(t, 7, result.Usage.ImageOutputTokens)
@@ -653,6 +654,9 @@ func TestOpenAIGatewayServiceForwardImages_OAuthPassesNAndReturnsAllImages(t *te
 	require.Equal(t, "aW1hZ2UtMQ==", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
 	require.Equal(t, "aW1hZ2UtMg==", gjson.Get(rec.Body.String(), "data.1.b64_json").String())
 	require.Equal(t, "aW1hZ2UtMw==", gjson.Get(rec.Body.String(), "data.2.b64_json").String())
+	require.Equal(t, "data:image/png;base64,aW1hZ2UtMQ==", gjson.Get(rec.Body.String(), "data.0.url").String())
+	require.Equal(t, "data:image/png;base64,aW1hZ2UtMg==", gjson.Get(rec.Body.String(), "data.1.url").String())
+	require.Equal(t, "data:image/png;base64,aW1hZ2UtMw==", gjson.Get(rec.Body.String(), "data.2.url").String())
 	require.Equal(t, "draw a cat 1", gjson.Get(rec.Body.String(), "data.0.revised_prompt").String())
 	require.Equal(t, "draw a cat 3", gjson.Get(rec.Body.String(), "data.2.revised_prompt").String())
 }
@@ -821,6 +825,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationUsesConfiguredV1BaseU
 	require.Equal(t, "gpt-image-2", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "aGVsbG8=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+	require.Equal(t, "data:image/png;base64,aGVsbG8=", gjson.Get(rec.Body.String(), "data.0.url").String())
 }
 
 func TestOpenAIGatewayServiceForwardImages_APIKeyURLResponseReturnsDataURL(t *testing.T) {
@@ -872,10 +877,66 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyURLResponseReturnsDataURL(t *te
 	require.Equal(t, 1, result.ImageCount)
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "data:image/png;base64,"+base64.StdEncoding.EncodeToString(imageBytes), gjson.Get(rec.Body.String(), "data.0.url").String())
+	require.Equal(t, base64.StdEncoding.EncodeToString(imageBytes), gjson.Get(rec.Body.String(), "data.0.b64_json").String())
 	require.NotContains(t, rec.Body.String(), "upstream.example")
 	require.Len(t, upstream.requests, 2)
 	require.Equal(t, "https://upstream.example/images/cat.png", upstream.requests[1].URL.String())
 	require.Empty(t, upstream.requests[1].Header.Get("Authorization"))
+}
+
+func TestOpenAIGatewayServiceForwardImages_APIKeyB64ResponseFormatURLUpstreamReturnsBothWithoutLeak(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","response_format":"b64_json"}`)
+	imageBytes := []byte("b64-request-upstream-url-image")
+	wantB64 := base64.StdEncoding.EncodeToString(imageBytes)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	upstream := &httpUpstreamRecorder{
+		responses: []*http.Response{
+			{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"application/json"},
+					"X-Request-Id": []string{"req_img_b64_url_upstream"},
+				},
+				Body: io.NopCloser(strings.NewReader(`{"created":1710000014,"data":[{"url":"https://upstream.example/images/b64-request.png","revised_prompt":"draw a cat"}]}`)),
+			},
+			{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"image/png"}},
+				Body:       io.NopCloser(bytes.NewReader(imageBytes)),
+			},
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:       19,
+		Name:     "openai-apikey",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key": "test-api-key",
+		},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.ImageDelivered)
+	require.Equal(t, 1, result.ImageCount)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, wantB64, gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+	require.Equal(t, "data:image/png;base64,"+wantB64, gjson.Get(rec.Body.String(), "data.0.url").String())
+	require.NotContains(t, rec.Body.String(), "upstream.example")
+	require.Len(t, upstream.requests, 2)
 }
 
 func TestOpenAIGatewayServiceForwardImages_APIKeyURLResponseFallsBackToB64JSON(t *testing.T) {
@@ -924,7 +985,55 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyURLResponseFallsBackToB64JSON(t
 	require.NotNil(t, result)
 	require.Equal(t, 1, result.ImageCount)
 	require.Equal(t, "data:image/webp;base64,ZmFsbGJhY2s=", gjson.Get(rec.Body.String(), "data.0.url").String())
-	require.Equal(t, "ZmFsbGJhY2s", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+	require.Equal(t, "ZmFsbGJhY2s=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+	require.NotContains(t, rec.Body.String(), "upstream.example")
+	require.Len(t, upstream.requests, 2)
+}
+
+func TestOpenAIGatewayServiceForwardImages_APIKeyURLResponseDownloadFailureWithoutB64ReturnsError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","response_format":"b64_json"}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	upstream := &httpUpstreamRecorder{
+		responses: []*http.Response{
+			{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"application/json"},
+					"X-Request-Id": []string{"req_img_url_download_fail"},
+				},
+				Body: io.NopCloser(strings.NewReader(`{"created":1710000015,"data":[{"url":"https://upstream.example/images/missing.png"}]}`)),
+			},
+			{
+				StatusCode: http.StatusForbidden,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"error":"expired"}`)),
+			},
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:       20,
+		Name:     "openai-apikey",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key": "test-api-key",
+		},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.Nil(t, result)
+	require.ErrorContains(t, err, "download image url: status 403")
 	require.NotContains(t, rec.Body.String(), "upstream.example")
 	require.Len(t, upstream.requests, 2)
 }
@@ -1037,8 +1146,71 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyStreamingURLResponseReturnsData
 	completed, ok := findOpenAIImageTestSSEEvent(events, "image_generation.completed")
 	require.True(t, ok)
 	require.Equal(t, "data:image/png;base64,"+base64.StdEncoding.EncodeToString(imageBytes), gjson.Get(completed.Data, "url").String())
+	require.Equal(t, base64.StdEncoding.EncodeToString(imageBytes), gjson.Get(completed.Data, "b64_json").String())
 	require.Len(t, upstream.requests, 2)
 	require.Empty(t, upstream.requests[1].Header.Get("Authorization"))
+}
+
+func TestOpenAIGatewayServiceForwardImages_APIKeyStreamingB64ResponseFormatURLUpstreamReturnsBothWithoutLeak(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","stream":true,"response_format":"b64_json"}`)
+	imageBytes := []byte("stream-b64-request-upstream-url-image")
+	wantB64 := base64.StdEncoding.EncodeToString(imageBytes)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	upstream := &httpUpstreamRecorder{
+		responses: []*http.Response{
+			{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"text/event-stream"},
+					"X-Request-Id": []string{"req_img_stream_b64_url_upstream"},
+				},
+				Body: io.NopCloser(strings.NewReader(
+					"event: image_generation.completed\n" +
+						"data: {\"type\":\"image_generation.completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":18,\"output_tokens_details\":{\"image_tokens\":8}},\"url\":\"https://upstream.example/images/stream-b64.png\",\"output_format\":\"png\"}\n\n" +
+						"data: [DONE]\n\n",
+				)),
+			},
+			{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"image/png"}},
+				Body:       io.NopCloser(bytes.NewReader(imageBytes)),
+			},
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:       21,
+		Name:     "openai-apikey",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key": "test-api-key",
+		},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.Stream)
+	require.True(t, result.ImageDelivered)
+	require.Equal(t, 1, result.ImageCount)
+	require.NotContains(t, rec.Body.String(), "upstream.example")
+	events := parseOpenAIImageTestSSEEvents(rec.Body.String())
+	completed, ok := findOpenAIImageTestSSEEvent(events, "image_generation.completed")
+	require.True(t, ok)
+	require.Equal(t, wantB64, gjson.Get(completed.Data, "b64_json").String())
+	require.Equal(t, "data:image/png;base64,"+wantB64, gjson.Get(completed.Data, "url").String())
+	require.Len(t, upstream.requests, 2)
 }
 
 func TestOpenAIGatewayServiceForwardImages_APIKeyStreamRawJSONEventStreamFallbackBillsImage(t *testing.T) {
@@ -1333,6 +1505,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyStreamingDrainsAfterClientDisco
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, 1, result.ImageCount)
+	require.False(t, result.ImageDelivered)
 	require.Equal(t, 3, result.Usage.InputTokens)
 	require.Equal(t, 4, result.Usage.OutputTokens)
 	require.Equal(t, 2, result.Usage.ImageOutputTokens)
@@ -1693,6 +1866,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingHandlesMultilineSSE(t *
 	completed, ok := findOpenAIImageTestSSEEvent(events, "image_generation.completed")
 	require.True(t, ok)
 	require.Equal(t, "TXVsdGlsaW5l", gjson.Get(completed.Data, "b64_json").String())
+	require.Equal(t, "data:image/png;base64,TXVsdGlsaW5l", gjson.Get(completed.Data, "url").String())
 	require.JSONEq(t, `{"images":1}`, gjson.Get(completed.Data, "usage").Raw)
 	require.NotContains(t, rec.Body.String(), "event: error")
 }
@@ -1749,7 +1923,8 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingDrainsAfterClientDiscon
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.True(t, result.Stream)
-	require.Equal(t, 1, result.ImageCount)
+	require.Equal(t, 0, result.ImageCount)
+	require.False(t, result.ImageDelivered)
 	require.Equal(t, 5, result.Usage.InputTokens)
 	require.Equal(t, 9, result.Usage.OutputTokens)
 	require.Equal(t, 4, result.Usage.ImageOutputTokens)

@@ -190,9 +190,7 @@ func buildOpenAIImagesStreamPartialPayload(
 	payload, _ = sjson.SetBytes(payload, "created_at", createdAt)
 	payload, _ = sjson.SetBytes(payload, "partial_image_index", partialImageIndex)
 	payload, _ = sjson.SetBytes(payload, "b64_json", b64)
-	if strings.EqualFold(strings.TrimSpace(responseFormat), "url") {
-		payload, _ = sjson.SetBytes(payload, "url", "data:"+openAIImageOutputMIMEType(meta.OutputFormat)+";base64,"+b64)
-	}
+	payload, _ = sjson.SetBytes(payload, "url", openAIImageDataURLFromB64(b64, meta.OutputFormat))
 	if meta.Background != "" {
 		payload, _ = sjson.SetBytes(payload, "background", meta.Background)
 	}
@@ -226,9 +224,7 @@ func buildOpenAIImagesStreamCompletedPayload(
 	payload, _ = sjson.SetBytes(payload, "type", eventType)
 	payload, _ = sjson.SetBytes(payload, "created_at", createdAt)
 	payload, _ = sjson.SetBytes(payload, "b64_json", img.Result)
-	if strings.EqualFold(strings.TrimSpace(responseFormat), "url") {
-		payload, _ = sjson.SetBytes(payload, "url", "data:"+openAIImageOutputMIMEType(img.OutputFormat)+";base64,"+img.Result)
-	}
+	payload, _ = sjson.SetBytes(payload, "url", openAIImageDataURLFromB64(img.Result, img.OutputFormat))
 	if img.Background != "" {
 		payload, _ = sjson.SetBytes(payload, "background", img.Background)
 	}
@@ -267,6 +263,10 @@ func openAIImageOutputMIMEType(outputFormat string) string {
 	default:
 		return "image/png"
 	}
+}
+
+func openAIImageDataURLFromB64(b64 string, outputFormat string) string {
+	return "data:" + openAIImageOutputMIMEType(outputFormat) + ";base64," + strings.TrimSpace(b64)
 }
 
 func openAIImageUploadToDataURL(upload OpenAIImagesUpload) (string, error) {
@@ -762,17 +762,10 @@ func buildOpenAIImagesAPIResponse(
 	out := []byte(`{"created":0,"data":[]}`)
 	out, _ = sjson.SetBytes(out, "created", createdAt)
 
-	format := strings.ToLower(strings.TrimSpace(responseFormat))
-	if format == "" {
-		format = "b64_json"
-	}
 	for _, img := range results {
 		item := []byte(`{}`)
-		if format == "url" {
-			item, _ = sjson.SetBytes(item, "url", "data:"+openAIImageOutputMIMEType(img.OutputFormat)+";base64,"+img.Result)
-		} else {
-			item, _ = sjson.SetBytes(item, "b64_json", img.Result)
-		}
+		item, _ = sjson.SetBytes(item, "b64_json", img.Result)
+		item, _ = sjson.SetBytes(item, "url", openAIImageDataURLFromB64(img.Result, img.OutputFormat))
 		if img.RevisedPrompt != "" {
 			item, _ = sjson.SetBytes(item, "revised_prompt", img.RevisedPrompt)
 		}
@@ -1060,8 +1053,9 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 					continue
 				}
 				payload := buildOpenAIImagesStreamCompletedPayload(eventName, img, format, createdAt, usageRaw)
-				emitted[key] = struct{}{}
-				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, eventName, payload)
+				if s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, eventName, payload) {
+					emitted[key] = struct{}{}
+				}
 			}
 			imageCount = len(emitted)
 			imageOutputSizes = openAIResponsesImageResultSizes(finalResults)
@@ -1111,8 +1105,9 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 					continue
 				}
 				payload := buildOpenAIImagesStreamCompletedPayload(eventName, img, format, createdAt, nil)
-				emitted[key] = struct{}{}
-				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, eventName, payload)
+				if s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, eventName, payload) {
+					emitted[key] = struct{}{}
+				}
 			}
 			imageCount = len(emitted)
 			imageOutputSizes = openAIResponsesImageResultSizes(pendingResults)
@@ -1389,6 +1384,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 					Duration:         time.Since(startTime),
 					FirstTokenMs:     firstTokenMs,
 					ImageCount:       imageCount,
+					ImageDelivered:   imageCount > 0,
 					ImageSize:        parsed.SizeTier,
 					ImageInputSize:   parsed.Size,
 					ImageOutputSizes: imageOutputSizes,
@@ -1402,9 +1398,6 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 			return nil, err
 		}
 	}
-	if imageCount <= 0 {
-		imageCount = parsed.N
-	}
 	return &OpenAIForwardResult{
 		RequestID:        resp.Header.Get("x-request-id"),
 		Usage:            usage,
@@ -1415,6 +1408,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		Duration:         time.Since(startTime),
 		FirstTokenMs:     firstTokenMs,
 		ImageCount:       imageCount,
+		ImageDelivered:   imageCount > 0,
 		ImageSize:        parsed.SizeTier,
 		ImageInputSize:   parsed.Size,
 		ImageOutputSizes: imageOutputSizes,
