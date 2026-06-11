@@ -49,6 +49,7 @@ export interface ContentModerationConfig {
   local_audit_programming_tool_patterns: string[]
   local_audit_max_capture_concurrency: number
   local_audit_storage_path: string
+  cyber_policy_exclude_from_ban_count: boolean
 }
 
 export type ContentModerationAPIKeyStatusValue = 'unknown' | 'ok' | 'error' | 'frozen'
@@ -131,6 +132,7 @@ export interface UpdateContentModerationConfig {
   local_audit_programming_client_patterns?: string[]
   local_audit_programming_tool_patterns?: string[]
   local_audit_max_capture_concurrency?: number
+  cyber_policy_exclude_from_ban_count?: boolean
 }
 
 export interface ContentModerationLocalAuditStats {

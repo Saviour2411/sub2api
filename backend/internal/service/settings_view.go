@@ -154,6 +154,8 @@ type SystemSettings struct {
 	DailyCheckinUnpaidDecayRules     []DailyCheckinDecayRule
 	DailyCheckinLinuxDoExemptEnabled bool
 	RiskControlEnabled               bool
+	CyberSessionBlockEnabled         bool
+	CyberSessionBlockTTLSeconds      int
 	AffiliateEnabled                 bool
 	AffiliateRebateRate              float64
 	AffiliateRebateFreezeHours       int
