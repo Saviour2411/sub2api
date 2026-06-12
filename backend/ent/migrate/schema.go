@@ -437,6 +437,7 @@ var (
 		{Name: "group_name", Type: field.TypeString, Nullable: true, Size: 100, Default: ""},
 		{Name: "enabled", Type: field.TypeBool, Default: true},
 		{Name: "interval_seconds", Type: field.TypeInt},
+		{Name: "jitter_seconds", Type: field.TypeInt, Default: 0},
 		{Name: "last_checked_at", Type: field.TypeTime, Nullable: true},
 		{Name: "created_by", Type: field.TypeInt64},
 		{Name: "extra_headers", Type: field.TypeJSON},
@@ -462,7 +463,7 @@ var (
 			{
 				Name:    "channelmonitor_enabled_last_checked_at",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorsColumns[11], ChannelMonitorsColumns[13]},
+				Columns: []*schema.Column{ChannelMonitorsColumns[11], ChannelMonitorsColumns[14]},
 			},
 			{
 				Name:    "channelmonitor_provider",
