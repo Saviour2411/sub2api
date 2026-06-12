@@ -190,6 +190,9 @@ type SystemSettings struct {
 	EnableFingerprintUnification           bool                `json:"enable_fingerprint_unification"`
 	EnableMetadataPassthrough              bool                `json:"enable_metadata_passthrough"`
 	EnableCCHSigning                       bool                `json:"enable_cch_signing"`
+	EnableClaudeOAuthSystemPromptInjection bool                `json:"enable_claude_oauth_system_prompt_injection"`
+	ClaudeOAuthSystemPrompt                string              `json:"claude_oauth_system_prompt"`
+	ClaudeOAuthSystemPromptBlocks          string              `json:"claude_oauth_system_prompt_blocks"`
 	EnableAnthropicCacheTTL1hInjection     bool                `json:"enable_anthropic_cache_ttl_1h_injection"`
 	RewriteMessageCacheControl             bool                `json:"rewrite_message_cache_control"`
 	AntigravityUserAgentVersion            string              `json:"antigravity_user_agent_version"`
