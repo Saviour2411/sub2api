@@ -499,6 +499,15 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			if result.ReasoningEffort == nil {
 				result.ReasoningEffort = service.NormalizeClaudeOutputEffort(parsedReq.OutputEffort)
 			}
+			// 国产模型 thinking-enabled 默认 effort 填充：Kimi/GLM/MiniMax 这些不支持 effort 档位的
+			// passback-required 上游，仅要 thinking 启用且 OutputEffort 未明确传递时，在 usage_log 写 "high"。
+			if result.ReasoningEffort == nil && parsedReq.ThinkingEnabled {
+				protocolModel := result.UpstreamModel
+				if protocolModel == "" {
+					protocolModel = result.Model
+				}
+				result.ReasoningEffort = service.DefaultEffortForThinkingEnabled(protocolModel)
+			}
 			if !result.ClientDisconnect {
 				sessionID, clientSessionID, sessionSource := resolveParsedSessionAuditFields(parsedReq, sessionHash)
 				h.recordSuccessfulConversationAudit(c, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, result.UpstreamModel, result.Stream, body, result.Usage, successfulConversationAuditOptions{
@@ -933,6 +942,14 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 			if result.ReasoningEffort == nil {
 				result.ReasoningEffort = service.NormalizeClaudeOutputEffort(attemptParsedReq.OutputEffort)
+			}
+			// 同上（重试路径中的对称填充）。详见非重试路径同名注释。
+			if result.ReasoningEffort == nil && attemptParsedReq.ThinkingEnabled {
+				protocolModel := result.UpstreamModel
+				if protocolModel == "" {
+					protocolModel = result.Model
+				}
+				result.ReasoningEffort = service.DefaultEffortForThinkingEnabled(protocolModel)
 			}
 			if !result.ClientDisconnect {
 				sessionID, clientSessionID, sessionSource := resolveParsedSessionAuditFields(parsedReq, sessionHash)
