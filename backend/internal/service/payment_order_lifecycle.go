@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -29,6 +30,13 @@ const (
 
 	pendingWxpayReconcileLimit = 20
 )
+
+var adminOrderDeleteSafeStatuses = map[string]struct{}{
+	OrderStatusExpired:      {},
+	OrderStatusCancelled:    {},
+	OrderStatusFailed:       {},
+	OrderStatusRefundFailed: {},
+}
 
 type checkPaidOptions struct {
 	cancelIfUnpaid bool
@@ -119,6 +127,65 @@ func (s *PaymentService) AdminCancelOrder(ctx context.Context, orderID int64) (s
 		return "", infraerrors.BadRequest("INVALID_STATUS", "order cannot be cancelled in current status")
 	}
 	return s.cancelCore(ctx, o, OrderStatusCancelled, "admin", "admin cancelled order")
+}
+
+func (s *PaymentService) AdminDeleteOrder(ctx context.Context, orderID int64, force bool, operator string) error {
+	o, err := s.entClient.PaymentOrder.Get(ctx, orderID)
+	if err != nil {
+		return infraerrors.NotFound("NOT_FOUND", "order not found")
+	}
+	if !force && !adminOrderCanDeleteWithoutForce(o.Status) {
+		return infraerrors.Conflict("ORDER_DELETE_REQUIRES_FORCE", "order status requires force delete")
+	}
+	op := strings.TrimSpace(operator)
+	if op == "" {
+		op = "admin"
+	}
+	return s.deleteOrderWithAudit(ctx, o, force, op)
+}
+
+func adminOrderCanDeleteWithoutForce(status string) bool {
+	_, ok := adminOrderDeleteSafeStatuses[status]
+	return ok
+}
+
+func (s *PaymentService) deleteOrderWithAudit(ctx context.Context, o *dbent.PaymentOrder, force bool, operator string) error {
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		return fmt.Errorf("begin delete order transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	detail := map[string]any{
+		"force":            force,
+		"status":           o.Status,
+		"user_id":          o.UserID,
+		"amount":           o.Amount,
+		"pay_amount":       o.PayAmount,
+		"payment_type":     o.PaymentType,
+		"order_type":       o.OrderType,
+		"out_trade_no":     o.OutTradeNo,
+		"payment_trade_no": o.PaymentTradeNo,
+	}
+	dj, _ := json.Marshal(detail)
+	if _, err := tx.PaymentAuditLog.Create().
+		SetOrderID(strconv.FormatInt(o.ID, 10)).
+		SetAction("ORDER_DELETED").
+		SetDetail(string(dj)).
+		SetOperator(operator).
+		Save(ctx); err != nil {
+		return fmt.Errorf("write delete order audit log: %w", err)
+	}
+	if err := tx.PaymentOrder.DeleteOneID(o.ID).Exec(ctx); err != nil {
+		if dbent.IsNotFound(err) {
+			return infraerrors.NotFound("NOT_FOUND", "order not found")
+		}
+		return fmt.Errorf("delete order: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delete order transaction: %w", err)
+	}
+	return nil
 }
 
 func (s *PaymentService) cancelCore(ctx context.Context, o *dbent.PaymentOrder, fs, op, ad string) (string, error) {

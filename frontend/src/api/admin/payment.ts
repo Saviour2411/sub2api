@@ -98,6 +98,11 @@ export const adminPaymentAPI = {
     return apiClient.post(`/admin/payment/orders/${id}/cancel`)
   },
 
+  /** Delete an order (admin) */
+  deleteOrder(id: number, data?: { force?: boolean }) {
+    return apiClient.delete(`/admin/payment/orders/${id}`, { data })
+  },
+
   /** Retry recharge for a failed order */
   retryRecharge(id: number) {
     return apiClient.post(`/admin/payment/orders/${id}/retry`)

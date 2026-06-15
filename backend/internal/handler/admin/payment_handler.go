@@ -1,10 +1,13 @@
 package admin
 
 import (
+	"fmt"
+	"io"
 	"strconv"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -113,6 +116,37 @@ func (h *PaymentHandler) RetryFulfillment(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"message": "fulfillment retried"})
+}
+
+type AdminDeleteOrderRequest struct {
+	Force bool `json:"force"`
+}
+
+// DeleteOrder deletes an order (admin).
+// DELETE /api/v1/admin/payment/orders/:id
+func (h *PaymentHandler) DeleteOrder(c *gin.Context) {
+	orderID, ok := parseIDParam(c, "id")
+	if !ok {
+		return
+	}
+
+	var req AdminDeleteOrderRequest
+	if c.Request.Body != nil {
+		if err := c.ShouldBindJSON(&req); err != nil && err != io.EOF {
+			response.BadRequest(c, "Invalid request: "+err.Error())
+			return
+		}
+	}
+
+	operator := "admin"
+	if subject, ok := middleware.GetAuthSubjectFromContext(c); ok && subject.UserID > 0 {
+		operator = fmt.Sprintf("admin:%d", subject.UserID)
+	}
+	if err := h.paymentService.AdminDeleteOrder(c.Request.Context(), orderID, req.Force, operator); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"message": "deleted"})
 }
 
 func sanitizeAdminPaymentOrdersForResponse(orders []*dbent.PaymentOrder) []*dbent.PaymentOrder {

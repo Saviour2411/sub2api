@@ -49,6 +49,10 @@
               <Icon name="dollar" size="sm" />
               {{ t('payment.admin.refund') }}
             </button>
+            <button v-if="canDeleteOrder(row)" @click="openDeleteDialog(row)" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20">
+              <Icon name="trash" size="sm" />
+              {{ t('common.delete') }}
+            </button>
           </div>
         </template>
       </OrderTable>
@@ -108,6 +112,16 @@
     </BaseDialog>
 
     <AdminRefundDialog :show="showRefundDialog" :order="selectedOrder" :submitting="refundSubmitting" @confirm="handleRefund" @cancel="showRefundDialog = false" />
+    <ConfirmDialog
+      :show="showDeleteDialog"
+      :title="t('payment.admin.deleteOrder')"
+      :message="deleteDialogMessage"
+      :confirm-text="deleteSubmitting ? t('common.processing') : t('common.delete')"
+      :cancel-text="t('common.cancel')"
+      danger
+      @confirm="handleDeleteOrder"
+      @cancel="closeDeleteDialog"
+    />
   </AppLayout>
 </template>
 
@@ -122,6 +136,7 @@ import type { PaymentOrder } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import AdminRefundDialog from '@/components/admin/payment/AdminRefundDialog.vue'
@@ -147,7 +162,9 @@ const orderPagination = reactive({ page: 1, page_size: 20, total: 0 })
 const selectedOrder = ref<PaymentOrder | null>(null)
 const showDetailDialog = ref(false)
 const showRefundDialog = ref(false)
+const showDeleteDialog = ref(false)
 const refundSubmitting = ref(false)
+const deleteSubmitting = ref(false)
 const orderAuditLogs = ref<AuditLog[]>([])
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -221,6 +238,42 @@ async function handleCancelOrder(order: PaymentOrder) {
 async function handleRetryOrder(order: PaymentOrder) {
   try { await adminPaymentAPI.retryRecharge(order.id); appStore.showSuccess(t('payment.admin.retrySuccess')); loadOrders() }
   catch (err: unknown) { appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error'))) }
+}
+
+const deletableOrderStatuses = new Set(['EXPIRED', 'CANCELLED', 'FAILED', 'REFUND_FAILED'])
+function canDeleteOrder(order: PaymentOrder) { return deletableOrderStatuses.has(order.status) }
+
+const deleteDialogMessage = computed(() => {
+  if (!selectedOrder.value) return ''
+  return t('payment.admin.deleteOrderConfirm', {
+    id: selectedOrder.value.id,
+    status: t('payment.status.' + selectedOrder.value.status.toLowerCase(), selectedOrder.value.status),
+  })
+})
+
+function openDeleteDialog(order: PaymentOrder) {
+  selectedOrder.value = order
+  showDeleteDialog.value = true
+}
+
+function closeDeleteDialog() {
+  if (deleteSubmitting.value) return
+  showDeleteDialog.value = false
+}
+
+async function handleDeleteOrder() {
+  if (!selectedOrder.value || deleteSubmitting.value) return
+  deleteSubmitting.value = true
+  try {
+    await adminPaymentAPI.deleteOrder(selectedOrder.value.id, { force: true })
+    appStore.showSuccess(t('payment.admin.deleteOrderSuccess'))
+    showDeleteDialog.value = false
+    await loadOrders()
+  } catch (err: unknown) {
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
+  } finally {
+    deleteSubmitting.value = false
+  }
 }
 
 function openRefundDialog(order: PaymentOrder) { selectedOrder.value = order; showRefundDialog.value = true }
