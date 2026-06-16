@@ -18,7 +18,10 @@
           ]"
           @click="selectAmount(amt)"
         >
-          {{ amt }}
+          <span class="block leading-tight">{{ amt }}</span>
+          <span v-if="getBonusLabel(amt)" class="mt-1 block text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+            {{ getBonusLabel(amt) }}
+          </span>
         </button>
       </div>
     </div>
@@ -54,6 +57,7 @@ const props = withDefaults(defineProps<{
   modelValue: number | null
   min?: number
   max?: number
+  bonusLabel?: (amount: number) => string
 }>(), {
   amounts: () => [10, 20, 50, 100, 200, 500, 1000, 2000, 5000],
   min: 0,
@@ -67,6 +71,7 @@ const emit = defineEmits<{
 const { t } = useI18n()
 
 const customText = ref('')
+const getBonusLabel = (amount: number) => props.bonusLabel?.(amount) ?? ''
 
 // 0 = no limit
 const filteredAmounts = computed(() =>

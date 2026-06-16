@@ -24,6 +24,12 @@ const (
 	FieldUserNotes = "user_notes"
 	// FieldAmount holds the string denoting the amount field in the database.
 	FieldAmount = "amount"
+	// FieldBaseAmount holds the string denoting the base_amount field in the database.
+	FieldBaseAmount = "base_amount"
+	// FieldBonusAmount holds the string denoting the bonus_amount field in the database.
+	FieldBonusAmount = "bonus_amount"
+	// FieldBonusRate holds the string denoting the bonus_rate field in the database.
+	FieldBonusRate = "bonus_rate"
 	// FieldPayAmount holds the string denoting the pay_amount field in the database.
 	FieldPayAmount = "pay_amount"
 	// FieldFeeRate holds the string denoting the fee_rate field in the database.
@@ -54,6 +60,8 @@ const (
 	FieldProviderInstanceID = "provider_instance_id"
 	// FieldProviderKey holds the string denoting the provider_key field in the database.
 	FieldProviderKey = "provider_key"
+	// FieldBonusRuleSnapshot holds the string denoting the bonus_rule_snapshot field in the database.
+	FieldBonusRuleSnapshot = "bonus_rule_snapshot"
 	// FieldProviderSnapshot holds the string denoting the provider_snapshot field in the database.
 	FieldProviderSnapshot = "provider_snapshot"
 	// FieldStatus holds the string denoting the status field in the database.
@@ -113,6 +121,9 @@ var Columns = []string{
 	FieldUserName,
 	FieldUserNotes,
 	FieldAmount,
+	FieldBaseAmount,
+	FieldBonusAmount,
+	FieldBonusRate,
 	FieldPayAmount,
 	FieldFeeRate,
 	FieldRechargeCode,
@@ -128,6 +139,7 @@ var Columns = []string{
 	FieldSubscriptionDays,
 	FieldProviderInstanceID,
 	FieldProviderKey,
+	FieldBonusRuleSnapshot,
 	FieldProviderSnapshot,
 	FieldStatus,
 	FieldRefundAmount,
@@ -164,6 +176,12 @@ var (
 	UserEmailValidator func(string) error
 	// UserNameValidator is a validator for the "user_name" field. It is called by the builders before save.
 	UserNameValidator func(string) error
+	// DefaultBaseAmount holds the default value on creation for the "base_amount" field.
+	DefaultBaseAmount float64
+	// DefaultBonusAmount holds the default value on creation for the "bonus_amount" field.
+	DefaultBonusAmount float64
+	// DefaultBonusRate holds the default value on creation for the "bonus_rate" field.
+	DefaultBonusRate float64
 	// DefaultFeeRate holds the default value on creation for the "fee_rate" field.
 	DefaultFeeRate float64
 	// RechargeCodeValidator is a validator for the "recharge_code" field. It is called by the builders before save.
@@ -237,6 +255,21 @@ func ByUserNotes(opts ...sql.OrderTermOption) OrderOption {
 // ByAmount orders the results by the amount field.
 func ByAmount(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAmount, opts...).ToFunc()
+}
+
+// ByBaseAmount orders the results by the base_amount field.
+func ByBaseAmount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBaseAmount, opts...).ToFunc()
+}
+
+// ByBonusAmount orders the results by the bonus_amount field.
+func ByBonusAmount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBonusAmount, opts...).ToFunc()
+}
+
+// ByBonusRate orders the results by the bonus_rate field.
+func ByBonusRate(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBonusRate, opts...).ToFunc()
 }
 
 // ByPayAmount orders the results by the pay_amount field.

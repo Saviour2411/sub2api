@@ -65,6 +65,20 @@ Sub2API 内置支付系统，支持用户自助充值，无需部署独立的支
 | **最大待支付订单数** | 同一用户最大并行待支付订单数 | 3 |
 | **负载均衡策略** | 多服务商实例时的选择策略 | 轮询 |
 
+### 余额充值返利
+
+余额充值按 `实际充值金额 + 返利金额` 入账。可在 **设置 → 支付设置** 中用 JSON 配置 `BALANCE_RECHARGE_BONUS_RULES`：
+
+```json
+[
+  { "min_amount": 100, "max_amount": 500, "bonus_rate": 5 },
+  { "min_amount": 500, "max_amount": 1000, "bonus_rate": 10 },
+  { "min_amount": 1000, "max_amount": null, "bonus_rate": 15 }
+]
+```
+
+`min_amount` 含边界，`max_amount` 不含边界，`max_amount: null` 表示无上限。区间可以留空档，空档金额不返利。未配置返利规则时，系统仍使用旧的余额充值倍率以保持兼容。
+
 ### 前台可见支付方式路由
 
 当前版本对用户统一展示支付方式，不区分官方渠道还是易支付：

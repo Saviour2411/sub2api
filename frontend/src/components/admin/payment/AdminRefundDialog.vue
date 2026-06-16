@@ -37,6 +37,10 @@
           <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.creditedAmount') }}</span>
           <span class="font-medium text-gray-900 dark:text-white">{{ order?.order_type === 'balance' ? '$' : '¥' }}{{ order?.amount?.toFixed(2) }}</span>
         </div>
+        <div v-if="order?.order_type === 'balance' && order?.bonus_amount > 0" class="mt-1 flex justify-between text-sm">
+          <span class="text-gray-500 dark:text-gray-400">{{ t('payment.bonusAmount') }}</span>
+          <span class="font-medium text-emerald-600 dark:text-emerald-400">+¥{{ order?.bonus_amount.toFixed(2) }}</span>
+        </div>
         <div class="mt-1 flex justify-between text-sm">
           <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') }}</span>
           <span class="font-medium text-gray-900 dark:text-white">¥{{ order?.pay_amount?.toFixed(2) }}</span>

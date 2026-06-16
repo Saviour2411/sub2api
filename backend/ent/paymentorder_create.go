@@ -61,6 +61,48 @@ func (_c *PaymentOrderCreate) SetAmount(v float64) *PaymentOrderCreate {
 	return _c
 }
 
+// SetBaseAmount sets the "base_amount" field.
+func (_c *PaymentOrderCreate) SetBaseAmount(v float64) *PaymentOrderCreate {
+	_c.mutation.SetBaseAmount(v)
+	return _c
+}
+
+// SetNillableBaseAmount sets the "base_amount" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillableBaseAmount(v *float64) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetBaseAmount(*v)
+	}
+	return _c
+}
+
+// SetBonusAmount sets the "bonus_amount" field.
+func (_c *PaymentOrderCreate) SetBonusAmount(v float64) *PaymentOrderCreate {
+	_c.mutation.SetBonusAmount(v)
+	return _c
+}
+
+// SetNillableBonusAmount sets the "bonus_amount" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillableBonusAmount(v *float64) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetBonusAmount(*v)
+	}
+	return _c
+}
+
+// SetBonusRate sets the "bonus_rate" field.
+func (_c *PaymentOrderCreate) SetBonusRate(v float64) *PaymentOrderCreate {
+	_c.mutation.SetBonusRate(v)
+	return _c
+}
+
+// SetNillableBonusRate sets the "bonus_rate" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillableBonusRate(v *float64) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetBonusRate(*v)
+	}
+	return _c
+}
+
 // SetPayAmount sets the "pay_amount" field.
 func (_c *PaymentOrderCreate) SetPayAmount(v float64) *PaymentOrderCreate {
 	_c.mutation.SetPayAmount(v)
@@ -236,6 +278,12 @@ func (_c *PaymentOrderCreate) SetNillableProviderKey(v *string) *PaymentOrderCre
 	if v != nil {
 		_c.SetProviderKey(*v)
 	}
+	return _c
+}
+
+// SetBonusRuleSnapshot sets the "bonus_rule_snapshot" field.
+func (_c *PaymentOrderCreate) SetBonusRuleSnapshot(v map[string]interface{}) *PaymentOrderCreate {
+	_c.mutation.SetBonusRuleSnapshot(v)
 	return _c
 }
 
@@ -513,6 +561,18 @@ func (_c *PaymentOrderCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *PaymentOrderCreate) defaults() {
+	if _, ok := _c.mutation.BaseAmount(); !ok {
+		v := paymentorder.DefaultBaseAmount
+		_c.mutation.SetBaseAmount(v)
+	}
+	if _, ok := _c.mutation.BonusAmount(); !ok {
+		v := paymentorder.DefaultBonusAmount
+		_c.mutation.SetBonusAmount(v)
+	}
+	if _, ok := _c.mutation.BonusRate(); !ok {
+		v := paymentorder.DefaultBonusRate
+		_c.mutation.SetBonusRate(v)
+	}
 	if _, ok := _c.mutation.FeeRate(); !ok {
 		v := paymentorder.DefaultFeeRate
 		_c.mutation.SetFeeRate(v)
@@ -570,6 +630,15 @@ func (_c *PaymentOrderCreate) check() error {
 	}
 	if _, ok := _c.mutation.Amount(); !ok {
 		return &ValidationError{Name: "amount", err: errors.New(`ent: missing required field "PaymentOrder.amount"`)}
+	}
+	if _, ok := _c.mutation.BaseAmount(); !ok {
+		return &ValidationError{Name: "base_amount", err: errors.New(`ent: missing required field "PaymentOrder.base_amount"`)}
+	}
+	if _, ok := _c.mutation.BonusAmount(); !ok {
+		return &ValidationError{Name: "bonus_amount", err: errors.New(`ent: missing required field "PaymentOrder.bonus_amount"`)}
+	}
+	if _, ok := _c.mutation.BonusRate(); !ok {
+		return &ValidationError{Name: "bonus_rate", err: errors.New(`ent: missing required field "PaymentOrder.bonus_rate"`)}
 	}
 	if _, ok := _c.mutation.PayAmount(); !ok {
 		return &ValidationError{Name: "pay_amount", err: errors.New(`ent: missing required field "PaymentOrder.pay_amount"`)}
@@ -717,6 +786,18 @@ func (_c *PaymentOrderCreate) createSpec() (*PaymentOrder, *sqlgraph.CreateSpec)
 		_spec.SetField(paymentorder.FieldAmount, field.TypeFloat64, value)
 		_node.Amount = value
 	}
+	if value, ok := _c.mutation.BaseAmount(); ok {
+		_spec.SetField(paymentorder.FieldBaseAmount, field.TypeFloat64, value)
+		_node.BaseAmount = value
+	}
+	if value, ok := _c.mutation.BonusAmount(); ok {
+		_spec.SetField(paymentorder.FieldBonusAmount, field.TypeFloat64, value)
+		_node.BonusAmount = value
+	}
+	if value, ok := _c.mutation.BonusRate(); ok {
+		_spec.SetField(paymentorder.FieldBonusRate, field.TypeFloat64, value)
+		_node.BonusRate = value
+	}
 	if value, ok := _c.mutation.PayAmount(); ok {
 		_spec.SetField(paymentorder.FieldPayAmount, field.TypeFloat64, value)
 		_node.PayAmount = value
@@ -776,6 +857,10 @@ func (_c *PaymentOrderCreate) createSpec() (*PaymentOrder, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.ProviderKey(); ok {
 		_spec.SetField(paymentorder.FieldProviderKey, field.TypeString, value)
 		_node.ProviderKey = &value
+	}
+	if value, ok := _c.mutation.BonusRuleSnapshot(); ok {
+		_spec.SetField(paymentorder.FieldBonusRuleSnapshot, field.TypeJSON, value)
+		_node.BonusRuleSnapshot = value
 	}
 	if value, ok := _c.mutation.ProviderSnapshot(); ok {
 		_spec.SetField(paymentorder.FieldProviderSnapshot, field.TypeJSON, value)
@@ -991,6 +1076,60 @@ func (u *PaymentOrderUpsert) UpdateAmount() *PaymentOrderUpsert {
 // AddAmount adds v to the "amount" field.
 func (u *PaymentOrderUpsert) AddAmount(v float64) *PaymentOrderUpsert {
 	u.Add(paymentorder.FieldAmount, v)
+	return u
+}
+
+// SetBaseAmount sets the "base_amount" field.
+func (u *PaymentOrderUpsert) SetBaseAmount(v float64) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldBaseAmount, v)
+	return u
+}
+
+// UpdateBaseAmount sets the "base_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateBaseAmount() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldBaseAmount)
+	return u
+}
+
+// AddBaseAmount adds v to the "base_amount" field.
+func (u *PaymentOrderUpsert) AddBaseAmount(v float64) *PaymentOrderUpsert {
+	u.Add(paymentorder.FieldBaseAmount, v)
+	return u
+}
+
+// SetBonusAmount sets the "bonus_amount" field.
+func (u *PaymentOrderUpsert) SetBonusAmount(v float64) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldBonusAmount, v)
+	return u
+}
+
+// UpdateBonusAmount sets the "bonus_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateBonusAmount() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldBonusAmount)
+	return u
+}
+
+// AddBonusAmount adds v to the "bonus_amount" field.
+func (u *PaymentOrderUpsert) AddBonusAmount(v float64) *PaymentOrderUpsert {
+	u.Add(paymentorder.FieldBonusAmount, v)
+	return u
+}
+
+// SetBonusRate sets the "bonus_rate" field.
+func (u *PaymentOrderUpsert) SetBonusRate(v float64) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldBonusRate, v)
+	return u
+}
+
+// UpdateBonusRate sets the "bonus_rate" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateBonusRate() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldBonusRate)
+	return u
+}
+
+// AddBonusRate adds v to the "bonus_rate" field.
+func (u *PaymentOrderUpsert) AddBonusRate(v float64) *PaymentOrderUpsert {
+	u.Add(paymentorder.FieldBonusRate, v)
 	return u
 }
 
@@ -1249,6 +1388,24 @@ func (u *PaymentOrderUpsert) UpdateProviderKey() *PaymentOrderUpsert {
 // ClearProviderKey clears the value of the "provider_key" field.
 func (u *PaymentOrderUpsert) ClearProviderKey() *PaymentOrderUpsert {
 	u.SetNull(paymentorder.FieldProviderKey)
+	return u
+}
+
+// SetBonusRuleSnapshot sets the "bonus_rule_snapshot" field.
+func (u *PaymentOrderUpsert) SetBonusRuleSnapshot(v map[string]interface{}) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldBonusRuleSnapshot, v)
+	return u
+}
+
+// UpdateBonusRuleSnapshot sets the "bonus_rule_snapshot" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateBonusRuleSnapshot() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldBonusRuleSnapshot)
+	return u
+}
+
+// ClearBonusRuleSnapshot clears the value of the "bonus_rule_snapshot" field.
+func (u *PaymentOrderUpsert) ClearBonusRuleSnapshot() *PaymentOrderUpsert {
+	u.SetNull(paymentorder.FieldBonusRuleSnapshot)
 	return u
 }
 
@@ -1669,6 +1826,69 @@ func (u *PaymentOrderUpsertOne) UpdateAmount() *PaymentOrderUpsertOne {
 	})
 }
 
+// SetBaseAmount sets the "base_amount" field.
+func (u *PaymentOrderUpsertOne) SetBaseAmount(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetBaseAmount(v)
+	})
+}
+
+// AddBaseAmount adds v to the "base_amount" field.
+func (u *PaymentOrderUpsertOne) AddBaseAmount(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddBaseAmount(v)
+	})
+}
+
+// UpdateBaseAmount sets the "base_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateBaseAmount() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateBaseAmount()
+	})
+}
+
+// SetBonusAmount sets the "bonus_amount" field.
+func (u *PaymentOrderUpsertOne) SetBonusAmount(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetBonusAmount(v)
+	})
+}
+
+// AddBonusAmount adds v to the "bonus_amount" field.
+func (u *PaymentOrderUpsertOne) AddBonusAmount(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddBonusAmount(v)
+	})
+}
+
+// UpdateBonusAmount sets the "bonus_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateBonusAmount() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateBonusAmount()
+	})
+}
+
+// SetBonusRate sets the "bonus_rate" field.
+func (u *PaymentOrderUpsertOne) SetBonusRate(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetBonusRate(v)
+	})
+}
+
+// AddBonusRate adds v to the "bonus_rate" field.
+func (u *PaymentOrderUpsertOne) AddBonusRate(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddBonusRate(v)
+	})
+}
+
+// UpdateBonusRate sets the "bonus_rate" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateBonusRate() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateBonusRate()
+	})
+}
+
 // SetPayAmount sets the "pay_amount" field.
 func (u *PaymentOrderUpsertOne) SetPayAmount(v float64) *PaymentOrderUpsertOne {
 	return u.Update(func(s *PaymentOrderUpsert) {
@@ -1967,6 +2187,27 @@ func (u *PaymentOrderUpsertOne) UpdateProviderKey() *PaymentOrderUpsertOne {
 func (u *PaymentOrderUpsertOne) ClearProviderKey() *PaymentOrderUpsertOne {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.ClearProviderKey()
+	})
+}
+
+// SetBonusRuleSnapshot sets the "bonus_rule_snapshot" field.
+func (u *PaymentOrderUpsertOne) SetBonusRuleSnapshot(v map[string]interface{}) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetBonusRuleSnapshot(v)
+	})
+}
+
+// UpdateBonusRuleSnapshot sets the "bonus_rule_snapshot" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateBonusRuleSnapshot() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateBonusRuleSnapshot()
+	})
+}
+
+// ClearBonusRuleSnapshot clears the value of the "bonus_rule_snapshot" field.
+func (u *PaymentOrderUpsertOne) ClearBonusRuleSnapshot() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearBonusRuleSnapshot()
 	})
 }
 
@@ -2601,6 +2842,69 @@ func (u *PaymentOrderUpsertBulk) UpdateAmount() *PaymentOrderUpsertBulk {
 	})
 }
 
+// SetBaseAmount sets the "base_amount" field.
+func (u *PaymentOrderUpsertBulk) SetBaseAmount(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetBaseAmount(v)
+	})
+}
+
+// AddBaseAmount adds v to the "base_amount" field.
+func (u *PaymentOrderUpsertBulk) AddBaseAmount(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddBaseAmount(v)
+	})
+}
+
+// UpdateBaseAmount sets the "base_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateBaseAmount() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateBaseAmount()
+	})
+}
+
+// SetBonusAmount sets the "bonus_amount" field.
+func (u *PaymentOrderUpsertBulk) SetBonusAmount(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetBonusAmount(v)
+	})
+}
+
+// AddBonusAmount adds v to the "bonus_amount" field.
+func (u *PaymentOrderUpsertBulk) AddBonusAmount(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddBonusAmount(v)
+	})
+}
+
+// UpdateBonusAmount sets the "bonus_amount" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateBonusAmount() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateBonusAmount()
+	})
+}
+
+// SetBonusRate sets the "bonus_rate" field.
+func (u *PaymentOrderUpsertBulk) SetBonusRate(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetBonusRate(v)
+	})
+}
+
+// AddBonusRate adds v to the "bonus_rate" field.
+func (u *PaymentOrderUpsertBulk) AddBonusRate(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddBonusRate(v)
+	})
+}
+
+// UpdateBonusRate sets the "bonus_rate" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateBonusRate() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateBonusRate()
+	})
+}
+
 // SetPayAmount sets the "pay_amount" field.
 func (u *PaymentOrderUpsertBulk) SetPayAmount(v float64) *PaymentOrderUpsertBulk {
 	return u.Update(func(s *PaymentOrderUpsert) {
@@ -2899,6 +3203,27 @@ func (u *PaymentOrderUpsertBulk) UpdateProviderKey() *PaymentOrderUpsertBulk {
 func (u *PaymentOrderUpsertBulk) ClearProviderKey() *PaymentOrderUpsertBulk {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.ClearProviderKey()
+	})
+}
+
+// SetBonusRuleSnapshot sets the "bonus_rule_snapshot" field.
+func (u *PaymentOrderUpsertBulk) SetBonusRuleSnapshot(v map[string]interface{}) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetBonusRuleSnapshot(v)
+	})
+}
+
+// UpdateBonusRuleSnapshot sets the "bonus_rule_snapshot" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateBonusRuleSnapshot() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateBonusRuleSnapshot()
+	})
+}
+
+// ClearBonusRuleSnapshot clears the value of the "bonus_rule_snapshot" field.
+func (u *PaymentOrderUpsertBulk) ClearBonusRuleSnapshot() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearBonusRuleSnapshot()
 	})
 }
 

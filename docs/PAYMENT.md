@@ -65,6 +65,20 @@ Configure the following in Admin Dashboard **Settings → Payment Settings**:
 | **Max Pending Orders** | Maximum concurrent pending orders per user | 3 |
 | **Load Balance Strategy** | Strategy for selecting provider instances | Round Robin |
 
+### Balance Recharge Bonus
+
+Balance top-ups credit `recharge amount + bonus amount`. Configure bonus tiers with `BALANCE_RECHARGE_BONUS_RULES` in JSON format from **Settings → Payment Settings**:
+
+```json
+[
+  { "min_amount": 100, "max_amount": 500, "bonus_rate": 5 },
+  { "min_amount": 500, "max_amount": 1000, "bonus_rate": 10 },
+  { "min_amount": 1000, "max_amount": null, "bonus_rate": 15 }
+]
+```
+
+`min_amount` is inclusive, `max_amount` is exclusive, and `max_amount: null` means no upper limit. Gaps are allowed and simply receive no bonus. If no bonus rules are configured, the legacy balance recharge multiplier is still used for compatibility.
+
 ### Frontend Visible Method Routing
 
 The current payment UX keeps the frontend method list unified and does not expose provider brands directly:

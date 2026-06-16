@@ -6464,41 +6464,16 @@
                       :placeholder="t('admin.settings.payment.noLimit')"
                     />
                   </div>
-                  <div>
-                    <label class="input-label">{{
-                      t("admin.settings.payment.balanceRechargeMultiplier")
-                    }}</label>
-                    <input
-                      :value="form.payment_balance_recharge_multiplier || ''"
-                      @input="
-                        form.payment_balance_recharge_multiplier =
-                          parseFloat(
-                            ($event.target as HTMLInputElement).value,
-                          ) || 1
-                      "
-                      type="number"
-                      step="0.01"
-                      min="0.01"
-                      class="input"
-                    />
+                  <div class="sm:col-span-2">
+                    <label class="input-label">{{ t("admin.settings.payment.bonusRules") }}</label>
+                    <textarea
+                      v-model="form.payment_balance_recharge_bonus_rules_text"
+                      rows="5"
+                      class="input font-mono text-xs"
+                      :placeholder="paymentBonusRulesPlaceholder"
+                    ></textarea>
                     <p class="mt-0.5 text-xs text-gray-400">
-                      {{
-                        t(
-                          "admin.settings.payment.balanceRechargeMultiplierHint",
-                        )
-                      }}
-                    </p>
-                    <p
-                      class="mt-1 text-xs font-medium text-primary-600 dark:text-primary-400"
-                    >
-                      {{
-                        t("admin.settings.payment.balanceRechargePreview", {
-                          usd: (
-                            Number(form.payment_balance_recharge_multiplier) ||
-                            1
-                          ).toFixed(2),
-                        })
-                      }}
+                      {{ t("admin.settings.payment.bonusRulesHint") }}
                     </p>
                   </div>
                   <div>
@@ -7330,6 +7305,7 @@ import type {
   DailyCheckinDecayRule,
   DefaultPlatformQuotasMap,
   OpenAIFastPolicyRule,
+  PaymentBonusRule,
   SemanticErrorPlatform,
   SemanticErrorRule,
   WeChatConnectMode,
@@ -7476,6 +7452,11 @@ const testEmailAddress = ref("");
 const registrationEmailSuffixWhitelistTags = ref<string[]>([]);
 const registrationEmailSuffixWhitelistDraft = ref("");
 const tablePageSizeOptionsInput = ref("10, 20, 50, 100");
+const paymentBonusRulesPlaceholder = `[
+  { "min_amount": 100, "max_amount": 500, "bonus_rate": 5 },
+  { "min_amount": 500, "max_amount": 1000, "bonus_rate": 10 },
+  { "min_amount": 1000, "max_amount": null, "bonus_rate": 15 }
+]`;
 
 // Admin API Key 状态
 const adminApiKeyLoading = ref(true);
@@ -7626,6 +7607,7 @@ type SettingsForm = Omit<
   google_oauth_client_secret: string;
   force_email_on_third_party_signup: boolean;
   openai_advanced_scheduler_enabled: boolean;
+  payment_balance_recharge_bonus_rules_text: string;
   // 系统全局平台限额 map；form 内始终归一化为全 4 平台对象（模板非空绑定依赖此不变量）
   default_platform_quotas: DefaultPlatformQuotasMap;
 };
@@ -7695,6 +7677,8 @@ const form = reactive<SettingsForm>({
   payment_order_timeout_minutes: 30,
   payment_balance_disabled: false,
   payment_balance_recharge_multiplier: 1,
+  payment_balance_recharge_bonus_rules: [],
+  payment_balance_recharge_bonus_rules_text: "",
   payment_recharge_fee_rate: 0,
   payment_enabled_types: [],
   payment_help_image_url: "",
@@ -8632,6 +8616,9 @@ async function loadSettings() {
     form.semantic_error_rules = normalizeSemanticErrorRulesForForm(
       settings.semantic_error_rules,
     );
+    form.payment_balance_recharge_bonus_rules_text = formatPaymentBonusRulesForForm(
+      settings.payment_balance_recharge_bonus_rules,
+    );
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(settings));
     form.default_platform_quotas = normalizePlatformQuotasMap(settings.default_platform_quotas);
     form.backend_mode_enabled = settings.backend_mode_enabled;
@@ -8863,6 +8850,59 @@ function normalizeDailyCheckinDecayRulesForSave(): DailyCheckinDecayRule[] {
   }));
 }
 
+function formatPaymentBonusRulesForForm(rules: PaymentBonusRule[] | undefined): string {
+  return JSON.stringify(Array.isArray(rules) ? rules : [], null, 2);
+}
+
+function parsePaymentBonusRulesForSave(): PaymentBonusRule[] | null {
+  const raw = String(form.payment_balance_recharge_bonus_rules_text || "").trim();
+  if (!raw) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    appStore.showError(localText("充值返利规则 JSON 格式不正确。", "Payment bonus rules JSON is invalid."));
+    return null;
+  }
+  if (!Array.isArray(parsed)) {
+    appStore.showError(localText("充值返利规则必须是数组。", "Payment bonus rules must be an array."));
+    return null;
+  }
+  let rules: PaymentBonusRule[];
+  try {
+    rules = parsed.map((item, index) => {
+      const rule = item as Partial<PaymentBonusRule>;
+      const minAmount = Number(rule.min_amount);
+      const maxAmount = rule.max_amount == null ? null : Number(rule.max_amount);
+      const bonusRate = Number(rule.bonus_rate);
+      if (!Number.isFinite(minAmount) || minAmount < 0 || !Number.isFinite(bonusRate) || bonusRate < 0) {
+        throw new Error(`invalid-${index + 1}`);
+      }
+      if (maxAmount !== null && (!Number.isFinite(maxAmount) || maxAmount <= minAmount)) {
+        throw new Error(`invalid-${index + 1}`);
+      }
+      return {
+        min_amount: Math.round(minAmount * 100) / 100,
+        max_amount: maxAmount === null ? null : Math.round(maxAmount * 100) / 100,
+        bonus_rate: Math.round(bonusRate * 100) / 100,
+      };
+    });
+  } catch {
+    appStore.showError(localText("充值返利规则包含无效金额或比例。", "Payment bonus rules contain invalid amounts or rates."));
+    return null;
+  }
+  const sorted = [...rules].sort((a, b) => a.min_amount - b.min_amount);
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1];
+    const curr = sorted[i];
+    if (prev.max_amount == null || curr.min_amount < prev.max_amount) {
+      appStore.showError(localText("充值返利规则区间不能重叠。", "Payment bonus rule ranges cannot overlap."));
+      return null;
+    }
+  }
+  return sorted;
+}
+
 const dailyCheckinProbabilityTotal = computed(() =>
   form.daily_checkin_prizes
     .filter((prize) => prize.enabled !== false)
@@ -9092,6 +9132,10 @@ async function saveSettings() {
     if (normalizedSemanticErrorRules === null) {
       return;
     }
+    const normalizedPaymentBonusRules = parsePaymentBonusRulesForSave();
+    if (normalizedPaymentBonusRules === null) {
+      return;
+    }
 
     if (form.wechat_connect_mp_enabled && form.wechat_connect_mobile_enabled) {
       appStore.showError(
@@ -9318,6 +9362,7 @@ async function saveSettings() {
       payment_balance_disabled: form.payment_balance_disabled,
       payment_balance_recharge_multiplier:
         Number(form.payment_balance_recharge_multiplier) || 1,
+      payment_balance_recharge_bonus_rules: normalizedPaymentBonusRules,
       payment_recharge_fee_rate: Number(form.payment_recharge_fee_rate) || 0,
       payment_enabled_types: form.payment_enabled_types,
       payment_load_balance_strategy: form.payment_load_balance_strategy,

@@ -47,6 +47,10 @@
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.baseAmount') }}</span>
               <span class="font-medium text-gray-900 dark:text-white">{{ formatGatewayAmount(baseAmount) }}</span>
             </div>
+            <div v-if="order.order_type === 'balance' && order.bonus_amount > 0" class="flex justify-between">
+              <span class="text-gray-500 dark:text-gray-400">{{ t('payment.bonusAmount') }}</span>
+              <span class="font-medium text-emerald-600 dark:text-emerald-400">+${{ order.bonus_amount.toFixed(2) }} ({{ order.bonus_rate.toFixed(2) }}%)</span>
+            </div>
             <div v-if="order.fee_rate > 0" class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.fee') }} ({{ order.fee_rate }}%)</span>
               <span class="font-medium text-gray-900 dark:text-white">{{ formatGatewayAmount(feeAmount) }}</span>
@@ -55,7 +59,7 @@
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') }}</span>
               <span class="font-bold text-primary-600 dark:text-primary-400">{{ formatGatewayAmount(order.pay_amount) }}</span>
             </div>
-            <div v-if="order.amount !== order.pay_amount" class="flex justify-between">
+            <div v-if="order.order_type === 'balance' || order.amount !== order.pay_amount" class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.creditedAmount') }}</span>
               <span class="font-medium text-gray-900 dark:text-white">{{ order.order_type === 'balance' ? '$' + order.amount.toFixed(2) : formatGatewayAmount(order.amount) }}</span>
             </div>
@@ -141,6 +145,7 @@ const refreshAttempts = ref(0)
 /** 充值金额 = pay_amount / (1 + fee_rate/100)，fee_rate=0 时等于 pay_amount */
 const baseAmount = computed(() => {
   if (!order.value) return 0
+  if (order.value.base_amount > 0) return order.value.base_amount
   const feeRate = Number(order.value.fee_rate) || 0
   if (feeRate <= 0) return order.value.pay_amount ?? 0
   return Math.round((order.value.pay_amount / (1 + feeRate / 100)) * 100) / 100

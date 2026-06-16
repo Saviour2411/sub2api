@@ -29,6 +29,12 @@ type PaymentOrder struct {
 	UserNotes *string `json:"user_notes,omitempty"`
 	// Amount holds the value of the "amount" field.
 	Amount float64 `json:"amount,omitempty"`
+	// BaseAmount holds the value of the "base_amount" field.
+	BaseAmount float64 `json:"base_amount,omitempty"`
+	// BonusAmount holds the value of the "bonus_amount" field.
+	BonusAmount float64 `json:"bonus_amount,omitempty"`
+	// BonusRate holds the value of the "bonus_rate" field.
+	BonusRate float64 `json:"bonus_rate,omitempty"`
 	// PayAmount holds the value of the "pay_amount" field.
 	PayAmount float64 `json:"pay_amount,omitempty"`
 	// FeeRate holds the value of the "fee_rate" field.
@@ -59,6 +65,8 @@ type PaymentOrder struct {
 	ProviderInstanceID *string `json:"provider_instance_id,omitempty"`
 	// ProviderKey holds the value of the "provider_key" field.
 	ProviderKey *string `json:"provider_key,omitempty"`
+	// BonusRuleSnapshot holds the value of the "bonus_rule_snapshot" field.
+	BonusRuleSnapshot map[string]interface{} `json:"bonus_rule_snapshot,omitempty"`
 	// ProviderSnapshot holds the value of the "provider_snapshot" field.
 	ProviderSnapshot map[string]interface{} `json:"provider_snapshot,omitempty"`
 	// Status holds the value of the "status" field.
@@ -128,11 +136,11 @@ func (*PaymentOrder) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case paymentorder.FieldProviderSnapshot:
+		case paymentorder.FieldBonusRuleSnapshot, paymentorder.FieldProviderSnapshot:
 			values[i] = new([]byte)
 		case paymentorder.FieldForceRefund:
 			values[i] = new(sql.NullBool)
-		case paymentorder.FieldAmount, paymentorder.FieldPayAmount, paymentorder.FieldFeeRate, paymentorder.FieldRefundAmount:
+		case paymentorder.FieldAmount, paymentorder.FieldBaseAmount, paymentorder.FieldBonusAmount, paymentorder.FieldBonusRate, paymentorder.FieldPayAmount, paymentorder.FieldFeeRate, paymentorder.FieldRefundAmount:
 			values[i] = new(sql.NullFloat64)
 		case paymentorder.FieldID, paymentorder.FieldUserID, paymentorder.FieldPlanID, paymentorder.FieldSubscriptionGroupID, paymentorder.FieldSubscriptionDays:
 			values[i] = new(sql.NullInt64)
@@ -191,6 +199,24 @@ func (_m *PaymentOrder) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field amount", values[i])
 			} else if value.Valid {
 				_m.Amount = value.Float64
+			}
+		case paymentorder.FieldBaseAmount:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field base_amount", values[i])
+			} else if value.Valid {
+				_m.BaseAmount = value.Float64
+			}
+		case paymentorder.FieldBonusAmount:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field bonus_amount", values[i])
+			} else if value.Valid {
+				_m.BonusAmount = value.Float64
+			}
+		case paymentorder.FieldBonusRate:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field bonus_rate", values[i])
+			} else if value.Valid {
+				_m.BonusRate = value.Float64
 			}
 		case paymentorder.FieldPayAmount:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
@@ -289,6 +315,14 @@ func (_m *PaymentOrder) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.ProviderKey = new(string)
 				*_m.ProviderKey = value.String
+			}
+		case paymentorder.FieldBonusRuleSnapshot:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field bonus_rule_snapshot", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.BonusRuleSnapshot); err != nil {
+					return fmt.Errorf("unmarshal field bonus_rule_snapshot: %w", err)
+				}
 			}
 		case paymentorder.FieldProviderSnapshot:
 			if value, ok := values[i].(*[]byte); !ok {
@@ -474,6 +508,15 @@ func (_m *PaymentOrder) String() string {
 	builder.WriteString("amount=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Amount))
 	builder.WriteString(", ")
+	builder.WriteString("base_amount=")
+	builder.WriteString(fmt.Sprintf("%v", _m.BaseAmount))
+	builder.WriteString(", ")
+	builder.WriteString("bonus_amount=")
+	builder.WriteString(fmt.Sprintf("%v", _m.BonusAmount))
+	builder.WriteString(", ")
+	builder.WriteString("bonus_rate=")
+	builder.WriteString(fmt.Sprintf("%v", _m.BonusRate))
+	builder.WriteString(", ")
 	builder.WriteString("pay_amount=")
 	builder.WriteString(fmt.Sprintf("%v", _m.PayAmount))
 	builder.WriteString(", ")
@@ -534,6 +577,9 @@ func (_m *PaymentOrder) String() string {
 		builder.WriteString("provider_key=")
 		builder.WriteString(*v)
 	}
+	builder.WriteString(", ")
+	builder.WriteString("bonus_rule_snapshot=")
+	builder.WriteString(fmt.Sprintf("%v", _m.BonusRuleSnapshot))
 	builder.WriteString(", ")
 	builder.WriteString("provider_snapshot=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ProviderSnapshot))

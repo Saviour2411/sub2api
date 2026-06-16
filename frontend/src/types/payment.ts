@@ -33,10 +33,17 @@ export interface PaymentConfig {
   order_timeout_minutes: number
   balance_disabled: boolean
   balance_recharge_multiplier: number
+  balance_recharge_bonus_rules: PaymentBonusRule[]
   enabled_payment_types: PaymentType[]
   help_image_url: string
   help_text: string
   stripe_publishable_key: string
+}
+
+export interface PaymentBonusRule {
+  min_amount: number
+  max_amount?: number | null
+  bonus_rate: number
 }
 
 export interface MethodLimit {
@@ -65,6 +72,7 @@ export interface CheckoutInfoResponse {
   plans: SubscriptionPlan[]
   balance_disabled: boolean
   balance_recharge_multiplier: number
+  balance_recharge_bonus_rules: PaymentBonusRule[]
   recharge_fee_rate: number
   help_text: string
   help_image_url: string
@@ -79,6 +87,9 @@ export interface PaymentOrder {
   id: number
   user_id: number
   amount: number
+  base_amount: number
+  bonus_amount: number
+  bonus_rate: number
   pay_amount: number
   currency?: string
   fee_rate: number
@@ -188,6 +199,9 @@ export interface WechatJSAPIPayload {
 export interface CreateOrderResult {
   order_id: number
   amount: number
+  base_amount: number
+  bonus_amount: number
+  bonus_rate: number
   pay_url?: string
   qr_code?: string
   client_secret?: string

@@ -19,7 +19,11 @@
         </div>
         <div>
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.baseAmount') }}</p>
-          <p class="text-sm font-medium text-gray-900 dark:text-white">¥{{ baseAmount.toFixed(2) }}</p>
+          <p class="text-sm font-medium text-gray-900 dark:text-white">¥{{ (order.base_amount || baseAmount).toFixed(2) }}</p>
+        </div>
+        <div v-if="order.order_type === 'balance' && order.bonus_amount > 0">
+          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.bonusAmount') }}</p>
+          <p class="text-sm font-medium text-emerald-600 dark:text-emerald-400">+¥{{ order.bonus_amount.toFixed(2) }} ({{ order.bonus_rate.toFixed(2) }}%)</p>
         </div>
         <div v-if="order.fee_rate > 0">
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.fee') }} ({{ order.fee_rate }}%)</p>
@@ -29,7 +33,7 @@
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') }}</p>
           <p class="text-sm font-medium text-gray-900 dark:text-white">¥{{ order.pay_amount.toFixed(2) }}</p>
         </div>
-        <div v-if="order.amount !== order.pay_amount">
+        <div v-if="order.order_type === 'balance' || order.amount !== order.pay_amount">
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.creditedAmount') }}</p>
           <p class="text-sm font-medium text-gray-900 dark:text-white">{{ order.order_type === 'balance' ? '$' : '¥' }}{{ order.amount.toFixed(2) }}</p>
         </div>
@@ -130,6 +134,7 @@ const props = defineProps<{
 /** 充值金额 (base amount before fee) = pay_amount - fee = pay_amount / (1 + fee_rate/100) */
 const baseAmount = computed(() => {
   if (!props.order) return 0
+  if (props.order.base_amount > 0) return props.order.base_amount
   const feeRate = Number(props.order.fee_rate) || 0
   if (feeRate <= 0) return props.order.pay_amount
   return props.order.pay_amount / (1 + feeRate / 100)

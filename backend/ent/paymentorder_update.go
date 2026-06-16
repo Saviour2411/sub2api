@@ -112,6 +112,69 @@ func (_u *PaymentOrderUpdate) AddAmount(v float64) *PaymentOrderUpdate {
 	return _u
 }
 
+// SetBaseAmount sets the "base_amount" field.
+func (_u *PaymentOrderUpdate) SetBaseAmount(v float64) *PaymentOrderUpdate {
+	_u.mutation.ResetBaseAmount()
+	_u.mutation.SetBaseAmount(v)
+	return _u
+}
+
+// SetNillableBaseAmount sets the "base_amount" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillableBaseAmount(v *float64) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetBaseAmount(*v)
+	}
+	return _u
+}
+
+// AddBaseAmount adds value to the "base_amount" field.
+func (_u *PaymentOrderUpdate) AddBaseAmount(v float64) *PaymentOrderUpdate {
+	_u.mutation.AddBaseAmount(v)
+	return _u
+}
+
+// SetBonusAmount sets the "bonus_amount" field.
+func (_u *PaymentOrderUpdate) SetBonusAmount(v float64) *PaymentOrderUpdate {
+	_u.mutation.ResetBonusAmount()
+	_u.mutation.SetBonusAmount(v)
+	return _u
+}
+
+// SetNillableBonusAmount sets the "bonus_amount" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillableBonusAmount(v *float64) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetBonusAmount(*v)
+	}
+	return _u
+}
+
+// AddBonusAmount adds value to the "bonus_amount" field.
+func (_u *PaymentOrderUpdate) AddBonusAmount(v float64) *PaymentOrderUpdate {
+	_u.mutation.AddBonusAmount(v)
+	return _u
+}
+
+// SetBonusRate sets the "bonus_rate" field.
+func (_u *PaymentOrderUpdate) SetBonusRate(v float64) *PaymentOrderUpdate {
+	_u.mutation.ResetBonusRate()
+	_u.mutation.SetBonusRate(v)
+	return _u
+}
+
+// SetNillableBonusRate sets the "bonus_rate" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillableBonusRate(v *float64) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetBonusRate(*v)
+	}
+	return _u
+}
+
+// AddBonusRate adds value to the "bonus_rate" field.
+func (_u *PaymentOrderUpdate) AddBonusRate(v float64) *PaymentOrderUpdate {
+	_u.mutation.AddBonusRate(v)
+	return _u
+}
+
 // SetPayAmount sets the "pay_amount" field.
 func (_u *PaymentOrderUpdate) SetPayAmount(v float64) *PaymentOrderUpdate {
 	_u.mutation.ResetPayAmount()
@@ -402,6 +465,18 @@ func (_u *PaymentOrderUpdate) SetNillableProviderKey(v *string) *PaymentOrderUpd
 // ClearProviderKey clears the value of the "provider_key" field.
 func (_u *PaymentOrderUpdate) ClearProviderKey() *PaymentOrderUpdate {
 	_u.mutation.ClearProviderKey()
+	return _u
+}
+
+// SetBonusRuleSnapshot sets the "bonus_rule_snapshot" field.
+func (_u *PaymentOrderUpdate) SetBonusRuleSnapshot(v map[string]interface{}) *PaymentOrderUpdate {
+	_u.mutation.SetBonusRuleSnapshot(v)
+	return _u
+}
+
+// ClearBonusRuleSnapshot clears the value of the "bonus_rule_snapshot" field.
+func (_u *PaymentOrderUpdate) ClearBonusRuleSnapshot() *PaymentOrderUpdate {
+	_u.mutation.ClearBonusRuleSnapshot()
 	return _u
 }
 
@@ -869,6 +944,24 @@ func (_u *PaymentOrderUpdate) sqlSave(ctx context.Context) (_node int, err error
 	if value, ok := _u.mutation.AddedAmount(); ok {
 		_spec.AddField(paymentorder.FieldAmount, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.BaseAmount(); ok {
+		_spec.SetField(paymentorder.FieldBaseAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedBaseAmount(); ok {
+		_spec.AddField(paymentorder.FieldBaseAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.BonusAmount(); ok {
+		_spec.SetField(paymentorder.FieldBonusAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedBonusAmount(); ok {
+		_spec.AddField(paymentorder.FieldBonusAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.BonusRate(); ok {
+		_spec.SetField(paymentorder.FieldBonusRate, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedBonusRate(); ok {
+		_spec.AddField(paymentorder.FieldBonusRate, field.TypeFloat64, value)
+	}
 	if value, ok := _u.mutation.PayAmount(); ok {
 		_spec.SetField(paymentorder.FieldPayAmount, field.TypeFloat64, value)
 	}
@@ -952,6 +1045,12 @@ func (_u *PaymentOrderUpdate) sqlSave(ctx context.Context) (_node int, err error
 	}
 	if _u.mutation.ProviderKeyCleared() {
 		_spec.ClearField(paymentorder.FieldProviderKey, field.TypeString)
+	}
+	if value, ok := _u.mutation.BonusRuleSnapshot(); ok {
+		_spec.SetField(paymentorder.FieldBonusRuleSnapshot, field.TypeJSON, value)
+	}
+	if _u.mutation.BonusRuleSnapshotCleared() {
+		_spec.ClearField(paymentorder.FieldBonusRuleSnapshot, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.ProviderSnapshot(); ok {
 		_spec.SetField(paymentorder.FieldProviderSnapshot, field.TypeJSON, value)
@@ -1172,6 +1271,69 @@ func (_u *PaymentOrderUpdateOne) SetNillableAmount(v *float64) *PaymentOrderUpda
 // AddAmount adds value to the "amount" field.
 func (_u *PaymentOrderUpdateOne) AddAmount(v float64) *PaymentOrderUpdateOne {
 	_u.mutation.AddAmount(v)
+	return _u
+}
+
+// SetBaseAmount sets the "base_amount" field.
+func (_u *PaymentOrderUpdateOne) SetBaseAmount(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.ResetBaseAmount()
+	_u.mutation.SetBaseAmount(v)
+	return _u
+}
+
+// SetNillableBaseAmount sets the "base_amount" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillableBaseAmount(v *float64) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetBaseAmount(*v)
+	}
+	return _u
+}
+
+// AddBaseAmount adds value to the "base_amount" field.
+func (_u *PaymentOrderUpdateOne) AddBaseAmount(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.AddBaseAmount(v)
+	return _u
+}
+
+// SetBonusAmount sets the "bonus_amount" field.
+func (_u *PaymentOrderUpdateOne) SetBonusAmount(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.ResetBonusAmount()
+	_u.mutation.SetBonusAmount(v)
+	return _u
+}
+
+// SetNillableBonusAmount sets the "bonus_amount" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillableBonusAmount(v *float64) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetBonusAmount(*v)
+	}
+	return _u
+}
+
+// AddBonusAmount adds value to the "bonus_amount" field.
+func (_u *PaymentOrderUpdateOne) AddBonusAmount(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.AddBonusAmount(v)
+	return _u
+}
+
+// SetBonusRate sets the "bonus_rate" field.
+func (_u *PaymentOrderUpdateOne) SetBonusRate(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.ResetBonusRate()
+	_u.mutation.SetBonusRate(v)
+	return _u
+}
+
+// SetNillableBonusRate sets the "bonus_rate" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillableBonusRate(v *float64) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetBonusRate(*v)
+	}
+	return _u
+}
+
+// AddBonusRate adds value to the "bonus_rate" field.
+func (_u *PaymentOrderUpdateOne) AddBonusRate(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.AddBonusRate(v)
 	return _u
 }
 
@@ -1465,6 +1627,18 @@ func (_u *PaymentOrderUpdateOne) SetNillableProviderKey(v *string) *PaymentOrder
 // ClearProviderKey clears the value of the "provider_key" field.
 func (_u *PaymentOrderUpdateOne) ClearProviderKey() *PaymentOrderUpdateOne {
 	_u.mutation.ClearProviderKey()
+	return _u
+}
+
+// SetBonusRuleSnapshot sets the "bonus_rule_snapshot" field.
+func (_u *PaymentOrderUpdateOne) SetBonusRuleSnapshot(v map[string]interface{}) *PaymentOrderUpdateOne {
+	_u.mutation.SetBonusRuleSnapshot(v)
+	return _u
+}
+
+// ClearBonusRuleSnapshot clears the value of the "bonus_rule_snapshot" field.
+func (_u *PaymentOrderUpdateOne) ClearBonusRuleSnapshot() *PaymentOrderUpdateOne {
+	_u.mutation.ClearBonusRuleSnapshot()
 	return _u
 }
 
@@ -1962,6 +2136,24 @@ func (_u *PaymentOrderUpdateOne) sqlSave(ctx context.Context) (_node *PaymentOrd
 	if value, ok := _u.mutation.AddedAmount(); ok {
 		_spec.AddField(paymentorder.FieldAmount, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.BaseAmount(); ok {
+		_spec.SetField(paymentorder.FieldBaseAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedBaseAmount(); ok {
+		_spec.AddField(paymentorder.FieldBaseAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.BonusAmount(); ok {
+		_spec.SetField(paymentorder.FieldBonusAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedBonusAmount(); ok {
+		_spec.AddField(paymentorder.FieldBonusAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.BonusRate(); ok {
+		_spec.SetField(paymentorder.FieldBonusRate, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedBonusRate(); ok {
+		_spec.AddField(paymentorder.FieldBonusRate, field.TypeFloat64, value)
+	}
 	if value, ok := _u.mutation.PayAmount(); ok {
 		_spec.SetField(paymentorder.FieldPayAmount, field.TypeFloat64, value)
 	}
@@ -2045,6 +2237,12 @@ func (_u *PaymentOrderUpdateOne) sqlSave(ctx context.Context) (_node *PaymentOrd
 	}
 	if _u.mutation.ProviderKeyCleared() {
 		_spec.ClearField(paymentorder.FieldProviderKey, field.TypeString)
+	}
+	if value, ok := _u.mutation.BonusRuleSnapshot(); ok {
+		_spec.SetField(paymentorder.FieldBonusRuleSnapshot, field.TypeJSON, value)
+	}
+	if _u.mutation.BonusRuleSnapshotCleared() {
+		_spec.ClearField(paymentorder.FieldBonusRuleSnapshot, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.ProviderSnapshot(); ok {
 		_spec.SetField(paymentorder.FieldProviderSnapshot, field.TypeJSON, value)
