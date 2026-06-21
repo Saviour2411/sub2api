@@ -2724,26 +2724,26 @@ func (s *SettingService) IsBackendModeEnabled(ctx context.Context) bool {
 
 type gatewayForwardingSettingsResult struct {
 	fp, mp, cch, claudeOAuthSystemPromptInjection, cacheTTL1h, rewriteMessageCacheControl, preResponseKeepaliveEnabled bool
-	preResponseKeepaliveDelay                                                                                         int
+	preResponseKeepaliveDelay                                                                                          int
 	claudeOAuthSystemPrompt, claudeOAuthSystemPromptBlocks                                                             string
-	semanticErrorConfig                                                                                               SemanticErrorConfig
+	semanticErrorConfig                                                                                                SemanticErrorConfig
 }
 
 func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context) gatewayForwardingSettingsResult {
 	if cached, ok := gatewayForwardingCache.Load().(*cachedGatewayForwardingSettings); ok && cached != nil {
 		if time.Now().UnixNano() < cached.expiresAt {
 			return gatewayForwardingSettingsResult{
-				fp:                          cached.fingerprintUnification,
-				mp:                          cached.metadataPassthrough,
-				cch:                         cached.cchSigning,
+				fp:                               cached.fingerprintUnification,
+				mp:                               cached.metadataPassthrough,
+				cch:                              cached.cchSigning,
 				claudeOAuthSystemPromptInjection: cached.claudeOAuthSystemPromptInjection,
 				claudeOAuthSystemPrompt:          cached.claudeOAuthSystemPrompt,
 				claudeOAuthSystemPromptBlocks:    cached.claudeOAuthSystemPromptBlocks,
-				cacheTTL1h:                  cached.anthropicCacheTTL1hInjection,
-				rewriteMessageCacheControl:  cached.rewriteMessageCacheControl,
-				preResponseKeepaliveEnabled: cached.preResponseKeepaliveEnabled,
-				preResponseKeepaliveDelay:   cached.preResponseKeepaliveDelay,
-				semanticErrorConfig:         cached.semanticErrorConfig,
+				cacheTTL1h:                       cached.anthropicCacheTTL1hInjection,
+				rewriteMessageCacheControl:       cached.rewriteMessageCacheControl,
+				preResponseKeepaliveEnabled:      cached.preResponseKeepaliveEnabled,
+				preResponseKeepaliveDelay:        cached.preResponseKeepaliveDelay,
+				semanticErrorConfig:              cached.semanticErrorConfig,
 			}
 		}
 	}
@@ -2751,17 +2751,17 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 		if cached, ok := gatewayForwardingCache.Load().(*cachedGatewayForwardingSettings); ok && cached != nil {
 			if time.Now().UnixNano() < cached.expiresAt {
 				return gatewayForwardingSettingsResult{
-					fp:                          cached.fingerprintUnification,
-					mp:                          cached.metadataPassthrough,
-					cch:                         cached.cchSigning,
+					fp:                               cached.fingerprintUnification,
+					mp:                               cached.metadataPassthrough,
+					cch:                              cached.cchSigning,
 					claudeOAuthSystemPromptInjection: cached.claudeOAuthSystemPromptInjection,
 					claudeOAuthSystemPrompt:          cached.claudeOAuthSystemPrompt,
 					claudeOAuthSystemPromptBlocks:    cached.claudeOAuthSystemPromptBlocks,
-					cacheTTL1h:                  cached.anthropicCacheTTL1hInjection,
-					rewriteMessageCacheControl:  cached.rewriteMessageCacheControl,
-					preResponseKeepaliveEnabled: cached.preResponseKeepaliveEnabled,
-					preResponseKeepaliveDelay:   cached.preResponseKeepaliveDelay,
-					semanticErrorConfig:         cached.semanticErrorConfig,
+					cacheTTL1h:                       cached.anthropicCacheTTL1hInjection,
+					rewriteMessageCacheControl:       cached.rewriteMessageCacheControl,
+					preResponseKeepaliveEnabled:      cached.preResponseKeepaliveEnabled,
+					preResponseKeepaliveDelay:        cached.preResponseKeepaliveDelay,
+					semanticErrorConfig:              cached.semanticErrorConfig,
 				}, nil
 			}
 		}
@@ -2786,24 +2786,24 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			semanticCfg := defaultSemanticErrorConfig()
 			slog.Warn("failed to get gateway forwarding settings", "error", err)
 			gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
-				fingerprintUnification:       true,
-				metadataPassthrough:          false,
-				cchSigning:                   false,
+				fingerprintUnification:           true,
+				metadataPassthrough:              false,
+				cchSigning:                       false,
 				claudeOAuthSystemPromptInjection: true,
-				anthropicCacheTTL1hInjection: false,
-				rewriteMessageCacheControl:   s.defaultRewriteMessageCacheControl(),
-				preResponseKeepaliveEnabled:  s.defaultPreResponseStreamKeepaliveEnabled(),
-				preResponseKeepaliveDelay:    s.defaultPreResponseStreamKeepaliveInitialDelay(),
-				semanticErrorConfig:          semanticCfg,
-				expiresAt:                    time.Now().Add(gatewayForwardingErrorTTL).UnixNano(),
+				anthropicCacheTTL1hInjection:     false,
+				rewriteMessageCacheControl:       s.defaultRewriteMessageCacheControl(),
+				preResponseKeepaliveEnabled:      s.defaultPreResponseStreamKeepaliveEnabled(),
+				preResponseKeepaliveDelay:        s.defaultPreResponseStreamKeepaliveInitialDelay(),
+				semanticErrorConfig:              semanticCfg,
+				expiresAt:                        time.Now().Add(gatewayForwardingErrorTTL).UnixNano(),
 			})
 			return gatewayForwardingSettingsResult{
-				fp:                          true,
+				fp:                               true,
 				claudeOAuthSystemPromptInjection: true,
-				rewriteMessageCacheControl:  s.defaultRewriteMessageCacheControl(),
-				preResponseKeepaliveEnabled: s.defaultPreResponseStreamKeepaliveEnabled(),
-				preResponseKeepaliveDelay:   s.defaultPreResponseStreamKeepaliveInitialDelay(),
-				semanticErrorConfig:         semanticCfg,
+				rewriteMessageCacheControl:       s.defaultRewriteMessageCacheControl(),
+				preResponseKeepaliveEnabled:      s.defaultPreResponseStreamKeepaliveEnabled(),
+				preResponseKeepaliveDelay:        s.defaultPreResponseStreamKeepaliveInitialDelay(),
+				semanticErrorConfig:              semanticCfg,
 			}, nil
 		}
 		fp := true
@@ -2837,42 +2837,42 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			Rules:         compileSemanticErrorRules(parseSemanticErrorRules(values[SettingKeySemanticErrorRules])),
 		}
 		gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
-			fingerprintUnification:       fp,
-			metadataPassthrough:          mp,
-			cchSigning:                   cch,
+			fingerprintUnification:           fp,
+			metadataPassthrough:              mp,
+			cchSigning:                       cch,
 			claudeOAuthSystemPromptInjection: systemPromptInjection,
 			claudeOAuthSystemPrompt:          systemPrompt,
 			claudeOAuthSystemPromptBlocks:    systemPromptBlocks,
-			anthropicCacheTTL1hInjection: cacheTTL1h,
-			rewriteMessageCacheControl:   rewriteMessageCacheControl,
-			preResponseKeepaliveEnabled:  preResponseEnabled,
-			preResponseKeepaliveDelay:    preResponseDelay,
-			semanticErrorConfig:          semanticCfg,
-			expiresAt:                    time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
+			anthropicCacheTTL1hInjection:     cacheTTL1h,
+			rewriteMessageCacheControl:       rewriteMessageCacheControl,
+			preResponseKeepaliveEnabled:      preResponseEnabled,
+			preResponseKeepaliveDelay:        preResponseDelay,
+			semanticErrorConfig:              semanticCfg,
+			expiresAt:                        time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
 		})
 		return gatewayForwardingSettingsResult{
-			fp:                          fp,
-			mp:                          mp,
-			cch:                         cch,
+			fp:                               fp,
+			mp:                               mp,
+			cch:                              cch,
 			claudeOAuthSystemPromptInjection: systemPromptInjection,
 			claudeOAuthSystemPrompt:          systemPrompt,
 			claudeOAuthSystemPromptBlocks:    systemPromptBlocks,
-			cacheTTL1h:                  cacheTTL1h,
-			rewriteMessageCacheControl:  rewriteMessageCacheControl,
-			preResponseKeepaliveEnabled: preResponseEnabled,
-			preResponseKeepaliveDelay:   preResponseDelay,
-			semanticErrorConfig:         semanticCfg,
+			cacheTTL1h:                       cacheTTL1h,
+			rewriteMessageCacheControl:       rewriteMessageCacheControl,
+			preResponseKeepaliveEnabled:      preResponseEnabled,
+			preResponseKeepaliveDelay:        preResponseDelay,
+			semanticErrorConfig:              semanticCfg,
 		}, nil
 	})
 	if r, ok := val.(gatewayForwardingSettingsResult); ok {
 		return r
 	}
 	return gatewayForwardingSettingsResult{
-		fp:                          true,
+		fp:                               true,
 		claudeOAuthSystemPromptInjection: true,
-		preResponseKeepaliveEnabled: s.defaultPreResponseStreamKeepaliveEnabled(),
-		preResponseKeepaliveDelay:   s.defaultPreResponseStreamKeepaliveInitialDelay(),
-		semanticErrorConfig:         defaultSemanticErrorConfig(),
+		preResponseKeepaliveEnabled:      s.defaultPreResponseStreamKeepaliveEnabled(),
+		preResponseKeepaliveDelay:        s.defaultPreResponseStreamKeepaliveInitialDelay(),
+		semanticErrorConfig:              defaultSemanticErrorConfig(),
 	}
 }
 

@@ -546,7 +546,7 @@ func init() {
 	// channelmonitor.BodyOverrideModeValidator is a validator for the "body_override_mode" field. It is called by the builders before save.
 	channelmonitor.BodyOverrideModeValidator = channelmonitorDescBodyOverrideMode.Validators[0].(func(string) error)
 	// channelmonitorDescStreamEnabled is the schema descriptor for stream_enabled field.
-	channelmonitorDescStreamEnabled := channelmonitorFields[16].Descriptor()
+	channelmonitorDescStreamEnabled := channelmonitorFields[17].Descriptor()
 	// channelmonitor.DefaultStreamEnabled holds the default value on creation for the stream_enabled field.
 	channelmonitor.DefaultStreamEnabled = channelmonitorDescStreamEnabled.Default.(bool)
 	channelmonitordailyrollupFields := schema.ChannelMonitorDailyRollup{}.Fields()
