@@ -44,6 +44,7 @@ type contentModerationConfigRequest struct {
 	AutoBanEnabled                  *bool                                 `json:"auto_ban_enabled"`
 	BanThreshold                    *int                                  `json:"ban_threshold"`
 	ViolationWindowHours            *int                                  `json:"violation_window_hours"`
+	CyberPolicyExcludeFromBanCount  *bool                                 `json:"cyber_policy_exclude_from_ban_count"`
 	RetryCount                      *int                                  `json:"retry_count"`
 	HitRetentionDays                *int                                  `json:"hit_retention_days"`
 	NonHitRetentionDays             *int                                  `json:"non_hit_retention_days"`
@@ -112,6 +113,7 @@ func (h *ContentModerationHandler) UpdateConfig(c *gin.Context) {
 		AutoBanEnabled:                  req.AutoBanEnabled,
 		BanThreshold:                    req.BanThreshold,
 		ViolationWindowHours:            req.ViolationWindowHours,
+		CyberPolicyExcludeFromBanCount:  req.CyberPolicyExcludeFromBanCount,
 		RetryCount:                      req.RetryCount,
 		HitRetentionDays:                req.HitRetentionDays,
 		NonHitRetentionDays:             req.NonHitRetentionDays,
