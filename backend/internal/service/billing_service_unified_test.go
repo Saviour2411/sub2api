@@ -163,7 +163,7 @@ func TestCalculateCostUnified_ChannelDefaultPricingForUnknownModel(t *testing.T)
 
 	cost, err := bs.CalculateCostUnified(CostInput{
 		Ctx:            context.Background(),
-		Model:          "deepseek-v4-pro",
+		Model:          "unknown-model-for-channel-default-pricing",
 		GroupID:        &groupID,
 		Tokens:         UsageTokens{InputTokens: 1000, OutputTokens: 250},
 		RateMultiplier: 1.5,
