@@ -15,12 +15,22 @@ import (
 
 const scheduledTestDefaultMaxWorkers = 10
 
+type scheduledAccountTester interface {
+	RunTestBackground(ctx context.Context, accountID int64, modelID string) (*ScheduledTestResult, error)
+}
+
+type scheduledAccountRecovery interface {
+	HandleStrictFailureScheduling(ctx context.Context, account *Account, statusCode int, reason string) bool
+	RecoverAccountAfterSuccessfulTest(ctx context.Context, accountID int64) (*SuccessfulTestRecoveryResult, error)
+}
+
 // ScheduledTestRunnerService periodically scans due test plans and executes them.
 type ScheduledTestRunnerService struct {
 	planRepo       ScheduledTestPlanRepository
 	scheduledSvc   *ScheduledTestService
-	accountTestSvc *AccountTestService
-	rateLimitSvc   *RateLimitService
+	accountTestSvc scheduledAccountTester
+	rateLimitSvc   scheduledAccountRecovery
+	accountRepo    AccountRepository
 	cfg            *config.Config
 
 	cron      *cron.Cron
@@ -34,6 +44,7 @@ func NewScheduledTestRunnerService(
 	scheduledSvc *ScheduledTestService,
 	accountTestSvc *AccountTestService,
 	rateLimitSvc *RateLimitService,
+	accountRepo AccountRepository,
 	cfg *config.Config,
 ) *ScheduledTestRunnerService {
 	return &ScheduledTestRunnerService{
@@ -41,6 +52,7 @@ func NewScheduledTestRunnerService(
 		scheduledSvc:   scheduledSvc,
 		accountTestSvc: accountTestSvc,
 		rateLimitSvc:   rateLimitSvc,
+		accountRepo:    accountRepo,
 		cfg:            cfg,
 	}
 }
@@ -95,6 +107,8 @@ func (s *ScheduledTestRunnerService) runScheduled() {
 	defer cancel()
 
 	now := time.Now()
+	s.activateAutoManagedPlans(ctx, now)
+
 	plans, err := s.planRepo.ListDue(ctx, now)
 	if err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] ListDue error: %v", err)
@@ -139,6 +153,13 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 		s.tryRecoverAccount(ctx, plan.AccountID, plan.ID)
 	}
 
+	if result.Status == "success" && plan.AutoManaged {
+		finishedAt := time.Now()
+		if s.disableAutoManagedAfterSuccess(ctx, plan, finishedAt) {
+			return
+		}
+	}
+
 	nextRun, err := computeNextRun(plan.CronExpression, time.Now())
 	if err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d computeNextRun error: %v", plan.ID, err)
@@ -148,6 +169,82 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 	if err := s.planRepo.UpdateAfterRun(ctx, plan.ID, time.Now(), nextRun); err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d UpdateAfterRun error: %v", plan.ID, err)
 	}
+}
+
+func (s *ScheduledTestRunnerService) activateAutoManagedPlans(ctx context.Context, now time.Time) {
+	if s == nil || s.planRepo == nil || s.accountRepo == nil {
+		return
+	}
+	plans, err := s.planRepo.ListAutoManagedActivationCandidates(ctx, now)
+	if err != nil {
+		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] ListAutoManagedActivationCandidates error: %v", err)
+		return
+	}
+	for _, plan := range plans {
+		if plan == nil || !plan.AutoManaged || plan.Enabled {
+			continue
+		}
+		account, err := s.accountRepo.GetByID(ctx, plan.AccountID)
+		if err != nil {
+			logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d auto-managed account read failed: %v", plan.ID, err)
+			continue
+		}
+		if !isAutoManagedProbeNeeded(account, now) {
+			continue
+		}
+		nextRun, err := computeNextRun(plan.CronExpression, now)
+		if err != nil {
+			logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d auto-managed cron error: %v", plan.ID, err)
+			continue
+		}
+		if err := s.planRepo.EnableAutoManaged(ctx, plan.ID, nextRun); err != nil {
+			logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d auto-managed enable error: %v", plan.ID, err)
+			continue
+		}
+		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d auto-managed enabled for account=%d next_run_at=%s", plan.ID, plan.AccountID, nextRun.Format(time.RFC3339))
+	}
+}
+
+func (s *ScheduledTestRunnerService) disableAutoManagedAfterSuccess(ctx context.Context, plan *ScheduledTestPlan, finishedAt time.Time) bool {
+	if s == nil || s.planRepo == nil || s.accountRepo == nil || plan == nil || !plan.AutoManaged {
+		return false
+	}
+	account, err := s.accountRepo.GetByID(ctx, plan.AccountID)
+	if err != nil {
+		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d auto-managed recovery account read failed: %v", plan.ID, err)
+		return false
+	}
+	if isAutoManagedProbeNeeded(account, time.Now()) {
+		return false
+	}
+	if err := s.planRepo.DisableAutoManaged(ctx, plan.ID, &finishedAt); err != nil {
+		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d auto-managed disable error: %v", plan.ID, err)
+		return false
+	}
+	logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d auto-managed disabled after successful recovery", plan.ID)
+	return true
+}
+
+func isAutoManagedProbeNeeded(account *Account, now time.Time) bool {
+	if account == nil {
+		return false
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	if account.Status == StatusError || account.HasFailureStrategyUnscheduledMarker() {
+		return true
+	}
+	if account.RateLimitResetAt != nil && account.RateLimitResetAt.After(now) {
+		return true
+	}
+	if account.OverloadUntil != nil && account.OverloadUntil.After(now) {
+		return true
+	}
+	if account.TempUnschedulableUntil != nil && account.TempUnschedulableUntil.After(now) {
+		return true
+	}
+	return false
 }
 
 func (s *ScheduledTestRunnerService) handleFailedTest(ctx context.Context, plan *ScheduledTestPlan, result *ScheduledTestResult) {

@@ -2821,19 +2821,15 @@ func (s *adminServiceImpl) createDefaultScheduledTestPlanAsync(account *Account)
 		}()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		nextRun, err := computeNextRun("0 * * * *", time.Now())
-		if err != nil {
-			slog.Warn("create_default_scheduled_test_plan_cron_failed", "account_id", accountID, "error", err)
-			return
-		}
-		_, err = s.defaultScheduledTestPlanRepo.Create(ctx, &ScheduledTestPlan{
+		_, err := s.defaultScheduledTestPlanRepo.Create(ctx, &ScheduledTestPlan{
 			AccountID:      accountID,
 			ModelID:        modelID,
 			CronExpression: "0 * * * *",
-			Enabled:        true,
+			Enabled:        false,
 			MaxResults:     50,
 			AutoRecover:    true,
-			NextRunAt:      &nextRun,
+			AutoManaged:    true,
+			NextRunAt:      nil,
 		})
 		if err != nil {
 			slog.Warn("create_default_scheduled_test_plan_failed", "account_id", accountID, "model_id", modelID, "error", err)

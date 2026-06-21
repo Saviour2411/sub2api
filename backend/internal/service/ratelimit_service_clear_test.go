@@ -319,6 +319,7 @@ func TestRateLimitService_RecoverAccountAfterSuccessfulTest_ClearsErrorAndRateLi
 	require.Equal(t, 1, repo.clearAntigravityCalls)
 	require.Equal(t, 1, repo.clearModelRateLimitCalls)
 	require.Equal(t, 1, repo.clearTempUnschedCalls)
+	require.Equal(t, []bool{true}, repo.setSchedulableCalls)
 	require.Equal(t, []int64{42}, cache.deletedIDs)
 	require.Equal(t, []int64{42}, blocker.clearedIDs)
 }

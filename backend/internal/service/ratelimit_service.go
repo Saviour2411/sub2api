@@ -1724,6 +1724,12 @@ func (s *RateLimitService) RecoverAccountState(ctx context.Context, accountID in
 			return nil, err
 		}
 		result.ClearedError = true
+		if !account.Schedulable {
+			if err := s.accountRepo.SetSchedulable(ctx, accountID, true); err != nil {
+				return nil, err
+			}
+			account.Schedulable = true
+		}
 		if options.InvalidateToken && s.tokenCacheInvalidator != nil && account.IsOAuth() {
 			if invalidateErr := s.tokenCacheInvalidator.InvalidateToken(ctx, account); invalidateErr != nil {
 				slog.Warn("recover_account_state_invalidate_token_failed", "account_id", accountID, "error", invalidateErr)

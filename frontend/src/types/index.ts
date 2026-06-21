@@ -1984,6 +1984,7 @@ export interface ScheduledTestPlan {
   enabled: boolean
   max_results: number
   auto_recover: boolean
+  auto_managed: boolean
   last_run_at: string | null
   next_run_at: string | null
   created_at: string

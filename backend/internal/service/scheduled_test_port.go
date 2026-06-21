@@ -14,6 +14,7 @@ type ScheduledTestPlan struct {
 	Enabled        bool       `json:"enabled"`
 	MaxResults     int        `json:"max_results"`
 	AutoRecover    bool       `json:"auto_recover"`
+	AutoManaged    bool       `json:"auto_managed"`
 	LastRunAt      *time.Time `json:"last_run_at"`
 	NextRunAt      *time.Time `json:"next_run_at"`
 	CreatedAt      time.Time  `json:"created_at"`
@@ -50,9 +51,12 @@ type ScheduledTestPlanRepository interface {
 	GetByID(ctx context.Context, id int64) (*ScheduledTestPlan, error)
 	ListByAccountID(ctx context.Context, accountID int64) ([]*ScheduledTestPlan, error)
 	ListDue(ctx context.Context, now time.Time) ([]*ScheduledTestPlan, error)
+	ListAutoManagedActivationCandidates(ctx context.Context, now time.Time) ([]*ScheduledTestPlan, error)
 	Update(ctx context.Context, plan *ScheduledTestPlan) (*ScheduledTestPlan, error)
 	Delete(ctx context.Context, id int64) error
 	UpdateAfterRun(ctx context.Context, id int64, lastRunAt time.Time, nextRunAt time.Time) error
+	EnableAutoManaged(ctx context.Context, id int64, nextRunAt time.Time) error
+	DisableAutoManaged(ctx context.Context, id int64, lastRunAt *time.Time) error
 }
 
 // ScheduledTestResultRepository defines the data access interface for test results.
