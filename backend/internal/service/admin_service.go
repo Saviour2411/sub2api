@@ -2824,7 +2824,7 @@ func (s *adminServiceImpl) createDefaultScheduledTestPlanAsync(account *Account)
 		_, err := s.defaultScheduledTestPlanRepo.Create(ctx, &ScheduledTestPlan{
 			AccountID:      accountID,
 			ModelID:        modelID,
-			CronExpression: "0 * * * *",
+			CronExpression: "*/5 * * * *",
 			Enabled:        false,
 			MaxResults:     50,
 			AutoRecover:    true,

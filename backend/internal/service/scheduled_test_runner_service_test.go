@@ -19,6 +19,11 @@ type scheduledTestPlanRepoStub struct {
 	disabled             []scheduledPlanDisableCall
 }
 
+type scheduledTestResultRepoStub struct {
+	results []*ScheduledTestResult
+	err     error
+}
+
 type scheduledPlanEnableCall struct {
 	id        int64
 	nextRunAt time.Time
@@ -77,6 +82,28 @@ func (r *scheduledTestPlanRepoStub) DisableAutoManaged(ctx context.Context, id i
 	return nil
 }
 
+func (r *scheduledTestResultRepoStub) Create(ctx context.Context, result *ScheduledTestResult) (*ScheduledTestResult, error) {
+	return nil, errors.New("unexpected Create call")
+}
+
+func (r *scheduledTestResultRepoStub) ListByPlanID(ctx context.Context, planID int64, limit int) ([]*ScheduledTestResult, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+	if limit > 0 && len(r.results) > limit {
+		return r.results[:limit], nil
+	}
+	return r.results, nil
+}
+
+func (r *scheduledTestResultRepoStub) ListLatestFailuresByAccountIDs(ctx context.Context, accountIDs []int64) (map[int64]*ScheduledTestLatestFailure, error) {
+	return nil, errors.New("unexpected ListLatestFailuresByAccountIDs call")
+}
+
+func (r *scheduledTestResultRepoStub) PruneOldResults(ctx context.Context, planID int64, keepCount int) error {
+	return errors.New("unexpected PruneOldResults call")
+}
+
 func TestCreateDefaultScheduledTestPlanAsync_CreatesDisabledAutoManagedPlan(t *testing.T) {
 	repo := &scheduledTestPlanRepoStub{createCh: make(chan *ScheduledTestPlan, 1)}
 	svc := &adminServiceImpl{defaultScheduledTestPlanRepo: repo}
@@ -90,7 +117,7 @@ func TestCreateDefaultScheduledTestPlanAsync_CreatesDisabledAutoManagedPlan(t *t
 	select {
 	case plan := <-repo.createCh:
 		require.Equal(t, int64(42), plan.AccountID)
-		require.Equal(t, "0 * * * *", plan.CronExpression)
+		require.Equal(t, "*/5 * * * *", plan.CronExpression)
 		require.False(t, plan.Enabled)
 		require.True(t, plan.AutoRecover)
 		require.True(t, plan.AutoManaged)
@@ -120,8 +147,8 @@ func TestScheduledTestRunner_ActivateAutoManagedPlansOnlyForRecoverableState(t *
 	now := time.Now()
 	repo := &scheduledTestPlanRepoStub{
 		activationCandidates: []*ScheduledTestPlan{
-			{ID: 1, AccountID: 11, CronExpression: "0 * * * *", AutoManaged: true},
-			{ID: 2, AccountID: 12, CronExpression: "0 * * * *", AutoManaged: true},
+			{ID: 1, AccountID: 11, CronExpression: "*/5 * * * *", AutoManaged: true},
+			{ID: 2, AccountID: 12, CronExpression: "*/5 * * * *", AutoManaged: true},
 		},
 	}
 	accountRepo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{
@@ -134,7 +161,45 @@ func TestScheduledTestRunner_ActivateAutoManagedPlansOnlyForRecoverableState(t *
 
 	require.Len(t, repo.enabled, 1)
 	require.Equal(t, int64(1), repo.enabled[0].id)
-	require.True(t, repo.enabled[0].nextRunAt.After(now))
+	require.Equal(t, now, repo.enabled[0].nextRunAt)
+}
+
+func TestScheduledTestRunner_AutoManagedBackoffDuration(t *testing.T) {
+	require.Equal(t, 5*time.Minute, scheduledTestAutoManagedBackoffDuration(0))
+	require.Equal(t, 5*time.Minute, scheduledTestAutoManagedBackoffDuration(1))
+	require.Equal(t, 10*time.Minute, scheduledTestAutoManagedBackoffDuration(2))
+	require.Equal(t, 15*time.Minute, scheduledTestAutoManagedBackoffDuration(3))
+	require.Equal(t, 30*time.Minute, scheduledTestAutoManagedBackoffDuration(4))
+	require.Equal(t, 60*time.Minute, scheduledTestAutoManagedBackoffDuration(5))
+	require.Equal(t, 60*time.Minute, scheduledTestAutoManagedBackoffDuration(6))
+}
+
+func TestScheduledTestRunner_NextAutoManagedRetryUsesConsecutiveFailures(t *testing.T) {
+	now := time.Now()
+	resultRepo := &scheduledTestResultRepoStub{results: []*ScheduledTestResult{
+		{Status: "failed"},
+		{Status: "failed"},
+		{Status: "success"},
+		{Status: "failed"},
+	}}
+	runner := &ScheduledTestRunnerService{
+		scheduledSvc: NewScheduledTestService(nil, resultRepo),
+	}
+
+	nextRun := runner.nextAutoManagedRetry(context.Background(), &ScheduledTestPlan{ID: 1, AutoManaged: true}, now)
+
+	require.Equal(t, now.Add(10*time.Minute), nextRun)
+}
+
+func TestScheduledTestRunner_NextAutoManagedRetryFallsBackToFiveMinutes(t *testing.T) {
+	now := time.Now()
+	runner := &ScheduledTestRunnerService{
+		scheduledSvc: NewScheduledTestService(nil, &scheduledTestResultRepoStub{err: errors.New("db unavailable")}),
+	}
+
+	nextRun := runner.nextAutoManagedRetry(context.Background(), &ScheduledTestPlan{ID: 1, AutoManaged: true}, now)
+
+	require.Equal(t, now.Add(5*time.Minute), nextRun)
 }
 
 func TestScheduledTestRunner_DisableAutoManagedAfterSuccessfulRecovery(t *testing.T) {

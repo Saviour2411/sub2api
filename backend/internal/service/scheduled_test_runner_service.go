@@ -15,6 +15,14 @@ import (
 
 const scheduledTestDefaultMaxWorkers = 10
 
+var scheduledTestAutoManagedBackoffSteps = []time.Duration{
+	5 * time.Minute,
+	10 * time.Minute,
+	15 * time.Minute,
+	30 * time.Minute,
+	60 * time.Minute,
+}
+
 type scheduledAccountTester interface {
 	RunTestBackground(ctx context.Context, accountID int64, modelID string) (*ScheduledTestResult, error)
 }
@@ -149,6 +157,14 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 
 	if result.Status == "failed" {
 		s.handleFailedTest(ctx, plan, result)
+		if plan.AutoManaged {
+			now := time.Now()
+			nextRun := s.nextAutoManagedRetry(ctx, plan, now)
+			if err := s.planRepo.UpdateAfterRun(ctx, plan.ID, now, nextRun); err != nil {
+				logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d UpdateAfterRun error: %v", plan.ID, err)
+			}
+			return
+		}
 	} else if result.Status == "success" && plan.AutoRecover {
 		s.tryRecoverAccount(ctx, plan.AccountID, plan.ID)
 	}
@@ -192,11 +208,7 @@ func (s *ScheduledTestRunnerService) activateAutoManagedPlans(ctx context.Contex
 		if !isAutoManagedProbeNeeded(account, now) {
 			continue
 		}
-		nextRun, err := computeNextRun(plan.CronExpression, now)
-		if err != nil {
-			logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d auto-managed cron error: %v", plan.ID, err)
-			continue
-		}
+		nextRun := now
 		if err := s.planRepo.EnableAutoManaged(ctx, plan.ID, nextRun); err != nil {
 			logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d auto-managed enable error: %v", plan.ID, err)
 			continue
@@ -223,6 +235,47 @@ func (s *ScheduledTestRunnerService) disableAutoManagedAfterSuccess(ctx context.
 	}
 	logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d auto-managed disabled after successful recovery", plan.ID)
 	return true
+}
+
+func (s *ScheduledTestRunnerService) nextAutoManagedRetry(ctx context.Context, plan *ScheduledTestPlan, from time.Time) time.Time {
+	if from.IsZero() {
+		from = time.Now()
+	}
+	consecutiveFailures := 1
+	if s != nil && s.scheduledSvc != nil && plan != nil {
+		results, err := s.scheduledSvc.ListResults(ctx, plan.ID, len(scheduledTestAutoManagedBackoffSteps)+1)
+		if err != nil {
+			logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d ListResults for backoff error: %v", plan.ID, err)
+		} else {
+			consecutiveFailures = countConsecutiveScheduledTestFailures(results)
+			if consecutiveFailures <= 0 {
+				consecutiveFailures = 1
+			}
+		}
+	}
+	return from.Add(scheduledTestAutoManagedBackoffDuration(consecutiveFailures))
+}
+
+func countConsecutiveScheduledTestFailures(results []*ScheduledTestResult) int {
+	count := 0
+	for _, result := range results {
+		if result == nil || result.Status != "failed" {
+			break
+		}
+		count++
+	}
+	return count
+}
+
+func scheduledTestAutoManagedBackoffDuration(consecutiveFailures int) time.Duration {
+	if consecutiveFailures <= 1 {
+		return scheduledTestAutoManagedBackoffSteps[0]
+	}
+	index := consecutiveFailures - 1
+	if index >= len(scheduledTestAutoManagedBackoffSteps) {
+		index = len(scheduledTestAutoManagedBackoffSteps) - 1
+	}
+	return scheduledTestAutoManagedBackoffSteps[index]
 }
 
 func isAutoManagedProbeNeeded(account *Account, now time.Time) bool {
