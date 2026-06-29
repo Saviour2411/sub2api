@@ -1058,6 +1058,49 @@
               {{ t("admin.groups.claudeCode.fallbackHint") }}
             </p>
           </div>
+          <div class="mt-4 border-t border-gray-100 pt-3 dark:border-dark-600">
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t("admin.groups.claudeCode.upstreamMimicry") }}
+                </label>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.groups.claudeCode.upstreamMimicryHint") }}
+                </p>
+              </div>
+              <div class="flex shrink-0 items-center gap-3">
+                <button
+                  type="button"
+                  @click="
+                    createForm.claude_code_upstream_mimicry =
+                      !createForm.claude_code_upstream_mimicry
+                  "
+                  :class="[
+                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                    createForm.claude_code_upstream_mimicry
+                      ? 'bg-primary-500'
+                      : 'bg-gray-300 dark:bg-dark-600',
+                  ]"
+                >
+                  <span
+                    :class="[
+                      'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                      createForm.claude_code_upstream_mimicry
+                        ? 'translate-x-6'
+                        : 'translate-x-1',
+                    ]"
+                  />
+                </button>
+                <span class="text-sm text-gray-500 dark:text-gray-400">
+                  {{
+                    createForm.claude_code_upstream_mimicry
+                      ? t("admin.groups.claudeCode.upstreamMimicryEnabled")
+                      : t("admin.groups.claudeCode.upstreamMimicryDisabled")
+                  }}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- OpenAI Messages 调度配置（仅 openai 平台） -->
@@ -2342,6 +2385,49 @@
               {{ t("admin.groups.claudeCode.fallbackHint") }}
             </p>
           </div>
+          <div class="mt-4 border-t border-gray-100 pt-3 dark:border-dark-600">
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t("admin.groups.claudeCode.upstreamMimicry") }}
+                </label>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.groups.claudeCode.upstreamMimicryHint") }}
+                </p>
+              </div>
+              <div class="flex shrink-0 items-center gap-3">
+                <button
+                  type="button"
+                  @click="
+                    editForm.claude_code_upstream_mimicry =
+                      !editForm.claude_code_upstream_mimicry
+                  "
+                  :class="[
+                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                    editForm.claude_code_upstream_mimicry
+                      ? 'bg-primary-500'
+                      : 'bg-gray-300 dark:bg-dark-600',
+                  ]"
+                >
+                  <span
+                    :class="[
+                      'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                      editForm.claude_code_upstream_mimicry
+                        ? 'translate-x-6'
+                        : 'translate-x-1',
+                    ]"
+                  />
+                </button>
+                <span class="text-sm text-gray-500 dark:text-gray-400">
+                  {{
+                    editForm.claude_code_upstream_mimicry
+                      ? t("admin.groups.claudeCode.upstreamMimicryEnabled")
+                      : t("admin.groups.claudeCode.upstreamMimicryDisabled")
+                  }}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- OpenAI Messages 调度配置（仅 openai 平台） -->
@@ -3342,6 +3428,7 @@ const createForm = reactive({
   image_price_4k: null as number | null,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
+  claude_code_upstream_mimicry: false,
   fallback_group_id: null as number | null,
   fallback_group_id_on_invalid_request: null as number | null,
   // OpenAI Messages 调度配置（仅 openai 平台使用）
@@ -3673,6 +3760,7 @@ const editForm = reactive({
   image_price_4k: null as number | null,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
+  claude_code_upstream_mimicry: false,
   fallback_group_id: null as number | null,
   fallback_group_id_on_invalid_request: null as number | null,
   // OpenAI Messages 调度配置（仅 openai 平台使用）
@@ -3923,6 +4011,7 @@ const closeCreateModal = () => {
   createForm.image_price_2k = null;
   createForm.image_price_4k = null;
   createForm.claude_code_only = false;
+  createForm.claude_code_upstream_mimicry = false;
   createForm.fallback_group_id = null;
   createForm.fallback_group_id_on_invalid_request = null;
   resetMessagesDispatchFormState(createForm);
@@ -3992,6 +4081,10 @@ const handleCreateGroup = async () => {
         createForm.platform,
         createForm.supported_model_scopes,
       ),
+      claude_code_upstream_mimicry:
+        createForm.platform === "anthropic"
+          ? createForm.claude_code_upstream_mimicry
+          : false,
       messages_dispatch_model_config:
         createForm.platform === "openai"
           ? messagesDispatchFormStateToConfig({
@@ -4049,6 +4142,8 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.image_price_2k = group.image_price_2k;
   editForm.image_price_4k = group.image_price_4k;
   editForm.claude_code_only = group.claude_code_only || false;
+  editForm.claude_code_upstream_mimicry =
+    group.claude_code_upstream_mimicry || false;
   editForm.fallback_group_id = group.fallback_group_id;
   editForm.fallback_group_id_on_invalid_request =
     group.fallback_group_id_on_invalid_request;
@@ -4131,6 +4226,10 @@ const handleUpdateGroup = async () => {
         editForm.platform,
         editForm.supported_model_scopes,
       ),
+      claude_code_upstream_mimicry:
+        editForm.platform === "anthropic"
+          ? editForm.claude_code_upstream_mimicry
+          : false,
       messages_dispatch_model_config:
         editForm.platform === "openai"
           ? messagesDispatchFormStateToConfig({
@@ -4234,6 +4333,9 @@ watch(
 watch(
   () => createForm.platform,
   (newVal) => {
+    if (newVal !== "anthropic") {
+      createForm.claude_code_upstream_mimicry = false;
+    }
     if (!["anthropic", "antigravity"].includes(newVal)) {
       createForm.fallback_group_id_on_invalid_request = null;
     }
@@ -4252,6 +4354,9 @@ watch(
 watch(
   () => editForm.platform,
   (newVal) => {
+    if (newVal !== "anthropic") {
+      editForm.claude_code_upstream_mimicry = false;
+    }
     if (!["anthropic", "antigravity"].includes(newVal)) {
       editForm.fallback_group_id_on_invalid_request = null;
     }

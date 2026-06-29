@@ -205,14 +205,15 @@ type CreateGroupInput struct {
 	WeeklyLimitUSD   *float64 // 周限额 (USD)
 	MonthlyLimitUSD  *float64 // 月限额 (USD)
 	// 图片生成计费配置（仅 antigravity 平台使用）
-	AllowImageGeneration bool
-	ImageRateIndependent bool
-	ImageRateMultiplier  *float64
-	ImagePrice1K         *float64
-	ImagePrice2K         *float64
-	ImagePrice4K         *float64
-	ClaudeCodeOnly       bool   // 仅允许 Claude Code 客户端
-	FallbackGroupID      *int64 // 降级分组 ID
+	AllowImageGeneration      bool
+	ImageRateIndependent      bool
+	ImageRateMultiplier       *float64
+	ImagePrice1K              *float64
+	ImagePrice2K              *float64
+	ImagePrice4K              *float64
+	ClaudeCodeOnly            bool   // 仅允许 Claude Code 客户端
+	ClaudeCodeUpstreamMimicry bool   // 上游转发时模拟 Claude Code 客户端（仅 anthropic）
+	FallbackGroupID           *int64 // 降级分组 ID
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
 	FallbackGroupIDOnInvalidRequest *int64
 	// 模型路由配置（仅 anthropic 平台使用）
@@ -246,14 +247,15 @@ type UpdateGroupInput struct {
 	WeeklyLimitUSD   *float64 // 周限额 (USD)
 	MonthlyLimitUSD  *float64 // 月限额 (USD)
 	// 图片生成计费配置（仅 antigravity 平台使用）
-	AllowImageGeneration *bool
-	ImageRateIndependent *bool
-	ImageRateMultiplier  *float64
-	ImagePrice1K         *float64
-	ImagePrice2K         *float64
-	ImagePrice4K         *float64
-	ClaudeCodeOnly       *bool  // 仅允许 Claude Code 客户端
-	FallbackGroupID      *int64 // 降级分组 ID
+	AllowImageGeneration      *bool
+	ImageRateIndependent      *bool
+	ImageRateMultiplier       *float64
+	ImagePrice1K              *float64
+	ImagePrice2K              *float64
+	ImagePrice4K              *float64
+	ClaudeCodeOnly            *bool  // 仅允许 Claude Code 客户端
+	ClaudeCodeUpstreamMimicry *bool  // 上游转发时模拟 Claude Code 客户端（仅 anthropic）
+	FallbackGroupID           *int64 // 降级分组 ID
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
 	FallbackGroupIDOnInvalidRequest *int64
 	// 模型路由配置（仅 anthropic 平台使用）
@@ -2023,6 +2025,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		ImagePrice2K:                    imagePrice2K,
 		ImagePrice4K:                    imagePrice4K,
 		ClaudeCodeOnly:                  input.ClaudeCodeOnly,
+		ClaudeCodeUpstreamMimicry:       input.ClaudeCodeUpstreamMimicry,
 		FallbackGroupID:                 input.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: fallbackOnInvalidRequest,
 		ModelRouting:                    input.ModelRouting,
@@ -2037,6 +2040,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		RPMLimit:                        input.RPMLimit,
 	}
 	sanitizeGroupMessagesDispatchFields(group)
+	sanitizeGroupClaudeCodeUpstreamMimicry(group)
 	if err := s.groupRepo.Create(ctx, group); err != nil {
 		return nil, err
 	}
@@ -2222,6 +2226,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.ClaudeCodeOnly != nil {
 		group.ClaudeCodeOnly = *input.ClaudeCodeOnly
 	}
+	if input.ClaudeCodeUpstreamMimicry != nil {
+		group.ClaudeCodeUpstreamMimicry = *input.ClaudeCodeUpstreamMimicry
+	}
 	if input.FallbackGroupID != nil {
 		// 校验降级分组
 		if *input.FallbackGroupID > 0 {
@@ -2288,6 +2295,7 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		group.RPMLimit = *input.RPMLimit
 	}
 	sanitizeGroupMessagesDispatchFields(group)
+	sanitizeGroupClaudeCodeUpstreamMimicry(group)
 
 	if err := s.groupRepo.Update(ctx, group); err != nil {
 		return nil, err

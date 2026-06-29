@@ -98,3 +98,10 @@ func sanitizeGroupMessagesDispatchFields(g *Group) {
 	g.DefaultMappedModel = ""
 	g.MessagesDispatchModelConfig = OpenAIMessagesDispatchModelConfig{}
 }
+
+func sanitizeGroupClaudeCodeUpstreamMimicry(g *Group) {
+	if g == nil || g.Platform == PlatformAnthropic {
+		return
+	}
+	g.ClaudeCodeUpstreamMimicry = false
+}

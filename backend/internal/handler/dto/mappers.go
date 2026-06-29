@@ -185,6 +185,7 @@ func groupFromServiceBase(g *service.Group) Group {
 		ImagePrice2K:                    g.ImagePrice2K,
 		ImagePrice4K:                    g.ImagePrice4K,
 		ClaudeCodeOnly:                  g.ClaudeCodeOnly,
+		ClaudeCodeUpstreamMimicry:       g.ClaudeCodeUpstreamMimicry,
 		FallbackGroupID:                 g.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: g.FallbackGroupIDOnInvalidRequest,
 		AllowMessagesDispatch:           g.AllowMessagesDispatch,

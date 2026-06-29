@@ -575,6 +575,7 @@ export interface Group {
   image_price_4k: number | null
   // Claude Code 客户端限制
   claude_code_only: boolean
+  claude_code_upstream_mimicry: boolean
   fallback_group_id: number | null
   fallback_group_id_on_invalid_request: number | null
   // OpenAI Messages 调度开关（用户侧需要此字段判断是否展示 Claude Code 教程）
@@ -692,6 +693,7 @@ export interface CreateGroupRequest {
   image_price_2k?: number | null
   image_price_4k?: number | null
   claude_code_only?: boolean
+  claude_code_upstream_mimicry?: boolean
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
   mcp_xml_inject?: boolean
@@ -727,6 +729,7 @@ export interface UpdateGroupRequest {
   image_price_2k?: number | null
   image_price_4k?: number | null
   claude_code_only?: boolean
+  claude_code_upstream_mimicry?: boolean
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
   mcp_xml_inject?: boolean

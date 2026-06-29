@@ -602,3 +602,58 @@ func TestBuildUpstreamRequest_APIKeyHaikuWithContextManagement_StripsField(t *te
 	require.False(t, gjson.GetBytes(outBody, "context_management").Exists(),
 		"API-key + haiku + 客户端未带 beta token → body 字段必须被 strip")
 }
+
+func TestShouldMimicClaudeCodeUpstream_GroupFlag(t *testing.T) {
+	svc := &GatewayService{}
+	groupID := int64(10)
+	account := &Account{ID: 501, Platform: PlatformAnthropic, Type: AccountTypeAPIKey}
+
+	ctx := svc.withGroupContext(context.Background(), &Group{
+		ID:                        groupID,
+		Platform:                  PlatformAnthropic,
+		Status:                    StatusActive,
+		SubscriptionType:          SubscriptionTypeStandard,
+		ClaudeCodeUpstreamMimicry: true,
+		Hydrated:                  true,
+	})
+
+	require.True(t, svc.shouldMimicClaudeCodeUpstream(ctx, account, &groupID, false))
+	require.False(t, svc.shouldMimicClaudeCodeUpstream(ctx, account, &groupID, true))
+	require.False(t, svc.shouldMimicClaudeCodeUpstream(context.Background(), account, &groupID, false))
+}
+
+func TestBuildUpstreamRequest_APIKeyMimicUsesClaudeCodeHeadersAndAPIKeyBeta(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	c.Request.Header.Set("User-Agent", "non-claude-client/1.0")
+	c.Request.Header.Set("Anthropic-Beta", "client-beta-should-not-pass")
+
+	account := &Account{ID: 502, Platform: PlatformAnthropic, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-ant-xxx"},
+		Status:      StatusActive, Schedulable: true,
+	}
+	body := []byte(`{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`)
+	svc := &GatewayService{cfg: &config.Config{}}
+	mimicBody, mappedModel := svc.applyClaudeCodeAPIKeyMimicryToBody(context.Background(), c, account, body, nil, "claude-sonnet-4-6")
+	req, _, err := svc.buildUpstreamRequest(
+		context.Background(), c, account, mimicBody,
+		"sk-ant-xxx", "apikey", mappedModel, false, true,
+	)
+	require.NoError(t, err)
+
+	outBody := readUpstreamBodyForTest(t, req)
+	outBeta := getHeaderRaw(req.Header, "anthropic-beta")
+
+	require.Equal(t, "sk-ant-xxx", getHeaderRaw(req.Header, "x-api-key"))
+	require.Empty(t, getHeaderRaw(req.Header, "authorization"))
+	require.Contains(t, getHeaderRaw(req.Header, "User-Agent"), "claude-cli/")
+	require.Equal(t, "cli", getHeaderRaw(req.Header, "X-App"))
+	require.True(t, anthropicBetaTokensContains(outBeta, claude.BetaClaudeCode))
+	require.False(t, anthropicBetaTokensContains(outBeta, claude.BetaOAuth))
+	require.NotContains(t, outBeta, "client-beta-should-not-pass")
+	require.NotEmpty(t, gjson.GetBytes(outBody, "metadata.user_id").String())
+	require.True(t, gjson.GetBytes(outBody, "tools").IsArray())
+	require.Equal(t, float64(1), gjson.GetBytes(outBody, "temperature").Float())
+}

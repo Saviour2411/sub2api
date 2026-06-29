@@ -160,6 +160,11 @@ func ClaudeCodeOnly(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldClaudeCodeOnly, v))
 }
 
+// ClaudeCodeUpstreamMimicry applies equality check predicate on the "claude_code_upstream_mimicry" field. It's identical to ClaudeCodeUpstreamMimicryEQ.
+func ClaudeCodeUpstreamMimicry(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldClaudeCodeUpstreamMimicry, v))
+}
+
 // FallbackGroupID applies equality check predicate on the "fallback_group_id" field. It's identical to FallbackGroupIDEQ.
 func FallbackGroupID(v int64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldFallbackGroupID, v))
@@ -1133,6 +1138,16 @@ func ClaudeCodeOnlyEQ(v bool) predicate.Group {
 // ClaudeCodeOnlyNEQ applies the NEQ predicate on the "claude_code_only" field.
 func ClaudeCodeOnlyNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldClaudeCodeOnly, v))
+}
+
+// ClaudeCodeUpstreamMimicryEQ applies the EQ predicate on the "claude_code_upstream_mimicry" field.
+func ClaudeCodeUpstreamMimicryEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldClaudeCodeUpstreamMimicry, v))
+}
+
+// ClaudeCodeUpstreamMimicryNEQ applies the NEQ predicate on the "claude_code_upstream_mimicry" field.
+func ClaudeCodeUpstreamMimicryNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldClaudeCodeUpstreamMimicry, v))
 }
 
 // FallbackGroupIDEQ applies the EQ predicate on the "fallback_group_id" field.

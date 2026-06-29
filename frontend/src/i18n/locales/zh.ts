@@ -2390,7 +2390,11 @@ export default {
         disabled: '允许所有客户端',
         fallbackGroup: '降级分组',
         fallbackHint: '非 Claude Code 请求将使用此分组，留空则直接拒绝',
-        noFallback: '不降级（直接拒绝）'
+        noFallback: '不降级（直接拒绝）',
+        upstreamMimicry: '上游模拟 Claude Code',
+        upstreamMimicryHint: '开启后，非 Claude Code 下游请求会以 Claude Code 客户端特征转发到 Anthropic 上游；已是 Claude Code 的请求保持原逻辑。',
+        upstreamMimicryEnabled: '模拟转发',
+        upstreamMimicryDisabled: '原样转发'
       },
       openaiMessages: {
         title: 'OpenAI Messages 调度配置',

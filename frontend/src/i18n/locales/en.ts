@@ -2306,7 +2306,11 @@ export default {
         disabled: 'Allow All Clients',
         fallbackGroup: 'Fallback Group',
         fallbackHint: 'Non-Claude Code requests will use this group. Leave empty to reject directly.',
-        noFallback: 'No Fallback (Reject)'
+        noFallback: 'No Fallback (Reject)',
+        upstreamMimicry: 'Mimic Claude Code Upstream',
+        upstreamMimicryHint: 'When enabled, non-Claude Code downstream requests are forwarded to Anthropic with Claude Code client traits. Real Claude Code requests keep the original path.',
+        upstreamMimicryEnabled: 'Mimic Upstream',
+        upstreamMimicryDisabled: 'Original Forwarding'
       },
       openaiMessages: {
         title: 'OpenAI Messages Dispatch',
