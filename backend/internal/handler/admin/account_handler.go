@@ -274,6 +274,14 @@ func accountScheduledTestFailureFromService(failure *service.ScheduledTestLatest
 
 const accountListGroupUngroupedQueryValue = "ungrouped"
 
+type openAIAccountSchedulerScorePoolLister interface {
+	ListOpenAISchedulableAccountsForSchedulerScore(ctx context.Context, groupID *int64) ([]service.Account, error)
+}
+
+type accountSchedulerScoreFilterPoolLister interface {
+	ListAccountsForSchedulerScoreFilter(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string) ([]service.Account, error)
+}
+
 func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, account *service.Account) AccountWithConcurrency {
 	item := AccountWithConcurrency{
 		Account:            dto.AccountFromService(account),

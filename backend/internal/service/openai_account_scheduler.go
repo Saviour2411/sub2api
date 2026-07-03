@@ -1685,6 +1685,9 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForCapabilityAndImageTi
 	if len(platformOverride) > 0 {
 		platform = platformOverride[0]
 	}
+	if len(platformOverride) > 1 {
+		previousResponseCanMove = strings.EqualFold(platformOverride[1], "previous_response_can_move")
+	}
 	return s.selectAccountWithScheduler(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, "", requiredImageSizeTier, requireCompact, platform, previousResponseCanMove)
 }
 

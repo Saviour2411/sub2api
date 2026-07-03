@@ -1417,6 +1417,12 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			false,
 			previousResponseCanMove,
 			requestPlatform,
+			func() string {
+				if previousResponseCanMove {
+					return "previous_response_can_move"
+				}
+				return ""
+			}(),
 		)
 		if err != nil {
 			reqLog.Warn("openai.websocket_account_select_failed",
