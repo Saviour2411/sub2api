@@ -2,6 +2,8 @@
   <button
     type="button"
     @click="toggle"
+    @change="syncFromEvent"
+    @input="syncFromEvent"
     class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border transition-all duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:ring-offset-2 dark:focus:ring-offset-[#0f1724]"
     :class="[modelValue ? 'border-primary-300 bg-gradient-to-r from-primary-400 to-primary-700 shadow-glow' : 'border-slate-300 bg-slate-200 dark:border-slate-600 dark:bg-slate-700']"
     role="switch"
@@ -25,5 +27,18 @@ const emit = defineEmits<{
 
 function toggle() {
   emit('update:modelValue', !props.modelValue)
+}
+
+function syncFromEvent(event: Event) {
+  const target = event.target as HTMLInputElement | HTMLButtonElement | null
+  if (!target) return
+  if ('checked' in target && typeof target.checked === 'boolean') {
+    emit('update:modelValue', target.checked)
+    return
+  }
+  if ('value' in target) {
+    if (target.value === 'true') emit('update:modelValue', true)
+    if (target.value === 'false') emit('update:modelValue', false)
+  }
 }
 </script>

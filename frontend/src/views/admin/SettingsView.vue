@@ -2537,7 +2537,7 @@
                         <input
                           v-model="form.dingtalk_connect_sync_display_name_attr_name"
                           type="text"
-                          placeholder="钉钉姓名"
+                          :placeholder="localText('钉钉姓名', 'DingTalk Name')"
                           class="input text-sm flex-1 max-w-xs"
                         />
                       </div>
@@ -2583,7 +2583,7 @@
                         <input
                           v-model="form.dingtalk_connect_sync_corp_email_attr_name"
                           type="text"
-                          placeholder="钉钉企业邮箱"
+                          :placeholder="localText('钉钉企业邮箱', 'DingTalk Corporate Email')"
                           class="input text-sm flex-1 max-w-xs"
                         />
                       </div>
@@ -2629,7 +2629,7 @@
                         <input
                           v-model="form.dingtalk_connect_sync_dept_attr_name"
                           type="text"
-                          placeholder="钉钉部门"
+                          :placeholder="localText('钉钉部门', 'DingTalk Department')"
                           class="input text-sm flex-1 max-w-xs"
                         />
                       </div>
@@ -3126,346 +3126,6 @@
               </div>
 
               <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
-                <div class="flex items-center justify-between gap-4">
-                  <div>
-                    <label class="font-medium text-gray-900 dark:text-white">
-                      {{ t("admin.settings.defaults.dailyCheckinEnabled") }}
-                    </label>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">
-                      {{ t("admin.settings.defaults.dailyCheckinEnabledHint") }}
-                    </p>
-                  </div>
-                  <Toggle v-model="form.daily_checkin_enabled" />
-                </div>
-
-                <div v-if="form.daily_checkin_enabled" class="mt-5 space-y-5">
-                  <div class="rounded border border-gray-200 p-4 dark:border-dark-600">
-                    <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <h4 class="font-medium text-gray-900 dark:text-white">
-                          {{ t("admin.settings.defaults.dailyCheckinPrizePool") }}
-                        </h4>
-                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                          {{ t("admin.settings.defaults.dailyCheckinPrizePoolHint") }}
-                        </p>
-                      </div>
-                      <div class="flex items-center gap-3">
-                        <span
-                          class="text-sm"
-                          :class="
-                            dailyCheckinProbabilityTotal === 10000
-                              ? 'text-emerald-600 dark:text-emerald-400'
-                              : 'text-amber-600 dark:text-amber-400'
-                          "
-                        >
-                          {{
-                            t("admin.settings.defaults.dailyCheckinProbabilityTotal", {
-                              total: (dailyCheckinProbabilityTotal / 100).toFixed(2),
-                            })
-                          }}
-                        </span>
-                        <button
-                          type="button"
-                          class="btn btn-secondary btn-sm"
-                          @click="addDailyCheckinPrize"
-                        >
-                          {{ t("admin.settings.defaults.dailyCheckinAddPrize") }}
-                        </button>
-                      </div>
-                    </div>
-
-                    <div
-                      v-if="form.daily_checkin_prizes.length === 0"
-                      class="rounded border border-dashed border-gray-300 px-4 py-3 text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400"
-                    >
-                      {{ t("admin.settings.defaults.dailyCheckinPrizeEmpty") }}
-                    </div>
-
-                    <div v-else class="space-y-3">
-                      <div
-                        v-for="(prize, index) in form.daily_checkin_prizes"
-                        :key="prize.id || index"
-                        class="rounded border border-gray-200 p-3 dark:border-dark-600"
-                      >
-                        <div class="grid grid-cols-1 gap-3 lg:grid-cols-[96px_1.2fr_160px_150px_auto]">
-                          <div>
-                            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                              {{ t("common.status") }}
-                            </label>
-                            <div class="flex h-[42px] items-center">
-                              <Toggle v-model="prize.enabled" />
-                            </div>
-                          </div>
-                          <div>
-                            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                              {{ t("admin.settings.defaults.dailyCheckinPrizeName") }}
-                            </label>
-                            <input
-                              v-model.trim="prize.name"
-                              type="text"
-                              class="input h-[42px]"
-                              :placeholder="t('admin.settings.defaults.dailyCheckinPrizeName')"
-                            />
-                          </div>
-                          <div>
-                            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                              {{ t("admin.settings.defaults.dailyCheckinPrizeType") }}
-                            </label>
-                            <select v-model="prize.type" class="input h-[42px]">
-                              <option value="balance">
-                                {{ t("admin.settings.defaults.dailyCheckinPrizeTypeBalance") }}
-                              </option>
-                              <option value="concurrency">
-                                {{ t("admin.settings.defaults.dailyCheckinPrizeTypeConcurrency") }}
-                              </option>
-                              <option value="subscription">
-                                {{ t("admin.settings.defaults.dailyCheckinPrizeTypeSubscription") }}
-                              </option>
-                              <option value="none">
-                                {{ t("admin.settings.defaults.dailyCheckinPrizeTypeNone") }}
-                              </option>
-                            </select>
-                          </div>
-                          <div>
-                            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                              {{ t("admin.settings.defaults.dailyCheckinProbabilityBps") }}
-                            </label>
-                            <input
-                              v-model.number="prize.probability_bps"
-                              type="number"
-                              min="0"
-                              max="10000"
-                              step="1"
-                              class="input h-[42px]"
-                            />
-                            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                              {{ ((Number(prize.probability_bps) || 0) / 100).toFixed(2) }}%
-                            </p>
-                          </div>
-                          <div class="flex items-end">
-                            <button
-                              type="button"
-                              class="btn btn-secondary w-full text-red-600 hover:text-red-700 dark:text-red-400"
-                              @click="removeDailyCheckinPrize(index)"
-                            >
-                              {{ t("common.delete") }}
-                            </button>
-                          </div>
-                        </div>
-
-                        <div class="mt-3 border-t border-gray-100 pt-3 dark:border-dark-700">
-                          <div
-                            v-if="prize.type === 'balance'"
-                            class="grid grid-cols-1 gap-3 md:grid-cols-3"
-                          >
-                            <div>
-                              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                                {{ t("admin.settings.defaults.dailyCheckinBalanceMode") }}
-                              </label>
-                              <select v-model="prize.balance_mode" class="input h-[42px]">
-                                <option value="fixed">
-                                  {{ t("admin.settings.defaults.dailyCheckinRewardModeFixed") }}
-                                </option>
-                                <option value="range">
-                                  {{ t("admin.settings.defaults.dailyCheckinRewardModeRange") }}
-                                </option>
-                              </select>
-                            </div>
-                            <div v-if="prize.balance_mode !== 'range'">
-                              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                                {{ t("admin.settings.defaults.dailyCheckinRewardAmount") }}
-                              </label>
-                              <input
-                                v-model.number="prize.amount"
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                class="input h-[42px]"
-                              />
-                            </div>
-                            <template v-else>
-                              <div>
-                                <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                                  {{ t("admin.settings.defaults.dailyCheckinRewardMin") }}
-                                </label>
-                                <input
-                                  v-model.number="prize.min_amount"
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  class="input h-[42px]"
-                                />
-                              </div>
-                              <div>
-                                <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                                  {{ t("admin.settings.defaults.dailyCheckinRewardMax") }}
-                                </label>
-                                <input
-                                  v-model.number="prize.max_amount"
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  class="input h-[42px]"
-                                />
-                              </div>
-                            </template>
-                          </div>
-
-                          <div
-                            v-else-if="prize.type === 'concurrency'"
-                            class="grid grid-cols-1 gap-3 md:grid-cols-3"
-                          >
-                            <div>
-                              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                                {{ t("admin.settings.defaults.dailyCheckinConcurrency") }}
-                              </label>
-                              <input
-                                v-model.number="prize.concurrency"
-                                type="number"
-                                min="1"
-                                step="1"
-                                class="input h-[42px]"
-                              />
-                            </div>
-                          </div>
-
-                          <div
-                            v-else-if="prize.type === 'subscription'"
-                            class="grid grid-cols-1 gap-3 md:grid-cols-[1fr_180px]"
-                          >
-                            <div>
-                              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                                {{ t("admin.settings.defaults.subscriptionGroup") }}
-                              </label>
-                              <Select
-                                v-model="prize.group_id"
-                                :options="defaultSubscriptionGroupOptions"
-                                :placeholder="t('admin.settings.defaults.subscriptionGroup')"
-                              >
-                                <template #selected="{ option }">
-                                  <GroupBadge
-                                    v-if="option"
-                                    :name="(option as unknown as DefaultSubscriptionGroupOption).label"
-                                    :platform="(option as unknown as DefaultSubscriptionGroupOption).platform"
-                                    :subscription-type="(option as unknown as DefaultSubscriptionGroupOption).subscriptionType"
-                                    :rate-multiplier="(option as unknown as DefaultSubscriptionGroupOption).rate"
-                                  />
-                                  <span v-else class="text-gray-400">
-                                    {{ t("admin.settings.defaults.subscriptionGroup") }}
-                                  </span>
-                                </template>
-                                <template #option="{ option, selected }">
-                                  <GroupOptionItem
-                                    :name="(option as unknown as DefaultSubscriptionGroupOption).label"
-                                    :platform="(option as unknown as DefaultSubscriptionGroupOption).platform"
-                                    :subscription-type="(option as unknown as DefaultSubscriptionGroupOption).subscriptionType"
-                                    :rate-multiplier="(option as unknown as DefaultSubscriptionGroupOption).rate"
-                                    :description="(option as unknown as DefaultSubscriptionGroupOption).description"
-                                    :selected="selected"
-                                  />
-                                </template>
-                              </Select>
-                            </div>
-                            <div>
-                              <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                                {{ t("admin.settings.defaults.subscriptionValidityDays") }}
-                              </label>
-                              <input
-                                v-model.number="prize.validity_days"
-                                type="number"
-                                min="1"
-                                max="36500"
-                                class="input h-[42px]"
-                              />
-                            </div>
-                          </div>
-
-                          <p v-else class="text-sm text-gray-500 dark:text-gray-400">
-                            {{ t("admin.settings.defaults.dailyCheckinNoneHint") }}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
-                    <div class="rounded border border-gray-200 p-4 dark:border-dark-600">
-                      <h4 class="font-medium text-gray-900 dark:text-white">
-                        {{ t("admin.settings.defaults.dailyCheckinDecay") }}
-                      </h4>
-                      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        {{ t("admin.settings.defaults.dailyCheckinDecayHint") }}
-                      </p>
-                      <div class="mt-4">
-                        <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                          {{ t("admin.settings.defaults.dailyCheckinUnpaidFullDays") }}
-                        </label>
-                        <input
-                          v-model.number="form.daily_checkin_unpaid_full_days"
-                          type="number"
-                          min="0"
-                          max="3650"
-                          step="1"
-                          class="input h-[42px]"
-                        />
-                      </div>
-                      <div class="mt-4 space-y-3">
-                        <div
-                          v-for="(rule, index) in form.daily_checkin_unpaid_decay_rules"
-                          :key="`checkin-decay-${index}`"
-                          class="grid grid-cols-1 gap-3 md:grid-cols-2"
-                        >
-                          <div>
-                            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                              {{ t("admin.settings.defaults.dailyCheckinDecayAfterDays") }}
-                            </label>
-                            <input
-                              v-model.number="rule.after_days"
-                              type="number"
-                              min="0"
-                              max="3650"
-                              step="1"
-                              class="input h-[42px]"
-                            />
-                          </div>
-                          <div>
-                            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                              {{ t("admin.settings.defaults.dailyCheckinDecayFactor") }}
-                            </label>
-                            <input
-                              v-model.number="rule.factor_bps"
-                              type="number"
-                              min="0"
-                              max="10000"
-                              step="1"
-                              class="input h-[42px]"
-                            />
-                            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                              {{ ((Number(rule.factor_bps) || 0) / 100).toFixed(2) }}%
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div class="rounded border border-gray-200 p-4 dark:border-dark-600">
-                      <div class="flex items-center justify-between gap-4">
-                        <div>
-                          <h4 class="font-medium text-gray-900 dark:text-white">
-                            {{ t("admin.settings.defaults.dailyCheckinLinuxDoExempt") }}
-                          </h4>
-                          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                            {{ t("admin.settings.defaults.dailyCheckinLinuxDoExemptHint") }}
-                          </p>
-                        </div>
-                        <Toggle v-model="form.daily_checkin_linuxdo_exempt_enabled" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
                 <div class="mb-3 flex items-center justify-between">
                   <div>
                     <label class="font-medium text-gray-900 dark:text-white">
@@ -3627,7 +3287,7 @@
                       </tr>
                     </thead>
                     <tbody class="space-y-2">
-                      <tr v-for="p in (['anthropic', 'openai', 'gemini', 'antigravity'] as const)" :key="p" class="align-top">
+                      <tr v-for="p in (['anthropic', 'openai', 'gemini', 'antigravity', 'grok'] as const)" :key="p" class="align-top">
                         <td class="pr-4 py-1">
                           <span class="font-mono text-xs text-gray-700 dark:text-gray-300">{{ p }}</span>
                         </td>
@@ -3962,7 +3622,7 @@
                             </tr>
                           </thead>
                           <tbody>
-                            <tr v-for="p in (['anthropic', 'openai', 'gemini', 'antigravity'] as const)" :key="`${authSource.source}-pq-${p}`" class="align-top">
+                            <tr v-for="p in (['anthropic', 'openai', 'gemini', 'antigravity', 'grok'] as const)" :key="`${authSource.source}-pq-${p}`" class="align-top">
                               <td class="pr-4 py-1">
                                 <span class="font-mono text-xs text-gray-700 dark:text-gray-300">{{ p }}</span>
                               </td>
@@ -4064,6 +3724,254 @@
             </div>
           </div>
 
+          <!-- Codex Settings -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.gatewayForwarding.codexHardeningTitle") }}
+              </h2>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                  <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+                    {{ t("admin.settings.gatewayForwarding.codexClientRestrictionTitle") }}
+                  </h3>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.gatewayForwarding.codexHardeningDesc") }}
+                  </p>
+                </div>
+                <div class="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.gatewayForwarding.minCodexVersion") }}
+                    </label>
+                    <input
+                      v-model="form.min_codex_version"
+                      type="text"
+                      class="input w-full font-mono text-sm"
+                      :placeholder="
+                        t(
+                          'admin.settings.gatewayForwarding.minCodexVersionPlaceholder',
+                        )
+                      "
+                    />
+                  </div>
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.gatewayForwarding.maxCodexVersion") }}
+                    </label>
+                    <input
+                      v-model="form.max_codex_version"
+                      type="text"
+                      class="input w-full font-mono text-sm"
+                      :placeholder="
+                        t(
+                          'admin.settings.gatewayForwarding.maxCodexVersionPlaceholder',
+                        )
+                      "
+                    />
+                  </div>
+                </div>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.gatewayForwarding.codexVersionHint") }}
+                </p>
+
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.gatewayForwarding.codexFingerprintSignals") }}
+                  </label>
+                  <p class="mb-2 mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.gatewayForwarding.codexFingerprintSignalsDesc") }}
+                  </p>
+                  <div
+                    v-for="(row, i) in codexFingerprintRows"
+                    :key="`codex-fp-${i}`"
+                    class="mb-2 flex items-center gap-2"
+                  >
+                    <select v-model="row.type" class="input w-32 text-sm">
+                      <option value="header_exact">{{ t("admin.settings.gatewayForwarding.codexFpTypeHeaderExact") }}</option>
+                      <option value="header_prefix">{{ t("admin.settings.gatewayForwarding.codexFpTypeHeaderPrefix") }}</option>
+                      <option value="body_path">{{ t("admin.settings.gatewayForwarding.codexFpTypeBodyPath") }}</option>
+                    </select>
+                    <input
+                      v-model="row.match"
+                      type="text"
+                      class="input flex-1 font-mono text-sm"
+                      :placeholder="t('admin.settings.gatewayForwarding.codexFpMatchPlaceholder')"
+                    />
+                    <label class="flex shrink-0 items-center gap-1 text-xs text-gray-600 dark:text-gray-400">
+                      <input v-model="row.required" type="checkbox" />
+                      {{ t("admin.settings.gatewayForwarding.codexFpRequired") }}
+                    </label>
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm shrink-0 text-red-600 hover:text-red-700 dark:text-red-400"
+                      @click="removeCodexFingerprintRow(i)"
+                    >
+                      {{ t("admin.settings.gatewayForwarding.codexRemoveRow") }}
+                    </button>
+                  </div>
+                  <button type="button" class="btn btn-secondary btn-sm" @click="addCodexFingerprintRow">
+                    {{ t("admin.settings.gatewayForwarding.codexAddRow") }}
+                  </button>
+                  <p
+                    v-if="codexFingerprintNoRequired"
+                    class="mt-2 text-xs text-amber-600 dark:text-amber-500"
+                  >
+                    {{ t("admin.settings.gatewayForwarding.codexFingerprintNoRequiredWarn") }}
+                  </p>
+                </div>
+
+                <div class="flex items-center justify-between">
+                  <div class="pr-4">
+                    <label
+                      class="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{
+                        t("admin.settings.gatewayForwarding.codexAllowAppServer")
+                      }}
+                    </label>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {{
+                        t(
+                          "admin.settings.gatewayForwarding.codexAllowAppServerDesc",
+                        )
+                      }}
+                    </p>
+                  </div>
+                  <Toggle
+                    v-model="form.codex_cli_only_allow_app_server_clients"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    class="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.gatewayForwarding.codexBlacklist") }}
+                  </label>
+                  <p class="mb-2 mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.gatewayForwarding.codexBlacklistDesc") }}
+                  </p>
+                  <div
+                    v-for="(row, i) in codexBlacklistRows"
+                    :key="`codex-bl-${i}`"
+                    class="mb-2 flex gap-2"
+                  >
+                    <input
+                      v-model="row.originator"
+                      type="text"
+                      class="input w-1/3 font-mono text-sm"
+                      :placeholder="
+                        t(
+                          'admin.settings.gatewayForwarding.codexOriginatorPlaceholder',
+                        )
+                      "
+                    />
+                    <input
+                      v-model="row.uaContains"
+                      type="text"
+                      class="input flex-1 font-mono text-sm"
+                      :placeholder="
+                        t(
+                          'admin.settings.gatewayForwarding.codexUaContainsPlaceholder',
+                        )
+                      "
+                    />
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm shrink-0 text-red-600 hover:text-red-700 dark:text-red-400"
+                      @click="removeCodexBlacklistRow(i)"
+                    >
+                      {{ t("admin.settings.gatewayForwarding.codexRemoveRow") }}
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn btn-secondary btn-sm"
+                    @click="addCodexBlacklistRow"
+                  >
+                    {{ t("admin.settings.gatewayForwarding.codexAddRow") }}
+                  </button>
+                </div>
+
+                <div>
+                  <label
+                    class="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.gatewayForwarding.codexWhitelist") }}
+                  </label>
+                  <p class="mb-2 mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.gatewayForwarding.codexWhitelistDesc") }}
+                  </p>
+                  <div
+                    v-for="(row, i) in codexWhitelistRows"
+                    :key="`codex-wl-${i}`"
+                    class="mb-2 flex gap-2"
+                  >
+                    <input
+                      v-model="row.originator"
+                      type="text"
+                      class="input w-1/3 font-mono text-sm"
+                      :placeholder="
+                        t(
+                          'admin.settings.gatewayForwarding.codexOriginatorPlaceholder',
+                        )
+                      "
+                    />
+                    <input
+                      v-model="row.uaContains"
+                      type="text"
+                      class="input flex-1 font-mono text-sm"
+                      :placeholder="
+                        t(
+                          'admin.settings.gatewayForwarding.codexUaContainsPlaceholder',
+                        )
+                      "
+                    />
+                    <label
+                      class="flex shrink-0 items-center gap-1 text-xs text-gray-600 dark:text-gray-400"
+                      :title="
+                        t(
+                          'admin.settings.gatewayForwarding.codexWhitelistSkipFingerprintTooltip',
+                        )
+                      "
+                    >
+                      <input
+                        v-model="row.skipEngineFingerprint"
+                        type="checkbox"
+                      />
+                      {{
+                        t(
+                          'admin.settings.gatewayForwarding.codexWhitelistSkipFingerprint',
+                        )
+                      }}
+                    </label>
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm shrink-0 text-red-600 hover:text-red-700 dark:text-red-400"
+                      @click="removeCodexWhitelistRow(i)"
+                    >
+                      {{ t("admin.settings.gatewayForwarding.codexRemoveRow") }}
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn btn-secondary btn-sm"
+                    @click="addCodexWhitelistRow"
+                  >
+                    {{ t("admin.settings.gatewayForwarding.codexAddRow") }}
+                  </button>
+                </div>
+            </div>
+          </div>
+
           <!-- Gateway Scheduling Settings -->
           <div class="card">
             <div
@@ -4105,31 +4013,6 @@
                   </p>
                 </div>
                 <Toggle v-model="form.openai_advanced_scheduler_enabled" />
-              </div>
-
-              <div>
-                <label
-                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                >
-                  {{ t("admin.settings.scheduling.scheduledTestDefaultPrompt") }}
-                </label>
-                <textarea
-                  v-model="form.scheduled_test_default_prompt"
-                  rows="3"
-                  class="input min-h-[84px] w-full font-mono text-sm"
-                  :placeholder="
-                    t(
-                      'admin.settings.scheduling.scheduledTestDefaultPromptPlaceholder',
-                    )
-                  "
-                ></textarea>
-                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                  {{
-                    t(
-                      "admin.settings.scheduling.scheduledTestDefaultPromptHint",
-                    )
-                  }}
-                </p>
               </div>
             </div>
           </div>
@@ -4204,36 +4087,6 @@
                   </p>
                 </div>
                 <Toggle v-model="form.enable_cch_signing" />
-              </div>
-
-              <!-- 预响应流式心跳 -->
-              <div class="flex items-start justify-between gap-6">
-                <div class="min-w-0">
-                  <label
-                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >
-                    {{ t("admin.settings.gatewayForwarding.preResponseKeepalive") }}
-                  </label>
-                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{
-                      t(
-                        "admin.settings.gatewayForwarding.preResponseKeepaliveHint",
-                      )
-                    }}
-                  </p>
-                </div>
-                <div class="flex shrink-0 items-center gap-3">
-                  <input
-                    v-model.number="form.pre_response_stream_keepalive_initial_delay"
-                    type="number"
-                    min="5"
-                    max="110"
-                    step="1"
-                    class="input w-28 text-right font-mono text-sm"
-                    :disabled="!form.pre_response_stream_keepalive_enabled"
-                  />
-                  <Toggle v-model="form.pre_response_stream_keepalive_enabled" />
-                </div>
               </div>
 
               <!-- Claude OAuth System Prompt Injection -->
@@ -4515,6 +4368,31 @@
                 <Toggle v-model="form.rewrite_message_cache_control" />
               </div>
 
+              <!-- 客户端 dateline 归一化（仅 Anthropic OAuth/SetupToken） -->
+              <div class="flex items-center justify-between">
+                <div>
+                  <label
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{
+                      t(
+                        "admin.settings.gatewayForwarding.clientDatelineNormalization",
+                      )
+                    }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      t(
+                        "admin.settings.gatewayForwarding.clientDatelineNormalizationHint",
+                      )
+                    }}
+                  </p>
+                </div>
+                <Toggle
+                  v-model="form.enable_client_dateline_normalization"
+                />
+              </div>
+
               <!-- Antigravity UA 版本 -->
               <div>
                 <label
@@ -4575,170 +4453,9 @@
                 </p>
               </div>
 
-              <!-- 是否允许在 Claude Code 中使用 Codex 插件（全局开关） -->
-              <div class="flex items-center justify-between">
-                <div class="pr-4">
-                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t("admin.settings.gatewayForwarding.openaiAllowClaudeCodeCodexPlugin") }}
-                  </label>
-                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t("admin.settings.gatewayForwarding.openaiAllowClaudeCodeCodexPluginDesc") }}
-                  </p>
-                </div>
-                <Toggle v-model="form.openai_allow_claude_code_codex_plugin" />
-              </div>
             </div>
           </div>
 
-          <!-- 2xx 响应语义错误识别 -->
-          <div class="card">
-            <div
-              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
-            >
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-                {{ t("admin.settings.semanticErrorDetection.title") }}
-              </h2>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {{ t("admin.settings.semanticErrorDetection.description") }}
-              </p>
-            </div>
-            <div class="space-y-5 p-6">
-              <div class="flex items-start justify-between gap-6">
-                <div class="min-w-0">
-                  <label
-                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >
-                    {{ t("admin.settings.semanticErrorDetection.enabled") }}
-                  </label>
-                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t("admin.settings.semanticErrorDetection.enabledHint") }}
-                  </p>
-                </div>
-                <Toggle v-model="form.semantic_error_detection_enabled" />
-              </div>
-
-              <div class="grid gap-4 lg:grid-cols-[220px_1fr]">
-                <div>
-                  <label
-                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >
-                    {{ t("admin.settings.semanticErrorDetection.maxChars") }}
-                  </label>
-                  <input
-                    v-model.number="form.semantic_error_match_max_chars"
-                    type="number"
-                    min="128"
-                    max="65536"
-                    step="128"
-                    class="input w-full font-mono text-sm"
-                    :disabled="!form.semantic_error_detection_enabled"
-                  />
-                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t("admin.settings.semanticErrorDetection.maxCharsHint") }}
-                  </p>
-                </div>
-
-                <div class="space-y-3">
-                  <div class="flex items-center justify-between gap-3">
-                    <div>
-                      <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                        {{ t("admin.settings.semanticErrorDetection.rules") }}
-                      </h3>
-                      <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                        {{ t("admin.settings.semanticErrorDetection.rulesHint") }}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      class="btn btn-secondary btn-sm shrink-0"
-                      @click="addSemanticErrorRule"
-                    >
-                      <Icon name="plus" size="sm" class="mr-1" />
-                      {{ t("common.add") }}
-                    </button>
-                  </div>
-
-                  <div
-                    v-if="form.semantic_error_rules.length === 0"
-                    class="rounded-md border border-dashed border-gray-200 px-4 py-5 text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400"
-                  >
-                    {{ t("admin.settings.semanticErrorDetection.rulesEmpty") }}
-                  </div>
-
-                  <div
-                    v-for="(rule, index) in form.semantic_error_rules"
-                    :key="index"
-                    class="rounded-md border border-gray-200 p-4 dark:border-dark-600"
-                  >
-                    <div class="mb-3 flex items-start justify-between gap-3">
-                      <div class="grid min-w-0 flex-1 gap-3 md:grid-cols-[1fr_150px_110px]">
-                        <input
-                          v-model="rule.name"
-                          type="text"
-                          class="input text-sm"
-                          :placeholder="t('admin.settings.semanticErrorDetection.ruleName')"
-                        />
-                        <Select
-                          v-model="rule.match_type"
-                          :options="semanticErrorMatchTypeOptions"
-                        />
-                        <input
-                          v-model.number="rule.priority"
-                          type="number"
-                          class="input font-mono text-sm"
-                          :placeholder="t('admin.settings.semanticErrorDetection.priority')"
-                        />
-                      </div>
-                      <div class="flex shrink-0 items-center gap-2">
-                        <Toggle v-model="rule.enabled" />
-                        <button
-                          type="button"
-                          class="rounded-md p-2 text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
-                          @click="removeSemanticErrorRule(index)"
-                        >
-                          <Icon name="trash" size="sm" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div class="mb-3 flex flex-wrap gap-2">
-                      <label
-                        v-for="platform in semanticErrorPlatformOptions"
-                        :key="platform.value"
-                        class="inline-flex items-center gap-2 rounded-md border border-gray-200 px-2.5 py-1.5 text-xs text-gray-600 dark:border-dark-600 dark:text-gray-300"
-                      >
-                        <input
-                          type="checkbox"
-                          class="h-3.5 w-3.5 rounded border-gray-300"
-                          :checked="rule.platforms.includes(platform.value)"
-                          @change="toggleSemanticErrorRulePlatform(rule, platform.value)"
-                        />
-                        {{ platform.label }}
-                      </label>
-                      <span class="px-1.5 py-1.5 text-xs text-gray-400">
-                        {{ t("admin.settings.semanticErrorDetection.platformsEmpty") }}
-                      </span>
-                    </div>
-
-                    <div class="grid gap-3 lg:grid-cols-2">
-                      <textarea
-                        v-model="rule.pattern"
-                        rows="3"
-                        class="input min-h-[84px] text-sm"
-                        :placeholder="t('admin.settings.semanticErrorDetection.pattern')"
-                      />
-                      <textarea
-                        v-model="rule.custom_message"
-                        rows="3"
-                        class="input min-h-[84px] text-sm"
-                        :placeholder="t('admin.settings.semanticErrorDetection.customMessage')"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
           <!-- Web Search Emulation -->
           <div class="card">
             <div
@@ -6046,75 +5763,6 @@
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-              {{ localText('模型广场', 'Model Marketplace') }}
-            </h2>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              {{ localText('向未登录访客展示可公开查看的分组模型列表和请求接口格式。', 'Show public model lists and request formats to visitors before login.') }}
-            </p>
-          </div>
-          <div class="space-y-5 p-6">
-            <div class="flex items-center justify-between gap-4">
-              <div>
-                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {{ localText('启用模型广场', 'Enable model marketplace') }}
-                </label>
-                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                  {{ localText('关闭后公开接口返回空列表，首页入口隐藏。', 'When disabled, the public API returns an empty list and the home entry is hidden.') }}
-                </p>
-              </div>
-              <Toggle v-model="form.model_marketplace_enabled" />
-            </div>
-
-            <div>
-              <label class="input-label">
-                {{ localText('顶部描述文字', 'Intro text') }}
-              </label>
-              <textarea
-                v-model="form.model_marketplace_intro"
-                rows="4"
-                class="input text-sm"
-                :placeholder="localText('例如：这里展示当前可用模型和兼容接口。', 'Example: Browse currently available models and compatible API formats.')"
-              ></textarea>
-              <p class="mt-1 text-xs text-gray-400">
-                {{ localText('按纯文本渲染，支持换行，不执行 HTML。', 'Rendered as plain text with line breaks; HTML is not executed.') }}
-              </p>
-            </div>
-
-            <div>
-              <label class="input-label">
-                {{ localText('展示分组', 'Visible groups') }}
-              </label>
-              <div class="max-h-72 overflow-y-auto rounded-lg border border-gray-200 dark:border-dark-600">
-                <label
-                  v-for="option in modelMarketplaceGroupOptions"
-                  :key="option.value"
-                  class="flex cursor-pointer items-center gap-3 border-b border-gray-100 px-4 py-3 text-sm last:border-b-0 hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-800"
-                >
-                  <input
-                    v-model="form.model_marketplace_group_ids"
-                    type="checkbox"
-                    :value="option.value"
-                    class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                  />
-                  <span class="text-gray-700 dark:text-gray-200">{{ option.label }}</span>
-                </label>
-                <div
-                  v-if="modelMarketplaceGroupOptions.length === 0"
-                  class="px-4 py-6 text-sm text-gray-500 dark:text-gray-400"
-                >
-                  {{ localText('暂无活跃分组。', 'No active groups.') }}
-                </div>
-              </div>
-              <p class="mt-1 text-xs text-gray-400">
-                {{ localText('不选择任何分组时，默认只展示活跃的公开标准分组。选择后，可显式展示任意活跃分组，但公开接口仍只返回白名单字段。', 'When no group is selected, only active public standard groups are shown. Selected active groups may include exclusive or subscription groups, but the public API still returns whitelisted fields only.') }}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
               {{ t('admin.settings.features.riskControl.title') }}
             </h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -6720,16 +6368,41 @@
                       :placeholder="t('admin.settings.payment.noLimit')"
                     />
                   </div>
-                  <div class="sm:col-span-2">
-                    <label class="input-label">{{ t("admin.settings.payment.bonusRules") }}</label>
-                    <textarea
-                      v-model="form.payment_balance_recharge_bonus_rules_text"
-                      rows="5"
-                      class="input font-mono text-xs"
-                      :placeholder="paymentBonusRulesPlaceholder"
-                    ></textarea>
+                  <div>
+                    <label class="input-label">{{
+                      t("admin.settings.payment.balanceRechargeMultiplier")
+                    }}</label>
+                    <input
+                      :value="form.payment_balance_recharge_multiplier || ''"
+                      @input="
+                        form.payment_balance_recharge_multiplier =
+                          parseFloat(
+                            ($event.target as HTMLInputElement).value,
+                          ) || 1
+                      "
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      class="input"
+                    />
                     <p class="mt-0.5 text-xs text-gray-400">
-                      {{ t("admin.settings.payment.bonusRulesHint") }}
+                      {{
+                        t(
+                          "admin.settings.payment.balanceRechargeMultiplierHint",
+                        )
+                      }}
+                    </p>
+                    <p
+                      class="mt-1 text-xs font-medium text-primary-600 dark:text-primary-400"
+                    >
+                      {{
+                        t("admin.settings.payment.balanceRechargePreview", {
+                          usd: (
+                            Number(form.payment_balance_recharge_multiplier) ||
+                            1
+                          ).toFixed(2),
+                        })
+                      }}
                     </p>
                   </div>
                   <div>
@@ -7557,13 +7230,8 @@ import type {
   SystemSettings,
   UpdateSettingsRequest,
   DefaultSubscriptionSetting,
-  DailyCheckinPrizeConfig,
-  DailyCheckinDecayRule,
   DefaultPlatformQuotasMap,
   OpenAIFastPolicyRule,
-  PaymentBonusRule,
-  SemanticErrorPlatform,
-  SemanticErrorRule,
   WeChatConnectMode,
   WebSearchEmulationConfig,
   WebSearchProviderConfig,
@@ -7601,6 +7269,12 @@ import {
   normalizeRegistrationEmailSuffixDomains,
   parseRegistrationEmailSuffixWhitelistInput,
 } from "@/utils/registrationEmailPolicy";
+import {
+  parseFingerprintSignalsToRows,
+  serializeFingerprintRowsToJSON,
+  defaultFingerprintSignalRows,
+  type FingerprintSignalRow,
+} from "./codexFingerprintSignals";
 
 const { t, locale } = useI18n();
 const appStore = useAppStore();
@@ -7708,11 +7382,6 @@ const testEmailAddress = ref("");
 const registrationEmailSuffixWhitelistTags = ref<string[]>([]);
 const registrationEmailSuffixWhitelistDraft = ref("");
 const tablePageSizeOptionsInput = ref("10, 20, 50, 100");
-const paymentBonusRulesPlaceholder = `[
-  { "min_amount": 100, "max_amount": 500, "bonus_rate": 5 },
-  { "min_amount": 500, "max_amount": 1000, "bonus_rate": 10 },
-  { "min_amount": 1000, "max_amount": null, "bonus_rate": 15 }
-]`;
 
 // Admin API Key 状态
 const adminApiKeyLoading = ref(true);
@@ -7721,7 +7390,6 @@ const adminApiKeyMasked = ref("");
 const adminApiKeyOperating = ref(false);
 const newAdminApiKey = ref("");
 const subscriptionGroups = ref<AdminGroup[]>([]);
-const modelMarketplaceGroups = ref<AdminGroup[]>([]);
 
 // Overload Cooldown (529) 状态
 const overloadCooldownLoading = ref(true);
@@ -7792,22 +7460,22 @@ function defaultLoginAgreementDocuments(): LoginAgreementDocument[] {
   return [
     {
       id: "terms",
-      title: "服务条款",
+      title: localText("服务条款", "Terms of Service"),
       content_md: "",
     },
     {
       id: "usage-policy",
-      title: "使用政策",
+      title: localText("使用政策", "Usage Policy"),
       content_md: "",
     },
     {
       id: "supported-regions",
-      title: "支持的国家和地区",
+      title: localText("支持的国家和地区", "Supported Countries and Regions"),
       content_md: "",
     },
     {
       id: "service-specific-terms",
-      title: "服务特定条款",
+      title: localText("服务特定条款", "Service-Specific Terms"),
       content_md: "",
     },
   ];
@@ -8235,7 +7903,6 @@ type SettingsForm = Omit<
   google_oauth_client_secret: string;
   force_email_on_third_party_signup: boolean;
   openai_advanced_scheduler_enabled: boolean;
-  payment_balance_recharge_bonus_rules_text: string;
   // 系统全局平台限额 map；form 内始终归一化为全 4 平台对象（模板非空绑定依赖此不变量）
   default_platform_quotas: DefaultPlatformQuotasMap;
 };
@@ -8254,30 +7921,6 @@ const form = reactive<SettingsForm>({
   login_agreement_updated_at: "2026-03-31",
   login_agreement_documents: defaultLoginAgreementDocuments(),
   default_balance: 0,
-  daily_checkin_enabled: false,
-  daily_checkin_reward_mode: "fixed",
-  daily_checkin_reward_amount: 1,
-  daily_checkin_reward_min: 1,
-  daily_checkin_reward_max: 3,
-  daily_checkin_prizes: [
-    {
-      id: "legacy_balance",
-      name: "余额奖励",
-      type: "balance",
-      probability_bps: 10000,
-      enabled: true,
-      sort_order: 0,
-      balance_mode: "fixed",
-      amount: 1,
-    },
-  ] as DailyCheckinPrizeConfig[],
-  daily_checkin_unpaid_full_days: 7,
-  daily_checkin_unpaid_decay_rules: [
-    { after_days: 7, factor_bps: 5000 },
-    { after_days: 14, factor_bps: 2000 },
-    { after_days: 30, factor_bps: 0 },
-  ] as DailyCheckinDecayRule[],
-  daily_checkin_linuxdo_exempt_enabled: false,
   default_platform_quotas: normalizePlatformQuotasMap() as DefaultPlatformQuotasMap,
   affiliate_rebate_rate: 20,
   affiliate_rebate_freeze_hours: 0,
@@ -8307,8 +7950,6 @@ const form = reactive<SettingsForm>({
   payment_order_timeout_minutes: 30,
   payment_balance_disabled: false,
   payment_balance_recharge_multiplier: 1,
-  payment_balance_recharge_bonus_rules: [],
-  payment_balance_recharge_bonus_rules_text: "",
   payment_recharge_fee_rate: 0,
   payment_enabled_types: [],
   payment_help_image_url: "",
@@ -8373,9 +8014,9 @@ const form = reactive<SettingsForm>({
   dingtalk_connect_sync_corp_email_attr_key: "dingtalk_email",
   dingtalk_connect_sync_display_name_attr_key: "dingtalk_name",
   dingtalk_connect_sync_dept_attr_key: "dingtalk_department",
-  dingtalk_connect_sync_corp_email_attr_name: "钉钉企业邮箱",
-  dingtalk_connect_sync_display_name_attr_name: "钉钉姓名",
-  dingtalk_connect_sync_dept_attr_name: "钉钉部门",
+  dingtalk_connect_sync_corp_email_attr_name: localText("钉钉企业邮箱", "DingTalk Corporate Email"),
+  dingtalk_connect_sync_display_name_attr_name: localText("钉钉姓名", "DingTalk Name"),
+  dingtalk_connect_sync_dept_attr_name: localText("钉钉部门", "DingTalk Department"),
   wechat_connect_enabled: false,
   wechat_connect_app_id: "",
   wechat_connect_app_secret: "",
@@ -8462,15 +8103,16 @@ const form = reactive<SettingsForm>({
   claude_oauth_system_prompt_blocks: defaultClaudeOAuthSystemPromptBlocks,
   enable_anthropic_cache_ttl_1h_injection: false,
   rewrite_message_cache_control: false,
+  enable_client_dateline_normalization: true,
   antigravity_user_agent_version: "",
-  pre_response_stream_keepalive_enabled: false,
-  pre_response_stream_keepalive_initial_delay: 80,
-  semantic_error_detection_enabled: false,
-  semantic_error_match_max_chars: 4096,
-  semantic_error_rules: [] as SemanticErrorRule[],
   openai_codex_user_agent: "",
-  openai_allow_claude_code_codex_plugin: false,
-  scheduled_test_default_prompt: "hi",
+  // codex_cli_only 加固
+  min_codex_version: "",
+  max_codex_version: "",
+  codex_cli_only_blacklist: "",
+  codex_cli_only_whitelist: "",
+  codex_cli_only_allow_app_server_clients: false,
+  codex_cli_only_engine_fingerprint_signals: "",
   // 余额、订阅到期与账号限额通知
   balance_low_notify_enabled: false,
   balance_low_notify_threshold: 0,
@@ -8483,10 +8125,6 @@ const form = reactive<SettingsForm>({
   channel_monitor_default_interval_seconds: 60,
   // Available Channels feature switch
   available_channels_enabled: false,
-  // Model Marketplace feature switch
-  model_marketplace_enabled: true,
-  model_marketplace_intro: "",
-  model_marketplace_group_ids: [],
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: false,
   // Allow user view error requests
@@ -8496,20 +8134,6 @@ const form = reactive<SettingsForm>({
 const authSourceDefaults = reactive<AuthSourceDefaultsState>(
   buildAuthSourceDefaultsState({}),
 );
-
-const semanticErrorMatchTypeOptions = computed(() => [
-  { value: "contains", label: localText("包含文本", "Contains") },
-  { value: "regex", label: localText("正则匹配", "Regex") },
-]);
-
-const semanticErrorPlatformOptions = computed<
-  { value: SemanticErrorPlatform; label: string }[]
->(() => [
-  { value: "anthropic", label: "Anthropic" },
-  { value: "openai", label: "OpenAI" },
-  { value: "gemini", label: "Gemini" },
-  { value: "antigravity", label: "Antigravity" },
-]);
 
 const authSourceDefaultsMeta = computed(() => [
   {
@@ -8550,7 +8174,7 @@ const authSourceDefaultsMeta = computed(() => [
   },
   {
     source: "dingtalk" as AuthSourceType,
-    title: "钉钉",
+    title: t("auth.dingtalkProviderName"),
     description: localText(
       "通过钉钉首次注册或首次绑定时应用。",
       "Applied on first signup or first bind through DingTalk.",
@@ -8748,15 +8372,6 @@ const defaultSubscriptionGroupOptions = computed<
   })),
 );
 
-const modelMarketplaceGroupOptions = computed(() =>
-  modelMarketplaceGroups.value.map((group) => ({
-    value: group.id,
-    label: `${group.name} · ${group.platform}${group.is_exclusive ? ` · ${localText("专属", "Exclusive")}` : ""}${
-      group.subscription_type === "subscription" ? ` · ${localText("订阅", "Subscription")}` : ""
-    }`,
-  })),
-);
-
 const registrationEmailSuffixWhitelistSeparatorKeys = new Set([
   " ",
   ",",
@@ -8852,13 +8467,15 @@ const addQuotaNotifyEmail = () => {
 const currentOrigin =
   typeof window !== "undefined" ? window.location.origin : "";
 
+function buildApiCallbackUrl(path: string): string {
+  const base = (form.api_base_url || currentOrigin).replace(/\/+$/, "");
+  const apiRoot = base.endsWith("/api/v1") ? base : `${base}/api/v1`;
+  return `${apiRoot}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
 // LinuxDo OAuth redirect URL suggestion
 const linuxdoRedirectUrlSuggestion = computed(() => {
-  if (typeof window === "undefined") return "";
-  const origin =
-    window.location.origin ||
-    `${window.location.protocol}//${window.location.host}`;
-  return `${origin}/api/v1/auth/oauth/linuxdo/callback`;
+  return buildApiCallbackUrl("/auth/oauth/linuxdo/callback");
 });
 
 async function setAndCopyLinuxdoRedirectUrl() {
@@ -8875,19 +8492,11 @@ async function setAndCopyLinuxdoRedirectUrl() {
 type EmailOAuthProvider = "github" | "google";
 
 const githubOAuthRedirectUrlSuggestion = computed(() => {
-  if (typeof window === "undefined") return "";
-  const origin =
-    window.location.origin ||
-    `${window.location.protocol}//${window.location.host}`;
-  return `${origin}/api/v1/auth/oauth/github/callback`;
+  return buildApiCallbackUrl("/auth/oauth/github/callback");
 });
 
 const googleOAuthRedirectUrlSuggestion = computed(() => {
-  if (typeof window === "undefined") return "";
-  const origin =
-    window.location.origin ||
-    `${window.location.protocol}//${window.location.host}`;
-  return `${origin}/api/v1/auth/oauth/google/callback`;
+  return buildApiCallbackUrl("/auth/oauth/google/callback");
 });
 
 async function setAndCopyEmailOAuthRedirectUrl(provider: EmailOAuthProvider) {
@@ -8909,11 +8518,7 @@ async function setAndCopyEmailOAuthRedirectUrl(provider: EmailOAuthProvider) {
 }
 
 const wechatRedirectUrlSuggestion = computed(() => {
-  if (typeof window === "undefined") return "";
-  const origin =
-    window.location.origin ||
-    `${window.location.protocol}//${window.location.host}`;
-  return `${origin}/api/v1/auth/oauth/wechat/callback`;
+  return buildApiCallbackUrl("/auth/oauth/wechat/callback");
 });
 
 function syncWeChatConnectMode(preferredMode?: WeChatConnectMode) {
@@ -8978,11 +8583,7 @@ async function setAndCopyWeChatRedirectUrl() {
 }
 
 const oidcRedirectUrlSuggestion = computed(() => {
-  if (typeof window === "undefined") return "";
-  const origin =
-    window.location.origin ||
-    `${window.location.protocol}//${window.location.host}`;
-  return `${origin}/api/v1/auth/oauth/oidc/callback`;
+  return buildApiCallbackUrl("/auth/oauth/oidc/callback");
 });
 
 async function setAndCopyOIDCRedirectUrl() {
@@ -9103,121 +8704,80 @@ function parseTablePageSizeOptionsInput(raw: string): number[] | null {
   return deduped;
 }
 
-function createSemanticErrorRule(): SemanticErrorRule {
-  return {
-    enabled: true,
-    name: "",
-    platforms: [],
-    match_type: "contains",
-    pattern: "",
-    custom_message: "",
-    priority: 100,
-  };
+// ── codex_cli_only 黑/白名单结构化编辑（行 ↔ JSON）──
+interface CodexClientRow {
+  originator: string;
+  uaContains: string; // 逗号分隔，序列化时拆成 ua_contains 数组
+  skipEngineFingerprint?: boolean; // 仅白名单：命中即跳过引擎指纹门
+}
+const codexBlacklistRows = ref<CodexClientRow[]>([]);
+const codexWhitelistRows = ref<CodexClientRow[]>([]);
+const codexFingerprintRows = ref<FingerprintSignalRow[]>([]);
+const codexFingerprintNoRequired = computed(
+  () => !codexFingerprintRows.value.some((r) => r.required),
+);
+function addCodexFingerprintRow(): void {
+  codexFingerprintRows.value.push({ type: "header_exact", match: "", required: false });
+}
+function removeCodexFingerprintRow(i: number): void {
+  codexFingerprintRows.value.splice(i, 1);
 }
 
-function normalizeSemanticErrorRulesForForm(
-  rules: unknown,
-): SemanticErrorRule[] {
-  if (!Array.isArray(rules)) {
+function parseCodexEntriesToRows(raw: string): CodexClientRow[] {
+  if (!raw || !raw.trim()) return [];
+  try {
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr.map((e) => ({
+      originator: typeof e?.originator === "string" ? e.originator : "",
+      uaContains: Array.isArray(e?.ua_contains)
+        ? e.ua_contains
+            .filter((x: unknown) => typeof x === "string")
+            .join(", ")
+        : "",
+      skipEngineFingerprint: e?.skip_engine_fingerprint === true,
+    }));
+  } catch {
     return [];
   }
+}
 
-  return rules
-    .map((rule) => {
-      if (!rule || typeof rule !== "object") {
-        return null;
-      }
-      const item = rule as Partial<SemanticErrorRule> & {
-        platforms?: unknown;
+function serializeCodexRowsToJSON(rows: CodexClientRow[]): string {
+  const entries = rows
+    .map((r) => {
+      const entry: {
+        originator: string;
+        ua_contains: string[];
+        skip_engine_fingerprint?: boolean;
+      } = {
+        originator: r.originator.trim(),
+        ua_contains: r.uaContains
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0),
       };
-
-      return {
-        enabled: item.enabled !== false,
-        name: typeof item.name === "string" ? item.name : "",
-        platforms: Array.isArray(item.platforms)
-          ? item.platforms.filter(
-              (platform): platform is SemanticErrorPlatform =>
-                platform === "anthropic" ||
-                platform === "openai" ||
-                platform === "gemini" ||
-                platform === "antigravity",
-            )
-          : [],
-        match_type: item.match_type === "regex" ? "regex" : "contains",
-        pattern: typeof item.pattern === "string" ? item.pattern : "",
-        custom_message:
-          typeof item.custom_message === "string" ? item.custom_message : "",
-        priority: Number.isFinite(Number(item.priority))
-          ? Math.floor(Number(item.priority))
-          : 100,
-      } satisfies SemanticErrorRule;
+      if (r.skipEngineFingerprint) entry.skip_engine_fingerprint = true;
+      return entry;
     })
-    .filter((rule): rule is SemanticErrorRule => rule !== null);
+    .filter((e) => e.originator !== "" || e.ua_contains.length > 0);
+  return entries.length > 0 ? JSON.stringify(entries) : "";
 }
 
-function addSemanticErrorRule() {
-  form.semantic_error_rules.push(createSemanticErrorRule());
+function addCodexBlacklistRow(): void {
+  codexBlacklistRows.value.push({ originator: "", uaContains: "" });
 }
-
-function removeSemanticErrorRule(index: number) {
-  form.semantic_error_rules.splice(index, 1);
+function removeCodexBlacklistRow(i: number): void {
+  codexBlacklistRows.value.splice(i, 1);
 }
-
-function toggleSemanticErrorRulePlatform(
-  rule: SemanticErrorRule,
-  platform: SemanticErrorPlatform,
-) {
-  const idx = rule.platforms.indexOf(platform);
-  if (idx >= 0) {
-    rule.platforms.splice(idx, 1);
-    return;
-  }
-  rule.platforms.push(platform);
+function addCodexWhitelistRow(): void {
+  codexWhitelistRows.value.push({
+    originator: "",
+    uaContains: "",
+    skipEngineFingerprint: false,
+  });
 }
-
-function normalizeSemanticErrorRulesForSave(): SemanticErrorRule[] | null {
-  const rules: SemanticErrorRule[] = form.semantic_error_rules.map((rule) => ({
-    enabled: rule.enabled !== false,
-    name: rule.name.trim(),
-    platforms: Array.from(
-      new Set((rule.platforms || []).filter(Boolean)),
-    ) as SemanticErrorPlatform[],
-    match_type: rule.match_type === "regex" ? "regex" : "contains",
-    pattern: rule.pattern.trim(),
-    custom_message: rule.custom_message.trim(),
-    priority: Number.isFinite(Number(rule.priority))
-      ? Math.floor(Number(rule.priority))
-      : 100,
-  }));
-  const filteredRules = rules.filter(
-    (rule) => rule.name || rule.pattern || rule.custom_message,
-  );
-
-  for (const rule of filteredRules) {
-    if (!rule.name || !rule.pattern || !rule.custom_message) {
-      appStore.showError(
-        t("admin.settings.semanticErrorDetection.ruleRequired"),
-      );
-      return null;
-    }
-    if (rule.match_type === "regex") {
-      try {
-        new RegExp(rule.pattern);
-      } catch {
-        appStore.showError(
-          t("admin.settings.semanticErrorDetection.regexInvalid", {
-            name: rule.name,
-          }),
-        );
-        return null;
-      }
-    }
-  }
-
-  filteredRules.sort(
-    (a, b) => a.priority - b.priority || a.name.localeCompare(b.name),
-  );
-  return filteredRules;
+function removeCodexWhitelistRow(i: number): void {
+  codexWhitelistRows.value.splice(i, 1);
 }
 
 async function loadSettings() {
@@ -9242,6 +8802,15 @@ async function loadSettings() {
       form.claude_oauth_system_prompt,
     );
     syncClaudeOAuthSystemPromptBlocksFormField();
+    codexBlacklistRows.value = parseCodexEntriesToRows(
+      form.codex_cli_only_blacklist,
+    );
+    codexWhitelistRows.value = parseCodexEntriesToRows(
+      form.codex_cli_only_whitelist,
+    );
+    codexFingerprintRows.value = form.codex_cli_only_engine_fingerprint_signals
+      ? parseFingerprintSignalsToRows(form.codex_cli_only_engine_fingerprint_signals)
+      : defaultFingerprintSignalRows();
     form.login_agreement_mode =
       settings.login_agreement_mode === "checkbox" ? "checkbox" : "modal";
     form.login_agreement_updated_at =
@@ -9255,25 +8824,12 @@ async function loadSettings() {
             content_md: doc.content_md || "",
           }))
         : defaultLoginAgreementDocuments();
-    form.semantic_error_rules = normalizeSemanticErrorRulesForForm(
-      settings.semantic_error_rules,
-    );
-    form.payment_balance_recharge_bonus_rules_text = formatPaymentBonusRulesForForm(
-      settings.payment_balance_recharge_bonus_rules,
-    );
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(settings));
     form.default_platform_quotas = normalizePlatformQuotasMap(settings.default_platform_quotas);
     form.backend_mode_enabled = settings.backend_mode_enabled;
     form.default_subscriptions = normalizeDefaultSubscriptionSettings(
       settings.default_subscriptions,
     );
-    form.daily_checkin_prizes = normalizeDailyCheckinPrizesForForm(
-      settings.daily_checkin_prizes,
-    );
-    form.daily_checkin_unpaid_decay_rules =
-      normalizeDailyCheckinDecayRulesForForm(
-        settings.daily_checkin_unpaid_decay_rules,
-      );
     registrationEmailSuffixWhitelistTags.value =
       normalizeRegistrationEmailSuffixDomains(
         settings.registration_email_suffix_whitelist,
@@ -9380,13 +8936,11 @@ async function loadSettings() {
 async function loadSubscriptionGroups() {
   try {
     const groups = await adminAPI.groups.getAll();
-    modelMarketplaceGroups.value = groups.filter((group) => group.status === "active");
     subscriptionGroups.value = groups.filter(
       (group) =>
         group.subscription_type === "subscription" && group.status === "active",
     );
   } catch (_error: unknown) {
-    modelMarketplaceGroups.value = [];
     subscriptionGroups.value = [];
   }
 }
@@ -9412,158 +8966,6 @@ function addDefaultSubscription() {
 
 function removeDefaultSubscription(index: number) {
   form.default_subscriptions.splice(index, 1);
-}
-
-function normalizeDailyCheckinPrizesForForm(
-  prizes: DailyCheckinPrizeConfig[] | undefined,
-): DailyCheckinPrizeConfig[] {
-  const source = Array.isArray(prizes) && prizes.length > 0
-    ? prizes
-    : form.daily_checkin_prizes;
-  return source.map((prize, index) => ({
-    id: prize.id || `prize_${index + 1}`,
-    name: prize.name || localText("奖项", "Prize"),
-    type: prize.type || "balance",
-    probability_bps: Math.max(0, Math.min(10000, Number(prize.probability_bps) || 0)),
-    enabled: prize.enabled !== false,
-    sort_order: Number(prize.sort_order) || index,
-    balance_mode: prize.balance_mode === "range" ? "range" : "fixed",
-    amount: Math.max(0, Number(prize.amount) || 0),
-    min_amount: Math.max(0, Number(prize.min_amount) || 0),
-    max_amount: Math.max(0, Number(prize.max_amount) || 0),
-    concurrency: Math.max(0, Number(prize.concurrency) || 0),
-    group_id: Number(prize.group_id) || undefined,
-    validity_days: Math.max(0, Number(prize.validity_days) || 0),
-  }));
-}
-
-function normalizeDailyCheckinDecayRulesForForm(
-  rules: DailyCheckinDecayRule[] | undefined,
-): DailyCheckinDecayRule[] {
-  const source = Array.isArray(rules) && rules.length > 0
-    ? rules
-    : [
-        { after_days: 7, factor_bps: 5000 },
-        { after_days: 14, factor_bps: 2000 },
-        { after_days: 30, factor_bps: 0 },
-      ];
-  return source.map((rule) => ({
-    after_days: Math.max(0, Number(rule.after_days) || 0),
-    factor_bps: Math.max(0, Math.min(10000, Number(rule.factor_bps) || 0)),
-  }));
-}
-
-function normalizeDailyCheckinPrizesForSave(): DailyCheckinPrizeConfig[] {
-  return form.daily_checkin_prizes.map((prize, index) => {
-    const type = ["balance", "concurrency", "subscription", "none"].includes(
-      String(prize.type),
-    )
-      ? String(prize.type)
-      : "balance";
-    return {
-      id: String(prize.id || `prize_${index + 1}`).trim(),
-      name: String(prize.name || "").trim(),
-      type,
-      probability_bps: Math.max(
-        0,
-        Math.min(10000, Math.floor(Number(prize.probability_bps) || 0)),
-      ),
-      enabled: prize.enabled !== false,
-      sort_order: index,
-      balance_mode: prize.balance_mode === "range" ? "range" : "fixed",
-      amount: Math.max(0, Number(prize.amount) || 0),
-      min_amount: Math.max(0, Number(prize.min_amount) || 0),
-      max_amount: Math.max(0, Number(prize.max_amount) || 0),
-      concurrency: Math.max(0, Math.floor(Number(prize.concurrency) || 0)),
-      group_id: Math.max(0, Math.floor(Number(prize.group_id) || 0)) || undefined,
-      validity_days:
-        Math.max(0, Math.floor(Number(prize.validity_days) || 0)) || undefined,
-    };
-  });
-}
-
-function normalizeDailyCheckinDecayRulesForSave(): DailyCheckinDecayRule[] {
-  return form.daily_checkin_unpaid_decay_rules.map((rule) => ({
-    after_days: Math.max(0, Math.floor(Number(rule.after_days) || 0)),
-    factor_bps: Math.max(
-      0,
-      Math.min(10000, Math.floor(Number(rule.factor_bps) || 0)),
-    ),
-  }));
-}
-
-function formatPaymentBonusRulesForForm(rules: PaymentBonusRule[] | undefined): string {
-  return JSON.stringify(Array.isArray(rules) ? rules : [], null, 2);
-}
-
-function parsePaymentBonusRulesForSave(): PaymentBonusRule[] | null {
-  const raw = String(form.payment_balance_recharge_bonus_rules_text || "").trim();
-  if (!raw) return [];
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    appStore.showError(localText("充值返利规则 JSON 格式不正确。", "Payment bonus rules JSON is invalid."));
-    return null;
-  }
-  if (!Array.isArray(parsed)) {
-    appStore.showError(localText("充值返利规则必须是数组。", "Payment bonus rules must be an array."));
-    return null;
-  }
-  let rules: PaymentBonusRule[];
-  try {
-    rules = parsed.map((item, index) => {
-      const rule = item as Partial<PaymentBonusRule>;
-      const minAmount = Number(rule.min_amount);
-      const maxAmount = rule.max_amount == null ? null : Number(rule.max_amount);
-      const bonusRate = Number(rule.bonus_rate);
-      if (!Number.isFinite(minAmount) || minAmount < 0 || !Number.isFinite(bonusRate) || bonusRate < 0) {
-        throw new Error(`invalid-${index + 1}`);
-      }
-      if (maxAmount !== null && (!Number.isFinite(maxAmount) || maxAmount <= minAmount)) {
-        throw new Error(`invalid-${index + 1}`);
-      }
-      return {
-        min_amount: Math.round(minAmount * 100) / 100,
-        max_amount: maxAmount === null ? null : Math.round(maxAmount * 100) / 100,
-        bonus_rate: Math.round(bonusRate * 100) / 100,
-      };
-    });
-  } catch {
-    appStore.showError(localText("充值返利规则包含无效金额或比例。", "Payment bonus rules contain invalid amounts or rates."));
-    return null;
-  }
-  const sorted = [...rules].sort((a, b) => a.min_amount - b.min_amount);
-  for (let i = 1; i < sorted.length; i++) {
-    const prev = sorted[i - 1];
-    const curr = sorted[i];
-    if (prev.max_amount == null || curr.min_amount < prev.max_amount) {
-      appStore.showError(localText("充值返利规则区间不能重叠。", "Payment bonus rule ranges cannot overlap."));
-      return null;
-    }
-  }
-  return sorted;
-}
-
-const dailyCheckinProbabilityTotal = computed(() =>
-  form.daily_checkin_prizes
-    .filter((prize) => prize.enabled !== false)
-    .reduce((sum, prize) => sum + (Number(prize.probability_bps) || 0), 0),
-);
-
-function addDailyCheckinPrize() {
-  form.daily_checkin_prizes.push({
-    id: `prize_${Date.now().toString(36)}`,
-    name: localText("新奖项", "New Prize"),
-    type: "none",
-    probability_bps: 0,
-    enabled: true,
-    sort_order: form.daily_checkin_prizes.length,
-  });
-}
-
-function removeDailyCheckinPrize(index: number) {
-  form.daily_checkin_prizes.splice(index, 1);
 }
 
 function addAuthSourceDefaultSubscription(source: AuthSourceType) {
@@ -9634,67 +9036,6 @@ async function saveSettings() {
 
     form.table_default_page_size = normalizedTableDefaultPageSize;
     form.table_page_size_options = normalizedTablePageSizeOptions;
-    const checkinMode = form.daily_checkin_reward_mode === "range" ? "range" : "fixed";
-    const checkinAmount = Math.max(0, Number(form.daily_checkin_reward_amount) || 0);
-    const checkinMin = Math.max(0, Number(form.daily_checkin_reward_min) || 0);
-    const checkinMax = Math.max(0, Number(form.daily_checkin_reward_max) || 0);
-    const normalizedDailyCheckinPrizes = normalizeDailyCheckinPrizesForSave();
-    const normalizedDailyCheckinDecayRules = normalizeDailyCheckinDecayRulesForSave();
-    const enabledDailyCheckinPrizes = normalizedDailyCheckinPrizes.filter(
-      (prize) => prize.enabled !== false,
-    );
-    if (form.daily_checkin_enabled) {
-      if (enabledDailyCheckinPrizes.length === 0) {
-        appStore.showError(t("admin.settings.defaults.dailyCheckinPrizesRequired"));
-        return;
-      }
-      const probabilityTotal = enabledDailyCheckinPrizes.reduce(
-        (sum, prize) => sum + (Number(prize.probability_bps) || 0),
-        0,
-      );
-      if (probabilityTotal !== 10000) {
-        appStore.showError(t("admin.settings.defaults.dailyCheckinProbabilityInvalid"));
-        return;
-      }
-      for (const prize of enabledDailyCheckinPrizes) {
-        if (!prize.name) {
-          appStore.showError(t("admin.settings.defaults.dailyCheckinPrizeNameRequired"));
-          return;
-        }
-        if (prize.type === "balance") {
-          if (prize.balance_mode === "range") {
-            if ((prize.max_amount || 0) < (prize.min_amount || 0)) {
-              appStore.showError(t("admin.settings.defaults.dailyCheckinBalanceRangeInvalid"));
-              return;
-            }
-            if ((prize.max_amount || 0) <= 0) {
-              appStore.showError(t("admin.settings.defaults.dailyCheckinBalanceRangeMaxInvalid"));
-              return;
-            }
-          } else if ((prize.amount || 0) <= 0) {
-            appStore.showError(t("admin.settings.defaults.dailyCheckinBalanceFixedInvalid"));
-            return;
-          }
-        }
-        if (prize.type === "concurrency" && (prize.concurrency || 0) <= 0) {
-          appStore.showError(t("admin.settings.defaults.dailyCheckinConcurrencyInvalid"));
-          return;
-        }
-        if (
-          prize.type === "subscription" &&
-          ((prize.group_id || 0) <= 0 || (prize.validity_days || 0) <= 0)
-        ) {
-          appStore.showError(t("admin.settings.defaults.dailyCheckinSubscriptionInvalid"));
-          return;
-        }
-      }
-    }
-    form.daily_checkin_prizes = normalizedDailyCheckinPrizes;
-    form.daily_checkin_unpaid_full_days = Math.max(
-      0,
-      Math.floor(Number(form.daily_checkin_unpaid_full_days) || 0),
-    );
-    form.daily_checkin_unpaid_decay_rules = normalizedDailyCheckinDecayRules;
 
     const normalizedLoginAgreementDocuments =
       normalizeLoginAgreementDocumentsForSave();
@@ -9770,15 +9111,6 @@ async function saveSettings() {
       }
     }
 
-    const normalizedSemanticErrorRules = normalizeSemanticErrorRulesForSave();
-    if (normalizedSemanticErrorRules === null) {
-      return;
-    }
-    const normalizedPaymentBonusRules = parsePaymentBonusRulesForSave();
-    if (normalizedPaymentBonusRules === null) {
-      return;
-    }
-
     if (form.wechat_connect_mp_enabled && form.wechat_connect_mobile_enabled) {
       appStore.showError(
         localText(
@@ -9831,16 +9163,6 @@ async function saveSettings() {
       login_agreement_updated_at: form.login_agreement_updated_at,
       login_agreement_documents: form.login_agreement_documents,
       default_balance: form.default_balance,
-      daily_checkin_enabled: form.daily_checkin_enabled,
-      daily_checkin_reward_mode: checkinMode,
-      daily_checkin_reward_amount: checkinAmount,
-      daily_checkin_reward_min: checkinMin,
-      daily_checkin_reward_max: checkinMax,
-      daily_checkin_prizes: normalizedDailyCheckinPrizes,
-      daily_checkin_unpaid_full_days: form.daily_checkin_unpaid_full_days,
-      daily_checkin_unpaid_decay_rules: normalizedDailyCheckinDecayRules,
-      daily_checkin_linuxdo_exempt_enabled:
-        form.daily_checkin_linuxdo_exempt_enabled,
       affiliate_rebate_rate: Math.min(
         100,
         Math.max(0, Number(form.affiliate_rebate_rate) || 0),
@@ -9986,24 +9308,25 @@ async function saveSettings() {
       enable_anthropic_cache_ttl_1h_injection:
         form.enable_anthropic_cache_ttl_1h_injection,
       rewrite_message_cache_control: form.rewrite_message_cache_control,
+      enable_client_dateline_normalization:
+        form.enable_client_dateline_normalization,
       antigravity_user_agent_version:
         form.antigravity_user_agent_version?.trim() || "",
-      pre_response_stream_keepalive_enabled:
-        form.pre_response_stream_keepalive_enabled,
-      pre_response_stream_keepalive_initial_delay:
-        Number(form.pre_response_stream_keepalive_initial_delay) || 80,
-      semantic_error_detection_enabled:
-        form.semantic_error_detection_enabled,
-      semantic_error_match_max_chars: Math.min(
-        65536,
-        Math.max(128, Number(form.semantic_error_match_max_chars) || 4096),
-      ),
-      semantic_error_rules: normalizedSemanticErrorRules,
       openai_codex_user_agent:
         form.openai_codex_user_agent?.trim() || "",
-      openai_allow_claude_code_codex_plugin: form.openai_allow_claude_code_codex_plugin,
-      scheduled_test_default_prompt:
-        form.scheduled_test_default_prompt?.trim() || "hi",
+      min_codex_version: form.min_codex_version?.trim() || "",
+      max_codex_version: form.max_codex_version?.trim() || "",
+      codex_cli_only_allow_app_server_clients:
+        form.codex_cli_only_allow_app_server_clients,
+      codex_cli_only_engine_fingerprint_signals: serializeFingerprintRowsToJSON(
+        codexFingerprintRows.value,
+      ),
+      codex_cli_only_blacklist: serializeCodexRowsToJSON(
+        codexBlacklistRows.value,
+      ),
+      codex_cli_only_whitelist: serializeCodexRowsToJSON(
+        codexWhitelistRows.value,
+      ),
       // Payment configuration
       payment_enabled: form.payment_enabled,
       risk_control_enabled: form.risk_control_enabled,
@@ -10019,7 +9342,6 @@ async function saveSettings() {
       payment_balance_disabled: form.payment_balance_disabled,
       payment_balance_recharge_multiplier:
         Number(form.payment_balance_recharge_multiplier) || 1,
-      payment_balance_recharge_bonus_rules: normalizedPaymentBonusRules,
       payment_recharge_fee_rate: Number(form.payment_recharge_fee_rate) || 0,
       payment_enabled_types: form.payment_enabled_types,
       payment_load_balance_strategy: form.payment_load_balance_strategy,
@@ -10055,14 +9377,6 @@ async function saveSettings() {
         Number(form.channel_monitor_default_interval_seconds) || 60,
       // Available Channels feature switch
       available_channels_enabled: form.available_channels_enabled,
-      // Model Marketplace feature switch
-      model_marketplace_enabled: form.model_marketplace_enabled,
-      model_marketplace_intro: form.model_marketplace_intro,
-      model_marketplace_group_ids: Array.isArray(form.model_marketplace_group_ids)
-        ? form.model_marketplace_group_ids
-            .map((id) => Number(id))
-            .filter((id) => Number.isInteger(id) && id > 0)
-        : [],
       // Affiliate (邀请返利) feature switch
       affiliate_enabled: form.affiliate_enabled,
       allow_user_view_error_requests: form.allow_user_view_error_requests,
@@ -10106,9 +9420,6 @@ async function saveSettings() {
         (form as Record<string, unknown>)[key] = value;
       }
     }
-    form.semantic_error_rules = normalizeSemanticErrorRulesForForm(
-      updated.semantic_error_rules,
-    );
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(updated));
     form.default_platform_quotas = normalizePlatformQuotasMap(updated.default_platform_quotas);
     registrationEmailSuffixWhitelistTags.value =
@@ -10826,7 +10137,15 @@ async function loadProviders() {
   providersLoading.value = true;
   try {
     const res = await adminAPI.payment.getProviders();
-    providers.value = res.data || [];
+    // Normalize supported_types: backend returns null when the list is empty
+    // (Go nil slice → JSON null). Without this, ProviderCard's isSelected()
+    // throws TypeError on null.includes(), causing the card to vanish.
+    providers.value = (res.data || []).map((p) => ({
+      ...p,
+      supported_types: Array.isArray(p.supported_types)
+        ? p.supported_types
+        : [],
+    }));
   } catch (err: unknown) {
     appStore.showError(extractI18nErrorMessage(err, t, "payment.errors", t("common.error")));
   } finally {
@@ -10920,9 +10239,12 @@ async function handleToggleField(
 }
 
 async function handleToggleType(provider: ProviderInstance, type: string) {
-  const updated = provider.supported_types.includes(type)
-    ? provider.supported_types.filter((t) => t !== type)
-    : [...provider.supported_types, type];
+  const currentTypes = Array.isArray(provider.supported_types)
+    ? provider.supported_types
+    : [];
+  const updated = currentTypes.includes(type)
+    ? currentTypes.filter((t) => t !== type)
+    : [...currentTypes, type];
   const conflict = findProviderEnablementConflict({
     id: provider.id,
     provider_key: provider.provider_key,

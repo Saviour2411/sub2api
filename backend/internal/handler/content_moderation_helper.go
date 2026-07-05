@@ -32,6 +32,7 @@ func (h *GatewayHandler) beginSuccessfulConversationAuditCapture(c *gin.Context)
 	return beginSuccessfulConversationAuditCapture(c, h.contentModerationService)
 }
 
+//nolint:unused
 func (h *OpenAIGatewayHandler) beginSuccessfulConversationAuditCapture(c *gin.Context) (*auditResponseCaptureWriter, func()) {
 	if h == nil {
 		return nil, func() {}
@@ -92,6 +93,7 @@ func (h *OpenAIGatewayHandler) checkContentModeration(c *gin.Context, reqLog *za
 	return runContentModeration(c, reqLog, h.contentModerationService, apiKey, subject, protocol, model, body)
 }
 
+//nolint:unused
 func (h *OpenAIGatewayHandler) recordSuccessfulConversationAudit(c *gin.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, upstreamModel string, stream bool, body []byte, usage any, opts ...successfulConversationAuditOptions) {
 	if h == nil || h.contentModerationService == nil {
 		return
@@ -213,6 +215,7 @@ func recordSuccessfulConversationAudit(c *gin.Context, svc *service.ContentModer
 	})
 }
 
+//nolint:unused
 func resolveOpenAISessionAuditFields(explicitSessionID, sessionHash string) (string, string, string) {
 	explicitSessionID = strings.TrimSpace(explicitSessionID)
 	sessionHash = strings.TrimSpace(sessionHash)

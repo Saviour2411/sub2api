@@ -346,48 +346,6 @@
         </div>
       </div>
 
-      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
-        <div class="mb-3 flex items-center justify-between">
-          <div>
-            <label
-              id="bulk-edit-failure-scheduling-label"
-              class="input-label mb-0"
-              for="bulk-edit-failure-scheduling-enabled"
-            >
-              {{ t('admin.accounts.failureSchedulingStrategy.title') }}
-            </label>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.failureSchedulingStrategy.hint') }}
-            </p>
-          </div>
-          <input
-            v-model="enableFailureSchedulingStrategy"
-            id="bulk-edit-failure-scheduling-enabled"
-            type="checkbox"
-            aria-controls="bulk-edit-failure-scheduling-body"
-            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-          />
-        </div>
-        <div
-          id="bulk-edit-failure-scheduling-body"
-          :class="!enableFailureSchedulingStrategy && 'pointer-events-none opacity-50'"
-          role="group"
-          aria-labelledby="bulk-edit-failure-scheduling-label"
-        >
-          <select v-model="failureSchedulingStrategy" class="input">
-            <option :value="FAILURE_SCHEDULING_STRATEGY_DEFAULT">
-              {{ t('admin.accounts.failureSchedulingStrategy.default') }}
-            </option>
-            <option :value="FAILURE_SCHEDULING_STRATEGY_DISABLE_UNTIL_TEST_PASS">
-              {{ t('admin.accounts.failureSchedulingStrategy.disableUntilTestPass') }}
-            </option>
-          </select>
-          <p class="input-hint">
-            {{ t('admin.accounts.failureSchedulingStrategy.bulkHint') }}
-          </p>
-        </div>
-      </div>
-
       <!-- Custom error codes -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
@@ -784,87 +742,44 @@
         </div>
       </div>
 
-
-      <div v-if="allOpenAIPassthroughCapable" class="border-t border-gray-200 pt-4 dark:border-dark-600">
-        <div class="mb-3 flex items-center justify-between">
-          <label
-            id="bulk-edit-openai-codex-cli-emulation-label"
-            class="input-label mb-0"
-            for="bulk-edit-openai-codex-cli-emulation-enabled"
-          >
-            {{ t('admin.accounts.openai.codexCLIEmulation') }}
-          </label>
-          <input
-            v-model="enableCodexCLIEmulation"
-            id="bulk-edit-openai-codex-cli-emulation-enabled"
-            type="checkbox"
-            aria-controls="bulk-edit-openai-codex-cli-emulation"
-            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-          />
-        </div>
-        <div
-          id="bulk-edit-openai-codex-cli-emulation"
-          :class="!enableCodexCLIEmulation && 'pointer-events-none opacity-50'"
-        >
-          <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
-            {{ t('admin.accounts.openai.codexCLIEmulationDesc') }}
-          </p>
-          <button
-            id="bulk-edit-openai-codex-cli-emulation-toggle"
-            type="button"
-            :class="[
-              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-              codexCLIEmulationEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
-            ]"
-            @click="codexCLIEmulationEnabled = !codexCLIEmulationEnabled"
-          >
-            <span
-              :class="[
-                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                codexCLIEmulationEnabled ? 'translate-x-5' : 'translate-x-0'
-              ]"
-            />
-          </button>
-        </div>
-      </div>
-
+      <!-- OpenAI OAuth: Codex app-server -->
       <div v-if="allOpenAIOAuth" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
           <label
-            id="bulk-edit-openai-codex-allow-claude-code-label"
+            id="bulk-edit-openai-codex-app-server-label"
             class="input-label mb-0"
-            for="bulk-edit-openai-codex-allow-claude-code-enabled"
+            for="bulk-edit-openai-codex-app-server-enabled"
           >
-            {{ t('admin.accounts.openai.codexCLIOnlyAllowClaudeCode') }}
+            {{ t('admin.accounts.openai.codexCLIOnlyAppServer') }}
           </label>
           <input
-            v-model="enableCodexCLIOnlyAllowClaudeCode"
-            id="bulk-edit-openai-codex-allow-claude-code-enabled"
+            v-model="enableCodexCLIOnlyAppServer"
+            id="bulk-edit-openai-codex-app-server-enabled"
             type="checkbox"
-            aria-controls="bulk-edit-openai-codex-allow-claude-code"
+            aria-controls="bulk-edit-openai-codex-app-server"
             class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
           />
         </div>
         <div
-          id="bulk-edit-openai-codex-allow-claude-code"
-          :class="!enableCodexCLIOnlyAllowClaudeCode && 'pointer-events-none opacity-50'"
+          id="bulk-edit-openai-codex-app-server"
+          :class="!enableCodexCLIOnlyAppServer && 'pointer-events-none opacity-50'"
         >
           <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
-            {{ t('admin.accounts.openai.codexCLIOnlyAllowClaudeCodeDesc') }}
+            {{ t('admin.accounts.openai.codexCLIOnlyAppServerDesc') }}
           </p>
           <button
-            id="bulk-edit-openai-codex-allow-claude-code-toggle"
+            id="bulk-edit-openai-codex-app-server-toggle"
             type="button"
             :class="[
               'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-              codexCLIOnlyAllowClaudeCodeEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              codexCLIOnlyAppServerEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
             ]"
-            @click="codexCLIOnlyAllowClaudeCodeEnabled = !codexCLIOnlyAllowClaudeCodeEnabled"
+            @click="codexCLIOnlyAppServerEnabled = !codexCLIOnlyAppServerEnabled"
           >
             <span
               :class="[
                 'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                codexCLIOnlyAllowClaudeCodeEnabled ? 'translate-x-5' : 'translate-x-0'
+                codexCLIOnlyAppServerEnabled ? 'translate-x-5' : 'translate-x-0'
               ]"
             />
           </button>
@@ -1238,17 +1153,11 @@ import {
   OPENAI_WS_MODE_CTX_POOL,
   OPENAI_WS_MODE_OFF,
   OPENAI_WS_MODE_PASSTHROUGH,
+  OPENAI_WS_MODE_HTTP_BRIDGE,
   isOpenAIWSModeEnabled,
   resolveOpenAIWSModeConcurrencyHintKey
 } from '@/utils/openaiWsMode'
 import type { OpenAIWSMode } from '@/utils/openaiWsMode'
-import {
-  FAILURE_SCHEDULING_STRATEGY_DEFAULT,
-  FAILURE_SCHEDULING_STRATEGY_DISABLE_UNTIL_TEST_PASS,
-  FAILURE_SCHEDULING_STRATEGY_KEY,
-  FAILURE_STRATEGY_UNSCHEDULED_KEY,
-  type FailureSchedulingStrategy
-} from '@/constants/account'
 interface Props {
   show: boolean
   accountIds: number[]
@@ -1286,7 +1195,7 @@ const allOpenAIPassthroughCapable = computed(() => {
     targetSelectedPlatforms.value.length === 1 &&
     targetSelectedPlatforms.value[0] === 'openai' &&
     targetSelectedTypes.value.length > 0 &&
-    targetSelectedTypes.value.every(t => t === 'oauth' || t === 'apikey')
+    targetSelectedTypes.value.every(t => t === 'oauth' || t === 'setup-token' || t === 'apikey')
   )
 })
 
@@ -1295,7 +1204,7 @@ const allOpenAIOAuth = computed(() => {
     targetSelectedPlatforms.value.length === 1 &&
     targetSelectedPlatforms.value[0] === 'openai' &&
     targetSelectedTypes.value.length > 0 &&
-    targetSelectedTypes.value.every(t => t === 'oauth')
+    targetSelectedTypes.value.every(t => t === 'oauth' || t === 'setup-token')
   )
 })
 
@@ -1354,13 +1263,11 @@ const enableGroups = ref(false)
 const enableOpenAIPassthrough = ref(false)
 const enableOpenAIWSMode = ref(false)
 const enableOpenAIAPIKeyWSMode = ref(false)
-const enableCodexCLIEmulation = ref(false)
 const enableCodexCLIOnly = ref(false)
-const enableCodexCLIOnlyAllowClaudeCode = ref(false)
+const enableCodexCLIOnlyAppServer = ref(false)
 const enableOpenAICompactMode = ref(false)
 const enableOpenAICompactModelMapping = ref(false)
 const enableRpmLimit = ref(false)
-const enableFailureSchedulingStrategy = ref(false)
 
 // State - field values
 const submitting = ref(false)
@@ -1384,9 +1291,8 @@ const groupIds = ref<number[]>([])
 const openaiPassthroughEnabled = ref(false)
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
-const codexCLIEmulationEnabled = ref(false)
 const codexCLIOnlyEnabled = ref(false)
-const codexCLIOnlyAllowClaudeCodeEnabled = ref(false)
+const codexCLIOnlyAppServerEnabled = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const rpmLimitEnabled = ref(false)
@@ -1394,7 +1300,6 @@ const bulkBaseRpm = ref<number | null>(null)
 const bulkRpmStrategy = ref<'tiered' | 'sticky_exempt'>('tiered')
 const bulkRpmStickyBuffer = ref<number | null>(null)
 const userMsgQueueMode = ref<string | null>(null)
-const failureSchedulingStrategy = ref<FailureSchedulingStrategy>(FAILURE_SCHEDULING_STRATEGY_DEFAULT)
 const umqModeOptions = computed(() => [
   { value: '', label: t('admin.accounts.quotaControl.rpmLimit.umqModeOff') },
   { value: 'throttle', label: t('admin.accounts.quotaControl.rpmLimit.umqModeThrottle') },
@@ -1426,7 +1331,8 @@ const isOpenAIModelRestrictionDisabled = computed(
 const openAIWSModeOptions = computed(() => [
   { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') },
   { value: OPENAI_WS_MODE_CTX_POOL, label: t('admin.accounts.openai.wsModeCtxPool') },
-  { value: OPENAI_WS_MODE_PASSTHROUGH, label: t('admin.accounts.openai.wsModePassthrough') }
+  { value: OPENAI_WS_MODE_PASSTHROUGH, label: t('admin.accounts.openai.wsModePassthrough') },
+  { value: OPENAI_WS_MODE_HTTP_BRIDGE, label: t('admin.accounts.openai.wsModeHttpBridge') }
 ])
 const openAICompactModeOptions = computed(() => [
   { value: 'auto', label: t('admin.accounts.openai.compactModeAuto') },
@@ -1638,29 +1544,20 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     extra.codex_cli_only = codexCLIOnlyEnabled.value
   }
 
-  if (enableCodexCLIEmulation.value) {
+  // 子开关从属于 codex_cli_only：仅当同一次批量编辑也把父开关设为开启时才写入，
+  // 与 Create/Edit 语义对齐，避免在父开关关闭的账号上写入无意义的孤立字段。
+  if (
+    enableCodexCLIOnlyAppServer.value &&
+    enableCodexCLIOnly.value &&
+    codexCLIOnlyEnabled.value
+  ) {
     const extra = ensureExtra()
-    extra.openai_codex_cli_emulation_enabled = codexCLIEmulationEnabled.value
-  }
-
-  if (enableCodexCLIOnlyAllowClaudeCode.value) {
-    const extra = ensureExtra()
-    extra.codex_cli_only_allowed_clients = codexCLIOnlyAllowClaudeCodeEnabled.value ? ['claude_code'] : []
+    extra.codex_cli_only_allow_app_server = codexCLIOnlyAppServerEnabled.value
   }
 
   if (enableOpenAICompactMode.value) {
     const extra = ensureExtra()
     extra.openai_compact_mode = openAICompactMode.value
-  }
-
-  if (enableFailureSchedulingStrategy.value) {
-    const extra = ensureExtra()
-    if (failureSchedulingStrategy.value === FAILURE_SCHEDULING_STRATEGY_DISABLE_UNTIL_TEST_PASS) {
-      extra[FAILURE_SCHEDULING_STRATEGY_KEY] = FAILURE_SCHEDULING_STRATEGY_DISABLE_UNTIL_TEST_PASS
-    } else {
-      extra[FAILURE_SCHEDULING_STRATEGY_KEY] = null
-      extra[FAILURE_STRATEGY_UNSCHEDULED_KEY] = null
-    }
   }
 
   if (enableOpenAICompactModelMapping.value) {
@@ -1764,12 +1661,10 @@ const handleSubmit = async () => {
     enableOpenAIWSMode.value ||
     enableOpenAIAPIKeyWSMode.value ||
     enableCodexCLIOnly.value ||
-    enableCodexCLIEmulation.value ||
-    enableCodexCLIOnlyAllowClaudeCode.value ||
+    enableCodexCLIOnlyAppServer.value ||
     enableOpenAICompactMode.value ||
     enableOpenAICompactModelMapping.value ||
     enableRpmLimit.value ||
-    enableFailureSchedulingStrategy.value ||
     userMsgQueueMode.value !== null
 
   if (!hasAnyFieldEnabled) {
@@ -1869,12 +1764,10 @@ watch(
       enableOpenAIWSMode.value = false
       enableOpenAIAPIKeyWSMode.value = false
       enableCodexCLIOnly.value = false
-      enableCodexCLIEmulation.value = false
-      enableCodexCLIOnlyAllowClaudeCode.value = false
+      enableCodexCLIOnlyAppServer.value = false
       enableOpenAICompactMode.value = false
       enableOpenAICompactModelMapping.value = false
       enableRpmLimit.value = false
-      enableFailureSchedulingStrategy.value = false
 
       // Reset all values
       baseUrl.value = ''
@@ -1894,9 +1787,8 @@ watch(
       groupIds.value = []
       openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
-      codexCLIEmulationEnabled.value = false
       codexCLIOnlyEnabled.value = false
-      codexCLIOnlyAllowClaudeCodeEnabled.value = false
+      codexCLIOnlyAppServerEnabled.value = false
       openAICompactMode.value = 'auto'
       openAICompactModelMappings.value = []
       rpmLimitEnabled.value = false
@@ -1904,7 +1796,6 @@ watch(
       bulkRpmStrategy.value = 'tiered'
       bulkRpmStickyBuffer.value = null
       userMsgQueueMode.value = null
-      failureSchedulingStrategy.value = FAILURE_SCHEDULING_STRATEGY_DEFAULT
 
       // Reset mixed channel warning state
       showMixedChannelWarning.value = false

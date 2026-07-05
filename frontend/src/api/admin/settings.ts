@@ -16,38 +16,8 @@ export interface DefaultSubscriptionSetting {
   validity_days: number;
 }
 
-export type DailyCheckinPrizeType = "balance" | "concurrency" | "subscription" | "none"
-export type DailyCheckinBalanceMode = "fixed" | "range"
-
-export interface PaymentBonusRule {
-  min_amount: number
-  max_amount?: number | null
-  bonus_rate: number
-}
-
-export interface DailyCheckinPrizeConfig {
-  id: string;
-  name: string;
-  type: DailyCheckinPrizeType | string;
-  probability_bps: number;
-  enabled: boolean;
-  sort_order: number;
-  balance_mode?: DailyCheckinBalanceMode | string;
-  amount?: number;
-  min_amount?: number;
-  max_amount?: number;
-  concurrency?: number;
-  group_id?: number;
-  validity_days?: number;
-}
-
-export interface DailyCheckinDecayRule {
-  after_days: number;
-  factor_bps: number;
-}
-
 // ── 平台限额类型 ──────────────────────────────────────────────────
-export type PlatformType = "anthropic" | "openai" | "gemini" | "antigravity"
+export type PlatformType = "anthropic" | "openai" | "gemini" | "antigravity" | "grok"
 export type QuotaWindowType = "daily" | "weekly" | "monthly"
 
 /** 单平台三档限额；null = 不限制，undefined = 未填（等价 null） */
@@ -60,7 +30,7 @@ export interface PlatformQuotaLimits {
 /** 全平台默认限额 map（key = PlatformType） */
 export type DefaultPlatformQuotasMap = Partial<Record<PlatformType, PlatformQuotaLimits>>
 
-const PLATFORMS: PlatformType[] = ["anthropic", "openai", "gemini", "antigravity"]
+const PLATFORMS: PlatformType[] = ["anthropic", "openai", "gemini", "antigravity", "grok"]
 
 /** 归一化为全 4 平台 × 3 窗口（缺失填 null），供模板非空绑定 */
 export function normalizePlatformQuotasMap(input?: DefaultPlatformQuotasMap | null): DefaultPlatformQuotasMap {
@@ -118,22 +88,6 @@ export type PaymentVisibleMethodSource =
   | "official_wxpay"
   | "easypay_wxpay";
 export type WeChatConnectMode = "open" | "mp" | "mobile";
-export type SemanticErrorMatchType = "contains" | "regex";
-export type SemanticErrorPlatform =
-  | "anthropic"
-  | "openai"
-  | "gemini"
-  | "antigravity";
-
-export interface SemanticErrorRule {
-  enabled: boolean;
-  name: string;
-  platforms: SemanticErrorPlatform[];
-  match_type: SemanticErrorMatchType;
-  pattern: string;
-  custom_message: string;
-  priority: number;
-}
 
 export interface PaymentVisibleMethodSourceOption {
   value: PaymentVisibleMethodSource;
@@ -295,13 +249,7 @@ export function appendAuthSourceDefaultsToUpdateRequest(
   const target = payload as Record<string, unknown>;
 
   for (const source of AUTH_SOURCE_TYPES) {
-    const current = authSourceDefaults[source] ?? {
-      balance: AUTH_SOURCE_DEFAULT_BALANCE,
-      concurrency: AUTH_SOURCE_DEFAULT_CONCURRENCY,
-      subscriptions: [],
-      grant_on_signup: false,
-      grant_on_first_bind: false,
-    };
+    const current = authSourceDefaults[source];
     target[`auth_source_default_${source}_balance`] =
       Number(current.balance) || 0;
     target[`auth_source_default_${source}_concurrency`] = Math.max(
@@ -424,15 +372,6 @@ export interface SystemSettings {
   login_agreement_documents: LoginAgreementDocument[];
   // Default settings
   default_balance: number;
-  daily_checkin_enabled: boolean;
-  daily_checkin_reward_mode: "fixed" | "range" | string;
-  daily_checkin_reward_amount: number;
-  daily_checkin_reward_min: number;
-  daily_checkin_reward_max: number;
-  daily_checkin_prizes: DailyCheckinPrizeConfig[];
-  daily_checkin_unpaid_full_days: number;
-  daily_checkin_unpaid_decay_rules: DailyCheckinDecayRule[];
-  daily_checkin_linuxdo_exempt_enabled: boolean;
   affiliate_rebate_rate: number;
   affiliate_rebate_freeze_hours: number;
   affiliate_rebate_duration_days: number;
@@ -622,15 +561,16 @@ export interface SystemSettings {
   claude_oauth_system_prompt_blocks: string;
   enable_anthropic_cache_ttl_1h_injection: boolean;
   rewrite_message_cache_control: boolean;
+  enable_client_dateline_normalization: boolean;
   antigravity_user_agent_version: string;
-  pre_response_stream_keepalive_enabled: boolean;
-  pre_response_stream_keepalive_initial_delay: number;
-  semantic_error_detection_enabled: boolean;
-  semantic_error_match_max_chars: number;
-  semantic_error_rules: SemanticErrorRule[];
   openai_codex_user_agent: string;
-  openai_allow_claude_code_codex_plugin: boolean;
-  scheduled_test_default_prompt: string;
+  // codex_cli_only 加固
+  min_codex_version: string;
+  max_codex_version: string;
+  codex_cli_only_blacklist: string;
+  codex_cli_only_whitelist: string;
+  codex_cli_only_allow_app_server_clients: boolean;
+  codex_cli_only_engine_fingerprint_signals: string;
   web_search_emulation_enabled?: boolean;
 
   // Payment configuration
@@ -649,7 +589,6 @@ export interface SystemSettings {
   payment_enabled_types: string[];
   payment_balance_disabled: boolean;
   payment_balance_recharge_multiplier: number;
-  payment_balance_recharge_bonus_rules: PaymentBonusRule[];
   payment_recharge_fee_rate: number;
   payment_load_balance_strategy: string;
   payment_product_name_prefix: string;
@@ -683,11 +622,6 @@ export interface SystemSettings {
   // Available Channels feature switch
   available_channels_enabled: boolean;
 
-  // Model Marketplace feature switch
-  model_marketplace_enabled: boolean;
-  model_marketplace_intro: string;
-  model_marketplace_group_ids: number[];
-
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: boolean;
 
@@ -712,15 +646,6 @@ export interface UpdateSettingsRequest {
   login_agreement_updated_at?: string;
   login_agreement_documents?: LoginAgreementDocument[];
   default_balance?: number;
-  daily_checkin_enabled?: boolean;
-  daily_checkin_reward_mode?: "fixed" | "range" | string;
-  daily_checkin_reward_amount?: number;
-  daily_checkin_reward_min?: number;
-  daily_checkin_reward_max?: number;
-  daily_checkin_prizes?: DailyCheckinPrizeConfig[];
-  daily_checkin_unpaid_full_days?: number;
-  daily_checkin_unpaid_decay_rules?: DailyCheckinDecayRule[];
-  daily_checkin_linuxdo_exempt_enabled?: boolean;
   affiliate_rebate_rate?: number;
   affiliate_rebate_freeze_hours?: number;
   affiliate_rebate_duration_days?: number;
@@ -887,15 +812,16 @@ export interface UpdateSettingsRequest {
   claude_oauth_system_prompt_blocks?: string;
   enable_anthropic_cache_ttl_1h_injection?: boolean;
   rewrite_message_cache_control?: boolean;
+  enable_client_dateline_normalization?: boolean;
   antigravity_user_agent_version?: string;
-  pre_response_stream_keepalive_enabled?: boolean;
-  pre_response_stream_keepalive_initial_delay?: number;
-  semantic_error_detection_enabled?: boolean;
-  semantic_error_match_max_chars?: number;
-  semantic_error_rules?: SemanticErrorRule[];
   openai_codex_user_agent?: string;
-  openai_allow_claude_code_codex_plugin?: boolean;
-  scheduled_test_default_prompt?: string;
+  // codex_cli_only 加固
+  min_codex_version?: string;
+  max_codex_version?: string;
+  codex_cli_only_blacklist?: string;
+  codex_cli_only_whitelist?: string;
+  codex_cli_only_allow_app_server_clients?: boolean;
+  codex_cli_only_engine_fingerprint_signals?: string;
   // Payment configuration
   payment_enabled?: boolean;
   risk_control_enabled?: boolean;
@@ -912,7 +838,6 @@ export interface UpdateSettingsRequest {
   payment_enabled_types?: string[];
   payment_balance_disabled?: boolean;
   payment_balance_recharge_multiplier?: number;
-  payment_balance_recharge_bonus_rules?: PaymentBonusRule[];
   payment_recharge_fee_rate?: number;
   payment_load_balance_strategy?: string;
   payment_product_name_prefix?: string;
@@ -944,11 +869,6 @@ export interface UpdateSettingsRequest {
 
   // Available Channels feature switch
   available_channels_enabled?: boolean;
-
-  // Model Marketplace feature switch
-  model_marketplace_enabled?: boolean;
-  model_marketplace_intro?: string;
-  model_marketplace_group_ids?: number[];
 
   // Affiliate (邀请返利) feature switch
   affiliate_enabled?: boolean;

@@ -3,7 +3,6 @@ import { apiClient } from '../client'
 export type ModerationMode = 'off' | 'observe' | 'pre_block'
 export type KeywordBlockingMode = 'keyword_only' | 'keyword_and_api' | 'api_only'
 export type ContentModerationModelFilterType = 'all' | 'include' | 'exclude'
-export type ContentModerationLocalAuditScenePolicy = 'all' | 'programming_only'
 
 export interface ContentModerationModelFilter {
   type: ContentModerationModelFilterType
@@ -41,15 +40,92 @@ export interface ContentModerationConfig {
   blocked_keywords: string[]
   keyword_blocking_mode: KeywordBlockingMode
   model_filter: ContentModerationModelFilter
-  local_audit_enabled: boolean
-  local_audit_max_storage_gb: number
-  local_audit_scene_policy: ContentModerationLocalAuditScenePolicy
-  local_audit_exclude_image_generation: boolean
-  local_audit_programming_client_patterns: string[]
-  local_audit_programming_tool_patterns: string[]
-  local_audit_max_capture_concurrency: number
-  local_audit_storage_path: string
   cyber_policy_exclude_from_ban_count: boolean
+  local_audit_enabled?: boolean
+  local_audit_max_storage_gb?: number
+  local_audit_scene_policy?: ContentModerationLocalAuditScenePolicy
+  local_audit_exclude_image_generation?: boolean
+  local_audit_programming_client_patterns?: string[]
+  local_audit_programming_tool_patterns?: string[]
+  local_audit_max_capture_concurrency?: number
+  local_audit_storage_path?: string
+}
+
+export type ContentModerationLocalAuditScenePolicy = 'all' | 'programming_only'
+
+export interface ContentModerationLocalAuditMetadata {
+  id: string
+  request_id: string
+  session_id: string
+  client_session_id?: string
+  session_source?: string
+  user_id?: number
+  user_email: string
+  api_key_id?: number
+  api_key_name: string
+  group_id?: number
+  group_name: string
+  endpoint: string
+  provider: string
+  model: string
+  upstream_model?: string
+  protocol: string
+  response_id?: string
+  previous_response_id?: string
+  scene?: string
+  scene_signals?: string[]
+  input_tool_call_count: number
+  output_tool_call_count: number
+  file_read_count: number
+  file_write_count: number
+  stream: boolean
+  system_prompt_excerpt: string
+  message_count: number
+  tool_count: number
+  tool_call_count: number
+  tool_result_count: number
+  file_size_bytes: number
+  created_at: string
+}
+
+export interface ContentModerationLocalAuditRecord extends ContentModerationLocalAuditMetadata {
+  user_agent?: string
+  originator?: string
+  system_prompt?: unknown
+  messages?: unknown
+  tools?: unknown
+  tool_calls?: unknown[]
+  tool_results?: unknown[]
+  assistant_output?: unknown
+  output_tool_calls?: unknown[]
+  output_tool_results?: unknown[]
+  usage?: unknown
+  raw_request?: unknown
+  raw_response?: unknown
+  [key: string]: unknown
+}
+
+export interface ContentModerationLocalAuditStats {
+  enabled: boolean
+  storage_path: string
+  max_storage_gb: number
+  capture_max_concurrency: number
+  response_capture_limit_bytes: number
+  retained_bytes: number
+  retained_records: number
+  queue_size: number
+  queue_length: number
+  capture_active: number
+  overload_active: boolean
+  overload_skipped: number
+  active: number
+  enqueued: number
+  dropped: number
+  written: number
+  errors: number
+  last_cleanup_at?: string
+  last_cleanup_deleted: number
+  last_cleanup_deleted_bytes: number
 }
 
 export type ContentModerationAPIKeyStatusValue = 'unknown' | 'ok' | 'error' | 'frozen'
@@ -125,6 +201,7 @@ export interface UpdateContentModerationConfig {
   blocked_keywords?: string[]
   keyword_blocking_mode?: KeywordBlockingMode
   model_filter?: ContentModerationModelFilter
+  cyber_policy_exclude_from_ban_count?: boolean
   local_audit_enabled?: boolean
   local_audit_max_storage_gb?: number
   local_audit_scene_policy?: ContentModerationLocalAuditScenePolicy
@@ -132,30 +209,7 @@ export interface UpdateContentModerationConfig {
   local_audit_programming_client_patterns?: string[]
   local_audit_programming_tool_patterns?: string[]
   local_audit_max_capture_concurrency?: number
-  cyber_policy_exclude_from_ban_count?: boolean
-}
-
-export interface ContentModerationLocalAuditStats {
-  enabled: boolean
-  storage_path: string
-  max_storage_gb: number
-  capture_max_concurrency: number
-  response_capture_limit_bytes: number
-  retained_bytes: number
-  retained_records: number
-  queue_size: number
-  queue_length: number
-  capture_active: number
-  overload_active: boolean
-  overload_skipped: number
-  active: number
-  enqueued: number
-  dropped: number
-  written: number
-  errors: number
-  last_cleanup_at?: string
-  last_cleanup_deleted: number
-  last_cleanup_deleted_bytes: number
+  local_audit_storage_path?: string
 }
 
 export interface ContentModerationRuntimeStatus {
@@ -185,10 +239,10 @@ export interface ContentModerationRuntimeStatus {
   pre_block_api_key_loads: ContentModerationAPIKeyLoad[]
   api_key_statuses: ContentModerationAPIKeyStatus[]
   flagged_hash_count: number
+  local_audit?: ContentModerationLocalAuditStats
   last_cleanup_at?: string
   last_cleanup_deleted_hit: number
   last_cleanup_deleted_non_hit: number
-  local_audit: ContentModerationLocalAuditStats
 }
 
 export interface ContentModerationAPIKeyLoad {
@@ -222,6 +276,7 @@ export interface ContentModerationLog {
   flagged: boolean
   highest_category: string
   highest_score: number
+  matched_keyword: string
   category_scores: Record<string, number>
   threshold_snapshot: Record<string, number>
   input_excerpt: string
@@ -248,74 +303,6 @@ export interface ListContentModerationLogsParams {
 
 export interface ContentModerationLogsResponse {
   items: ContentModerationLog[]
-  total: number
-  page: number
-  page_size: number
-  pages: number
-}
-
-export interface ContentModerationLocalAuditMetadata {
-  id: string
-  request_id: string
-  session_id: string
-  client_session_id?: string
-  session_source?: string
-  user_id?: number
-  user_email: string
-  api_key_id?: number
-  api_key_name: string
-  group_id?: number
-  group_name: string
-  endpoint: string
-  provider: string
-  model: string
-  upstream_model?: string
-  protocol: string
-  response_id?: string
-  previous_response_id?: string
-  scene?: string
-  scene_signals?: string[]
-  input_tool_call_count: number
-  output_tool_call_count: number
-  file_read_count: number
-  file_write_count: number
-  stream: boolean
-  system_prompt_excerpt: string
-  message_count: number
-  tool_count: number
-  tool_call_count: number
-  tool_result_count: number
-  file_size_bytes: number
-  created_at: string
-}
-
-export interface ContentModerationLocalAuditRecord extends ContentModerationLocalAuditMetadata {
-  system_prompt?: unknown
-  messages?: unknown
-  tools?: unknown
-  tool_calls?: unknown[]
-  tool_results?: unknown[]
-  assistant_output?: unknown
-  output_tool_calls?: unknown[]
-  output_tool_results?: unknown[]
-  usage?: unknown
-  raw_request?: unknown
-  raw_response?: unknown
-}
-
-export interface ListContentModerationLocalAuditParams {
-  page?: number
-  page_size?: number
-  group_id?: number
-  endpoint?: string
-  model?: string
-  search?: string
-  from?: string
-  to?: string
-}
-
-export interface ContentModerationLocalAuditsResponse {
-  items: ContentModerationLocalAuditMetadata[]
   total: number
   page: number
   page_size: number
@@ -369,32 +356,6 @@ export async function listLogs(
   return data
 }
 
-export async function listLocalAudits(
-  params: ListContentModerationLocalAuditParams = {}
-): Promise<ContentModerationLocalAuditsResponse> {
-  const { data } = await apiClient.get<ContentModerationLocalAuditsResponse>('/admin/risk-control/local-audits', {
-    params,
-  })
-  return data
-}
-
-export async function getLocalAudit(id: string): Promise<ContentModerationLocalAuditRecord> {
-  const { data } = await apiClient.get<ContentModerationLocalAuditRecord>(`/admin/risk-control/local-audits/${id}`)
-  return data
-}
-
-export async function deleteLocalAudit(id: string): Promise<{ deleted: boolean }> {
-  const { data } = await apiClient.delete<{ deleted: boolean }>(`/admin/risk-control/local-audits/${id}`)
-  return data
-}
-
-export async function downloadLocalAudit(id: string): Promise<Blob> {
-  const { data } = await apiClient.get<Blob>(`/admin/risk-control/local-audits/${id}/download`, {
-    responseType: 'blob',
-  })
-  return data
-}
-
 export async function unbanUser(userID: number): Promise<ContentModerationUnbanUserResponse> {
   const { data } = await apiClient.post<ContentModerationUnbanUserResponse>(
     `/admin/risk-control/users/${userID}/unban`
@@ -414,19 +375,47 @@ export async function clearFlaggedHashes(): Promise<ClearFlaggedHashesResponse> 
   return data
 }
 
+export async function listLocalAudits(params: Record<string, unknown> = {}): Promise<{
+  items: ContentModerationLocalAuditMetadata[]
+  total: number
+  page: number
+  page_size: number
+  pages: number
+  metadata?: ContentModerationLocalAuditMetadata
+}> {
+  const { data } = await apiClient.get('/admin/risk-control/local-audits', { params })
+  return data
+}
+
+export async function getLocalAudit(id: string): Promise<ContentModerationLocalAuditRecord> {
+  const { data } = await apiClient.get<ContentModerationLocalAuditRecord>(`/admin/risk-control/local-audits/${id}`)
+  return data
+}
+
+export async function downloadLocalAudit(id: string): Promise<Blob> {
+  const { data } = await apiClient.get<Blob>(`/admin/risk-control/local-audits/${id}/download`, {
+    responseType: 'blob',
+  })
+  return data
+}
+
+export async function deleteLocalAudit(id: string): Promise<void> {
+  await apiClient.delete(`/admin/risk-control/local-audits/${id}`)
+}
+
 export const riskControlAPI = {
   getConfig,
   updateConfig,
   getStatus,
   testAPIKeys,
   listLogs,
-  listLocalAudits,
-  getLocalAudit,
-  deleteLocalAudit,
-  downloadLocalAudit,
   unbanUser,
   deleteFlaggedHash,
   clearFlaggedHashes,
+  listLocalAudits,
+  getLocalAudit,
+  downloadLocalAudit,
+  deleteLocalAudit,
 }
 
 export default riskControlAPI

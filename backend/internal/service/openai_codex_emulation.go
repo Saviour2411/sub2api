@@ -36,6 +36,7 @@ func applyOpenAICodexCLIEmulationHeaders(
 	}
 }
 
+//nolint:unused
 func buildOpenAICodexProbeSessionID(accountID int64) string {
 	if accountID <= 0 {
 		return "probe_codex_cli_emulation"

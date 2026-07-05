@@ -973,7 +973,7 @@ const getRedeemStatus = (row: RedeemCode) => {
 }
 
 const formatUsageValue = (usage: RedeemCodeUsage) => {
-  if (usage.type === 'balance') return `$${usage.value.toFixed(2)}`
+  if (usage.type === 'balance') return `$${(usage.value ?? 0).toFixed(2)}`
   if (usage.type === 'subscription') {
     const groupName = usage.group?.name ? ` (${usage.group.name})` : ''
     return `${usage.validity_days || 30} ${t('admin.redeem.days')}${groupName}`

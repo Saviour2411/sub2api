@@ -1,7 +1,7 @@
 <template>
   <div v-if="!isDesktopViewport" class="space-y-3">
     <template v-if="loading">
-      <div v-for="i in 5" :key="i" class="mecha-mobile-row rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900">
+      <div v-for="i in 5" :key="i" class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900">
         <div class="space-y-3">
           <div v-for="column in dataColumns" :key="column.key" class="flex justify-between">
             <div class="h-4 w-20 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
@@ -15,7 +15,7 @@
     </template>
 
     <template v-else-if="!data || data.length === 0">
-      <div class="mecha-mobile-row rounded-lg border border-gray-200 bg-white p-12 text-center dark:border-dark-700 dark:bg-dark-900">
+      <div class="rounded-lg border border-gray-200 bg-white p-12 text-center dark:border-dark-700 dark:bg-dark-900">
         <slot name="empty">
           <div class="flex flex-col items-center">
             <Icon
@@ -35,7 +35,9 @@
       <div
         v-for="(row, index) in sortedData"
         :key="resolveRowKey(row, index)"
-        class="mecha-mobile-row rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900"
+        class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900"
+        :class="{ 'cursor-pointer': clickableRows }"
+        @click="clickableRows && emit('rowClick', row)"
       >
         <div class="space-y-3">
           <div
@@ -63,7 +65,9 @@
   <div
     v-else
     ref="tableWrapperRef"
-    class="table-wrapper mecha-data-table"
+    class="table-wrapper"
+    :data-virtualized="String(virtualized)"
+    :data-scroll-reset-key="scrollResetKey"
     :class="{
       'actions-expanded': actionsExpanded,
       'is-scrollable': isScrollable
@@ -76,6 +80,7 @@
             v-for="(column, index) in columns"
             :key="column.key"
             scope="col"
+            :aria-sort="column.sortable ? getColumnAriaSort(column.key) : undefined"
             :class="[
               'sticky-header-cell py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-dark-400',
               getAdaptivePaddingClass(),
@@ -93,24 +98,26 @@
             >
               <div class="flex items-center space-x-1">
                 <span>{{ column.label }}</span>
-                <span v-if="column.sortable" class="text-gray-400 dark:text-dark-500">
+                <span
+                  v-if="column.sortable"
+                  class="inline-flex h-5 w-4 flex-col items-center justify-center"
+                  aria-hidden="true"
+                >
                   <svg
-                    v-if="sortKey === column.key"
-                    class="h-4 w-4"
-                    :class="{ 'rotate-180 transform': sortOrder === 'desc' }"
+                    class="h-2.5 w-2.5"
+                    :class="getSortIndicatorClass(column.key, 'asc')"
                     fill="currentColor"
-                    viewBox="0 0 20 20"
+                    viewBox="0 0 10 10"
                   >
-                    <path
-                      fill-rule="evenodd"
-                      d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z"
-                      clip-rule="evenodd"
-                    />
+                    <path d="M5 2L1.5 6.5h7L5 2z" />
                   </svg>
-                  <svg v-else class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path
-                      d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                    />
+                  <svg
+                    class="-mt-0.5 h-2.5 w-2.5"
+                    :class="getSortIndicatorClass(column.key, 'desc')"
+                    fill="currentColor"
+                    viewBox="0 0 10 10"
+                  >
+                    <path d="M5 8L1.5 3.5h7L5 8z" />
                   </svg>
                 </span>
               </div>
@@ -149,36 +156,7 @@
           </td>
         </tr>
 
-        <!-- 数据行 -->
-        <template v-else-if="!isVirtualized">
-          <tr
-            v-for="(row, rowIndex) in sortedData"
-            :key="resolveRowKey(row, rowIndex)"
-            :data-row-id="resolveRowKey(row, rowIndex)"
-            :data-index="rowIndex"
-            class="hover:bg-gray-50 dark:hover:bg-dark-800"
-          >
-            <td
-              v-for="(column, colIndex) in columns"
-              :key="column.key"
-              :class="[
-                'whitespace-nowrap py-4 text-sm text-gray-900 dark:text-gray-100',
-                getAdaptivePaddingClass(),
-                getStickyColumnClass(column, colIndex),
-                column.class
-              ]"
-            >
-              <slot :name="`cell-${column.key}`"
-                    :row="row"
-                    :value="row[column.key]"
-                    :expanded="actionsExpanded">
-                {{ column.formatter
-                   ? column.formatter(row[column.key], row)
-                   : row[column.key] }}
-              </slot>
-            </td>
-          </tr>
-        </template>
+        <!-- Data rows (virtual scroll) -->
         <template v-else>
           <tr v-if="virtualPaddingTop > 0" aria-hidden="true">
             <td :colspan="columns.length"
@@ -192,6 +170,8 @@
             :data-index="virtualRow.index"
             :ref="measureElement"
             class="hover:bg-gray-50 dark:hover:bg-dark-800"
+            :class="{ 'cursor-pointer': clickableRows }"
+            @click="clickableRows && emit('rowClick', sortedData[virtualRow.index])"
           >
             <td
               v-for="(column, colIndex) in columns"
@@ -240,6 +220,7 @@ const isDesktopViewport = ref(
 
 const emit = defineEmits<{
   sort: [key: string, order: 'asc' | 'desc']
+  rowClick: [row: any]
 }>()
 
 // 表格容器引用
@@ -279,20 +260,46 @@ const checkScrollable = () => {
 const checkActionsColumnWidth = () => {
   if (!tableWrapperRef.value) return
 
+  // 查找第一行的操作列单元格
   const firstActionCell = tableWrapperRef.value.querySelector('tbody tr:first-child td:last-child')
   if (!firstActionCell) return
 
+  // 查找操作列内容的容器div
   const actionsContainer = firstActionCell.querySelector('div')
   if (!actionsContainer) return
 
-  const actionItems = actionsContainer.querySelectorAll('button, a, [role="button"]')
-  if (actionItems.length <= 2) {
-    actionsColumnNeedsExpanding.value = false
-    return
-  }
+  // 临时展开以测量完整宽度
+  const wasExpanded = actionsExpanded.value
+  actionsExpanded.value = true
 
-  const cellWidth = Math.max(0, (firstActionCell as HTMLElement).clientWidth - 32)
-  actionsColumnNeedsExpanding.value = (actionsContainer as HTMLElement).scrollWidth > cellWidth
+  // 等待DOM更新
+  nextTick(() => {
+    // 测量所有按钮的总宽度
+    const actionItems = actionsContainer.querySelectorAll('button, a, [role="button"]')
+    if (actionItems.length <= 2) {
+      actionsColumnNeedsExpanding.value = false
+      actionsExpanded.value = wasExpanded
+      return
+    }
+
+    // 计算所有按钮的总宽度（包括gap）
+    let totalWidth = 0
+    actionItems.forEach((item, index) => {
+      totalWidth += (item as HTMLElement).offsetWidth
+      if (index < actionItems.length - 1) {
+        totalWidth += 4 // gap-1 = 4px
+      }
+    })
+
+    // 获取单元格可用宽度（减去padding）
+    const cellWidth = (firstActionCell as HTMLElement).clientWidth - 32 // 减去左右padding
+
+    // 如果总宽度超过可用宽度，需要展开功能
+    actionsColumnNeedsExpanding.value = totalWidth > cellWidth
+
+    // 恢复原来的展开状态
+    actionsExpanded.value = wasExpanded
+  })
 }
 
 // 监听尺寸变化
@@ -381,14 +388,16 @@ interface Props {
    * will emit 'sort' events instead of performing client-side sorting.
    */
   serverSideSort?: boolean
+  /** Emit 'rowClick' on row/card click and show pointer cursor (interactive cells should @click.stop) */
+  clickableRows?: boolean
   /** Estimated row height in px for the virtualizer (default 56) */
   estimateRowHeight?: number
   /** Number of rows to render beyond the visible area (default 5) */
   overscan?: number
-  /** 是否启用桌面端虚拟滚动；动态行高的小分页表格可关闭 */
+  /** Enable virtual row rendering on desktop tables */
   virtualized?: boolean
-  /** 外部查询上下文变化时重置表格滚动位置 */
-  scrollResetKey?: string | number
+  /** External key used by parents to signal scroll context changes */
+  scrollResetKey?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -472,6 +481,17 @@ const applySortState = (state: PersistedSortState | null) => {
   sortOrder.value = state.order
 }
 
+const getSortIndicatorClass = (key: string, order: 'asc' | 'desc') => {
+  return sortKey.value === key && sortOrder.value === order
+    ? 'text-primary-600 dark:text-primary-400'
+    : 'text-gray-300 transition-colors dark:text-dark-500'
+}
+
+const getColumnAriaSort = (key: string) => {
+  if (sortKey.value !== key) return 'none'
+  return sortOrder.value === 'asc' ? 'ascending' : 'descending'
+}
+
 const isNullishOrEmpty = (value: any) => value === null || value === undefined || value === ''
 
 const toFiniteNumberOrNull = (value: any): number | null => {
@@ -536,15 +556,6 @@ const columnsSignature = computed(() =>
   props.columns.map((column) => `${column.key}:${column.sortable ? '1' : '0'}`).join('|')
 )
 
-const clampScrollTop = () => {
-  const el = tableWrapperRef.value
-  if (!el) return
-  const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight)
-  if (el.scrollTop > maxScrollTop) {
-    el.scrollTop = maxScrollTop
-  }
-}
-
 watch(
   isDesktopViewport,
   async (isDesktop) => {
@@ -562,7 +573,6 @@ watch(
   [() => props.data.length, columnsSignature],
   async () => {
     await nextTick()
-    clampScrollTop()
     checkScrollable()
     checkActionsColumnWidth()
   },
@@ -612,10 +622,8 @@ const sortedData = computed(() => {
 })
 
 // --- Virtual scrolling ---
-const isVirtualized = computed(() => props.virtualized && isDesktopViewport.value)
-
 const rowVirtualizer = useVirtualizer(computed(() => ({
-  count: isVirtualized.value ? (sortedData.value?.length ?? 0) : 0,
+  count: isDesktopViewport.value ? (sortedData.value?.length ?? 0) : 0,
   getScrollElement: () => tableWrapperRef.value,
   estimateSize: () => props.estimateRowHeight ?? 56,
   overscan: props.overscan ?? 5,
@@ -627,7 +635,18 @@ const rowVirtualizer = useVirtualizer(computed(() => ({
   useAnimationFrameWithResizeObserver: true,
 })))
 
-const virtualItems = computed(() => rowVirtualizer.value.getVirtualItems())
+const virtualItems = computed(() => {
+  if (!props.virtualized) {
+    return (sortedData.value ?? []).map((_: unknown, index: number) => ({
+      index,
+      start: 0,
+      end: 0,
+      key: index,
+      size: props.estimateRowHeight ?? 56
+    }))
+  }
+  return rowVirtualizer.value.getVirtualItems()
+})
 
 const virtualPaddingTop = computed(() => {
   const items = virtualItems.value
@@ -645,25 +664,6 @@ const measureElement = (el: any) => {
     rowVirtualizer.value.measureElement(el as Element)
   }
 }
-
-const scrollToTop = () => {
-  if (tableWrapperRef.value) {
-    tableWrapperRef.value.scrollTop = 0
-  }
-  if (isVirtualized.value) {
-    rowVirtualizer.value.scrollToOffset(0)
-  }
-}
-
-watch(
-  () => props.scrollResetKey,
-  async () => {
-    await nextTick()
-    scrollToTop()
-    clampScrollTop()
-  },
-  { flush: 'post' }
-)
 
 const hasActionsColumn = computed(() => {
   return props.columns.some(column => column.key === 'actions')
@@ -767,7 +767,6 @@ defineExpose({
   sortedData,
   resolveRowKey,
   tableWrapperEl: tableWrapperRef,
-  scrollToTop,
 })
 </script>
 
@@ -778,8 +777,6 @@ defineExpose({
   position: relative;
   overflow-x: auto;
   overflow-y: auto;
-  overscroll-behavior-x: contain;
-  overscroll-behavior-y: auto;
   flex: 1;
   min-height: 0;
   isolation: isolate;

@@ -27,26 +27,32 @@ import (
 func TestOpenAIHandleStreamingAwareError_JSONEscaping(t *testing.T) {
 	tests := []struct {
 		name    string
+		errType string
 		message string
 	}{
 		{
 			name:    "包含双引号的消息",
+			errType: "server_error",
 			message: `upstream returned "invalid" response`,
 		},
 		{
 			name:    "包含反斜杠的消息",
+			errType: "server_error",
 			message: `path C:\Users\test\file.txt not found`,
 		},
 		{
 			name:    "包含双引号和反斜杠的消息",
+			errType: "upstream_error",
 			message: `error parsing "key\value": unexpected token`,
 		},
 		{
 			name:    "包含换行符的消息",
+			errType: "server_error",
 			message: "line1\nline2\ttab",
 		},
 		{
 			name:    "普通消息",
+			errType: "upstream_error",
 			message: "Upstream service temporarily unavailable",
 		},
 	}
@@ -56,15 +62,15 @@ func TestOpenAIHandleStreamingAwareError_JSONEscaping(t *testing.T) {
 			gin.SetMode(gin.TestMode)
 			w := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(w)
-			c.Request = httptest.NewRequest(http.MethodPost, EndpointResponses, nil)
+			c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
 
 			h := &OpenAIGatewayHandler{}
-			h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", tt.message, true)
+			h.handleStreamingAwareError(c, http.StatusBadGateway, tt.errType, tt.message, true)
 
 			body := w.Body.String()
 
-			// 验证 OpenAI Responses 流式错误格式：event: response.failed\ndata: {JSON}\n\n
-			assert.True(t, strings.HasPrefix(body, "event: response.failed\n"), "应以 'event: response.failed\\n' 开头")
+			// 验证 SSE 格式：event: error\ndata: {JSON}\n\n
+			assert.True(t, strings.HasPrefix(body, "event: error\n"), "应以 'event: error\\n' 开头")
 			assert.True(t, strings.HasSuffix(body, "\n\n"), "应以 '\\n\\n' 结尾")
 
 			// 提取 data 部分
@@ -79,12 +85,11 @@ func TestOpenAIHandleStreamingAwareError_JSONEscaping(t *testing.T) {
 			err := json.Unmarshal([]byte(jsonStr), &parsed)
 			require.NoError(t, err, "JSON 应能被成功解析，原始 JSON: %s", jsonStr)
 
-			// 验证结构。流式响应已经开始后，错误需要按 Responses 协议放在 response.failed 事件里。
-			assert.Equal(t, "response.failed", gjson.Get(jsonStr, "type").String())
-			assert.Equal(t, "failed", gjson.Get(jsonStr, "response.status").String())
-			assert.Equal(t, "upstream_error", gjson.Get(jsonStr, "response.error.code").String())
-			assert.Equal(t, tt.message, gjson.Get(jsonStr, "response.error.message").String())
-			assert.Contains(t, parsed, "response")
+			// 验证结构
+			errorObj, ok := parsed["error"].(map[string]any)
+			require.True(t, ok, "应包含 error 对象")
+			assert.Equal(t, tt.errType, errorObj["type"])
+			assert.Equal(t, tt.message, errorObj["message"])
 		})
 	}
 }
@@ -111,7 +116,7 @@ func TestOpenAIHandleStreamingAwareError_NonStreaming(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodPost, EndpointResponses, nil)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
 
 	h := &OpenAIGatewayHandler{}
 	h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "test error", false)
@@ -126,41 +131,6 @@ func TestOpenAIHandleStreamingAwareError_NonStreaming(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "upstream_error", errorObj["type"])
 	assert.Equal(t, "test error", errorObj["message"])
-}
-
-func TestOpenAIHandleFailoverExhaustedSemanticErrorUsesCustomMessage(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodPost, EndpointResponses, nil)
-
-	h := &OpenAIGatewayHandler{}
-	h.handleFailoverExhausted(c, &service.UpstreamFailoverError{
-		StatusCode:            http.StatusBadGateway,
-		SemanticError:         true,
-		SemanticErrorRuleName: "dc.hhhl.cc",
-		SemanticErrorMessage:  "上游未知异常，请稍后重试",
-	}, false)
-
-	assert.Equal(t, http.StatusBadGateway, w.Code)
-	require.Equal(t, "upstream_error", gjson.Get(w.Body.String(), "error.type").String())
-	require.Equal(t, "上游未知异常，请稍后重试", gjson.Get(w.Body.String(), "error.message").String())
-}
-
-func TestOpenAIHandleStreamingAwareError_StreamUsesResponseFailed(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodPost, EndpointResponses, nil)
-
-	h := &OpenAIGatewayHandler{}
-	h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "test error", true)
-
-	body := w.Body.String()
-	require.Contains(t, body, "event: response.failed")
-	require.Contains(t, body, `"type":"response.failed"`)
-	require.Contains(t, body, `"status":"failed"`)
-	require.Contains(t, body, `"message":"test error"`)
 }
 
 func TestReadRequestBodyWithPrealloc(t *testing.T) {
@@ -464,6 +434,16 @@ func TestResolveOpenAIMessagesDispatchMappedModel(t *testing.T) {
 		require.Empty(t, resolveOpenAIMessagesDispatchMappedModel(&service.APIKey{Group: &service.Group{}}, "gpt-5.4"))
 	})
 
+	t.Run("grok_group_maps_claude_cli_model_to_grok_default", func(t *testing.T) {
+		apiKey := &service.APIKey{
+			Group: &service.Group{
+				Platform: service.PlatformGrok,
+			},
+		}
+		require.Equal(t, "grok-4.3", resolveOpenAIMessagesDispatchMappedModel(apiKey, "claude-sonnet-4-5"))
+		require.Empty(t, resolveOpenAIMessagesDispatchMappedModel(apiKey, "grok"))
+	})
+
 	t.Run("does_not_fall_back_to_group_default_mapped_model", func(t *testing.T) {
 		apiKey := &service.APIKey{
 			Group: &service.Group{
@@ -472,6 +452,60 @@ func TestResolveOpenAIMessagesDispatchMappedModel(t *testing.T) {
 		}
 		require.Empty(t, resolveOpenAIMessagesDispatchMappedModel(apiKey, "gpt-5.4"))
 		require.Equal(t, "gpt-5.3-codex", resolveOpenAIMessagesDispatchMappedModel(apiKey, "claude-sonnet-4-5-20250929"))
+	})
+}
+
+func TestOpenAIGatewayMessagesDispatchGateAllowsGrokGroups(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("openai_group_without_dispatch_flag_is_rejected", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-sonnet-4-5","messages":[{"role":"user","content":"hi"}]}`))
+		groupID := int64(4101)
+		c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
+			ID:      5101,
+			GroupID: &groupID,
+			User:    &service.User{ID: 6101},
+			Group: &service.Group{
+				ID:                    groupID,
+				Platform:              service.PlatformOpenAI,
+				AllowMessagesDispatch: false,
+			},
+		})
+		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 6101, Concurrency: 1})
+
+		h := &OpenAIGatewayHandler{}
+		h.Messages(c)
+
+		require.Equal(t, http.StatusForbidden, rec.Code)
+		require.Equal(t, "permission_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
+		require.Contains(t, rec.Body.String(), "This group does not allow /v1/messages dispatch")
+	})
+
+	t.Run("grok_group_without_dispatch_flag_reaches_gateway_dependencies", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"grok-4.3","messages":[{"role":"user","content":"hi"}]}`))
+		groupID := int64(4102)
+		c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
+			ID:      5102,
+			GroupID: &groupID,
+			User:    &service.User{ID: 6102},
+			Group: &service.Group{
+				ID:                    groupID,
+				Platform:              service.PlatformGrok,
+				AllowMessagesDispatch: false,
+			},
+		})
+		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 6102, Concurrency: 1})
+
+		h := &OpenAIGatewayHandler{}
+		h.Messages(c)
+
+		require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+		require.Equal(t, "api_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
+		require.NotContains(t, rec.Body.String(), "This group does not allow /v1/messages dispatch")
 	})
 }
 
@@ -1371,6 +1405,7 @@ func TestOpenAIResponsesWebSocket_FailoverOnUpstreamUsageLimitEvent(t *testing.T
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 
 	cache := &concurrencyCacheMock{
@@ -1551,6 +1586,7 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 		billingCacheSvc,
 		nil,
 		&service.DeferredService{},
+		nil,
 		nil,
 		nil,
 		channelSvc,

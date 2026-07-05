@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"reflect"
 	"regexp"
 	"strings"
 
@@ -53,22 +52,6 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func semanticErrorRulesToDTO(rules []service.SemanticErrorRule) []dto.SemanticErrorRule {
-	out := make([]dto.SemanticErrorRule, 0, len(rules))
-	for _, rule := range rules {
-		out = append(out, dto.SemanticErrorRule{
-			Enabled:       rule.Enabled,
-			Name:          rule.Name,
-			Platforms:     append([]string(nil), rule.Platforms...),
-			MatchType:     rule.MatchType,
-			Pattern:       rule.Pattern,
-			CustomMessage: rule.CustomMessage,
-			Priority:      rule.Priority,
-		})
-	}
-	return out
 }
 
 // SettingHandler 系统设置处理器
@@ -244,15 +227,6 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		CustomEndpoints:                        dto.ParseCustomEndpoints(settings.CustomEndpoints),
 		DefaultConcurrency:                     settings.DefaultConcurrency,
 		DefaultBalance:                         settings.DefaultBalance,
-		DailyCheckinEnabled:                    settings.DailyCheckinEnabled,
-		DailyCheckinRewardMode:                 settings.DailyCheckinRewardMode,
-		DailyCheckinRewardAmount:               settings.DailyCheckinRewardAmount,
-		DailyCheckinRewardMin:                  settings.DailyCheckinRewardMin,
-		DailyCheckinRewardMax:                  settings.DailyCheckinRewardMax,
-		DailyCheckinPrizes:                     settings.DailyCheckinPrizes,
-		DailyCheckinUnpaidFullDays:             settings.DailyCheckinUnpaidFullDays,
-		DailyCheckinUnpaidDecayRules:           settings.DailyCheckinUnpaidDecayRules,
-		DailyCheckinLinuxDoExemptEnabled:       settings.DailyCheckinLinuxDoExemptEnabled,
 		RiskControlEnabled:                     settings.RiskControlEnabled,
 		CyberSessionBlockEnabled:               settings.CyberSessionBlockEnabled,
 		CyberSessionBlockTTLSeconds:            settings.CyberSessionBlockTTLSeconds,
@@ -285,15 +259,15 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ClaudeOAuthSystemPromptBlocks:          settings.ClaudeOAuthSystemPromptBlocks,
 		EnableAnthropicCacheTTL1hInjection:     settings.EnableAnthropicCacheTTL1hInjection,
 		RewriteMessageCacheControl:             settings.RewriteMessageCacheControl,
+		EnableClientDatelineNormalization:      settings.EnableClientDatelineNormalization,
 		AntigravityUserAgentVersion:            settings.AntigravityUserAgentVersion,
-		PreResponseStreamKeepaliveEnabled:      settings.PreResponseStreamKeepaliveEnabled,
-		PreResponseStreamKeepaliveInitialDelay: settings.PreResponseStreamKeepaliveInitialDelay,
-		SemanticErrorDetectionEnabled:          settings.SemanticErrorDetectionEnabled,
-		SemanticErrorMatchMaxChars:             settings.SemanticErrorMatchMaxChars,
-		SemanticErrorRules:                     semanticErrorRulesToDTO(settings.SemanticErrorRules),
 		OpenAICodexUserAgent:                   settings.OpenAICodexUserAgent,
-		OpenAIAllowClaudeCodeCodexPlugin:       settings.OpenAIAllowClaudeCodeCodexPlugin,
-		ScheduledTestDefaultPrompt:             settings.ScheduledTestDefaultPrompt,
+		MinCodexVersion:                        settings.MinCodexVersion,
+		MaxCodexVersion:                        settings.MaxCodexVersion,
+		CodexCLIOnlyBlacklist:                  settings.CodexCLIOnlyBlacklist,
+		CodexCLIOnlyWhitelist:                  settings.CodexCLIOnlyWhitelist,
+		CodexCLIOnlyAllowAppServerClients:      settings.CodexCLIOnlyAllowAppServerClients,
+		CodexCLIOnlyEngineFingerprintSignals:   settings.CodexCLIOnlyEngineFingerprintSignals,
 		WebSearchEmulationEnabled:              settings.WebSearchEmulationEnabled,
 		PaymentVisibleMethodAlipaySource:       settings.PaymentVisibleMethodAlipaySource,
 		PaymentVisibleMethodWxpaySource:        settings.PaymentVisibleMethodWxpaySource,
@@ -315,7 +289,6 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		PaymentEnabledTypes:                    paymentCfg.EnabledTypes,
 		PaymentBalanceDisabled:                 paymentCfg.BalanceDisabled,
 		PaymentBalanceRechargeMultiplier:       paymentCfg.BalanceRechargeMultiplier,
-		PaymentBalanceRechargeBonusRules:       paymentCfg.BalanceRechargeBonusRules,
 		PaymentRechargeFeeRate:                 paymentCfg.RechargeFeeRate,
 		PaymentLoadBalanceStrat:                paymentCfg.LoadBalanceStrategy,
 		PaymentProductNamePrefix:               paymentCfg.ProductNamePrefix,
@@ -333,9 +306,6 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
-		ModelMarketplaceEnabled:  settings.ModelMarketplaceEnabled,
-		ModelMarketplaceIntro:    settings.ModelMarketplaceIntro,
-		ModelMarketplaceGroupIDs: settings.ModelMarketplaceGroupIDs,
 
 		AffiliateEnabled: settings.AffiliateEnabled,
 
@@ -551,15 +521,6 @@ type UpdateSettingsRequest struct {
 	// 默认配置
 	DefaultConcurrency                        int                               `json:"default_concurrency"`
 	DefaultBalance                            float64                           `json:"default_balance"`
-	DailyCheckinEnabled                       bool                              `json:"daily_checkin_enabled"`
-	DailyCheckinRewardMode                    string                            `json:"daily_checkin_reward_mode"`
-	DailyCheckinRewardAmount                  float64                           `json:"daily_checkin_reward_amount"`
-	DailyCheckinRewardMin                     float64                           `json:"daily_checkin_reward_min"`
-	DailyCheckinRewardMax                     float64                           `json:"daily_checkin_reward_max"`
-	DailyCheckinPrizes                        []service.DailyCheckinPrizeConfig `json:"daily_checkin_prizes"`
-	DailyCheckinUnpaidFullDays                int                               `json:"daily_checkin_unpaid_full_days"`
-	DailyCheckinUnpaidDecayRules              []service.DailyCheckinDecayRule   `json:"daily_checkin_unpaid_decay_rules"`
-	DailyCheckinLinuxDoExemptEnabled          bool                              `json:"daily_checkin_linuxdo_exempt_enabled"`
 	AffiliateRebateRate                       *float64                          `json:"affiliate_rebate_rate"`
 	AffiliateRebateFreezeHours                *int                              `json:"affiliate_rebate_freeze_hours"`
 	AffiliateRebateDurationDays               *int                              `json:"affiliate_rebate_duration_days"`
@@ -630,23 +591,25 @@ type UpdateSettingsRequest struct {
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
 
 	// Gateway forwarding behavior
-	EnableFingerprintUnification           *bool                        `json:"enable_fingerprint_unification"`
-	EnableMetadataPassthrough              *bool                        `json:"enable_metadata_passthrough"`
-	EnableCCHSigning                       *bool                        `json:"enable_cch_signing"`
-	EnableClaudeOAuthSystemPromptInjection *bool                        `json:"enable_claude_oauth_system_prompt_injection"`
-	ClaudeOAuthSystemPrompt                *string                      `json:"claude_oauth_system_prompt"`
-	ClaudeOAuthSystemPromptBlocks          *string                      `json:"claude_oauth_system_prompt_blocks"`
-	EnableAnthropicCacheTTL1hInjection     *bool                        `json:"enable_anthropic_cache_ttl_1h_injection"`
-	RewriteMessageCacheControl             *bool                        `json:"rewrite_message_cache_control"`
-	AntigravityUserAgentVersion            *string                      `json:"antigravity_user_agent_version"`
-	PreResponseStreamKeepaliveEnabled      *bool                        `json:"pre_response_stream_keepalive_enabled"`
-	PreResponseStreamKeepaliveInitialDelay *int                         `json:"pre_response_stream_keepalive_initial_delay"`
-	SemanticErrorDetectionEnabled          *bool                        `json:"semantic_error_detection_enabled"`
-	SemanticErrorMatchMaxChars             *int                         `json:"semantic_error_match_max_chars"`
-	SemanticErrorRules                     *[]service.SemanticErrorRule `json:"semantic_error_rules"`
-	OpenAICodexUserAgent                   *string                      `json:"openai_codex_user_agent"`
-	OpenAIAllowClaudeCodeCodexPlugin       *bool                        `json:"openai_allow_claude_code_codex_plugin"`
-	ScheduledTestDefaultPrompt             *string                      `json:"scheduled_test_default_prompt"`
+	EnableFingerprintUnification           *bool   `json:"enable_fingerprint_unification"`
+	EnableMetadataPassthrough              *bool   `json:"enable_metadata_passthrough"`
+	EnableCCHSigning                       *bool   `json:"enable_cch_signing"`
+	EnableClaudeOAuthSystemPromptInjection *bool   `json:"enable_claude_oauth_system_prompt_injection"`
+	ClaudeOAuthSystemPrompt                *string `json:"claude_oauth_system_prompt"`
+	ClaudeOAuthSystemPromptBlocks          *string `json:"claude_oauth_system_prompt_blocks"`
+	EnableAnthropicCacheTTL1hInjection     *bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
+	RewriteMessageCacheControl             *bool   `json:"rewrite_message_cache_control"`
+	EnableClientDatelineNormalization      *bool   `json:"enable_client_dateline_normalization"`
+	AntigravityUserAgentVersion            *string `json:"antigravity_user_agent_version"`
+	OpenAICodexUserAgent                   *string `json:"openai_codex_user_agent"`
+
+	// codex_cli_only 加固（global-only）
+	MinCodexVersion                      string `json:"min_codex_version"`
+	MaxCodexVersion                      string `json:"max_codex_version"`
+	CodexCLIOnlyBlacklist                string `json:"codex_cli_only_blacklist"`
+	CodexCLIOnlyWhitelist                string `json:"codex_cli_only_whitelist"`
+	CodexCLIOnlyAllowAppServerClients    *bool  `json:"codex_cli_only_allow_app_server_clients"`
+	CodexCLIOnlyEngineFingerprintSignals string `json:"codex_cli_only_engine_fingerprint_signals"`
 
 	// Payment visible method routing
 	PaymentVisibleMethodAlipaySource  *string `json:"payment_visible_method_alipay_source"`
@@ -666,22 +629,21 @@ type UpdateSettingsRequest struct {
 	AccountQuotaNotifyEmails        *[]dto.NotifyEmailEntry `json:"account_quota_notify_emails"`
 
 	// Payment configuration (integrated into settings, full replace)
-	PaymentEnabled                   *bool                       `json:"payment_enabled"`
-	PaymentMinAmount                 *float64                    `json:"payment_min_amount"`
-	PaymentMaxAmount                 *float64                    `json:"payment_max_amount"`
-	PaymentDailyLimit                *float64                    `json:"payment_daily_limit"`
-	PaymentOrderTimeoutMin           *int                        `json:"payment_order_timeout_minutes"`
-	PaymentMaxPendingOrders          *int                        `json:"payment_max_pending_orders"`
-	PaymentEnabledTypes              []string                    `json:"payment_enabled_types"`
-	PaymentBalanceDisabled           *bool                       `json:"payment_balance_disabled"`
-	PaymentBalanceRechargeMultiplier *float64                    `json:"payment_balance_recharge_multiplier"`
-	PaymentBalanceRechargeBonusRules *[]service.PaymentBonusRule `json:"payment_balance_recharge_bonus_rules"`
-	PaymentRechargeFeeRate           *float64                    `json:"payment_recharge_fee_rate"`
-	PaymentLoadBalanceStrat          *string                     `json:"payment_load_balance_strategy"`
-	PaymentProductNamePrefix         *string                     `json:"payment_product_name_prefix"`
-	PaymentProductNameSuffix         *string                     `json:"payment_product_name_suffix"`
-	PaymentHelpImageURL              *string                     `json:"payment_help_image_url"`
-	PaymentHelpText                  *string                     `json:"payment_help_text"`
+	PaymentEnabled                   *bool    `json:"payment_enabled"`
+	PaymentMinAmount                 *float64 `json:"payment_min_amount"`
+	PaymentMaxAmount                 *float64 `json:"payment_max_amount"`
+	PaymentDailyLimit                *float64 `json:"payment_daily_limit"`
+	PaymentOrderTimeoutMin           *int     `json:"payment_order_timeout_minutes"`
+	PaymentMaxPendingOrders          *int     `json:"payment_max_pending_orders"`
+	PaymentEnabledTypes              []string `json:"payment_enabled_types"`
+	PaymentBalanceDisabled           *bool    `json:"payment_balance_disabled"`
+	PaymentBalanceRechargeMultiplier *float64 `json:"payment_balance_recharge_multiplier"`
+	PaymentRechargeFeeRate           *float64 `json:"payment_recharge_fee_rate"`
+	PaymentLoadBalanceStrat          *string  `json:"payment_load_balance_strategy"`
+	PaymentProductNamePrefix         *string  `json:"payment_product_name_prefix"`
+	PaymentProductNameSuffix         *string  `json:"payment_product_name_suffix"`
+	PaymentHelpImageURL              *string  `json:"payment_help_image_url"`
+	PaymentHelpText                  *string  `json:"payment_help_text"`
 
 	// Cancel rate limit
 	PaymentCancelRateLimitEnabled *bool   `json:"payment_cancel_rate_limit_enabled"`
@@ -699,11 +661,6 @@ type UpdateSettingsRequest struct {
 
 	// Available Channels feature switch (user-facing)
 	AvailableChannelsEnabled *bool `json:"available_channels_enabled"`
-
-	// Model Marketplace feature switch (public)
-	ModelMarketplaceEnabled  *bool    `json:"model_marketplace_enabled"`
-	ModelMarketplaceIntro    *string  `json:"model_marketplace_intro"`
-	ModelMarketplaceGroupIDs *[]int64 `json:"model_marketplace_group_ids"`
 
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled *bool `json:"affiliate_enabled"`
@@ -1523,43 +1480,40 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		}
 	}
 
+	// codex_cli_only 加固：最低/最高 Codex 版本（空=禁用，或合法 semver；max>=min）
+	if req.MinCodexVersion != "" && !semverPattern.MatchString(req.MinCodexVersion) {
+		response.Error(c, http.StatusBadRequest, "min_codex_version must be empty or a valid semver (e.g. 0.141.0)")
+		return
+	}
+	if req.MaxCodexVersion != "" && !semverPattern.MatchString(req.MaxCodexVersion) {
+		response.Error(c, http.StatusBadRequest, "max_codex_version must be empty or a valid semver (e.g. 0.200.0)")
+		return
+	}
+	if req.MinCodexVersion != "" && req.MaxCodexVersion != "" && service.CompareVersions(req.MaxCodexVersion, req.MinCodexVersion) < 0 {
+		response.Error(c, http.StatusBadRequest, "max_codex_version must be greater than or equal to min_codex_version")
+		return
+	}
+	// codex_cli_only 黑/白名单：非空须为合法 []AllowedClientEntry JSON。
+	// 黑名单 OR 宽 deny（允许 originator-only）；白名单双因子 AND，额外要求每条可命中（非空 originator + ua_contains）。
+	if err := service.ValidateCodexClientEntriesJSON(req.CodexCLIOnlyBlacklist); err != nil {
+		response.Error(c, http.StatusBadRequest, "codex_cli_only_blacklist "+err.Error())
+		return
+	}
+	if err := service.ValidateCodexWhitelistEntriesJSON(req.CodexCLIOnlyWhitelist); err != nil {
+		response.Error(c, http.StatusBadRequest, "codex_cli_only_whitelist "+err.Error())
+		return
+	}
+	if err := service.ValidateEngineFingerprintSignalsJSON(req.CodexCLIOnlyEngineFingerprintSignals); err != nil {
+		response.Error(c, http.StatusBadRequest, "codex_cli_only_engine_fingerprint_signals "+err.Error())
+		return
+	}
+
 	// 交叉验证：如果同时设置了最低和最高版本号，最高版本号必须 >= 最低版本号
 	if req.MinClaudeCodeVersion != "" && req.MaxClaudeCodeVersion != "" {
 		if service.CompareVersions(req.MaxClaudeCodeVersion, req.MinClaudeCodeVersion) < 0 {
 			response.Error(c, http.StatusBadRequest, "max_claude_code_version must be greater than or equal to min_claude_code_version")
 			return
 		}
-	}
-	req.DailyCheckinRewardMode = strings.ToLower(strings.TrimSpace(req.DailyCheckinRewardMode))
-	if req.DailyCheckinRewardMode == "" {
-		req.DailyCheckinRewardMode = "fixed"
-	}
-	if req.DailyCheckinRewardMode != "fixed" && req.DailyCheckinRewardMode != "range" {
-		response.Error(c, http.StatusBadRequest, "daily_checkin_reward_mode must be fixed or range")
-		return
-	}
-	if req.DailyCheckinRewardAmount < 0 || req.DailyCheckinRewardMin < 0 || req.DailyCheckinRewardMax < 0 {
-		response.Error(c, http.StatusBadRequest, "daily check-in reward values must be greater than or equal to 0")
-		return
-	}
-	hasDailyCheckinPrizeConfigs := len(req.DailyCheckinPrizes) > 0
-	if req.DailyCheckinRewardMode == "fixed" && req.DailyCheckinEnabled && !hasDailyCheckinPrizeConfigs && req.DailyCheckinRewardAmount <= 0 {
-		response.Error(c, http.StatusBadRequest, "daily_checkin_reward_amount must be greater than 0 when daily check-in is enabled")
-		return
-	}
-	if req.DailyCheckinRewardMode == "range" {
-		if req.DailyCheckinRewardMax < req.DailyCheckinRewardMin {
-			response.Error(c, http.StatusBadRequest, "daily_checkin_reward_max must be greater than or equal to daily_checkin_reward_min")
-			return
-		}
-		if req.DailyCheckinEnabled && !hasDailyCheckinPrizeConfigs && req.DailyCheckinRewardMax <= 0 {
-			response.Error(c, http.StatusBadRequest, "daily_checkin_reward_max must be greater than 0 when daily check-in is enabled")
-			return
-		}
-	}
-	if err := service.ValidateDailyCheckinPrizeSettings(req.DailyCheckinPrizes, req.DailyCheckinEnabled); err != nil {
-		response.ErrorFrom(c, err)
-		return
 	}
 
 	// cyber 会话屏蔽 TTL 校验：提供时必须 > 0
@@ -1684,15 +1638,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CustomEndpoints:                        customEndpointsJSON,
 		DefaultConcurrency:                     req.DefaultConcurrency,
 		DefaultBalance:                         req.DefaultBalance,
-		DailyCheckinEnabled:                    req.DailyCheckinEnabled,
-		DailyCheckinRewardMode:                 req.DailyCheckinRewardMode,
-		DailyCheckinRewardAmount:               req.DailyCheckinRewardAmount,
-		DailyCheckinRewardMin:                  req.DailyCheckinRewardMin,
-		DailyCheckinRewardMax:                  req.DailyCheckinRewardMax,
-		DailyCheckinPrizes:                     req.DailyCheckinPrizes,
-		DailyCheckinUnpaidFullDays:             req.DailyCheckinUnpaidFullDays,
-		DailyCheckinUnpaidDecayRules:           req.DailyCheckinUnpaidDecayRules,
-		DailyCheckinLinuxDoExemptEnabled:       req.DailyCheckinLinuxDoExemptEnabled,
 		AffiliateRebateRate:                    affiliateRebateRate,
 		AffiliateRebateFreezeHours:             affiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            affiliateRebateDurationDays,
@@ -1788,41 +1733,17 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.RewriteMessageCacheControl
 		}(),
+		EnableClientDatelineNormalization: func() bool {
+			if req.EnableClientDatelineNormalization != nil {
+				return *req.EnableClientDatelineNormalization
+			}
+			return previousSettings.EnableClientDatelineNormalization
+		}(),
 		AntigravityUserAgentVersion: func() string {
 			if req.AntigravityUserAgentVersion != nil {
 				return *req.AntigravityUserAgentVersion
 			}
 			return previousSettings.AntigravityUserAgentVersion
-		}(),
-		PreResponseStreamKeepaliveEnabled: func() bool {
-			if req.PreResponseStreamKeepaliveEnabled != nil {
-				return *req.PreResponseStreamKeepaliveEnabled
-			}
-			return previousSettings.PreResponseStreamKeepaliveEnabled
-		}(),
-		PreResponseStreamKeepaliveInitialDelay: func() int {
-			if req.PreResponseStreamKeepaliveInitialDelay != nil {
-				return *req.PreResponseStreamKeepaliveInitialDelay
-			}
-			return previousSettings.PreResponseStreamKeepaliveInitialDelay
-		}(),
-		SemanticErrorDetectionEnabled: func() bool {
-			if req.SemanticErrorDetectionEnabled != nil {
-				return *req.SemanticErrorDetectionEnabled
-			}
-			return previousSettings.SemanticErrorDetectionEnabled
-		}(),
-		SemanticErrorMatchMaxChars: func() int {
-			if req.SemanticErrorMatchMaxChars != nil {
-				return *req.SemanticErrorMatchMaxChars
-			}
-			return previousSettings.SemanticErrorMatchMaxChars
-		}(),
-		SemanticErrorRules: func() []service.SemanticErrorRule {
-			if req.SemanticErrorRules != nil {
-				return *req.SemanticErrorRules
-			}
-			return previousSettings.SemanticErrorRules
 		}(),
 		OpenAICodexUserAgent: func() string {
 			if req.OpenAICodexUserAgent != nil {
@@ -1830,18 +1751,17 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAICodexUserAgent
 		}(),
-		OpenAIAllowClaudeCodeCodexPlugin: func() bool {
-			if req.OpenAIAllowClaudeCodeCodexPlugin != nil {
-				return *req.OpenAIAllowClaudeCodeCodexPlugin
+		MinCodexVersion:       strings.TrimSpace(req.MinCodexVersion),
+		MaxCodexVersion:       strings.TrimSpace(req.MaxCodexVersion),
+		CodexCLIOnlyBlacklist: strings.TrimSpace(req.CodexCLIOnlyBlacklist),
+		CodexCLIOnlyWhitelist: strings.TrimSpace(req.CodexCLIOnlyWhitelist),
+		CodexCLIOnlyAllowAppServerClients: func() bool {
+			if req.CodexCLIOnlyAllowAppServerClients != nil {
+				return *req.CodexCLIOnlyAllowAppServerClients
 			}
-			return previousSettings.OpenAIAllowClaudeCodeCodexPlugin
+			return previousSettings.CodexCLIOnlyAllowAppServerClients
 		}(),
-		ScheduledTestDefaultPrompt: func() string {
-			if req.ScheduledTestDefaultPrompt != nil {
-				return *req.ScheduledTestDefaultPrompt
-			}
-			return previousSettings.ScheduledTestDefaultPrompt
-		}(),
+		CodexCLIOnlyEngineFingerprintSignals: strings.TrimSpace(req.CodexCLIOnlyEngineFingerprintSignals),
 		PaymentVisibleMethodAlipaySource: func() string {
 			if req.PaymentVisibleMethodAlipaySource != nil {
 				return strings.TrimSpace(*req.PaymentVisibleMethodAlipaySource)
@@ -1925,24 +1845,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.AvailableChannelsEnabled
 			}
 			return previousSettings.AvailableChannelsEnabled
-		}(),
-		ModelMarketplaceEnabled: func() bool {
-			if req.ModelMarketplaceEnabled != nil {
-				return *req.ModelMarketplaceEnabled
-			}
-			return previousSettings.ModelMarketplaceEnabled
-		}(),
-		ModelMarketplaceIntro: func() string {
-			if req.ModelMarketplaceIntro != nil {
-				return strings.TrimSpace(*req.ModelMarketplaceIntro)
-			}
-			return previousSettings.ModelMarketplaceIntro
-		}(),
-		ModelMarketplaceGroupIDs: func() []int64 {
-			if req.ModelMarketplaceGroupIDs != nil {
-				return normalizePositiveInt64IDs(*req.ModelMarketplaceGroupIDs)
-			}
-			return previousSettings.ModelMarketplaceGroupIDs
 		}(),
 		AffiliateEnabled: func() bool {
 			if req.AffiliateEnabled != nil {
@@ -2057,7 +1959,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			EnabledTypes:              req.PaymentEnabledTypes,
 			BalanceDisabled:           req.PaymentBalanceDisabled,
 			BalanceRechargeMultiplier: req.PaymentBalanceRechargeMultiplier,
-			BalanceRechargeBonusRules: req.PaymentBalanceRechargeBonusRules,
 			RechargeFeeRate:           req.PaymentRechargeFeeRate,
 			LoadBalanceStrategy:       req.PaymentLoadBalanceStrat,
 			ProductNamePrefix:         req.PaymentProductNamePrefix,
@@ -2221,15 +2122,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CustomEndpoints:                        dto.ParseCustomEndpoints(updatedSettings.CustomEndpoints),
 		DefaultConcurrency:                     updatedSettings.DefaultConcurrency,
 		DefaultBalance:                         updatedSettings.DefaultBalance,
-		DailyCheckinEnabled:                    updatedSettings.DailyCheckinEnabled,
-		DailyCheckinRewardMode:                 updatedSettings.DailyCheckinRewardMode,
-		DailyCheckinRewardAmount:               updatedSettings.DailyCheckinRewardAmount,
-		DailyCheckinRewardMin:                  updatedSettings.DailyCheckinRewardMin,
-		DailyCheckinRewardMax:                  updatedSettings.DailyCheckinRewardMax,
-		DailyCheckinPrizes:                     updatedSettings.DailyCheckinPrizes,
-		DailyCheckinUnpaidFullDays:             updatedSettings.DailyCheckinUnpaidFullDays,
-		DailyCheckinUnpaidDecayRules:           updatedSettings.DailyCheckinUnpaidDecayRules,
-		DailyCheckinLinuxDoExemptEnabled:       updatedSettings.DailyCheckinLinuxDoExemptEnabled,
 		AffiliateRebateRate:                    updatedSettings.AffiliateRebateRate,
 		AffiliateRebateFreezeHours:             updatedSettings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            updatedSettings.AffiliateRebateDurationDays,
@@ -2259,15 +2151,15 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ClaudeOAuthSystemPromptBlocks:          updatedSettings.ClaudeOAuthSystemPromptBlocks,
 		EnableAnthropicCacheTTL1hInjection:     updatedSettings.EnableAnthropicCacheTTL1hInjection,
 		RewriteMessageCacheControl:             updatedSettings.RewriteMessageCacheControl,
+		EnableClientDatelineNormalization:      updatedSettings.EnableClientDatelineNormalization,
 		AntigravityUserAgentVersion:            updatedSettings.AntigravityUserAgentVersion,
-		PreResponseStreamKeepaliveEnabled:      updatedSettings.PreResponseStreamKeepaliveEnabled,
-		PreResponseStreamKeepaliveInitialDelay: updatedSettings.PreResponseStreamKeepaliveInitialDelay,
-		SemanticErrorDetectionEnabled:          updatedSettings.SemanticErrorDetectionEnabled,
-		SemanticErrorMatchMaxChars:             updatedSettings.SemanticErrorMatchMaxChars,
-		SemanticErrorRules:                     semanticErrorRulesToDTO(updatedSettings.SemanticErrorRules),
 		OpenAICodexUserAgent:                   updatedSettings.OpenAICodexUserAgent,
-		OpenAIAllowClaudeCodeCodexPlugin:       updatedSettings.OpenAIAllowClaudeCodeCodexPlugin,
-		ScheduledTestDefaultPrompt:             updatedSettings.ScheduledTestDefaultPrompt,
+		MinCodexVersion:                        updatedSettings.MinCodexVersion,
+		MaxCodexVersion:                        updatedSettings.MaxCodexVersion,
+		CodexCLIOnlyBlacklist:                  updatedSettings.CodexCLIOnlyBlacklist,
+		CodexCLIOnlyWhitelist:                  updatedSettings.CodexCLIOnlyWhitelist,
+		CodexCLIOnlyAllowAppServerClients:      updatedSettings.CodexCLIOnlyAllowAppServerClients,
+		CodexCLIOnlyEngineFingerprintSignals:   updatedSettings.CodexCLIOnlyEngineFingerprintSignals,
 		PaymentVisibleMethodAlipaySource:       updatedSettings.PaymentVisibleMethodAlipaySource,
 		PaymentVisibleMethodWxpaySource:        updatedSettings.PaymentVisibleMethodWxpaySource,
 		PaymentVisibleMethodAlipayEnabled:      updatedSettings.PaymentVisibleMethodAlipayEnabled,
@@ -2288,7 +2180,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentEnabledTypes:                    updatedPaymentCfg.EnabledTypes,
 		PaymentBalanceDisabled:                 updatedPaymentCfg.BalanceDisabled,
 		PaymentBalanceRechargeMultiplier:       updatedPaymentCfg.BalanceRechargeMultiplier,
-		PaymentBalanceRechargeBonusRules:       updatedPaymentCfg.BalanceRechargeBonusRules,
 		PaymentRechargeFeeRate:                 updatedPaymentCfg.RechargeFeeRate,
 		PaymentLoadBalanceStrat:                updatedPaymentCfg.LoadBalanceStrategy,
 		PaymentProductNamePrefix:               updatedPaymentCfg.ProductNamePrefix,
@@ -2306,9 +2197,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,
 
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
-		ModelMarketplaceEnabled:  updatedSettings.ModelMarketplaceEnabled,
-		ModelMarketplaceIntro:    updatedSettings.ModelMarketplaceIntro,
-		ModelMarketplaceGroupIDs: updatedSettings.ModelMarketplaceGroupIDs,
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 
@@ -2350,7 +2238,7 @@ func hasPaymentFields(req UpdateSettingsRequest) bool {
 		req.PaymentMaxAmount != nil || req.PaymentDailyLimit != nil ||
 		req.PaymentOrderTimeoutMin != nil || req.PaymentMaxPendingOrders != nil ||
 		req.PaymentEnabledTypes != nil || req.PaymentBalanceDisabled != nil ||
-		req.PaymentBalanceRechargeMultiplier != nil || req.PaymentBalanceRechargeBonusRules != nil || req.PaymentRechargeFeeRate != nil ||
+		req.PaymentBalanceRechargeMultiplier != nil || req.PaymentRechargeFeeRate != nil ||
 		req.PaymentLoadBalanceStrat != nil || req.PaymentProductNamePrefix != nil ||
 		req.PaymentProductNameSuffix != nil || req.PaymentHelpImageURL != nil ||
 		req.PaymentHelpText != nil || req.PaymentCancelRateLimitEnabled != nil ||
@@ -2645,33 +2533,6 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.DefaultBalance != after.DefaultBalance {
 		changed = append(changed, "default_balance")
 	}
-	if before.DailyCheckinEnabled != after.DailyCheckinEnabled {
-		changed = append(changed, "daily_checkin_enabled")
-	}
-	if before.DailyCheckinRewardMode != after.DailyCheckinRewardMode {
-		changed = append(changed, "daily_checkin_reward_mode")
-	}
-	if before.DailyCheckinRewardAmount != after.DailyCheckinRewardAmount {
-		changed = append(changed, "daily_checkin_reward_amount")
-	}
-	if before.DailyCheckinRewardMin != after.DailyCheckinRewardMin {
-		changed = append(changed, "daily_checkin_reward_min")
-	}
-	if before.DailyCheckinRewardMax != after.DailyCheckinRewardMax {
-		changed = append(changed, "daily_checkin_reward_max")
-	}
-	if !reflect.DeepEqual(before.DailyCheckinPrizes, after.DailyCheckinPrizes) {
-		changed = append(changed, "daily_checkin_prizes")
-	}
-	if before.DailyCheckinUnpaidFullDays != after.DailyCheckinUnpaidFullDays {
-		changed = append(changed, "daily_checkin_unpaid_full_days")
-	}
-	if !reflect.DeepEqual(before.DailyCheckinUnpaidDecayRules, after.DailyCheckinUnpaidDecayRules) {
-		changed = append(changed, "daily_checkin_unpaid_decay_rules")
-	}
-	if before.DailyCheckinLinuxDoExemptEnabled != after.DailyCheckinLinuxDoExemptEnabled {
-		changed = append(changed, "daily_checkin_linuxdo_exempt_enabled")
-	}
 	if before.AffiliateRebateRate != after.AffiliateRebateRate {
 		changed = append(changed, "affiliate_rebate_rate")
 	}
@@ -2726,6 +2587,24 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.MaxClaudeCodeVersion != after.MaxClaudeCodeVersion {
 		changed = append(changed, "max_claude_code_version")
 	}
+	if before.MinCodexVersion != after.MinCodexVersion {
+		changed = append(changed, "min_codex_version")
+	}
+	if before.MaxCodexVersion != after.MaxCodexVersion {
+		changed = append(changed, "max_codex_version")
+	}
+	if before.CodexCLIOnlyAllowAppServerClients != after.CodexCLIOnlyAllowAppServerClients {
+		changed = append(changed, "codex_cli_only_allow_app_server_clients")
+	}
+	if before.CodexCLIOnlyEngineFingerprintSignals != after.CodexCLIOnlyEngineFingerprintSignals {
+		changed = append(changed, "codex_cli_only_engine_fingerprint_signals")
+	}
+	if before.CodexCLIOnlyBlacklist != after.CodexCLIOnlyBlacklist {
+		changed = append(changed, "codex_cli_only_blacklist")
+	}
+	if before.CodexCLIOnlyWhitelist != after.CodexCLIOnlyWhitelist {
+		changed = append(changed, "codex_cli_only_whitelist")
+	}
 	if before.AllowUngroupedKeyScheduling != after.AllowUngroupedKeyScheduling {
 		changed = append(changed, "allow_ungrouped_key_scheduling")
 	}
@@ -2774,32 +2653,14 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.RewriteMessageCacheControl != after.RewriteMessageCacheControl {
 		changed = append(changed, "rewrite_message_cache_control")
 	}
+	if before.EnableClientDatelineNormalization != after.EnableClientDatelineNormalization {
+		changed = append(changed, "enable_client_dateline_normalization")
+	}
 	if before.AntigravityUserAgentVersion != after.AntigravityUserAgentVersion {
 		changed = append(changed, "antigravity_user_agent_version")
 	}
-	if before.PreResponseStreamKeepaliveEnabled != after.PreResponseStreamKeepaliveEnabled {
-		changed = append(changed, "pre_response_stream_keepalive_enabled")
-	}
-	if before.PreResponseStreamKeepaliveInitialDelay != after.PreResponseStreamKeepaliveInitialDelay {
-		changed = append(changed, "pre_response_stream_keepalive_initial_delay")
-	}
-	if before.SemanticErrorDetectionEnabled != after.SemanticErrorDetectionEnabled {
-		changed = append(changed, "semantic_error_detection_enabled")
-	}
-	if before.SemanticErrorMatchMaxChars != after.SemanticErrorMatchMaxChars {
-		changed = append(changed, "semantic_error_match_max_chars")
-	}
-	if !equalSemanticErrorRules(before.SemanticErrorRules, after.SemanticErrorRules) {
-		changed = append(changed, "semantic_error_rules")
-	}
 	if before.OpenAICodexUserAgent != after.OpenAICodexUserAgent {
 		changed = append(changed, "openai_codex_user_agent")
-	}
-	if before.OpenAIAllowClaudeCodeCodexPlugin != after.OpenAIAllowClaudeCodeCodexPlugin {
-		changed = append(changed, "openai_allow_claude_code_codex_plugin")
-	}
-	if before.ScheduledTestDefaultPrompt != after.ScheduledTestDefaultPrompt {
-		changed = append(changed, "scheduled_test_default_prompt")
 	}
 	if before.PaymentVisibleMethodAlipaySource != after.PaymentVisibleMethodAlipaySource {
 		changed = append(changed, "payment_visible_method_alipay_source")
@@ -2843,15 +2704,6 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.AvailableChannelsEnabled != after.AvailableChannelsEnabled {
 		changed = append(changed, "available_channels_enabled")
-	}
-	if before.ModelMarketplaceEnabled != after.ModelMarketplaceEnabled {
-		changed = append(changed, "model_marketplace_enabled")
-	}
-	if before.ModelMarketplaceIntro != after.ModelMarketplaceIntro {
-		changed = append(changed, "model_marketplace_intro")
-	}
-	if !equalInt64Slice(before.ModelMarketplaceGroupIDs, after.ModelMarketplaceGroupIDs) {
-		changed = append(changed, "model_marketplace_group_ids")
 	}
 	if before.AffiliateEnabled != after.AffiliateEnabled {
 		changed = append(changed, "affiliate_enabled")
@@ -2946,25 +2798,6 @@ func normalizeOptionalDefaultSubscriptions(input *[]dto.DefaultSubscriptionSetti
 	}
 	normalized := normalizeDefaultSubscriptions(*input)
 	return &normalized
-}
-
-func normalizePositiveInt64IDs(input []int64) []int64 {
-	if len(input) == 0 {
-		return nil
-	}
-	out := make([]int64, 0, len(input))
-	seen := make(map[int64]struct{}, len(input))
-	for _, id := range input {
-		if id <= 0 {
-			continue
-		}
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[id] = struct{}{}
-		out = append(out, id)
-	}
-	return out
 }
 
 func float64ValueOrDefault(value *float64, fallback float64) float64 {
@@ -3082,24 +2915,6 @@ func equalStringSlice(a, b []string) bool {
 	return true
 }
 
-func equalSemanticErrorRules(a, b []service.SemanticErrorRule) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i].Enabled != b[i].Enabled ||
-			a[i].Name != b[i].Name ||
-			a[i].MatchType != b[i].MatchType ||
-			a[i].Pattern != b[i].Pattern ||
-			a[i].CustomMessage != b[i].CustomMessage ||
-			a[i].Priority != b[i].Priority ||
-			!equalStringSlice(a[i].Platforms, b[i].Platforms) {
-			return false
-		}
-	}
-	return true
-}
-
 func equalDefaultSubscriptions(a, b []service.DefaultSubscriptionSetting) bool {
 	if len(a) != len(b) {
 		return false
@@ -3125,18 +2940,6 @@ func equalLoginAgreementDocuments(a, b []service.LoginAgreementDocument) bool {
 }
 
 func equalIntSlice(a, b []int) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
-
-func equalInt64Slice(a, b []int64) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -4009,7 +3812,7 @@ func slotOf(s *service.DefaultPlatformQuotaSetting, win string) *float64 {
 	return nil
 }
 
-// equalPlatformQuotaSettings reports whether two platform-quota maps are identical across all 12 slots.
+// equalPlatformQuotaSettings reports whether two platform-quota maps are identical across all allowed slots.
 func equalPlatformQuotaSettings(before, after map[string]*service.DefaultPlatformQuotaSetting) bool {
 	for _, platform := range service.AllowedQuotaPlatforms {
 		b := before[platform]

@@ -142,27 +142,18 @@ type SystemSettings struct {
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
 
-	DefaultConcurrency               int
-	DefaultBalance                   float64
-	DailyCheckinEnabled              bool
-	DailyCheckinRewardMode           string
-	DailyCheckinRewardAmount         float64
-	DailyCheckinRewardMin            float64
-	DailyCheckinRewardMax            float64
-	DailyCheckinPrizes               []DailyCheckinPrizeConfig
-	DailyCheckinUnpaidFullDays       int
-	DailyCheckinUnpaidDecayRules     []DailyCheckinDecayRule
-	DailyCheckinLinuxDoExemptEnabled bool
-	RiskControlEnabled               bool
-	CyberSessionBlockEnabled         bool
-	CyberSessionBlockTTLSeconds      int
-	AffiliateEnabled                 bool
-	AffiliateRebateRate              float64
-	AffiliateRebateFreezeHours       int
-	AffiliateRebateDurationDays      int
-	AffiliateRebatePerInviteeCap     float64
-	DefaultUserRPMLimit              int
-	DefaultSubscriptions             []DefaultSubscriptionSetting
+	DefaultConcurrency           int
+	DefaultBalance               float64
+	RiskControlEnabled           bool
+	CyberSessionBlockEnabled     bool
+	CyberSessionBlockTTLSeconds  int
+	AffiliateEnabled             bool
+	AffiliateRebateRate          float64
+	AffiliateRebateFreezeHours   int
+	AffiliateRebateDurationDays  int
+	AffiliateRebatePerInviteeCap float64
+	DefaultUserRPMLimit          int
+	DefaultSubscriptions         []DefaultSubscriptionSetting
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
@@ -188,11 +179,6 @@ type SystemSettings struct {
 	// Available Channels feature (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
-	// Model Marketplace feature (public model capability catalog)
-	ModelMarketplaceEnabled  bool    `json:"model_marketplace_enabled"`
-	ModelMarketplaceIntro    string  `json:"model_marketplace_intro"`
-	ModelMarketplaceGroupIDs []int64 `json:"model_marketplace_group_ids"`
-
 	// Claude Code version check
 	MinClaudeCodeVersion string
 	MaxClaudeCodeVersion string
@@ -211,15 +197,19 @@ type SystemSettings struct {
 	ClaudeOAuthSystemPrompt                string // Claude OAuth mimic 路径注入的通用扩展 system prompt；空值使用内置默认
 	ClaudeOAuthSystemPromptBlocks          string // Claude OAuth mimic 路径注入的 system blocks JSON 配置；空值使用内置默认
 	EnableAnthropicCacheTTL1hInjection     bool   // 是否对 Anthropic OAuth/SetupToken 请求体注入 1h cache_control ttl（默认 false）
+	EnableClientDatelineNormalization      bool   // 是否对 Anthropic OAuth/SetupToken 请求体做客户端 dateline 归一化（默认 true）
 	RewriteMessageCacheControl             bool   // 是否改写 messages[*].content[*].cache_control（默认 false）
 	AntigravityUserAgentVersion            string // Antigravity 上游 User-Agent 版本号；空值使用配置/默认值
-	PreResponseStreamKeepaliveEnabled      bool   // 等待上游响应头期间是否提前发送流式心跳
-	PreResponseStreamKeepaliveInitialDelay int    // 首次预响应流式心跳延迟秒数
+	OpenAICodexUserAgent                   string // OpenAI Codex 上游完整 User-Agent；空值使用内置默认
+	MinCodexVersion                        string // codex_cli_only 最低 Codex 引擎版本；空=不检查
+	MaxCodexVersion                        string // codex_cli_only 最高 Codex 引擎版本；空=不检查
+	CodexCLIOnlyBlacklist                  string // codex_cli_only 全局黑名单 JSON（[]AllowedClientEntry，OR deny）
+	CodexCLIOnlyWhitelist                  string // codex_cli_only 全局白名单 JSON（[]AllowedClientEntry，AND allow）
+	CodexCLIOnlyAllowAppServerClients      bool   // codex_cli_only App Server 开关：对未列名客户端开闸（默认 false）
+	CodexCLIOnlyEngineFingerprintSignals   string // codex_cli_only 引擎指纹门信号列表 JSON（[]EngineFingerprintSignal）
 	SemanticErrorDetectionEnabled          bool   // 是否启用 2xx 响应语义错误识别
 	SemanticErrorMatchMaxChars             int    // 响应字符数阈值，超过则不匹配
 	SemanticErrorRules                     []SemanticErrorRule
-	OpenAICodexUserAgent                   string // OpenAI Codex 上游完整 User-Agent；空值使用内置默认
-	OpenAIAllowClaudeCodeCodexPlugin       bool   // 全局开关：是否额外放行 Claude Code 的 Codex 插件（默认 false）
 	ScheduledTestDefaultPrompt             string
 
 	// Web Search Emulation
@@ -247,7 +237,16 @@ type SystemSettings struct {
 	AccountQuotaNotifyEmails  []NotifyEmailEntry
 
 	// 系统全局默认平台配额（key = platform，nil/缺省 = 不限制）
-	DefaultPlatformQuotas map[string]*DefaultPlatformQuotaSetting `json:"default_platform_quotas"`
+	DefaultPlatformQuotas            map[string]*DefaultPlatformQuotaSetting `json:"default_platform_quotas"`
+	DailyCheckinEnabled              bool
+	DailyCheckinRewardMode           string
+	DailyCheckinRewardAmount         float64
+	DailyCheckinRewardMin            float64
+	DailyCheckinRewardMax            float64
+	DailyCheckinPrizes               []DailyCheckinPrizeConfig
+	DailyCheckinUnpaidFullDays       int
+	DailyCheckinUnpaidDecayRules     []DailyCheckinDecayRule
+	DailyCheckinLinuxDoExemptEnabled bool
 
 	// 允许终端用户在用量页查看自己的失败请求
 	AllowUserViewErrorRequests bool
@@ -299,7 +298,6 @@ type PublicSettings struct {
 	TablePageSizeOptions        []int
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
-	DailyCheckinEnabled         bool
 
 	LinuxDoOAuthEnabled      bool
 	DingTalkOAuthEnabled     bool
@@ -327,9 +325,6 @@ type PublicSettings struct {
 	// Available Channels feature (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
-	// Model Marketplace feature (public model capability catalog)
-	ModelMarketplaceEnabled bool `json:"model_marketplace_enabled"`
-
 	// Affiliate (邀请返利) feature toggle
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 
@@ -338,6 +333,8 @@ type PublicSettings struct {
 
 	// 允许终端用户在用量页查看自己的失败请求
 	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
+	DailyCheckinEnabled        bool
+	ModelMarketplaceEnabled    bool
 }
 
 type LoginAgreementDocument struct {
@@ -517,6 +514,23 @@ func DefaultRateLimit429CooldownSettings() *RateLimit429CooldownSettings {
 }
 
 // DefaultBetaPolicySettings 返回默认的 Beta 策略配置
+//
+// context-1m-2025-08-07 的默认策略：
+//   - 仅 claude-sonnet-5 及后续版本（如 claude-sonnet-5-*）在上游默认支持 1M 上下文。
+//   - Sonnet 4.x 及以下、Opus、Haiku 上游都不支持该 beta，透传上去会被上游 400 或降级。
+//   - 因此默认对 sonnet-5* 放行、其余全部过滤，与上游能力保持一致。
+//
+// 白名单需要覆盖每个上游路径的模型 ID 变形：
+//   - 直连 Anthropic API（OAuth mimic / API Key / SetupToken）：模型保持客户端原样
+//     （如 "claude-sonnet-5"、"claude-sonnet-5-YYYYMMDD"、"claude-sonnet-5-thinking"）。
+//   - Vertex AI：normalizeVertexAnthropicModelID 会把 "-YYYYMMDD" 后缀转成 "@YYYYMMDD"
+//     （如 "claude-sonnet-5@YYYYMMDD"）。
+//   - AWS Bedrock：ResolveBedrockModelID 会输出带跨区域前缀的模型 ID
+//     （us./eu./apac./jp./au./us-gov./global. 或无前缀的 "anthropic." 形式）。
+//
+// 白名单只用后缀通配符（matchModelPattern 语义），因此每个路径都需要显式列出前缀。
+// 精确匹配 "claude-sonnet-5" + 后缀 "-*" 与 "@*"，可覆盖直连/Vertex 场景，同时避免误伤
+// 未来可能出现的 "claude-sonnet-50" 或 "claude-sonnet-5.x" 之类的意外命名。
 func DefaultBetaPolicySettings() *BetaPolicySettings {
 	return &BetaPolicySettings{
 		Rules: []BetaPolicyRule{
@@ -527,8 +541,26 @@ func DefaultBetaPolicySettings() *BetaPolicySettings {
 			},
 			{
 				BetaToken: "context-1m-2025-08-07",
-				Action:    BetaPolicyActionFilter,
+				Action:    BetaPolicyActionPass,
 				Scope:     BetaPolicyScopeAll,
+				ModelWhitelist: []string{
+					// 直连 Anthropic API（客户端请求 model 原样）
+					"claude-sonnet-5",
+					"claude-sonnet-5-*",
+					// Vertex AI 走 normalizeVertexAnthropicModelID 后 "@YYYYMMDD" 格式
+					"claude-sonnet-5@*",
+					// AWS Bedrock cross-region inference profile
+					"us.anthropic.claude-sonnet-5*",
+					"eu.anthropic.claude-sonnet-5*",
+					"apac.anthropic.claude-sonnet-5*",
+					"jp.anthropic.claude-sonnet-5*",
+					"au.anthropic.claude-sonnet-5*",
+					"us-gov.anthropic.claude-sonnet-5*",
+					"global.anthropic.claude-sonnet-5*",
+					// AWS Bedrock 无 cross-region 前缀
+					"anthropic.claude-sonnet-5*",
+				},
+				FallbackAction: BetaPolicyActionFilter,
 			},
 		},
 	}
