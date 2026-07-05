@@ -49,6 +49,7 @@ export interface PaymentBonusRule {
 
 export interface MethodLimit {
   currency?: string
+  display_name?: string
   daily_limit: number
   daily_used: number
   daily_remaining: number
