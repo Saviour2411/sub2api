@@ -78,8 +78,12 @@ func NewAccountHandler(
 	scheduledTestSvc *service.ScheduledTestService,
 	sessionLimitCache service.SessionLimitCache,
 	rpmCache service.RPMCache,
-	tokenCacheInvalidator service.TokenCacheInvalidator,
+	tokenCacheInvalidators ...service.TokenCacheInvalidator,
 ) *AccountHandler {
+	var tokenCacheInvalidator service.TokenCacheInvalidator
+	if len(tokenCacheInvalidators) > 0 {
+		tokenCacheInvalidator = tokenCacheInvalidators[0]
+	}
 	return &AccountHandler{
 		adminService:            adminService,
 		oauthService:            oauthService,

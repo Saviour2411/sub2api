@@ -84,8 +84,12 @@ func NewAccountTestService(
 	antigravityGatewayService *AntigravityGatewayService,
 	httpUpstream HTTPUpstream,
 	cfg *config.Config,
-	tlsFPProfileService *TLSFingerprintProfileService,
+	tlsFPProfileServices ...*TLSFingerprintProfileService,
 ) *AccountTestService {
+	var tlsFPProfileService *TLSFingerprintProfileService
+	if len(tlsFPProfileServices) > 0 {
+		tlsFPProfileService = tlsFPProfileServices[0]
+	}
 	return &AccountTestService{
 		accountRepo:               accountRepo,
 		geminiTokenProvider:       geminiTokenProvider,
@@ -205,7 +209,7 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 }
 
 // testClaudeAccountConnection tests an Anthropic Claude account's connection
-func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account *Account, modelID string) error {
+func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account *Account, modelID string, _ ...string) error {
 	ctx := c.Request.Context()
 
 	// Determine the model to use
@@ -321,7 +325,7 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 	}
 
 	// Process SSE stream
-	return s.processClaudeStream(c, resp.Body)
+	return s.processClaudeStream(c, resp.Body, account)
 }
 
 func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Context, ctx context.Context, account *Account, testModelID string) error {
@@ -389,7 +393,7 @@ func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Con
 		return s.sendErrorAndEnd(c, errMsg)
 	}
 
-	return s.processClaudeStream(c, resp.Body)
+	return s.processClaudeStream(c, resp.Body, account)
 }
 
 // testBedrockAccountConnection tests a Bedrock (SigV4 or API Key) account using non-streaming invoke
@@ -535,6 +539,12 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		credentialAccount = resolved
 	}
 
+	// Apply configured scheduled-test default prompt for text probes when the caller did not provide one.
+	textPrompt := strings.TrimSpace(prompt)
+	if textPrompt == "" && s.settingService != nil {
+		textPrompt = s.settingService.GetScheduledTestDefaultPrompt(ctx)
+	}
+
 	// Determine authentication method and API URL
 	var authToken string
 	var apiURL string
@@ -566,7 +576,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
 		}
 		if !openai_compat.ShouldUseResponsesAPI(account.Extra) {
-			return s.testOpenAIChatCompletionsConnection(c, account, testModelID, prompt, normalizedBaseURL, authToken)
+			return s.testOpenAIChatCompletionsConnection(c, account, testModelID, textPrompt, normalizedBaseURL, authToken)
 		}
 		apiURL = buildOpenAIResponsesURL(normalizedBaseURL)
 	} else {
@@ -581,7 +591,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	c.Writer.Flush()
 
 	// Create OpenAI Responses API payload
-	payload := createOpenAITestPayload(testModelID, isOAuth)
+	payload := createOpenAITestPayload(testModelID, isOAuth, textPrompt)
 	payloadBytes, _ := json.Marshal(payload)
 
 	// Send test_start event
@@ -637,7 +647,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	}
 
 	// Process SSE stream
-	return s.processOpenAIStream(c, resp.Body)
+	return s.processOpenAIStream(c, resp.Body, account)
 }
 
 // testGrokAccountConnection tests a Grok OAuth account through xAI's Responses API.
@@ -720,7 +730,7 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok Responses API returned %d: %s", resp.StatusCode, string(body)))
 	}
 
-	return s.processOpenAIStream(c, resp.Body)
+	return s.processOpenAIStream(c, resp.Body, account)
 }
 
 // testOpenAIChatCompletionsConnection tests an OpenAI-compatible APIKey account
@@ -780,7 +790,7 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Chat Completions API (/v1/chat/completions) returned %d: %s", resp.StatusCode, string(body)))
 	}
 
-	return s.processOpenAIChatCompletionsStream(c, resp.Body)
+	return s.processOpenAIChatCompletionsStream(c, resp.Body, account)
 }
 
 // testOpenAICompactConnection probes /responses/compact and persists the
@@ -1257,15 +1267,35 @@ func createGeminiTestPayload(modelID string, prompt string) []byte {
 }
 
 // processGeminiStream processes SSE stream from Gemini API
-func (s *AccountTestService) processGeminiStream(c *gin.Context, body io.Reader) error {
+func (s *AccountTestService) processGeminiStream(c *gin.Context, body io.Reader, opts ...any) error {
 	reader := bufio.NewReader(body)
+	var account *Account
+	semanticCheck := true
+	if len(opts) > 0 {
+		account, _ = opts[0].(*Account)
+	}
+	if len(opts) > 1 {
+		if v, ok := opts[1].(bool); ok {
+			semanticCheck = v
+		}
+	}
+	var textBuilder strings.Builder
+	imageSeen := false
+	finish := func() error {
+		if semanticCheck && !imageSeen && account != nil && s.settingService != nil {
+			if match := s.settingService.MatchSemanticError(c.Request.Context(), account.Platform, []byte(textBuilder.String())); match != nil {
+				return s.sendErrorAndEnd(c, formatAccountTestSemanticError(match))
+			}
+		}
+		s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+		return nil
+	}
 
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			if err == io.EOF {
-				s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-				return nil
+				return finish()
 			}
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Stream read error: %s", err.Error()))
 		}
@@ -1277,8 +1307,7 @@ func (s *AccountTestService) processGeminiStream(c *gin.Context, body io.Reader)
 
 		jsonStr := strings.TrimPrefix(line, "data: ")
 		if jsonStr == "[DONE]" {
-			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-			return nil
+			return s.finishAccountTestStream(c, account, textBuilder.String())
 		}
 
 		var data map[string]any
@@ -1300,12 +1329,14 @@ func (s *AccountTestService) processGeminiStream(c *gin.Context, body io.Reader)
 						for _, part := range parts {
 							if partMap, ok := part.(map[string]any); ok {
 								if text, ok := partMap["text"].(string); ok && text != "" {
+									_, _ = textBuilder.WriteString(text)
 									s.sendEvent(c, TestEvent{Type: "content", Text: text})
 								}
 								if inlineData, ok := partMap["inlineData"].(map[string]any); ok {
 									mimeType, _ := inlineData["mimeType"].(string)
 									data, _ := inlineData["data"].(string)
 									if strings.HasPrefix(strings.ToLower(mimeType), "image/") && data != "" {
+										imageSeen = true
 										s.sendEvent(c, TestEvent{
 											Type:     "image",
 											ImageURL: fmt.Sprintf("data:%s;base64,%s", mimeType, data),
@@ -1320,8 +1351,7 @@ func (s *AccountTestService) processGeminiStream(c *gin.Context, body io.Reader)
 
 				// Check for completion after extracting content
 				if finishReason, ok := candidate["finishReason"].(string); ok && finishReason != "" {
-					s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-					return nil
+					return finish()
 				}
 			}
 		}
@@ -1393,16 +1423,30 @@ func createOpenAIChatCompletionsTestPayload(modelID string, prompt string) map[s
 	}
 }
 
+func (s *AccountTestService) finishAccountTestStream(c *gin.Context, account *Account, text string) error {
+	if account != nil && s.settingService != nil {
+		if match := s.settingService.MatchSemanticError(c.Request.Context(), account.Platform, []byte(text)); match != nil {
+			return s.sendErrorAndEnd(c, formatAccountTestSemanticError(match))
+		}
+	}
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
+}
+
 // processClaudeStream processes the SSE stream from Claude API
-func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader) error {
+func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader, accounts ...*Account) error {
 	reader := bufio.NewReader(body)
+	var account *Account
+	if len(accounts) > 0 {
+		account = accounts[0]
+	}
+	var textBuilder strings.Builder
 
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			if err == io.EOF {
-				s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-				return nil
+				return s.finishAccountTestStream(c, account, textBuilder.String())
 			}
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Stream read error: %s", err.Error()))
 		}
@@ -1414,8 +1458,7 @@ func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader)
 
 		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
 		if jsonStr == "[DONE]" {
-			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-			return nil
+			return s.finishAccountTestStream(c, account, textBuilder.String())
 		}
 
 		var data map[string]any
@@ -1429,12 +1472,12 @@ func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader)
 		case "content_block_delta":
 			if delta, ok := data["delta"].(map[string]any); ok {
 				if text, ok := delta["text"].(string); ok {
+					_, _ = textBuilder.WriteString(text)
 					s.sendEvent(c, TestEvent{Type: "content", Text: text})
 				}
 			}
 		case "message_stop":
-			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-			return nil
+			return s.finishAccountTestStream(c, account, textBuilder.String())
 		case "error":
 			errorMsg := "Unknown error"
 			if errData, ok := data["error"].(map[string]any); ok {
@@ -1449,8 +1492,13 @@ func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader)
 
 // processOpenAIChatCompletionsStream processes SSE chunks from the
 // OpenAI-compatible Chat Completions API.
-func (s *AccountTestService) processOpenAIChatCompletionsStream(c *gin.Context, body io.Reader) error {
+func (s *AccountTestService) processOpenAIChatCompletionsStream(c *gin.Context, body io.Reader, accounts ...*Account) error {
 	reader := bufio.NewReader(body)
+	var account *Account
+	if len(accounts) > 0 {
+		account = accounts[0]
+	}
+	var textBuilder strings.Builder
 	seenJSON := false
 	seenFinish := false
 
@@ -1460,8 +1508,7 @@ func (s *AccountTestService) processOpenAIChatCompletionsStream(c *gin.Context, 
 			if err == io.EOF {
 				if seenFinish {
 					s.sendEvent(c, TestEvent{Type: "status", Text: "已通过 /v1/chat/completions 验证"})
-					s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-					return nil
+					return s.finishAccountTestStream(c, account, textBuilder.String())
 				}
 				if seenJSON {
 					return s.sendErrorAndEnd(c, "Chat Completions stream from /v1/chat/completions ended before [DONE]")
@@ -1479,8 +1526,7 @@ func (s *AccountTestService) processOpenAIChatCompletionsStream(c *gin.Context, 
 		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
 		if jsonStr == "[DONE]" {
 			s.sendEvent(c, TestEvent{Type: "status", Text: "已通过 /v1/chat/completions 验证"})
-			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-			return nil
+			return s.finishAccountTestStream(c, account, textBuilder.String())
 		}
 
 		var data map[string]any
@@ -1508,11 +1554,13 @@ func (s *AccountTestService) processOpenAIChatCompletionsStream(c *gin.Context, 
 			}
 			if delta, ok := choice["delta"].(map[string]any); ok {
 				if text, ok := delta["content"].(string); ok && text != "" {
+					_, _ = textBuilder.WriteString(text)
 					s.sendEvent(c, TestEvent{Type: "content", Text: text})
 				}
 			}
 			if message, ok := choice["message"].(map[string]any); ok {
 				if text, ok := message["content"].(string); ok && text != "" {
+					_, _ = textBuilder.WriteString(text)
 					s.sendEvent(c, TestEvent{Type: "content", Text: text})
 				}
 			}
@@ -1524,8 +1572,13 @@ func (s *AccountTestService) processOpenAIChatCompletionsStream(c *gin.Context, 
 }
 
 // processOpenAIStream processes the SSE stream from OpenAI Responses API
-func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader) error {
+func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader, accounts ...*Account) error {
 	reader := bufio.NewReader(body)
+	var account *Account
+	if len(accounts) > 0 {
+		account = accounts[0]
+	}
+	var textBuilder strings.Builder
 	seenCompleted := false
 
 	for {
@@ -1533,8 +1586,7 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 		if err != nil {
 			if err == io.EOF {
 				if seenCompleted {
-					s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-					return nil
+					return s.finishAccountTestStream(c, account, textBuilder.String())
 				}
 				return s.sendErrorAndEnd(c, "Stream ended before response.completed")
 			}
@@ -1549,8 +1601,7 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
 		if jsonStr == "[DONE]" {
 			if seenCompleted {
-				s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-				return nil
+				return s.finishAccountTestStream(c, account, textBuilder.String())
 			}
 			return s.sendErrorAndEnd(c, "Stream ended before response.completed")
 		}
@@ -1566,11 +1617,11 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 		case "response.output_text.delta":
 			// OpenAI Responses API uses "delta" field for text content
 			if delta, ok := data["delta"].(string); ok && delta != "" {
+				_, _ = textBuilder.WriteString(delta)
 				s.sendEvent(c, TestEvent{Type: "content", Text: delta})
 			}
 		case "response.completed", "response.done":
-			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-			return nil
+			return s.finishAccountTestStream(c, account, textBuilder.String())
 		case "response.failed":
 			errorMsg := "OpenAI response failed"
 			if responseData, ok := data["response"].(map[string]any); ok {
@@ -1819,6 +1870,7 @@ func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID in
 	status := "success"
 	if testErr != nil || errMsg != "" {
 		status = "failed"
+		responseText = ""
 		if errMsg == "" && testErr != nil {
 			errMsg = testErr.Error()
 		}

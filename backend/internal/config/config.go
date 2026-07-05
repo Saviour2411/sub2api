@@ -763,6 +763,10 @@ type GatewayConfig struct {
 	StreamDataIntervalTimeout int `mapstructure:"stream_data_interval_timeout"`
 	// StreamKeepaliveInterval: 流式 keepalive 间隔（秒），0表示禁用
 	StreamKeepaliveInterval int `mapstructure:"stream_keepalive_interval"`
+	// PreResponseStreamKeepaliveEnabled: 等待上游响应头期间是否提前发送流式 keepalive
+	PreResponseStreamKeepaliveEnabled bool `mapstructure:"pre_response_stream_keepalive_enabled"`
+	// PreResponseStreamKeepaliveInitialDelay: 首次预响应 keepalive 延迟（秒）
+	PreResponseStreamKeepaliveInitialDelay int `mapstructure:"pre_response_stream_keepalive_initial_delay"`
 	// ImageStreamDataIntervalTimeout: 图片流数据间隔超时（秒），0表示禁用
 	ImageStreamDataIntervalTimeout int `mapstructure:"image_stream_data_interval_timeout"`
 	// ImageStreamKeepaliveInterval: 图片流式 keepalive 间隔（秒），0表示禁用
@@ -1745,7 +1749,7 @@ func setDefaults() {
 
 	// JWT
 	viper.SetDefault("jwt.secret", "")
-	viper.SetDefault("jwt.expire_hour", 24)
+	viper.SetDefault("jwt.expire_hour", 168)
 	viper.SetDefault("jwt.access_token_expire_minutes", 0) // 0 表示回退到 expire_hour
 	viper.SetDefault("jwt.refresh_token_expire_days", 30)  // 30天Refresh Token有效期
 	viper.SetDefault("jwt.refresh_window_minutes", 2)      // 过期前2分钟开始允许刷新
@@ -1919,6 +1923,8 @@ func setDefaults() {
 	viper.SetDefault("gateway.concurrency_slot_ttl_minutes", 30) // 并发槽位过期时间（支持超长请求）
 	viper.SetDefault("gateway.stream_data_interval_timeout", 180)
 	viper.SetDefault("gateway.stream_keepalive_interval", 10)
+	viper.SetDefault("gateway.pre_response_stream_keepalive_enabled", false)
+	viper.SetDefault("gateway.pre_response_stream_keepalive_initial_delay", 80)
 	viper.SetDefault("gateway.image_stream_data_interval_timeout", 900)
 	viper.SetDefault("gateway.image_stream_keepalive_interval", 10)
 	viper.SetDefault("gateway.max_line_size", 500*1024*1024)
@@ -2537,6 +2543,12 @@ func (c *Config) Validate() error {
 	if c.Gateway.StreamKeepaliveInterval != 0 &&
 		(c.Gateway.StreamKeepaliveInterval < 5 || c.Gateway.StreamKeepaliveInterval > 30) {
 		return fmt.Errorf("gateway.stream_keepalive_interval must be 0 or between 5-30 seconds")
+	}
+	if c.Gateway.PreResponseStreamKeepaliveInitialDelay < 0 {
+		return fmt.Errorf("gateway.pre_response_stream_keepalive_initial_delay must be non-negative")
+	}
+	if c.Gateway.PreResponseStreamKeepaliveEnabled && c.Gateway.PreResponseStreamKeepaliveInitialDelay < 5 {
+		return fmt.Errorf("gateway.pre_response_stream_keepalive_initial_delay must be at least 5 seconds when enabled")
 	}
 	if c.Gateway.ImageStreamDataIntervalTimeout < 0 {
 		return fmt.Errorf("gateway.image_stream_data_interval_timeout must be non-negative")

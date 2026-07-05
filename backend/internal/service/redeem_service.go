@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -17,12 +18,13 @@ import (
 )
 
 var (
-	ErrRedeemCodeNotFound  = infraerrors.NotFound("REDEEM_CODE_NOT_FOUND", "redeem code not found")
-	ErrRedeemCodeUsed      = infraerrors.Conflict("REDEEM_CODE_USED", "redeem code already used")
-	ErrRedeemCodeExpired   = infraerrors.Conflict("REDEEM_CODE_EXPIRED", "redeem code expired")
-	ErrInsufficientBalance = infraerrors.BadRequest("INSUFFICIENT_BALANCE", "insufficient balance")
-	ErrRedeemRateLimited   = infraerrors.TooManyRequests("REDEEM_RATE_LIMITED", "too many failed attempts, please try again later")
-	ErrRedeemCodeLocked    = infraerrors.Conflict("REDEEM_CODE_LOCKED", "redeem code is being processed, please try again")
+	ErrRedeemCodeNotFound   = infraerrors.NotFound("REDEEM_CODE_NOT_FOUND", "redeem code not found")
+	ErrRedeemCodeUsed       = infraerrors.Conflict("REDEEM_CODE_USED", "redeem code already used")
+	ErrRedeemCodeUsedByUser = infraerrors.Conflict("REDEEM_CODE_USED_BY_USER", "redeem code already used by this user")
+	ErrRedeemCodeExpired    = infraerrors.Conflict("REDEEM_CODE_EXPIRED", "redeem code expired")
+	ErrInsufficientBalance  = infraerrors.BadRequest("INSUFFICIENT_BALANCE", "insufficient balance")
+	ErrRedeemRateLimited    = infraerrors.TooManyRequests("REDEEM_RATE_LIMITED", "too many failed attempts, please try again later")
+	ErrRedeemCodeLocked     = infraerrors.Conflict("REDEEM_CODE_LOCKED", "redeem code is being processed, please try again")
 )
 
 const (
@@ -646,6 +648,28 @@ func (s *RedeemService) GetStats(ctx context.Context) (map[string]any, error) {
 }
 
 // GetUserHistory 获取用户的兑换历史
+
+//nolint:unused
+func mergeRedeemHistory(limit int, histories ...[]RedeemCode) []RedeemCode {
+	merged := make([]RedeemCode, 0)
+	for _, history := range histories {
+		merged = append(merged, history...)
+	}
+	sort.SliceStable(merged, func(i, j int) bool {
+		if merged[i].UsedAt == nil {
+			return false
+		}
+		if merged[j].UsedAt == nil {
+			return true
+		}
+		return merged[i].UsedAt.After(*merged[j].UsedAt)
+	})
+	if limit > 0 && len(merged) > limit {
+		merged = merged[:limit]
+	}
+	return merged
+}
+
 func (s *RedeemService) GetUserHistory(ctx context.Context, userID int64, limit int) ([]RedeemCode, error) {
 	codes, err := s.redeemRepo.ListByUser(ctx, userID, limit)
 	if err != nil {

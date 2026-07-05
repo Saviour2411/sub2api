@@ -162,6 +162,10 @@ func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Accoun
 // HandleUpstreamError 处理上游错误响应，标记账号状态
 // 返回是否应该停止该账号的调度
 func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, requestedModel ...string) (shouldDisable bool) {
+	if s.HandleStrictFailureScheduling(ctx, account, statusCode, "upstream error") {
+		return true
+	}
+
 	customErrorCodesEnabled := account.IsCustomErrorCodesEnabled()
 
 	// 池模式默认不标记本地账号状态；仅当用户显式配置自定义错误码时按本地策略处理。
@@ -1752,6 +1756,9 @@ func (s *RateLimitService) RecoverAccountState(ctx context.Context, accountID in
 		if err := s.ClearRateLimit(ctx, accountID); err != nil {
 			return nil, err
 		}
+		if err := s.restoreSchedulingAfterSuccessfulTest(ctx, account); err != nil {
+			return nil, err
+		}
 		result.ClearedRateLimit = true
 	}
 	if result.ClearedError || result.ClearedRateLimit {
@@ -1787,11 +1794,32 @@ func (s *RateLimitService) ClearTempUnschedulable(ctx context.Context, accountID
 	return nil
 }
 
+func (s *RateLimitService) restoreSchedulingAfterSuccessfulTest(ctx context.Context, account *Account) error {
+	if s == nil || s.accountRepo == nil || account == nil || account.ID <= 0 {
+		return nil
+	}
+	if err := s.accountRepo.SetSchedulable(ctx, account.ID, true); err != nil {
+		return err
+	}
+	account.Schedulable = true
+	if !account.HasFailureStrategyUnscheduledMarker() {
+		return nil
+	}
+	if account.Extra == nil {
+		account.Extra = map[string]any{}
+	}
+	delete(account.Extra, accountFailureStrategyUnscheduledKey)
+	return s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{accountFailureStrategyUnscheduledKey: nil})
+}
+
 func hasRecoverableRuntimeState(account *Account) bool {
 	if account == nil {
 		return false
 	}
 	if account.RateLimitedAt != nil || account.RateLimitResetAt != nil || account.OverloadUntil != nil || account.TempUnschedulableUntil != nil {
+		return true
+	}
+	if account.HasFailureStrategyUnscheduledMarker() {
 		return true
 	}
 	if len(account.Extra) == 0 {

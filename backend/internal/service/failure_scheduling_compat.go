@@ -95,7 +95,17 @@ func (s *RateLimitService) ShouldDisableSchedulingOnUpstreamError(ctx context.Co
 	}
 	readCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	fresh, err := s.accountRepo.GetByID(readCtx, account.ID)
+	var fresh *Account
+	var err error
+	func() {
+		defer func() {
+			if recover() != nil {
+				fresh = nil
+				err = context.Canceled
+			}
+		}()
+		fresh, err = s.accountRepo.GetByID(readCtx, account.ID)
+	}()
 	if err != nil || fresh == nil {
 		return false
 	}

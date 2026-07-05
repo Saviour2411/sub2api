@@ -565,24 +565,42 @@ var ErrRPMStatusUnavailable = infraerrors.New(http.StatusNotImplemented, "RPM_ST
 
 // adminServiceImpl implements AdminService
 type adminServiceImpl struct {
-	userRepo             UserRepository
-	groupRepo            GroupRepository
-	accountRepo          AccountRepository
-	proxyRepo            ProxyRepository
-	apiKeyRepo           APIKeyRepository
-	redeemCodeRepo       RedeemCodeRepository
-	userGroupRateRepo    UserGroupRateRepository
-	userRPMCache         UserRPMCache
-	billingCacheService  *BillingCacheService
-	proxyProber          ProxyExitInfoProber
-	proxyLatencyCache    ProxyLatencyCache
-	authCacheInvalidator APIKeyAuthCacheInvalidator
-	entClient            *dbent.Client // 用于开启数据库事务
-	settingService       *SettingService
-	defaultSubAssigner   DefaultSubscriptionAssigner
-	userSubRepo          UserSubscriptionRepository
-	privacyClientFactory PrivacyClientFactory
-	runtimeBlocker       AccountRuntimeBlocker
+	userRepo                     UserRepository
+	groupRepo                    GroupRepository
+	accountRepo                  AccountRepository
+	proxyRepo                    ProxyRepository
+	apiKeyRepo                   APIKeyRepository
+	redeemCodeRepo               RedeemCodeRepository
+	userGroupRateRepo            UserGroupRateRepository
+	userRPMCache                 UserRPMCache
+	billingCacheService          *BillingCacheService
+	proxyProber                  ProxyExitInfoProber
+	proxyLatencyCache            ProxyLatencyCache
+	authCacheInvalidator         APIKeyAuthCacheInvalidator
+	entClient                    *dbent.Client // 用于开启数据库事务
+	settingService               *SettingService
+	defaultSubAssigner           DefaultSubscriptionAssigner
+	userSubRepo                  UserSubscriptionRepository
+	privacyClientFactory         PrivacyClientFactory
+	runtimeBlocker               AccountRuntimeBlocker
+	defaultScheduledTestPlanRepo ScheduledTestPlanRepository //nolint:unused
+}
+
+//nolint:unused
+func (s *adminServiceImpl) createDefaultScheduledTestPlanAsync(account *Account) {
+	if s == nil || s.defaultScheduledTestPlanRepo == nil || account == nil || account.ID <= 0 {
+		return
+	}
+	plan := &ScheduledTestPlan{
+		AccountID:      account.ID,
+		ModelID:        "",
+		CronExpression: "*/5 * * * *",
+		Enabled:        false,
+		MaxResults:     10,
+		AutoRecover:    true,
+		AutoManaged:    true,
+	}
+	go func() { _, _ = s.defaultScheduledTestPlanRepo.Create(context.Background(), plan) }()
 }
 
 type userGroupRateBatchReader interface {
@@ -3615,6 +3633,13 @@ func (s *adminServiceImpl) GenerateRedeemCodes(ctx context.Context, input *Gener
 }
 
 func (s *adminServiceImpl) DeleteRedeemCode(ctx context.Context, id int64) error {
+	code, err := s.redeemCodeRepo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if code != nil && (code.Status == StatusUsed || code.UsedCount > 0 || code.UsedBy != nil) {
+		return infraerrors.Conflict("REDEEM_CODE_USED", "used redeem code cannot be deleted")
+	}
 	return s.redeemCodeRepo.Delete(ctx, id)
 }
 

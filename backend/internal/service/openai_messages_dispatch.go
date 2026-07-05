@@ -110,6 +110,7 @@ func sanitizeGroupMessagesDispatchFields(g *Group) {
 	g.MessagesDispatchModelConfig = OpenAIMessagesDispatchModelConfig{}
 }
 
+//nolint:unused
 func sanitizeGroupClaudeCodeUpstreamMimicry(g *Group) {
 	if g == nil || g.Platform == PlatformAnthropic {
 		return

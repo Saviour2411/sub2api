@@ -4716,7 +4716,12 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		return nil, fmt.Errorf("upstream error: %d (passthrough rule matched) message=%s", resp.StatusCode, upstreamMsg)
 	}
 
+	if s.rateLimitService != nil && s.rateLimitService.HandleStrictFailureScheduling(ctx, account, resp.StatusCode, upstreamMsg) {
+		return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: body}
+	}
+
 	// Check custom error codes
+
 	if !account.ShouldHandleErrorCode(resp.StatusCode) {
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 			Platform:           account.Platform,
@@ -4888,6 +4893,10 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 			return nil, fmt.Errorf("upstream error: %d (passthrough rule matched)", resp.StatusCode)
 		}
 		return nil, fmt.Errorf("upstream error: %d (passthrough rule matched) message=%s", resp.StatusCode, upstreamMsg)
+	}
+
+	if s.rateLimitService != nil && s.rateLimitService.HandleStrictFailureScheduling(c.Request.Context(), account, resp.StatusCode, upstreamMsg) {
+		return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: body}
 	}
 
 	// Check custom error codes — if the account does not handle this status,

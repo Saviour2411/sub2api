@@ -108,6 +108,7 @@ func semanticErrorRuleAppliesToPlatform(rule CompiledSemanticErrorRule, platform
 	return false
 }
 
+//nolint:unused
 func writeAnthropicSemanticErrorJSON(c *gin.Context, message string) {
 	c.JSON(semanticErrorResponseStatus, gin.H{
 		"type": "error",

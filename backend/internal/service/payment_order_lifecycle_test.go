@@ -31,6 +31,7 @@ type paymentOrderLifecycleQueryProvider struct {
 }
 
 type paymentOrderLifecycleRedeemRepo struct {
+	client      *dbent.Client
 	codesByCode map[string]*RedeemCode
 	useCalls    []struct {
 		id     int64
@@ -124,7 +125,7 @@ func (r *paymentOrderLifecycleRedeemRepo) Delete(context.Context, int64) error {
 	panic("unexpected call")
 }
 
-func (r *paymentOrderLifecycleRedeemRepo) Use(_ context.Context, id, userID int64) error {
+func (r *paymentOrderLifecycleRedeemRepo) Use(ctx context.Context, id, userID int64) error {
 	for code, redeemCode := range r.codesByCode {
 		if redeemCode.ID != id {
 			continue
@@ -134,6 +135,20 @@ func (r *paymentOrderLifecycleRedeemRepo) Use(_ context.Context, id, userID int6
 		redeemCode.UsedBy = &userID
 		redeemCode.UsedAt = &now
 		r.codesByCode[code] = redeemCode
+		if r.client != nil {
+			_, err := r.client.ExecContext(ctx, `
+INSERT INTO redeem_code_usages (redeem_code_id, user_id, type, value, used_at)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (redeem_code_id, user_id) DO NOTHING
+`, id, userID, redeemCode.Type, redeemCode.Value, now)
+			if err != nil {
+				return err
+			}
+			_, err = r.client.ExecContext(ctx, `UPDATE redeem_codes SET used_count = used_count + 1, used_by = $2, used_at = $3, status = $4 WHERE id = $1`, id, userID, now, StatusUsed)
+			if err != nil {
+				return err
+			}
+		}
 		r.useCalls = append(r.useCalls, struct {
 			id     int64
 			userID int64
@@ -777,6 +792,7 @@ func createPaymentOrderLifecycleRedeemRepo(t *testing.T, ctx context.Context, cl
 	require.NoError(t, err)
 
 	return &paymentOrderLifecycleRedeemRepo{
+		client: client,
 		codesByCode: map[string]*RedeemCode{
 			code: {
 				ID:           created.ID,

@@ -49,7 +49,12 @@ func (s *GatewayService) applyClaudeCodeAPIKeyMimicryToBody(ctx context.Context,
 		body = rewriteSystemForNonClaudeCodeWithPromptBlocks(body, normalizeSystemParam(systemRaw), systemPrompt, systemPromptBlocks)
 		systemRewritten = true
 	}
-	body, model = normalizeClaudeOAuthRequestBody(body, model, claudeOAuthNormalizeOptions{stripSystemCacheControl: !systemRewritten})
+	normalizeOpts := claudeOAuthNormalizeOptions{stripSystemCacheControl: !systemRewritten}
+	if uid := s.buildOAuthMetadataUserIDFromBody(ctx, account, nil, body); uid != "" {
+		normalizeOpts.injectMetadata = true
+		normalizeOpts.metadataUserID = uid
+	}
+	body, model = normalizeClaudeOAuthRequestBody(body, model, normalizeOpts)
 	body = s.rewriteMessageCacheControlIfEnabled(ctx, body)
 	if rw := buildToolNameRewriteFromBody(body); rw != nil {
 		body = applyToolNameRewriteToBody(body, rw)

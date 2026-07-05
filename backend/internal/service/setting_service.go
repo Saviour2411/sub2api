@@ -941,6 +941,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyChannelMonitorEnabled,
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
 		SettingKeyAvailableChannelsEnabled,
+		SettingKeyDailyCheckinEnabled,
+		SettingKeyModelMarketplaceEnabled,
 		SettingKeyAffiliateEnabled,
 		SettingKeyRiskControlEnabled,
 		SettingKeyAllowUserViewErrorRequests,
@@ -1058,6 +1060,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		RiskControlEnabled: settings[SettingKeyRiskControlEnabled] == "true",
 
 		AllowUserViewErrorRequests: settings[SettingKeyAllowUserViewErrorRequests] == "true",
+		DailyCheckinEnabled:        settings[SettingKeyDailyCheckinEnabled] == "true",
+		ModelMarketplaceEnabled:    !isFalseSettingValue(settings[SettingKeyModelMarketplaceEnabled]),
 	}, nil
 }
 
@@ -1585,6 +1589,8 @@ type PublicSettingsInjectionPayload struct {
 	AffiliateEnabled                     bool `json:"affiliate_enabled"`
 	RiskControlEnabled                   bool `json:"risk_control_enabled"`
 	AllowUserViewErrorRequests           bool `json:"allow_user_view_error_requests"`
+	DailyCheckinEnabled                  bool `json:"daily_checkin_enabled"`
+	ModelMarketplaceEnabled              bool `json:"model_marketplace_enabled"`
 }
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
@@ -1650,6 +1656,8 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		AffiliateEnabled:                     settings.AffiliateEnabled,
 		RiskControlEnabled:                   settings.RiskControlEnabled,
 		AllowUserViewErrorRequests:           settings.AllowUserViewErrorRequests,
+		DailyCheckinEnabled:                  settings.DailyCheckinEnabled,
+		ModelMarketplaceEnabled:              settings.ModelMarketplaceEnabled,
 	}, nil
 }
 
@@ -2516,6 +2524,17 @@ func (s *SettingService) defaultRewriteMessageCacheControl() bool {
 	return false
 }
 
+func (s *SettingService) defaultPreResponseStreamKeepaliveEnabled() bool {
+	return s != nil && s.cfg != nil && s.cfg.Gateway.PreResponseStreamKeepaliveEnabled
+}
+
+func (s *SettingService) defaultPreResponseStreamKeepaliveInitialDelay() int {
+	if s != nil && s.cfg != nil {
+		return s.cfg.Gateway.PreResponseStreamKeepaliveInitialDelay
+	}
+	return 80
+}
+
 func normalizeSemanticErrorMatchMaxChars(raw any) int {
 	value := defaultSemanticErrorMatchMaxChars
 	switch v := raw.(type) {
@@ -2835,6 +2854,8 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 				cacheTTL1h:                       cached.anthropicCacheTTL1hInjection,
 				rewriteMessageCacheControl:       cached.rewriteMessageCacheControl,
 				clientDatelineNormalization:      cached.clientDatelineNormalization,
+				preResponseKeepaliveEnabled:      cached.preResponseKeepaliveEnabled,
+				preResponseKeepaliveDelay:        cached.preResponseKeepaliveDelay,
 				semanticErrorConfig:              cached.semanticErrorConfig,
 			}
 		}
@@ -2868,6 +2889,8 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			SettingKeyEnableAnthropicCacheTTL1hInjection,
 			SettingKeyRewriteMessageCacheControl,
 			SettingKeyEnableClientDatelineNormalization,
+			SettingKeyPreResponseStreamKeepaliveEnabled,
+			SettingKeyPreResponseStreamKeepaliveInitialDelay,
 			SettingKeySemanticErrorDetectionEnabled,
 			SettingKeySemanticErrorMatchMaxChars,
 			SettingKeySemanticErrorRules,
@@ -2882,10 +2905,12 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 				anthropicCacheTTL1hInjection:     false,
 				rewriteMessageCacheControl:       s.defaultRewriteMessageCacheControl(),
 				clientDatelineNormalization:      true,
+				preResponseKeepaliveEnabled:      s.defaultPreResponseStreamKeepaliveEnabled(),
+				preResponseKeepaliveDelay:        s.defaultPreResponseStreamKeepaliveInitialDelay(),
 				semanticErrorConfig:              defaultSemanticErrorConfig(),
 				expiresAt:                        time.Now().Add(gatewayForwardingErrorTTL).UnixNano(),
 			})
-			return gatewayForwardingSettingsResult{fp: true, claudeOAuthSystemPromptInjection: true, rewriteMessageCacheControl: s.defaultRewriteMessageCacheControl(), clientDatelineNormalization: true}, nil
+			return gatewayForwardingSettingsResult{fp: true, claudeOAuthSystemPromptInjection: true, rewriteMessageCacheControl: s.defaultRewriteMessageCacheControl(), clientDatelineNormalization: true, preResponseKeepaliveEnabled: s.defaultPreResponseStreamKeepaliveEnabled(), preResponseKeepaliveDelay: s.defaultPreResponseStreamKeepaliveInitialDelay()}, nil
 		}
 		fp := true
 		if v, ok := values[SettingKeyEnableFingerprintUnification]; ok && v != "" {
@@ -2908,6 +2933,16 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 		if v, ok := values[SettingKeyEnableClientDatelineNormalization]; ok && v != "" {
 			clientDatelineNormalization = v == "true"
 		}
+		preResponseKeepaliveEnabled := s.defaultPreResponseStreamKeepaliveEnabled()
+		if v, ok := values[SettingKeyPreResponseStreamKeepaliveEnabled]; ok && v != "" {
+			preResponseKeepaliveEnabled = v == "true"
+		}
+		preResponseKeepaliveDelay := s.defaultPreResponseStreamKeepaliveInitialDelay()
+		if v, ok := values[SettingKeyPreResponseStreamKeepaliveInitialDelay]; ok && v != "" {
+			if parsed, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && parsed >= 0 {
+				preResponseKeepaliveDelay = parsed
+			}
+		}
 		semanticErrorConfig := SemanticErrorConfig{
 			Enabled:       values[SettingKeySemanticErrorDetectionEnabled] == "true",
 			MatchMaxChars: normalizeSemanticErrorMatchMaxChars(values[SettingKeySemanticErrorMatchMaxChars]),
@@ -2923,6 +2958,8 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			anthropicCacheTTL1hInjection:     cacheTTL1h,
 			rewriteMessageCacheControl:       rewriteMessageCacheControl,
 			clientDatelineNormalization:      clientDatelineNormalization,
+			preResponseKeepaliveEnabled:      preResponseKeepaliveEnabled,
+			preResponseKeepaliveDelay:        preResponseKeepaliveDelay,
 			semanticErrorConfig:              semanticErrorConfig,
 			expiresAt:                        time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
 		})
@@ -2936,13 +2973,15 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			cacheTTL1h:                       cacheTTL1h,
 			rewriteMessageCacheControl:       rewriteMessageCacheControl,
 			clientDatelineNormalization:      clientDatelineNormalization,
+			preResponseKeepaliveEnabled:      preResponseKeepaliveEnabled,
+			preResponseKeepaliveDelay:        preResponseKeepaliveDelay,
 			semanticErrorConfig:              semanticErrorConfig,
 		}, nil
 	})
 	if r, ok := val.(gatewayForwardingSettingsResult); ok {
 		return r
 	}
-	return gatewayForwardingSettingsResult{fp: true, claudeOAuthSystemPromptInjection: true, clientDatelineNormalization: true, semanticErrorConfig: defaultSemanticErrorConfig()}
+	return gatewayForwardingSettingsResult{fp: true, claudeOAuthSystemPromptInjection: true, clientDatelineNormalization: true, preResponseKeepaliveEnabled: s.defaultPreResponseStreamKeepaliveEnabled(), preResponseKeepaliveDelay: s.defaultPreResponseStreamKeepaliveInitialDelay(), semanticErrorConfig: defaultSemanticErrorConfig()}
 }
 
 // GetGatewayForwardingSettings returns cached gateway forwarding settings.
