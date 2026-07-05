@@ -21,6 +21,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/imroc/req/v3"
 	"golang.org/x/sync/singleflight"
 )
@@ -112,6 +114,7 @@ type cachedGatewayForwardingSettings struct {
 	claudeOAuthSystemPromptBlocks    string
 	anthropicCacheTTL1hInjection     bool
 	rewriteMessageCacheControl       bool
+	clientDatelineNormalization      bool
 	preResponseKeepaliveEnabled      bool
 	preResponseKeepaliveDelay        int
 	semanticErrorConfig              SemanticErrorConfig
@@ -173,7 +176,7 @@ const antigravityUserAgentVersionErrorTTL = 5 * time.Second
 const antigravityUserAgentVersionDBTimeout = 5 * time.Second
 
 // DefaultOpenAICodexUserAgent OpenAI Codex 默认 User-Agent（用于规避 Cloudflare 对浏览器 UA 的质询）
-const DefaultOpenAICodexUserAgent = "codex-tui/0.137.0 (Ubuntu 24.4.0; x86_64) xterm-256color (codex-tui; 0.137.0)"
+const DefaultOpenAICodexUserAgent = "codex-tui/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color (codex-tui; 0.125.0)"
 
 // cachedOpenAICodexUserAgent 缓存 OpenAI Codex UA（进程内缓存，60s TTL）
 type cachedOpenAICodexUserAgent struct {
@@ -190,16 +193,15 @@ const openAICodexUserAgentCacheTTL = 60 * time.Second
 const openAICodexUserAgentErrorTTL = 5 * time.Second
 const openAICodexUserAgentDBTimeout = 5 * time.Second
 
-// cachedOpenAIAllowCodexPlugin Codex 插件放行开关缓存（进程内缓存，60s TTL）。
-// IsOpenAIAllowClaudeCodeCodexPluginEnabled 在每个 codex_cli_only 账号的网关请求热路径上被调用，避免每次访问 DB。
-type cachedOpenAIAllowCodexPlugin struct {
-	value     bool
+const codexRestrictionPolicyCacheTTL = 60 * time.Second
+const codexRestrictionPolicyDBTimeout = 5 * time.Second
+
+// cachedCodexRestrictionPolicy codex_cli_only 全局加固策略缓存（进程内，60s TTL）。
+// GetCodexRestrictionPolicy 在每个 codex_cli_only 账号的网关请求热路径上被调用，避免每次访问 DB。
+type cachedCodexRestrictionPolicy struct {
+	value     CodexRestrictionPolicy
 	expiresAt int64 // unix nano
 }
-
-const openAIAllowCodexPluginCacheTTL = 60 * time.Second
-const openAIAllowCodexPluginErrorTTL = 5 * time.Second
-const openAIAllowCodexPluginDBTimeout = 5 * time.Second
 
 // cachedCyberSessionBlockRuntime cyber 会话屏蔽开关+TTL 进程内缓存（60s TTL）。
 // GetCyberSessionBlockRuntime 在网关请求热路径上被调用，避免每次访问 DB。
@@ -241,8 +243,8 @@ type SettingService struct {
 	antigravityUAVersionSF      singleflight.Group
 	openAICodexUACache          atomic.Value // *cachedOpenAICodexUserAgent
 	openAICodexUASF             singleflight.Group
-	openAIAllowCodexPluginCache atomic.Value // *cachedOpenAIAllowCodexPlugin
-	openAIAllowCodexPluginSF    singleflight.Group
+	codexRestrictionPolicyCache atomic.Value // *cachedCodexRestrictionPolicy
+	codexRestrictionPolicySF    singleflight.Group
 
 	cyberSessionBlockRuntimeCache atomic.Value // *cachedCyberSessionBlockRuntime
 	cyberSessionBlockRuntimeSF    singleflight.Group
@@ -497,50 +499,6 @@ func marshalLoginAgreementDocuments(docs []LoginAgreementDocument) (string, erro
 	return string(b), nil
 }
 
-func parseModelMarketplaceGroupIDs(raw string) []int64 {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return nil
-	}
-	var ids []int64
-	if err := json.Unmarshal([]byte(raw), &ids); err != nil {
-		return nil
-	}
-	out := make([]int64, 0, len(ids))
-	seen := make(map[int64]struct{}, len(ids))
-	for _, id := range ids {
-		if id <= 0 {
-			continue
-		}
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[id] = struct{}{}
-		out = append(out, id)
-	}
-	return out
-}
-
-func marshalModelMarketplaceGroupIDs(ids []int64) (string, error) {
-	out := make([]int64, 0, len(ids))
-	seen := make(map[int64]struct{}, len(ids))
-	for _, id := range ids {
-		if id <= 0 {
-			continue
-		}
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[id] = struct{}{}
-		out = append(out, id)
-	}
-	b, err := json.Marshal(out)
-	if err != nil {
-		return "", fmt.Errorf("marshal model marketplace group ids: %w", err)
-	}
-	return string(b), nil
-}
-
 func buildLoginAgreementRevision(updatedAt string, docs []LoginAgreementDocument) string {
 	normalized := normalizeLoginAgreementDocuments(docs)
 	payload, err := json.Marshal(struct {
@@ -759,6 +717,52 @@ func (s *SettingService) SetProxyRepository(repo ProxyRepository) {
 	s.proxyRepo = repo
 }
 
+func parseModelMarketplaceGroupIDs(raw string) []int64 {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var ids []int64
+	if err := json.Unmarshal([]byte(raw), &ids); err != nil {
+		return nil
+	}
+	out := make([]int64, 0, len(ids))
+	seen := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
+}
+
+// ModelMarketplaceRuntime 是公开模型广场的轻量运行时配置。
+type ModelMarketplaceRuntime struct {
+	Enabled  bool
+	Intro    string
+	GroupIDs []int64
+}
+
+func (s *SettingService) GetModelMarketplaceRuntime(ctx context.Context) ModelMarketplaceRuntime {
+	if s == nil || s.settingRepo == nil {
+		return ModelMarketplaceRuntime{Enabled: true}
+	}
+	vals, err := s.settingRepo.GetMultiple(ctx, []string{SettingKeyModelMarketplaceEnabled, SettingKeyModelMarketplaceIntro, SettingKeyModelMarketplaceGroupIDs})
+	if err != nil {
+		return ModelMarketplaceRuntime{Enabled: true}
+	}
+	return ModelMarketplaceRuntime{
+		Enabled:  !isFalseSettingValue(vals[SettingKeyModelMarketplaceEnabled]),
+		Intro:    strings.TrimSpace(vals[SettingKeyModelMarketplaceIntro]),
+		GroupIDs: parseModelMarketplaceGroupIDs(vals[SettingKeyModelMarketplaceGroupIDs]),
+	}
+}
+
 func (s *SettingService) LoadAPIKeyACLTrustForwardedIPSetting(ctx context.Context) error {
 	if s == nil || s.cfg == nil || s.settingRepo == nil {
 		return nil
@@ -815,7 +819,7 @@ func (s *SettingService) GetFrontendURL(ctx context.Context) string {
 }
 
 // GetCyberSessionBlockRuntime 返回 (开关, TTL)，进程内缓存 ~60s，
-// 模式对齐 IsOpenAIAllowClaudeCodeCodexPluginEnabled（热路径零 DB 往返）。
+// 供网关热路径读取时避免 DB 往返。
 // 两个 setting key 在单次 singleflight 里一起读取，减少 DB 往返。
 // 默认值：开关 false，TTL 1h（与粘性会话对齐）。
 func (s *SettingService) GetCyberSessionBlockRuntime(ctx context.Context) (bool, time.Duration) {
@@ -902,7 +906,6 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyTablePageSizeOptions,
 		SettingKeyCustomMenuItems,
 		SettingKeyCustomEndpoints,
-		SettingKeyDailyCheckinEnabled,
 		SettingKeyLinuxDoConnectEnabled,
 		SettingKeyDingTalkConnectEnabled,
 		SettingKeyWeChatConnectEnabled,
@@ -938,7 +941,6 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyChannelMonitorEnabled,
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
 		SettingKeyAvailableChannelsEnabled,
-		SettingKeyModelMarketplaceEnabled,
 		SettingKeyAffiliateEnabled,
 		SettingKeyRiskControlEnabled,
 		SettingKeyAllowUserViewErrorRequests,
@@ -1029,7 +1031,6 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		TablePageSizeOptions:             tablePageSizeOptions,
 		CustomMenuItems:                  settings[SettingKeyCustomMenuItems],
 		CustomEndpoints:                  settings[SettingKeyCustomEndpoints],
-		DailyCheckinEnabled:              settings[SettingKeyDailyCheckinEnabled] == "true",
 		LinuxDoOAuthEnabled:              linuxDoEnabled,
 		DingTalkOAuthEnabled:             dingTalkEnabled,
 		WeChatOAuthEnabled:               weChatEnabled,
@@ -1051,7 +1052,6 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		ChannelMonitorDefaultIntervalSeconds: parseChannelMonitorInterval(settings[SettingKeyChannelMonitorDefaultIntervalSeconds]),
 
 		AvailableChannelsEnabled: settings[SettingKeyAvailableChannelsEnabled] == "true",
-		ModelMarketplaceEnabled:  !isFalseSettingValue(settings[SettingKeyModelMarketplaceEnabled]),
 
 		AffiliateEnabled: settings[SettingKeyAffiliateEnabled] == "true",
 
@@ -1132,34 +1132,6 @@ func (s *SettingService) GetAvailableChannelsRuntime(ctx context.Context) Availa
 	}
 	return AvailableChannelsRuntime{
 		Enabled: vals[SettingKeyAvailableChannelsEnabled] == "true",
-	}
-}
-
-// ModelMarketplaceRuntime 是公开模型广场的轻量运行时配置。
-type ModelMarketplaceRuntime struct {
-	Enabled  bool
-	Intro    string
-	GroupIDs []int64
-}
-
-// GetModelMarketplaceRuntime 读取公开模型广场配置。开关默认启用；读取失败时不暴露
-// 显式分组，只让调用方按公开分组默认口径展示。
-func (s *SettingService) GetModelMarketplaceRuntime(ctx context.Context) ModelMarketplaceRuntime {
-	if s == nil || s.settingRepo == nil {
-		return ModelMarketplaceRuntime{Enabled: true}
-	}
-	vals, err := s.settingRepo.GetMultiple(ctx, []string{
-		SettingKeyModelMarketplaceEnabled,
-		SettingKeyModelMarketplaceIntro,
-		SettingKeyModelMarketplaceGroupIDs,
-	})
-	if err != nil {
-		return ModelMarketplaceRuntime{Enabled: true}
-	}
-	return ModelMarketplaceRuntime{
-		Enabled:  !isFalseSettingValue(vals[SettingKeyModelMarketplaceEnabled]),
-		Intro:    strings.TrimSpace(vals[SettingKeyModelMarketplaceIntro]),
-		GroupIDs: parseModelMarketplaceGroupIDs(vals[SettingKeyModelMarketplaceGroupIDs]),
 	}
 }
 
@@ -1272,52 +1244,262 @@ func (s *SettingService) GetOpenAICodexUserAgent(ctx context.Context) string {
 	return fallback
 }
 
-// IsOpenAIAllowClaudeCodeCodexPluginEnabled 全局开关：是否额外放行 Claude Code 的 Codex 插件（默认关闭）。
-// 仅在调用方已确认账号 codex_cli_only 开启时读取，避免对非受限账号产生无谓查询。
-// 使用进程内 atomic.Value 缓存（60s TTL），避免在每个网关请求热路径上访问 DB。
-func (s *SettingService) IsOpenAIAllowClaudeCodeCodexPluginEnabled(ctx context.Context) bool {
-	if cached, ok := s.openAIAllowCodexPluginCache.Load().(*cachedOpenAIAllowCodexPlugin); ok && cached != nil {
+var legacyClaudeCodeCodexWhitelistEntry = openai.AllowedClientEntry{
+	Originator: "Claude Code",
+	UAContains: []string{"Claude Code/"},
+}
+
+// MigrateOpenAIAllowClaudeCodeCodexPluginSetting folds the deprecated global Claude Code
+// plugin allow switch into codex_cli_only_whitelist. The app-server identity model is the
+// same originator + UA marker pair, so runtime checks no longer need a separate flag.
+func (s *SettingService) MigrateOpenAIAllowClaudeCodeCodexPluginSetting(ctx context.Context) error {
+	if s == nil || s.settingRepo == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), codexRestrictionPolicyDBTimeout)
+	defer cancel()
+
+	legacyValue, err := s.settingRepo.GetValue(dbCtx, SettingKeyOpenAIAllowClaudeCodeCodexPlugin)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return nil
+		}
+		return fmt.Errorf("get deprecated %s setting: %w", SettingKeyOpenAIAllowClaudeCodeCodexPlugin, err)
+	}
+	if strings.TrimSpace(legacyValue) != "true" {
+		return nil
+	}
+
+	rawWhitelist, err := s.settingRepo.GetValue(dbCtx, SettingKeyCodexCLIOnlyWhitelist)
+	if err != nil && !errors.Is(err, ErrSettingNotFound) {
+		return fmt.Errorf("get %s setting: %w", SettingKeyCodexCLIOnlyWhitelist, err)
+	}
+
+	var entries []openai.AllowedClientEntry
+	if strings.TrimSpace(rawWhitelist) != "" {
+		if err := json.Unmarshal([]byte(rawWhitelist), &entries); err != nil {
+			return fmt.Errorf("parse %s setting: %w", SettingKeyCodexCLIOnlyWhitelist, err)
+		}
+	}
+	if codexClientEntriesContain(entries, legacyClaudeCodeCodexWhitelistEntry) {
+		return nil
+	}
+
+	entries = append(entries, legacyClaudeCodeCodexWhitelistEntry)
+	encoded, err := json.Marshal(entries)
+	if err != nil {
+		return fmt.Errorf("marshal %s setting: %w", SettingKeyCodexCLIOnlyWhitelist, err)
+	}
+	if err := s.settingRepo.Set(dbCtx, SettingKeyCodexCLIOnlyWhitelist, string(encoded)); err != nil {
+		return fmt.Errorf("set %s setting: %w", SettingKeyCodexCLIOnlyWhitelist, err)
+	}
+	s.codexRestrictionPolicySF.Forget("codex_restriction_policy")
+	s.codexRestrictionPolicyCache.Store(&cachedCodexRestrictionPolicy{expiresAt: 0})
+	return nil
+}
+
+// MigrateCodexBodyFingerprintToSignals 把已废弃的 codex_cli_only_allow_body_engine_fingerprint
+// 开关并入引擎指纹信号列表。幂等:信号键已存在(非空)则不动;缺失时写默认种子,
+// 并把 body 路径行的 Required 设为旧 body 开关的值(旧 true ⇒ 勾上 body 行)。
+func (s *SettingService) MigrateCodexBodyFingerprintToSignals(ctx context.Context) error {
+	if s == nil || s.settingRepo == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), codexRestrictionPolicyDBTimeout)
+	defer cancel()
+
+	if v, err := s.settingRepo.GetValue(dbCtx, SettingKeyCodexCLIOnlyEngineFingerprintSignals); err == nil && strings.TrimSpace(v) != "" {
+		return nil // 已配置/已迁移
+	} else if err != nil && !errors.Is(err, ErrSettingNotFound) {
+		return fmt.Errorf("get %s setting: %w", SettingKeyCodexCLIOnlyEngineFingerprintSignals, err)
+	}
+
+	bodyOn := false
+	if v, err := s.settingRepo.GetValue(dbCtx, SettingKeyCodexCLIOnlyAllowBodyEngineFingerprint); err == nil {
+		bodyOn = strings.TrimSpace(v) == "true"
+	} else if !errors.Is(err, ErrSettingNotFound) {
+		return fmt.Errorf("get deprecated %s setting: %w", SettingKeyCodexCLIOnlyAllowBodyEngineFingerprint, err)
+	}
+
+	seed := make([]openai.EngineFingerprintSignal, len(openai.DefaultEngineFingerprintSignals))
+	copy(seed, openai.DefaultEngineFingerprintSignals)
+	if bodyOn {
+		for i := range seed {
+			if seed[i].Type == openai.FingerprintSignalBodyPath {
+				seed[i].Required = true
+			}
+		}
+	}
+	encoded, err := json.Marshal(seed)
+	if err != nil {
+		return fmt.Errorf("marshal %s setting: %w", SettingKeyCodexCLIOnlyEngineFingerprintSignals, err)
+	}
+	if err := s.settingRepo.Set(dbCtx, SettingKeyCodexCLIOnlyEngineFingerprintSignals, string(encoded)); err != nil {
+		return fmt.Errorf("set %s setting: %w", SettingKeyCodexCLIOnlyEngineFingerprintSignals, err)
+	}
+	s.codexRestrictionPolicySF.Forget("codex_restriction_policy")
+	s.codexRestrictionPolicyCache.Store(&cachedCodexRestrictionPolicy{expiresAt: 0})
+	return nil
+}
+
+func codexClientEntriesContain(entries []openai.AllowedClientEntry, want openai.AllowedClientEntry) bool {
+	wantOriginator := strings.TrimSpace(want.Originator)
+	if wantOriginator == "" {
+		return false
+	}
+	wantMarkers := normalizedCodexClientMarkers(want.UAContains)
+	if len(wantMarkers) == 0 {
+		return false
+	}
+	for _, entry := range entries {
+		if !strings.EqualFold(strings.TrimSpace(entry.Originator), wantOriginator) {
+			continue
+		}
+		gotMarkers := normalizedCodexClientMarkers(entry.UAContains)
+		if len(gotMarkers) != len(wantMarkers) {
+			continue
+		}
+		matched := true
+		for marker := range wantMarkers {
+			if _, ok := gotMarkers[marker]; !ok {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizedCodexClientMarkers(markers []string) map[string]struct{} {
+	normalized := make(map[string]struct{}, len(markers))
+	for _, marker := range markers {
+		marker = strings.TrimSpace(marker)
+		if marker == "" {
+			continue
+		}
+		normalized[strings.ToLower(marker)] = struct{}{}
+	}
+	return normalized
+}
+
+// GetCodexRestrictionPolicy 读取 codex_cli_only 全局加固策略（黑/白名单、最低版本、引擎指纹门）。
+// 仅在调用方已确认账号 codex_cli_only 开启时读取；进程内 atomic.Value 缓存（60s TTL）避免热路径访问 DB。
+// 任意键缺失/解析失败 → 安全默认：空名单、空版本、默认种子指纹信号。
+func (s *SettingService) GetCodexRestrictionPolicy(ctx context.Context) CodexRestrictionPolicy {
+	if cached, ok := s.codexRestrictionPolicyCache.Load().(*cachedCodexRestrictionPolicy); ok && cached != nil {
 		if time.Now().UnixNano() < cached.expiresAt {
 			return cached.value
 		}
 	}
-	result, _, _ := s.openAIAllowCodexPluginSF.Do("openai_allow_codex_plugin_enabled", func() (any, error) {
-		if cached, ok := s.openAIAllowCodexPluginCache.Load().(*cachedOpenAIAllowCodexPlugin); ok && cached != nil {
+	result, _, _ := s.codexRestrictionPolicySF.Do("codex_restriction_policy", func() (any, error) {
+		if cached, ok := s.codexRestrictionPolicyCache.Load().(*cachedCodexRestrictionPolicy); ok && cached != nil {
 			if time.Now().UnixNano() < cached.expiresAt {
 				return cached.value, nil
 			}
 		}
-		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), openAIAllowCodexPluginDBTimeout)
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), codexRestrictionPolicyDBTimeout)
 		defer cancel()
-		value, err := s.settingRepo.GetValue(dbCtx, SettingKeyOpenAIAllowClaudeCodeCodexPlugin)
-		if err != nil {
-			if errors.Is(err, ErrSettingNotFound) {
-				// 设置不存在 → 默认关闭，正常 TTL 缓存
-				s.openAIAllowCodexPluginCache.Store(&cachedOpenAIAllowCodexPlugin{
-					value:     false,
-					expiresAt: time.Now().Add(openAIAllowCodexPluginCacheTTL).UnixNano(),
-				})
-				return false, nil
-			}
-			slog.Warn("failed to get openai_allow_claude_code_codex_plugin setting", "error", err)
-			// DB 错误 → 安全默认关闭，短 TTL 快速重试
-			s.openAIAllowCodexPluginCache.Store(&cachedOpenAIAllowCodexPlugin{
-				value:     false,
-				expiresAt: time.Now().Add(openAIAllowCodexPluginErrorTTL).UnixNano(),
-			})
-			return false, nil
+
+		pol := CodexRestrictionPolicy{EngineFingerprintSignals: openai.DefaultEngineFingerprintSignals} // 安全默认：默认种子指纹信号
+		if v, err := s.settingRepo.GetValue(dbCtx, SettingKeyMinCodexVersion); err == nil {
+			pol.MinCodexVersion = strings.TrimSpace(v)
 		}
-		enabled := value == "true"
-		s.openAIAllowCodexPluginCache.Store(&cachedOpenAIAllowCodexPlugin{
-			value:     enabled,
-			expiresAt: time.Now().Add(openAIAllowCodexPluginCacheTTL).UnixNano(),
+		if v, err := s.settingRepo.GetValue(dbCtx, SettingKeyMaxCodexVersion); err == nil {
+			pol.MaxCodexVersion = strings.TrimSpace(v)
+		}
+		if v, err := s.settingRepo.GetValue(dbCtx, SettingKeyCodexCLIOnlyAllowAppServerClients); err == nil {
+			pol.AllowAppServerClients = strings.TrimSpace(v) == "true" // 仅显式 "true" 开启
+		}
+		pol.EngineFingerprintSignals = s.loadEngineFingerprintSignals(dbCtx)
+		pol.Whitelist = s.loadCodexClientEntries(dbCtx, SettingKeyCodexCLIOnlyWhitelist)
+		pol.Blacklist = s.loadCodexClientEntries(dbCtx, SettingKeyCodexCLIOnlyBlacklist)
+
+		s.codexRestrictionPolicyCache.Store(&cachedCodexRestrictionPolicy{
+			value:     pol,
+			expiresAt: time.Now().Add(codexRestrictionPolicyCacheTTL).UnixNano(),
 		})
-		return enabled, nil
+		return pol, nil
 	})
-	if val, ok := result.(bool); ok {
-		return val
+	if pol, ok := result.(CodexRestrictionPolicy); ok {
+		return pol
 	}
-	return false
+	return CodexRestrictionPolicy{EngineFingerprintSignals: openai.DefaultEngineFingerprintSignals}
+}
+
+// loadCodexClientEntries 读取并解析 []openai.AllowedClientEntry JSON 设置；缺失/空/非法 → nil（安全忽略）。
+func (s *SettingService) loadCodexClientEntries(ctx context.Context, key string) []openai.AllowedClientEntry {
+	v, err := s.settingRepo.GetValue(ctx, key)
+	if err != nil || strings.TrimSpace(v) == "" {
+		return nil
+	}
+	var entries []openai.AllowedClientEntry
+	if json.Unmarshal([]byte(v), &entries) != nil {
+		return nil
+	}
+	return entries
+}
+
+// loadEngineFingerprintSignals 读取引擎指纹信号列表;缺失/空/非法 → 默认种子。
+func (s *SettingService) loadEngineFingerprintSignals(ctx context.Context) []openai.EngineFingerprintSignal {
+	v, err := s.settingRepo.GetValue(ctx, SettingKeyCodexCLIOnlyEngineFingerprintSignals)
+	if err != nil || strings.TrimSpace(v) == "" {
+		return openai.DefaultEngineFingerprintSignals
+	}
+	sigs, ok := openai.ParseEngineFingerprintSignals(v)
+	if !ok {
+		return openai.DefaultEngineFingerprintSignals
+	}
+	return sigs
+}
+
+// ValidateCodexClientEntriesJSON 校验 codex_cli_only 名单 JSON 配置（黑名单语义）：
+// 空=合法（禁用）；非空须为 []AllowedClientEntry 的 JSON 数组。黑名单是 OR 宽 deny，
+// 允许 originator-only 条目，故不校验 ua_contains。白名单请用 ValidateCodexWhitelistEntriesJSON。
+func ValidateCodexClientEntriesJSON(raw string) error {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+	var entries []openai.AllowedClientEntry
+	if err := json.Unmarshal([]byte(trimmed), &entries); err != nil {
+		return fmt.Errorf("must be empty or a valid JSON array of {originator, ua_contains}")
+	}
+	return nil
+}
+
+// ValidateCodexWhitelistEntriesJSON 在 ValidateCodexClientEntriesJSON 的数组结构校验之上，额外要求
+// 每条白名单条目「有可能命中」（openai.AllowedClientEntry.IsWhitelistable）。白名单是双因子 AND：
+// originator-only、空或含空白 ua_contains 的条目会在运行时静默失效——这里让管理员在写入时即收到反馈，
+// 而非存入永不命中的死规则。黑名单（OR 宽 deny）仍用 ValidateCodexClientEntriesJSON。
+func ValidateCodexWhitelistEntriesJSON(raw string) error {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+	var entries []openai.AllowedClientEntry
+	if err := json.Unmarshal([]byte(trimmed), &entries); err != nil {
+		return fmt.Errorf("must be empty or a valid JSON array of {originator, ua_contains}")
+	}
+	for i, e := range entries {
+		if !e.IsWhitelistable() {
+			return fmt.Errorf("entry %d: whitelist requires a non-empty originator and at least one non-empty ua_contains (double-factor AND; otherwise the rule never matches)", i)
+		}
+	}
+	return nil
+}
+
+// ValidateEngineFingerprintSignalsJSON 服务层包装,复用 openai 校验逻辑。
+func ValidateEngineFingerprintSignalsJSON(raw string) error {
+	return openai.ValidateEngineFingerprintSignalsJSON(raw)
 }
 
 // SetOnUpdateCallback sets a callback function to be called when settings are updated
@@ -1373,7 +1555,6 @@ type PublicSettingsInjectionPayload struct {
 	TablePageSizeOptions             []int                    `json:"table_page_size_options"`
 	CustomMenuItems                  json.RawMessage          `json:"custom_menu_items"`
 	CustomEndpoints                  json.RawMessage          `json:"custom_endpoints"`
-	DailyCheckinEnabled              bool                     `json:"daily_checkin_enabled"`
 	LinuxDoOAuthEnabled              bool                     `json:"linuxdo_oauth_enabled"`
 	DingTalkOAuthEnabled             bool                     `json:"dingtalk_oauth_enabled"`
 	WeChatOAuthEnabled               bool                     `json:"wechat_oauth_enabled"`
@@ -1387,10 +1568,13 @@ type PublicSettingsInjectionPayload struct {
 	BackendModeEnabled               bool                     `json:"backend_mode_enabled"`
 	PaymentEnabled                   bool                     `json:"payment_enabled"`
 	Version                          string                   `json:"version"`
-	BalanceLowNotifyEnabled          bool                     `json:"balance_low_notify_enabled"`
-	AccountQuotaNotifyEnabled        bool                     `json:"account_quota_notify_enabled"`
-	BalanceLowNotifyThreshold        float64                  `json:"balance_low_notify_threshold"`
-	BalanceLowNotifyRechargeURL      string                   `json:"balance_low_notify_recharge_url"`
+	// 服务器全局时区（IANA 名称与当前 UTC 偏移），高峰时段等服务端本地时间窗口的展示标注用
+	ServerTimezone              string  `json:"server_timezone"`
+	ServerUTCOffset             string  `json:"server_utc_offset"`
+	BalanceLowNotifyEnabled     bool    `json:"balance_low_notify_enabled"`
+	AccountQuotaNotifyEnabled   bool    `json:"account_quota_notify_enabled"`
+	BalanceLowNotifyThreshold   float64 `json:"balance_low_notify_threshold"`
+	BalanceLowNotifyRechargeURL string  `json:"balance_low_notify_recharge_url"`
 
 	// Feature flags — MUST match the opt-in/opt-out registry in
 	// frontend/src/utils/featureFlags.ts. Missing a field here is the bug
@@ -1398,7 +1582,6 @@ type PublicSettingsInjectionPayload struct {
 	ChannelMonitorEnabled                bool `json:"channel_monitor_enabled"`
 	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
 	AvailableChannelsEnabled             bool `json:"available_channels_enabled"`
-	ModelMarketplaceEnabled              bool `json:"model_marketplace_enabled"`
 	AffiliateEnabled                     bool `json:"affiliate_enabled"`
 	RiskControlEnabled                   bool `json:"risk_control_enabled"`
 	AllowUserViewErrorRequests           bool `json:"allow_user_view_error_requests"`
@@ -1441,7 +1624,6 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		TablePageSizeOptions:             settings.TablePageSizeOptions,
 		CustomMenuItems:                  filterUserVisibleMenuItems(settings.CustomMenuItems),
 		CustomEndpoints:                  safeRawJSONArray(settings.CustomEndpoints),
-		DailyCheckinEnabled:              settings.DailyCheckinEnabled,
 		LinuxDoOAuthEnabled:              settings.LinuxDoOAuthEnabled,
 		DingTalkOAuthEnabled:             settings.DingTalkOAuthEnabled,
 		WeChatOAuthEnabled:               settings.WeChatOAuthEnabled,
@@ -1455,6 +1637,8 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		BackendModeEnabled:               settings.BackendModeEnabled,
 		PaymentEnabled:                   settings.PaymentEnabled,
 		Version:                          s.version,
+		ServerTimezone:                   timezone.Name(),
+		ServerUTCOffset:                  timezone.UTCOffset(),
 		BalanceLowNotifyEnabled:          settings.BalanceLowNotifyEnabled,
 		AccountQuotaNotifyEnabled:        settings.AccountQuotaNotifyEnabled,
 		BalanceLowNotifyThreshold:        settings.BalanceLowNotifyThreshold,
@@ -1463,7 +1647,6 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ChannelMonitorEnabled:                settings.ChannelMonitorEnabled,
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
-		ModelMarketplaceEnabled:              settings.ModelMarketplaceEnabled,
 		AffiliateEnabled:                     settings.AffiliateEnabled,
 		RiskControlEnabled:                   settings.RiskControlEnabled,
 		AllowUserViewErrorRequests:           settings.AllowUserViewErrorRequests,
@@ -2048,32 +2231,6 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
 	updates[SettingKeyDefaultBalance] = strconv.FormatFloat(settings.DefaultBalance, 'f', 8, 64)
-	checkinMode, checkinAmount, checkinMin, checkinMax := normalizeDailyCheckinSettings(
-		settings.DailyCheckinRewardMode,
-		settings.DailyCheckinRewardAmount,
-		settings.DailyCheckinRewardMin,
-		settings.DailyCheckinRewardMax,
-	)
-	updates[SettingKeyDailyCheckinEnabled] = strconv.FormatBool(settings.DailyCheckinEnabled)
-	updates[SettingKeyDailyCheckinMode] = checkinMode
-	updates[SettingKeyDailyCheckinAmount] = strconv.FormatFloat(checkinAmount, 'f', 8, 64)
-	updates[SettingKeyDailyCheckinMin] = strconv.FormatFloat(checkinMin, 'f', 8, 64)
-	updates[SettingKeyDailyCheckinMax] = strconv.FormatFloat(checkinMax, 'f', 8, 64)
-	if err := ValidateDailyCheckinPrizeSettings(settings.DailyCheckinPrizes, settings.DailyCheckinEnabled); err != nil {
-		return nil, err
-	}
-	checkinPrizesJSON, err := json.Marshal(normalizeDailyCheckinPrizes(settings.DailyCheckinPrizes, checkinMode, checkinAmount, checkinMin, checkinMax))
-	if err != nil {
-		return nil, fmt.Errorf("marshal daily check-in prizes: %w", err)
-	}
-	checkinDecayRulesJSON, err := json.Marshal(normalizeDailyCheckinDecayRules(settings.DailyCheckinUnpaidDecayRules))
-	if err != nil {
-		return nil, fmt.Errorf("marshal daily check-in decay rules: %w", err)
-	}
-	updates[SettingKeyDailyCheckinPrizes] = string(checkinPrizesJSON)
-	updates[SettingKeyDailyCheckinUnpaidFullDays] = strconv.Itoa(normalizeDailyCheckinFullDays(settings.DailyCheckinUnpaidFullDays))
-	updates[SettingKeyDailyCheckinUnpaidDecayRules] = string(checkinDecayRulesJSON)
-	updates[SettingKeyDailyCheckinLinuxDoExemptEnabled] = strconv.FormatBool(settings.DailyCheckinLinuxDoExemptEnabled)
 	settings.AffiliateRebateRate = clampAffiliateRebateRate(settings.AffiliateRebateRate)
 	updates[SettingKeyAffiliateRebateRate] = strconv.FormatFloat(settings.AffiliateRebateRate, 'f', 8, 64)
 	if settings.AffiliateRebateFreezeHours < 0 {
@@ -2129,15 +2286,6 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	// Available channels feature switch
 	updates[SettingKeyAvailableChannelsEnabled] = strconv.FormatBool(settings.AvailableChannelsEnabled)
 
-	// Model marketplace public page
-	updates[SettingKeyModelMarketplaceEnabled] = strconv.FormatBool(settings.ModelMarketplaceEnabled)
-	updates[SettingKeyModelMarketplaceIntro] = strings.TrimSpace(settings.ModelMarketplaceIntro)
-	modelMarketplaceGroupIDsJSON, err := marshalModelMarketplaceGroupIDs(settings.ModelMarketplaceGroupIDs)
-	if err != nil {
-		return nil, err
-	}
-	updates[SettingKeyModelMarketplaceGroupIDs] = modelMarketplaceGroupIDsJSON
-
 	// Affiliate (邀请返利) feature switch
 	updates[SettingKeyAffiliateEnabled] = strconv.FormatBool(settings.AffiliateEnabled)
 
@@ -2172,28 +2320,16 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyClaudeOAuthSystemPromptBlocks] = settings.ClaudeOAuthSystemPromptBlocks
 	updates[SettingKeyEnableAnthropicCacheTTL1hInjection] = strconv.FormatBool(settings.EnableAnthropicCacheTTL1hInjection)
 	updates[SettingKeyRewriteMessageCacheControl] = strconv.FormatBool(settings.RewriteMessageCacheControl)
+	updates[SettingKeyEnableClientDatelineNormalization] = strconv.FormatBool(settings.EnableClientDatelineNormalization)
 	updates[SettingKeyAntigravityUserAgentVersion] = antigravity.NormalizeUserAgentVersion(settings.AntigravityUserAgentVersion)
-	settings.PreResponseStreamKeepaliveInitialDelay = normalizePreResponseStreamKeepaliveInitialDelay(
-		settings.PreResponseStreamKeepaliveInitialDelay,
-		s.defaultPreResponseStreamKeepaliveInitialDelay(),
-	)
-	updates[SettingKeyPreResponseStreamKeepaliveEnabled] = strconv.FormatBool(settings.PreResponseStreamKeepaliveEnabled)
-	updates[SettingKeyPreResponseStreamKeepaliveInitialDelay] = strconv.Itoa(settings.PreResponseStreamKeepaliveInitialDelay)
-	if err := ValidateSemanticErrorRules(settings.SemanticErrorRules); err != nil {
-		return nil, err
-	}
-	settings.SemanticErrorMatchMaxChars = normalizeSemanticErrorMatchMaxChars(settings.SemanticErrorMatchMaxChars)
-	settings.SemanticErrorRules = normalizeSemanticErrorRules(settings.SemanticErrorRules)
-	semanticErrorRulesJSON, err := json.Marshal(settings.SemanticErrorRules)
-	if err != nil {
-		return nil, fmt.Errorf("marshal semantic error rules: %w", err)
-	}
-	updates[SettingKeySemanticErrorDetectionEnabled] = strconv.FormatBool(settings.SemanticErrorDetectionEnabled)
-	updates[SettingKeySemanticErrorMatchMaxChars] = strconv.Itoa(settings.SemanticErrorMatchMaxChars)
-	updates[SettingKeySemanticErrorRules] = string(semanticErrorRulesJSON)
 	updates[SettingKeyOpenAICodexUserAgent] = strings.TrimSpace(settings.OpenAICodexUserAgent)
-	updates[SettingKeyOpenAIAllowClaudeCodeCodexPlugin] = strconv.FormatBool(settings.OpenAIAllowClaudeCodeCodexPlugin)
-	updates[SettingKeyScheduledTestDefaultPrompt] = normalizeScheduledTestDefaultPrompt(settings.ScheduledTestDefaultPrompt)
+	// codex_cli_only 加固
+	updates[SettingKeyMinCodexVersion] = strings.TrimSpace(settings.MinCodexVersion)
+	updates[SettingKeyMaxCodexVersion] = strings.TrimSpace(settings.MaxCodexVersion)
+	updates[SettingKeyCodexCLIOnlyBlacklist] = strings.TrimSpace(settings.CodexCLIOnlyBlacklist)
+	updates[SettingKeyCodexCLIOnlyWhitelist] = strings.TrimSpace(settings.CodexCLIOnlyWhitelist)
+	updates[SettingKeyCodexCLIOnlyAllowAppServerClients] = strconv.FormatBool(settings.CodexCLIOnlyAllowAppServerClients)
+	updates[SettingKeyCodexCLIOnlyEngineFingerprintSignals] = strings.TrimSpace(settings.CodexCLIOnlyEngineFingerprintSignals)
 	updates[SettingPaymentVisibleMethodAlipaySource] = settings.PaymentVisibleMethodAlipaySource
 	updates[SettingPaymentVisibleMethodWxpaySource] = settings.PaymentVisibleMethodWxpaySource
 	updates[SettingPaymentVisibleMethodAlipayEnabled] = strconv.FormatBool(settings.PaymentVisibleMethodAlipayEnabled)
@@ -2323,8 +2459,7 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 		claudeOAuthSystemPromptBlocks:    settings.ClaudeOAuthSystemPromptBlocks,
 		anthropicCacheTTL1hInjection:     settings.EnableAnthropicCacheTTL1hInjection,
 		rewriteMessageCacheControl:       settings.RewriteMessageCacheControl,
-		preResponseKeepaliveEnabled:      settings.PreResponseStreamKeepaliveEnabled,
-		preResponseKeepaliveDelay:        normalizePreResponseStreamKeepaliveInitialDelay(settings.PreResponseStreamKeepaliveInitialDelay, s.defaultPreResponseStreamKeepaliveInitialDelay()),
+		clientDatelineNormalization:      settings.EnableClientDatelineNormalization,
 		semanticErrorConfig: SemanticErrorConfig{
 			Enabled:       settings.SemanticErrorDetectionEnabled,
 			MatchMaxChars: normalizeSemanticErrorMatchMaxChars(settings.SemanticErrorMatchMaxChars),
@@ -2369,11 +2504,9 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	if s.cfg != nil {
 		s.cfg.SetTrustForwardedIPForAPIKeyACL(settings.APIKeyACLTrustForwardedIP)
 	}
-	s.openAIAllowCodexPluginSF.Forget("openai_allow_codex_plugin_enabled")
-	s.openAIAllowCodexPluginCache.Store(&cachedOpenAIAllowCodexPlugin{
-		value:     settings.OpenAIAllowClaudeCodeCodexPlugin,
-		expiresAt: time.Now().Add(openAIAllowCodexPluginCacheTTL).UnixNano(),
-	})
+	// codex_cli_only 加固策略缓存：设置更新后强制下次重载（涉及 4 个键 + JSON 解析，直接置过期）。
+	s.codexRestrictionPolicySF.Forget("codex_restriction_policy")
+	s.codexRestrictionPolicyCache.Store(&cachedCodexRestrictionPolicy{expiresAt: 0})
 	if s.onUpdate != nil {
 		s.onUpdate() // Invalidate cache after settings update
 	}
@@ -2381,47 +2514,6 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 
 func (s *SettingService) defaultRewriteMessageCacheControl() bool {
 	return false
-}
-
-func (s *SettingService) defaultPreResponseStreamKeepaliveEnabled() bool {
-	return s != nil && s.cfg != nil && s.cfg.Gateway.PreResponseStreamKeepaliveEnabled
-}
-
-func (s *SettingService) defaultPreResponseStreamKeepaliveInitialDelay() int {
-	if s != nil && s.cfg != nil && s.cfg.Gateway.PreResponseStreamKeepaliveInitialDelay > 0 {
-		return s.cfg.Gateway.PreResponseStreamKeepaliveInitialDelay
-	}
-	return 80
-}
-
-func normalizePreResponseStreamKeepaliveInitialDelay(raw any, fallback int) int {
-	if fallback <= 0 {
-		fallback = 80
-	}
-	var value int
-	switch v := raw.(type) {
-	case int:
-		value = v
-	case string:
-		trimmed := strings.TrimSpace(v)
-		if trimmed == "" {
-			return fallback
-		}
-		parsed, err := strconv.Atoi(trimmed)
-		if err != nil {
-			return fallback
-		}
-		value = parsed
-	default:
-		return fallback
-	}
-	if value < 5 {
-		return 5
-	}
-	if value > 110 {
-		return 110
-	}
-	return value
 }
 
 func normalizeSemanticErrorMatchMaxChars(raw any) int {
@@ -2459,11 +2551,10 @@ func normalizeSemanticErrorRules(rules []SemanticErrorRule) []SemanticErrorRule 
 		if matchType != "regex" {
 			matchType = "contains"
 		}
-		platforms := normalizeSemanticErrorPlatforms(rule.Platforms)
 		out = append(out, SemanticErrorRule{
 			Enabled:       rule.Enabled,
 			Name:          name,
-			Platforms:     platforms,
+			Platforms:     normalizeSemanticErrorPlatforms(rule.Platforms),
 			MatchType:     matchType,
 			Pattern:       pattern,
 			CustomMessage: message,
@@ -2723,10 +2814,12 @@ func (s *SettingService) IsBackendModeEnabled(ctx context.Context) bool {
 }
 
 type gatewayForwardingSettingsResult struct {
-	fp, mp, cch, claudeOAuthSystemPromptInjection, cacheTTL1h, rewriteMessageCacheControl, preResponseKeepaliveEnabled bool
-	preResponseKeepaliveDelay                                                                                          int
-	claudeOAuthSystemPrompt, claudeOAuthSystemPromptBlocks                                                             string
-	semanticErrorConfig                                                                                                SemanticErrorConfig
+	fp, mp, cch, claudeOAuthSystemPromptInjection, cacheTTL1h, rewriteMessageCacheControl bool
+	preResponseKeepaliveEnabled                                                           bool
+	preResponseKeepaliveDelay                                                             int
+	clientDatelineNormalization                                                           bool
+	claudeOAuthSystemPrompt, claudeOAuthSystemPromptBlocks                                string
+	semanticErrorConfig                                                                   SemanticErrorConfig
 }
 
 func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context) gatewayForwardingSettingsResult {
@@ -2741,8 +2834,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 				claudeOAuthSystemPromptBlocks:    cached.claudeOAuthSystemPromptBlocks,
 				cacheTTL1h:                       cached.anthropicCacheTTL1hInjection,
 				rewriteMessageCacheControl:       cached.rewriteMessageCacheControl,
-				preResponseKeepaliveEnabled:      cached.preResponseKeepaliveEnabled,
-				preResponseKeepaliveDelay:        cached.preResponseKeepaliveDelay,
+				clientDatelineNormalization:      cached.clientDatelineNormalization,
 				semanticErrorConfig:              cached.semanticErrorConfig,
 			}
 		}
@@ -2759,8 +2851,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 					claudeOAuthSystemPromptBlocks:    cached.claudeOAuthSystemPromptBlocks,
 					cacheTTL1h:                       cached.anthropicCacheTTL1hInjection,
 					rewriteMessageCacheControl:       cached.rewriteMessageCacheControl,
-					preResponseKeepaliveEnabled:      cached.preResponseKeepaliveEnabled,
-					preResponseKeepaliveDelay:        cached.preResponseKeepaliveDelay,
+					clientDatelineNormalization:      cached.clientDatelineNormalization,
 					semanticErrorConfig:              cached.semanticErrorConfig,
 				}, nil
 			}
@@ -2776,14 +2867,12 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			SettingKeyClaudeOAuthSystemPromptBlocks,
 			SettingKeyEnableAnthropicCacheTTL1hInjection,
 			SettingKeyRewriteMessageCacheControl,
-			SettingKeyPreResponseStreamKeepaliveEnabled,
-			SettingKeyPreResponseStreamKeepaliveInitialDelay,
+			SettingKeyEnableClientDatelineNormalization,
 			SettingKeySemanticErrorDetectionEnabled,
 			SettingKeySemanticErrorMatchMaxChars,
 			SettingKeySemanticErrorRules,
 		})
 		if err != nil {
-			semanticCfg := defaultSemanticErrorConfig()
 			slog.Warn("failed to get gateway forwarding settings", "error", err)
 			gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
 				fingerprintUnification:           true,
@@ -2792,19 +2881,11 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 				claudeOAuthSystemPromptInjection: true,
 				anthropicCacheTTL1hInjection:     false,
 				rewriteMessageCacheControl:       s.defaultRewriteMessageCacheControl(),
-				preResponseKeepaliveEnabled:      s.defaultPreResponseStreamKeepaliveEnabled(),
-				preResponseKeepaliveDelay:        s.defaultPreResponseStreamKeepaliveInitialDelay(),
-				semanticErrorConfig:              semanticCfg,
+				clientDatelineNormalization:      true,
+				semanticErrorConfig:              defaultSemanticErrorConfig(),
 				expiresAt:                        time.Now().Add(gatewayForwardingErrorTTL).UnixNano(),
 			})
-			return gatewayForwardingSettingsResult{
-				fp:                               true,
-				claudeOAuthSystemPromptInjection: true,
-				rewriteMessageCacheControl:       s.defaultRewriteMessageCacheControl(),
-				preResponseKeepaliveEnabled:      s.defaultPreResponseStreamKeepaliveEnabled(),
-				preResponseKeepaliveDelay:        s.defaultPreResponseStreamKeepaliveInitialDelay(),
-				semanticErrorConfig:              semanticCfg,
-			}, nil
+			return gatewayForwardingSettingsResult{fp: true, claudeOAuthSystemPromptInjection: true, rewriteMessageCacheControl: s.defaultRewriteMessageCacheControl(), clientDatelineNormalization: true}, nil
 		}
 		fp := true
 		if v, ok := values[SettingKeyEnableFingerprintUnification]; ok && v != "" {
@@ -2823,15 +2904,11 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 		if v, ok := values[SettingKeyRewriteMessageCacheControl]; ok && v != "" {
 			rewriteMessageCacheControl = v == "true"
 		}
-		preResponseEnabled := s.defaultPreResponseStreamKeepaliveEnabled()
-		if v, ok := values[SettingKeyPreResponseStreamKeepaliveEnabled]; ok && v != "" {
-			preResponseEnabled = v == "true"
+		clientDatelineNormalization := true
+		if v, ok := values[SettingKeyEnableClientDatelineNormalization]; ok && v != "" {
+			clientDatelineNormalization = v == "true"
 		}
-		preResponseDelay := normalizePreResponseStreamKeepaliveInitialDelay(
-			values[SettingKeyPreResponseStreamKeepaliveInitialDelay],
-			s.defaultPreResponseStreamKeepaliveInitialDelay(),
-		)
-		semanticCfg := SemanticErrorConfig{
+		semanticErrorConfig := SemanticErrorConfig{
 			Enabled:       values[SettingKeySemanticErrorDetectionEnabled] == "true",
 			MatchMaxChars: normalizeSemanticErrorMatchMaxChars(values[SettingKeySemanticErrorMatchMaxChars]),
 			Rules:         compileSemanticErrorRules(parseSemanticErrorRules(values[SettingKeySemanticErrorRules])),
@@ -2845,9 +2922,8 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			claudeOAuthSystemPromptBlocks:    systemPromptBlocks,
 			anthropicCacheTTL1hInjection:     cacheTTL1h,
 			rewriteMessageCacheControl:       rewriteMessageCacheControl,
-			preResponseKeepaliveEnabled:      preResponseEnabled,
-			preResponseKeepaliveDelay:        preResponseDelay,
-			semanticErrorConfig:              semanticCfg,
+			clientDatelineNormalization:      clientDatelineNormalization,
+			semanticErrorConfig:              semanticErrorConfig,
 			expiresAt:                        time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
 		})
 		return gatewayForwardingSettingsResult{
@@ -2859,21 +2935,14 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			claudeOAuthSystemPromptBlocks:    systemPromptBlocks,
 			cacheTTL1h:                       cacheTTL1h,
 			rewriteMessageCacheControl:       rewriteMessageCacheControl,
-			preResponseKeepaliveEnabled:      preResponseEnabled,
-			preResponseKeepaliveDelay:        preResponseDelay,
-			semanticErrorConfig:              semanticCfg,
+			clientDatelineNormalization:      clientDatelineNormalization,
+			semanticErrorConfig:              semanticErrorConfig,
 		}, nil
 	})
 	if r, ok := val.(gatewayForwardingSettingsResult); ok {
 		return r
 	}
-	return gatewayForwardingSettingsResult{
-		fp:                               true,
-		claudeOAuthSystemPromptInjection: true,
-		preResponseKeepaliveEnabled:      s.defaultPreResponseStreamKeepaliveEnabled(),
-		preResponseKeepaliveDelay:        s.defaultPreResponseStreamKeepaliveInitialDelay(),
-		semanticErrorConfig:              defaultSemanticErrorConfig(),
-	}
+	return gatewayForwardingSettingsResult{fp: true, claudeOAuthSystemPromptInjection: true, clientDatelineNormalization: true, semanticErrorConfig: defaultSemanticErrorConfig()}
 }
 
 // GetGatewayForwardingSettings returns cached gateway forwarding settings.
@@ -2894,19 +2963,24 @@ func (s *SettingService) IsRewriteMessageCacheControlEnabled(ctx context.Context
 	return s.getGatewayForwardingSettingsCached(ctx).rewriteMessageCacheControl
 }
 
+// IsClientDatelineNormalizationEnabled 检查是否启用 Anthropic OAuth/SetupToken 请求体
+// 的客户端 dateline 归一化。默认开启。
+func (s *SettingService) IsClientDatelineNormalizationEnabled(ctx context.Context) bool {
+	return s.getGatewayForwardingSettingsCached(ctx).clientDatelineNormalization
+}
+
 // GetClaudeOAuthSystemPromptInjectionSettings returns the Claude OAuth mimic
 // system block switch, legacy custom expansion prompt, and configurable blocks JSON.
+// Empty values mean use the built-in Claude Code default blocks.
 func (s *SettingService) GetClaudeOAuthSystemPromptInjectionSettings(ctx context.Context) (enabled bool, prompt string, blocks string) {
 	result := s.getGatewayForwardingSettingsCached(ctx)
 	return result.claudeOAuthSystemPromptInjection, result.claudeOAuthSystemPrompt, result.claudeOAuthSystemPromptBlocks
 }
 
-// IsPreResponseStreamKeepaliveEnabled 检查是否启用预响应流式心跳。
 func (s *SettingService) IsPreResponseStreamKeepaliveEnabled(ctx context.Context) bool {
 	return s.getGatewayForwardingSettingsCached(ctx).preResponseKeepaliveEnabled
 }
 
-// GetPreResponseStreamKeepaliveInitialDelay 获取预响应流式心跳首次延迟秒数。
 func (s *SettingService) GetPreResponseStreamKeepaliveInitialDelay(ctx context.Context) int {
 	return s.getGatewayForwardingSettingsCached(ctx).preResponseKeepaliveDelay
 }
@@ -3326,33 +3400,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOIDCConnectUserInfoEmailPath:              "",
 		SettingKeyOIDCConnectUserInfoIDPath:                 "",
 		SettingKeyOIDCConnectUserInfoUsernamePath:           "",
-		SettingKeyDingTalkConnectEnabled:                    "false",
-		SettingKeyDingTalkConnectClientID:                   "",
-		SettingKeyDingTalkConnectClientSecret:               "",
-		SettingKeyDingTalkConnectRedirectURL:                "",
-		SettingKeyDingTalkConnectCorpRestrictionPolicy:      "allow_all",
-		SettingKeyDingTalkConnectInternalCorpID:             "",
-		SettingKeyDingTalkConnectBypassRegistration:         "false",
-		SettingKeyDingTalkConnectSyncCorpEmail:              "false",
-		SettingKeyDingTalkConnectSyncDisplayName:            "true",
-		SettingKeyDingTalkConnectSyncDept:                   "false",
-		SettingKeyDingTalkConnectSyncCorpEmailAttrKey:       "dingtalk_corp_email",
-		SettingKeyDingTalkConnectSyncDisplayNameAttrKey:     "dingtalk_display_name",
-		SettingKeyDingTalkConnectSyncDeptAttrKey:            "dingtalk_dept",
-		SettingKeyDingTalkConnectSyncCorpEmailAttrName:      "钉钉企业邮箱",
-		SettingKeyDingTalkConnectSyncDisplayNameAttrName:    "钉钉姓名",
-		SettingKeyDingTalkConnectSyncDeptAttrName:           "钉钉部门",
 		SettingKeyDefaultConcurrency:                        strconv.Itoa(s.cfg.Default.UserConcurrency),
 		SettingKeyDefaultBalance:                            strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
-		SettingKeyDailyCheckinEnabled:                       "false",
-		SettingKeyDailyCheckinMode:                          "fixed",
-		SettingKeyDailyCheckinAmount:                        "1.00000000",
-		SettingKeyDailyCheckinMin:                           "1.00000000",
-		SettingKeyDailyCheckinMax:                           "3.00000000",
-		SettingKeyDailyCheckinPrizes:                        `[{"id":"legacy_balance","name":"余额奖励","type":"balance","probability_bps":10000,"enabled":true,"sort_order":0,"balance_mode":"fixed","amount":1}]`,
-		SettingKeyDailyCheckinUnpaidFullDays:                "7",
-		SettingKeyDailyCheckinUnpaidDecayRules:              `[{"after_days":7,"factor_bps":5000},{"after_days":14,"factor_bps":2000},{"after_days":30,"factor_bps":0}]`,
-		SettingKeyDailyCheckinLinuxDoExemptEnabled:          "false",
 		SettingKeyAffiliateRebateRate:                       strconv.FormatFloat(AffiliateRebateRateDefault, 'f', 8, 64),
 		SettingKeyAffiliateRebateFreezeHours:                strconv.Itoa(AffiliateRebateFreezeHoursDefault),
 		SettingKeyAffiliateRebateDurationDays:               strconv.Itoa(AffiliateRebateDurationDaysDefault),
@@ -3420,11 +3469,6 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		// Available channels feature (default disabled; opt-in)
 		SettingKeyAvailableChannelsEnabled: "false",
 
-		// Model marketplace public page (default enabled, public groups only)
-		SettingKeyModelMarketplaceEnabled:  "true",
-		SettingKeyModelMarketplaceIntro:    "",
-		SettingKeyModelMarketplaceGroupIDs: "[]",
-
 		// Affiliate (邀请返利) feature (default disabled; opt-in)
 		SettingKeyAffiliateEnabled: "false",
 
@@ -3439,27 +3483,26 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyMinClaudeCodeVersion: "",
 		SettingKeyMaxClaudeCodeVersion: "",
 
+		// codex_cli_only 加固（默认：版本不检查、名单空、默认种子指纹信号）
+		SettingKeyMinCodexVersion:                      "",
+		SettingKeyMaxCodexVersion:                      "",
+		SettingKeyCodexCLIOnlyBlacklist:                "",
+		SettingKeyCodexCLIOnlyWhitelist:                "",
+		SettingKeyCodexCLIOnlyAllowAppServerClients:    "false",
+		SettingKeyCodexCLIOnlyEngineFingerprintSignals: openai.DefaultEngineFingerprintSignalsJSON(),
+
 		// 分组隔离（默认不允许未分组 Key 调度）
-		SettingKeyAllowUngroupedKeyScheduling:            "false",
-		SettingKeyEnableClaudeOAuthSystemPromptInjection: "true",
-		SettingKeyClaudeOAuthSystemPrompt:                "",
-		SettingKeyClaudeOAuthSystemPromptBlocks:          "",
-		SettingKeyEnableAnthropicCacheTTL1hInjection:     "false",
-		SettingKeyRewriteMessageCacheControl:             strconv.FormatBool(s.defaultRewriteMessageCacheControl()),
-		SettingKeyAntigravityUserAgentVersion:            "",
-		SettingKeyPreResponseStreamKeepaliveEnabled:      strconv.FormatBool(s.defaultPreResponseStreamKeepaliveEnabled()),
-		SettingKeyPreResponseStreamKeepaliveInitialDelay: strconv.Itoa(s.defaultPreResponseStreamKeepaliveInitialDelay()),
-		SettingKeySemanticErrorDetectionEnabled:          "false",
-		SettingKeySemanticErrorMatchMaxChars:             strconv.Itoa(defaultSemanticErrorMatchMaxChars),
-		SettingKeySemanticErrorRules:                     "[]",
-		SettingPaymentVisibleMethodAlipaySource:          "",
-		SettingPaymentVisibleMethodWxpaySource:           "",
-		SettingPaymentVisibleMethodAlipayEnabled:         "false",
-		SettingPaymentVisibleMethodWxpayEnabled:          "false",
-		openAIAdvancedSchedulerSettingKey:                "false",
-		SettingKeyOpenAICodexUserAgent:                   "",
-		SettingKeyOpenAIAllowClaudeCodeCodexPlugin:       "false",
-		SettingKeyScheduledTestDefaultPrompt:             DefaultScheduledTestPrompt,
+		SettingKeyAllowUngroupedKeyScheduling:        "false",
+		SettingKeyEnableAnthropicCacheTTL1hInjection: "false",
+		SettingKeyRewriteMessageCacheControl:         strconv.FormatBool(s.defaultRewriteMessageCacheControl()),
+		SettingKeyEnableClientDatelineNormalization:  "true",
+		SettingKeyAntigravityUserAgentVersion:        "",
+		SettingKeyOpenAICodexUserAgent:               "",
+		SettingPaymentVisibleMethodAlipaySource:      "",
+		SettingPaymentVisibleMethodWxpaySource:       "",
+		SettingPaymentVisibleMethodAlipayEnabled:     "false",
+		SettingPaymentVisibleMethodWxpayEnabled:      "false",
+		openAIAdvancedSchedulerSettingKey:            "false",
 
 		SettingKeyAllowUserViewErrorRequests: "false",
 	}
@@ -3546,20 +3589,6 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	} else {
 		result.DefaultBalance = s.cfg.Default.UserBalance
 	}
-	checkinAmount := parseFloatSetting(settings[SettingKeyDailyCheckinAmount], 1)
-	checkinMin := parseFloatSetting(settings[SettingKeyDailyCheckinMin], 1)
-	checkinMax := parseFloatSetting(settings[SettingKeyDailyCheckinMax], 3)
-	result.DailyCheckinRewardMode, result.DailyCheckinRewardAmount, result.DailyCheckinRewardMin, result.DailyCheckinRewardMax = normalizeDailyCheckinSettings(
-		settings[SettingKeyDailyCheckinMode],
-		checkinAmount,
-		checkinMin,
-		checkinMax,
-	)
-	result.DailyCheckinEnabled = settings[SettingKeyDailyCheckinEnabled] == "true"
-	result.DailyCheckinPrizes = parseDailyCheckinPrizeSetting(settings[SettingKeyDailyCheckinPrizes], result.DailyCheckinRewardMode, result.DailyCheckinRewardAmount, result.DailyCheckinRewardMin, result.DailyCheckinRewardMax)
-	result.DailyCheckinUnpaidFullDays = normalizeDailyCheckinFullDays(parseIntSetting(settings[SettingKeyDailyCheckinUnpaidFullDays], 7))
-	result.DailyCheckinUnpaidDecayRules = parseDailyCheckinDecayRuleSetting(settings[SettingKeyDailyCheckinUnpaidDecayRules])
-	result.DailyCheckinLinuxDoExemptEnabled = settings[SettingKeyDailyCheckinLinuxDoExemptEnabled] == "true"
 	if rebateRate, err := strconv.ParseFloat(settings[SettingKeyAffiliateRebateRate], 64); err == nil {
 		result.AffiliateRebateRate = clampAffiliateRebateRate(rebateRate)
 	} else {
@@ -3962,11 +3991,6 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	// Available channels feature (default: disabled; strict true)
 	result.AvailableChannelsEnabled = settings[SettingKeyAvailableChannelsEnabled] == "true"
 
-	// Model marketplace public page (default: enabled; strict false disables)
-	result.ModelMarketplaceEnabled = !isFalseSettingValue(settings[SettingKeyModelMarketplaceEnabled])
-	result.ModelMarketplaceIntro = strings.TrimSpace(settings[SettingKeyModelMarketplaceIntro])
-	result.ModelMarketplaceGroupIDs = parseModelMarketplaceGroupIDs(settings[SettingKeyModelMarketplaceGroupIDs])
-
 	// Affiliate (邀请返利) feature (default: disabled; strict true)
 	result.AffiliateEnabled = settings[SettingKeyAffiliateEnabled] == "true"
 
@@ -4010,21 +4034,24 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	} else {
 		result.RewriteMessageCacheControl = s.defaultRewriteMessageCacheControl()
 	}
-	result.AntigravityUserAgentVersion = antigravity.NormalizeUserAgentVersion(settings[SettingKeyAntigravityUserAgentVersion])
-	result.PreResponseStreamKeepaliveEnabled = s.defaultPreResponseStreamKeepaliveEnabled()
-	if v, ok := settings[SettingKeyPreResponseStreamKeepaliveEnabled]; ok && v != "" {
-		result.PreResponseStreamKeepaliveEnabled = v == "true"
+	if v, ok := settings[SettingKeyEnableClientDatelineNormalization]; ok && v != "" {
+		result.EnableClientDatelineNormalization = v == "true"
+	} else {
+		result.EnableClientDatelineNormalization = true
 	}
-	result.PreResponseStreamKeepaliveInitialDelay = normalizePreResponseStreamKeepaliveInitialDelay(
-		settings[SettingKeyPreResponseStreamKeepaliveInitialDelay],
-		s.defaultPreResponseStreamKeepaliveInitialDelay(),
-	)
-	result.SemanticErrorDetectionEnabled = settings[SettingKeySemanticErrorDetectionEnabled] == "true"
-	result.SemanticErrorMatchMaxChars = normalizeSemanticErrorMatchMaxChars(settings[SettingKeySemanticErrorMatchMaxChars])
-	result.SemanticErrorRules = parseSemanticErrorRules(settings[SettingKeySemanticErrorRules])
+	result.AntigravityUserAgentVersion = antigravity.NormalizeUserAgentVersion(settings[SettingKeyAntigravityUserAgentVersion])
 	result.OpenAICodexUserAgent = strings.TrimSpace(settings[SettingKeyOpenAICodexUserAgent])
-	result.OpenAIAllowClaudeCodeCodexPlugin = settings[SettingKeyOpenAIAllowClaudeCodeCodexPlugin] == "true"
-	result.ScheduledTestDefaultPrompt = normalizeScheduledTestDefaultPrompt(settings[SettingKeyScheduledTestDefaultPrompt])
+	// codex_cli_only 加固
+	result.MinCodexVersion = settings[SettingKeyMinCodexVersion]
+	result.MaxCodexVersion = settings[SettingKeyMaxCodexVersion]
+	result.CodexCLIOnlyBlacklist = settings[SettingKeyCodexCLIOnlyBlacklist]
+	result.CodexCLIOnlyWhitelist = settings[SettingKeyCodexCLIOnlyWhitelist]
+	result.CodexCLIOnlyAllowAppServerClients = settings[SettingKeyCodexCLIOnlyAllowAppServerClients] == "true"
+	if raw := strings.TrimSpace(settings[SettingKeyCodexCLIOnlyEngineFingerprintSignals]); raw != "" {
+		result.CodexCLIOnlyEngineFingerprintSignals = raw
+	} else {
+		result.CodexCLIOnlyEngineFingerprintSignals = openai.DefaultEngineFingerprintSignalsJSON() // 缺失/空 → 展示默认种子
+	}
 
 	// Web search emulation: quick enabled check from the JSON config
 	if raw := settings[SettingKeyWebSearchEmulationConfig]; raw != "" {
@@ -4067,6 +4094,21 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	}
 
 	result.AllowUserViewErrorRequests = settings[SettingKeyAllowUserViewErrorRequests] == "true" // default false
+	result.ScheduledTestDefaultPrompt = normalizeScheduledTestDefaultPrompt(settings[SettingKeyScheduledTestDefaultPrompt])
+	checkinAmount := parseFloatSetting(settings[SettingKeyDailyCheckinAmount], 1)
+	checkinMin := parseFloatSetting(settings[SettingKeyDailyCheckinMin], 1)
+	checkinMax := parseFloatSetting(settings[SettingKeyDailyCheckinMax], 3)
+	result.DailyCheckinRewardMode, result.DailyCheckinRewardAmount, result.DailyCheckinRewardMin, result.DailyCheckinRewardMax = normalizeDailyCheckinSettings(
+		settings[SettingKeyDailyCheckinMode],
+		checkinAmount,
+		checkinMin,
+		checkinMax,
+	)
+	result.DailyCheckinEnabled = settings[SettingKeyDailyCheckinEnabled] == "true"
+	result.DailyCheckinPrizes = parseDailyCheckinPrizeSetting(settings[SettingKeyDailyCheckinPrizes], result.DailyCheckinRewardMode, result.DailyCheckinRewardAmount, result.DailyCheckinRewardMin, result.DailyCheckinRewardMax)
+	result.DailyCheckinUnpaidFullDays = normalizeDailyCheckinFullDays(parseIntSetting(settings[SettingKeyDailyCheckinUnpaidFullDays], 7))
+	result.DailyCheckinUnpaidDecayRules = parseDailyCheckinDecayRuleSetting(settings[SettingKeyDailyCheckinUnpaidDecayRules])
+	result.DailyCheckinLinuxDoExemptEnabled = settings[SettingKeyDailyCheckinLinuxDoExemptEnabled] == "true"
 
 	return result
 }
@@ -5552,17 +5594,15 @@ func (s *SettingService) SetStreamTimeoutSettings(ctx context.Context, settings 
 	return s.settingRepo.Set(ctx, SettingKeyStreamTimeoutSettings, string(data))
 }
 
-// GetDefaultPlatformQuotas 读取系统全局 platform quota JSON key，返回 4 platform x 3 window 的设置。
-// 永远返回包含全部 4 platform key 的 map（值可能为零值/nil 字段，表示"上层未配置 = 不限制"）。
+// GetDefaultPlatformQuotas 读取系统全局 platform quota JSON key，返回全部允许平台 x 3 window 的设置。
+// 永远返回包含全部允许 platform key 的 map（值可能为零值/nil 字段，表示"上层未配置 = 不限制"）。
 //
 // 使用单个 JSON key（default_platform_quotas），一次 DB roundtrip，消除旧 12-KV 格式的 N+1 问题。
-// 容错语义：取值失败或 unmarshal 失败 → 返回补齐 4 key 的空 map（fail-open，注册不被阻断）。
+// 容错语义：取值失败或 unmarshal 失败 → 返回补齐全部允许平台 key 的空 map（fail-open，注册不被阻断）。
 func (s *SettingService) GetDefaultPlatformQuotas(ctx context.Context) (map[string]*DefaultPlatformQuotaSetting, error) {
-	out := map[string]*DefaultPlatformQuotaSetting{
-		"anthropic":   {},
-		"openai":      {},
-		"gemini":      {},
-		"antigravity": {},
+	out := make(map[string]*DefaultPlatformQuotaSetting, len(AllowedQuotaPlatforms))
+	for _, platform := range AllowedQuotaPlatforms {
+		out[platform] = &DefaultPlatformQuotaSetting{}
 	}
 	raw, err := s.settingRepo.GetValue(ctx, SettingKeyDefaultPlatformQuotas)
 	if err != nil || raw == "" {
@@ -5578,7 +5618,7 @@ func (s *SettingService) GetDefaultPlatformQuotas(ctx context.Context) (map[stri
 			out[platform] = v
 		}
 	}
-	return out, nil // 补齐 4 platform key，保持与旧实现一致的下游契约
+	return out, nil // 补齐全部允许 platform key，保持与旧实现一致的下游契约
 }
 
 // GetAuthSourcePlatformQuotas 读取指定 auth source 的 platform quota 覆盖（仅返回有配置的平台，override 语义）。

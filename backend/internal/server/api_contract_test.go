@@ -317,6 +317,7 @@ func TestAPIContracts(t *testing.T) {
 						Description:         "desc",
 						Platform:            service.PlatformAnthropic,
 						RateMultiplier:      1.5,
+						PeakRateMultiplier:  1.0,
 						IsExclusive:         false,
 						Status:              service.StatusActive,
 						SubscriptionType:    service.SubscriptionTypeStandard,
@@ -344,6 +345,10 @@ func TestAPIContracts(t *testing.T) {
 						"description": "desc",
 						"platform": "anthropic",
 						"rate_multiplier": 1.5,
+						"peak_rate_enabled": false,
+						"peak_start": "",
+						"peak_end": "",
+						"peak_rate_multiplier": 1,
 						"is_exclusive": false,
 						"status": "active",
 						"subscription_type": "standard",
@@ -357,7 +362,6 @@ func TestAPIContracts(t *testing.T) {
 						"image_rate_independent": false,
 						"image_rate_multiplier": 0,
 						"claude_code_only": false,
-						"claude_code_upstream_mimicry": false,
 						"allow_messages_dispatch": false,
 						"fallback_group_id": null,
 						"fallback_group_id_on_invalid_request": null,
@@ -456,10 +460,7 @@ func TestAPIContracts(t *testing.T) {
 						"used_at": "2025-01-02T03:04:05Z",
 						"created_at": "2025-01-02T03:04:05Z",
 						"group_id": null,
-						"validity_days": 0,
-						"max_uses": 0,
-						"used_count": 0,
-						"remaining_uses": 1
+						"validity_days": 0
 					}
 				]
 			}`,
@@ -761,18 +762,15 @@ func TestAPIContracts(t *testing.T) {
 						"ops_realtime_monitoring_enabled": true,
 						"ops_query_mode_default": "auto",
 						"ops_metrics_interval_seconds": 60,
-						"model_marketplace_enabled": true,
-						"model_marketplace_intro": "",
-						"model_marketplace_group_ids": null,
 						"site_name": "Sub2API",
 						"site_logo": "",
 						"site_subtitle": "Subtitle",
 						"api_base_url": "https://api.example.com",
 						"api_key_acl_trust_forwarded_ip": false,
-						"contact_info": "support",
-						"doc_url": "https://docs.example.com",
-						"auth_source_default_email_balance": 0,
-						"auth_source_default_email_concurrency": 5,
+					"contact_info": "support",
+					"doc_url": "https://docs.example.com",
+					"auth_source_default_email_balance": 0,
+					"auth_source_default_email_concurrency": 5,
 					"auth_source_default_email_subscriptions": [],
 					"auth_source_default_email_grant_on_signup": false,
 					"auth_source_default_email_grant_on_first_bind": false,
@@ -809,24 +807,15 @@ func TestAPIContracts(t *testing.T) {
 					"force_email_on_third_party_signup": false,
 					"default_concurrency": 5,
 					"default_balance": 1.25,
-						"daily_checkin_enabled": false,
-						"daily_checkin_reward_mode": "fixed",
-						"daily_checkin_reward_amount": 1,
-						"daily_checkin_reward_min": 1,
-						"daily_checkin_reward_max": 3,
-						"daily_checkin_prizes": [{"id":"legacy_balance","name":"余额奖励","type":"balance","probability_bps":10000,"enabled":true,"sort_order":0,"balance_mode":"fixed","amount":1,"min_amount":1,"max_amount":3}],
-						"daily_checkin_unpaid_full_days": 7,
-						"daily_checkin_unpaid_decay_rules": [{"after_days":7,"factor_bps":5000},{"after_days":14,"factor_bps":2000},{"after_days":30,"factor_bps":0}],
-						"daily_checkin_linuxdo_exempt_enabled": false,
-						"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null}},
-						"auth_source_default_email_platform_quotas": null,
-						"auth_source_default_github_platform_quotas": null,
-						"auth_source_default_google_platform_quotas": null,
-						"auth_source_default_linuxdo_platform_quotas": null,
-						"auth_source_default_oidc_platform_quotas": null,
-						"auth_source_default_wechat_platform_quotas": null,
-						"auth_source_default_dingtalk_platform_quotas": null,
-						"affiliate_rebate_rate": 20,
+					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null}},
+					"auth_source_default_email_platform_quotas": null,
+					"auth_source_default_github_platform_quotas": null,
+					"auth_source_default_google_platform_quotas": null,
+					"auth_source_default_linuxdo_platform_quotas": null,
+					"auth_source_default_oidc_platform_quotas": null,
+					"auth_source_default_wechat_platform_quotas": null,
+					"auth_source_default_dingtalk_platform_quotas": null,
+					"affiliate_rebate_rate": 20,
 					"affiliate_rebate_freeze_hours": 0,
 					"affiliate_rebate_duration_days": 0,
 					"affiliate_rebate_per_invitee_cap": 0,
@@ -848,6 +837,12 @@ func TestAPIContracts(t *testing.T) {
 						"table_page_size_options": [10, 20, 50, 100],
 					"min_claude_code_version": "",
 					"max_claude_code_version": "",
+					"min_codex_version": "",
+					"max_codex_version": "",
+					"codex_cli_only_blacklist": "",
+					"codex_cli_only_whitelist": "",
+					"codex_cli_only_allow_app_server_clients": false,
+					"codex_cli_only_engine_fingerprint_signals": "[{\"type\":\"header_prefix\",\"match\":[\"x-codex-\"],\"required\":true},{\"type\":\"header_exact\",\"match\":[\"session-id\",\"session_id\"],\"required\":false},{\"type\":\"header_exact\",\"match\":[\"thread-id\",\"thread_id\"],\"required\":false},{\"type\":\"body_path\",\"match\":[\"client_metadata.x-codex-window-id\",\"client_metadata.x-codex-installation-id\"],\"required\":false}]",
 					"allow_ungrouped_key_scheduling": false,
 					"backend_mode_enabled": false,
 					"enable_cch_signing": false,
@@ -856,12 +851,8 @@ func TestAPIContracts(t *testing.T) {
 					"claude_oauth_system_prompt_blocks": "",
 					"enable_anthropic_cache_ttl_1h_injection": false,
 					"rewrite_message_cache_control": false,
+					"enable_client_dateline_normalization": true,
 					"antigravity_user_agent_version": "",
-					"pre_response_stream_keepalive_enabled": false,
-					"pre_response_stream_keepalive_initial_delay": 80,
-					"semantic_error_detection_enabled": false,
-					"semantic_error_match_max_chars": 4096,
-					"semantic_error_rules": [],
 					"enable_fingerprint_unification": true,
 					"enable_metadata_passthrough": false,
 					"web_search_emulation_enabled": false,
@@ -871,8 +862,6 @@ func TestAPIContracts(t *testing.T) {
 					"payment_visible_method_wxpay_enabled": false,
 					"openai_advanced_scheduler_enabled": true,
 					"openai_codex_user_agent":           "",
-					"scheduled_test_default_prompt": "hi",
-					"openai_allow_claude_code_codex_plugin": false,
 					"openai_fast_policy_settings": {
 						"rules": []
 					},
@@ -886,7 +875,6 @@ func TestAPIContracts(t *testing.T) {
 					"payment_max_pending_orders": 0,
 					"payment_balance_disabled": false,
 					"payment_balance_recharge_multiplier": 0,
-					"payment_balance_recharge_bonus_rules": null,
 					"payment_recharge_fee_rate": 0,
 					"payment_load_balance_strategy": "",
 					"payment_product_name_prefix": "",
@@ -1054,9 +1042,6 @@ func TestAPIContracts(t *testing.T) {
 					"google_oauth_client_secret_configured": false,
 					"google_oauth_redirect_url": "",
 					"google_oauth_frontend_redirect_url": "/auth/oauth/callback",
-					"model_marketplace_enabled": true,
-					"model_marketplace_intro": "",
-					"model_marketplace_group_ids": null,
 					"site_name": "Sub2API",
 					"site_logo": "",
 					"site_subtitle": "Subscription to API Conversion Platform",
@@ -1070,7 +1055,7 @@ func TestAPIContracts(t *testing.T) {
 					"purchase_subscription_url": "",
 					"table_default_page_size": 20,
 					"table_page_size_options": [10, 20, 50],
-					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null}},
+					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null}},
 					"auth_source_default_email_platform_quotas": null,
 					"auth_source_default_github_platform_quotas": null,
 					"auth_source_default_google_platform_quotas": null,
@@ -1082,15 +1067,6 @@ func TestAPIContracts(t *testing.T) {
 					"custom_endpoints": [],
 					"default_concurrency": 0,
 					"default_balance": 0,
-					"daily_checkin_enabled": false,
-					"daily_checkin_reward_mode": "fixed",
-					"daily_checkin_reward_amount": 1,
-					"daily_checkin_reward_min": 1,
-					"daily_checkin_reward_max": 3,
-					"daily_checkin_prizes": [{"id":"legacy_balance","name":"余额奖励","type":"balance","probability_bps":10000,"enabled":true,"sort_order":0,"balance_mode":"fixed","amount":1,"min_amount":1,"max_amount":3}],
-					"daily_checkin_unpaid_full_days": 7,
-					"daily_checkin_unpaid_decay_rules": [{"after_days":7,"factor_bps":5000},{"after_days":14,"factor_bps":2000},{"after_days":30,"factor_bps":0}],
-					"daily_checkin_linuxdo_exempt_enabled": false,
 					"affiliate_rebate_rate": 20,
 					"affiliate_rebate_freeze_hours": 0,
 					"affiliate_rebate_duration_days": 0,
@@ -1120,12 +1096,14 @@ func TestAPIContracts(t *testing.T) {
 					"claude_oauth_system_prompt_blocks": "",
 					"enable_anthropic_cache_ttl_1h_injection": false,
 					"rewrite_message_cache_control": false,
+					"enable_client_dateline_normalization": true,
 					"antigravity_user_agent_version": "",
-					"pre_response_stream_keepalive_enabled": false,
-					"pre_response_stream_keepalive_initial_delay": 80,
-					"semantic_error_detection_enabled": false,
-					"semantic_error_match_max_chars": 4096,
-					"semantic_error_rules": [],
+					"min_codex_version": "",
+					"max_codex_version": "",
+					"codex_cli_only_blacklist": "",
+					"codex_cli_only_whitelist": "",
+					"codex_cli_only_allow_app_server_clients": false,
+					"codex_cli_only_engine_fingerprint_signals": "[{\"type\":\"header_prefix\",\"match\":[\"x-codex-\"],\"required\":true},{\"type\":\"header_exact\",\"match\":[\"session-id\",\"session_id\"],\"required\":false},{\"type\":\"header_exact\",\"match\":[\"thread-id\",\"thread_id\"],\"required\":false},{\"type\":\"body_path\",\"match\":[\"client_metadata.x-codex-window-id\",\"client_metadata.x-codex-installation-id\"],\"required\":false}]",
 					"web_search_emulation_enabled": false,
 					"payment_visible_method_alipay_source": "",
 					"payment_visible_method_wxpay_source": "",
@@ -1133,8 +1111,6 @@ func TestAPIContracts(t *testing.T) {
 					"payment_visible_method_wxpay_enabled": false,
 					"openai_advanced_scheduler_enabled": false,
 					"openai_codex_user_agent":           "",
-					"scheduled_test_default_prompt": "hi",
-					"openai_allow_claude_code_codex_plugin": false,
 					"openai_fast_policy_settings": {
 						"rules": []
 					},
@@ -1147,7 +1123,6 @@ func TestAPIContracts(t *testing.T) {
 					"payment_enabled_types": null,
 					"payment_balance_disabled": false,
 					"payment_balance_recharge_multiplier": 0,
-					"payment_balance_recharge_bonus_rules": null,
 					"payment_recharge_fee_rate": 0,
 					"payment_load_balance_strategy": "",
 					"payment_product_name_prefix": "",
@@ -1333,15 +1308,13 @@ func newContractDeps(t *testing.T) *contractDeps {
 
 	settingRepo := newStubSettingRepo()
 	settingService := service.NewSettingService(settingRepo, cfg)
-	dailyCheckinService := service.NewDailyCheckinService(nil, settingService, nil, nil, nil)
-	dailyCheckinHandler := handler.NewDailyCheckinHandler(dailyCheckinService)
 
-	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService, nil, nil)
 	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil, nil, nil, nil, nil)
-	adminAccountHandler := adminhandler.NewAccountHandler(adminService, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	adminAccountHandler := adminhandler.NewAccountHandler(adminService, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	jwtAuth := func(c *gin.Context) {
 		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{
@@ -1386,8 +1359,6 @@ func newContractDeps(t *testing.T) *contractDeps {
 	v1Redeem := v1.Group("")
 	v1Redeem.Use(jwtAuth)
 	v1Redeem.GET("/redeem/history", redeemHandler.GetHistory)
-	v1Redeem.GET("/user/checkin/status", dailyCheckinHandler.GetStatus)
-	v1Redeem.POST("/user/checkin", dailyCheckinHandler.Checkin)
 
 	v1Admin := v1.Group("/admin")
 	v1Admin.Use(adminAuth)
@@ -1767,6 +1738,10 @@ func (s *stubAccountRepo) BindGroups(ctx context.Context, accountID int64, group
 	return errors.New("not implemented")
 }
 
+func (s *stubAccountRepo) ListShadowsByParent(ctx context.Context, parentID int64) ([]*service.Account, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (s *stubAccountRepo) ListSchedulable(ctx context.Context) ([]service.Account, error) {
 	return nil, errors.New("not implemented")
 }
@@ -2029,6 +2004,9 @@ func (stubUserSubscriptionRepo) Create(ctx context.Context, sub *service.UserSub
 func (stubUserSubscriptionRepo) GetByID(ctx context.Context, id int64) (*service.UserSubscription, error) {
 	return nil, errors.New("not implemented")
 }
+func (stubUserSubscriptionRepo) GetByIDIncludeDeleted(ctx context.Context, id int64) (*service.UserSubscription, error) {
+	return nil, errors.New("not implemented")
+}
 func (stubUserSubscriptionRepo) GetByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
 	return nil, errors.New("not implemented")
 }
@@ -2040,6 +2018,9 @@ func (stubUserSubscriptionRepo) Update(ctx context.Context, sub *service.UserSub
 }
 func (stubUserSubscriptionRepo) Delete(ctx context.Context, id int64) error {
 	return errors.New("not implemented")
+}
+func (stubUserSubscriptionRepo) Restore(ctx context.Context, subscriptionID int64, restoredStatus string) (*service.UserSubscription, error) {
+	return nil, errors.New("not implemented")
 }
 func (r *stubUserSubscriptionRepo) ListByUserID(ctx context.Context, userID int64) ([]service.UserSubscription, error) {
 	if r.byUser == nil {
@@ -2060,6 +2041,9 @@ func (stubUserSubscriptionRepo) List(ctx context.Context, params pagination.Pagi
 	return nil, nil, errors.New("not implemented")
 }
 func (stubUserSubscriptionRepo) ExistsByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (bool, error) {
+	return false, errors.New("not implemented")
+}
+func (stubUserSubscriptionRepo) ExistsActiveByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (bool, error) {
 	return false, errors.New("not implemented")
 }
 func (stubUserSubscriptionRepo) ExtendExpiry(ctx context.Context, subscriptionID int64, newExpiresAt time.Time) error {
@@ -2542,7 +2526,7 @@ func (r *stubUsageLogRepo) ListWithFilters(ctx context.Context, params paginatio
 			continue
 		}
 		// Apply Model filter
-		if filters.Model != "" && log.Model != filters.Model {
+		if filters.Model != "" && stubUsageLogFilterModel(log, filters.ModelFilterSource) != filters.Model {
 			continue
 		}
 		// Apply Stream filter
@@ -2568,6 +2552,13 @@ func (r *stubUsageLogRepo) ListWithFilters(ctx context.Context, params paginatio
 	return out, paginationResult(total, params), nil
 }
 
+func stubUsageLogFilterModel(log service.UsageLog, source string) string {
+	if source == usagestats.ModelSourceRequested && log.RequestedModel != "" {
+		return log.RequestedModel
+	}
+	return log.Model
+}
+
 func (r *stubUsageLogRepo) GetGlobalStats(ctx context.Context, startTime, endTime time.Time) (*usagestats.UsageStats, error) {
 	return nil, errors.New("not implemented")
 }
@@ -2577,7 +2568,55 @@ func (r *stubUsageLogRepo) GetAccountUsageStats(ctx context.Context, accountID i
 }
 
 func (r *stubUsageLogRepo) GetStatsWithFilters(ctx context.Context, filters usagestats.UsageLogFilters) (*usagestats.UsageStats, error) {
-	return nil, errors.New("not implemented")
+	logs, _, err := r.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 100000}, filters)
+	if err != nil {
+		return nil, err
+	}
+
+	var totalRequests int64
+	var totalInputTokens int64
+	var totalOutputTokens int64
+	var totalCacheTokens int64
+	var totalCacheCreationTokens int64
+	var totalCacheReadTokens int64
+	var totalCost float64
+	var totalActualCost float64
+	var totalDuration int64
+	var durationCount int64
+
+	for _, log := range logs {
+		totalRequests++
+		totalInputTokens += int64(log.InputTokens)
+		totalOutputTokens += int64(log.OutputTokens)
+		totalCacheTokens += int64(log.CacheCreationTokens + log.CacheReadTokens)
+		totalCacheCreationTokens += int64(log.CacheCreationTokens)
+		totalCacheReadTokens += int64(log.CacheReadTokens)
+		totalCost += log.TotalCost
+		totalActualCost += log.ActualCost
+		if log.DurationMs != nil {
+			totalDuration += int64(*log.DurationMs)
+			durationCount++
+		}
+	}
+
+	var avgDuration float64
+	if durationCount > 0 {
+		avgDuration = float64(totalDuration) / float64(durationCount)
+	}
+
+	return &usagestats.UsageStats{
+		TotalRequests:            totalRequests,
+		TotalInputTokens:         totalInputTokens,
+		TotalOutputTokens:        totalOutputTokens,
+		TotalCacheTokens:         totalCacheTokens,
+		TotalCacheCreationTokens: totalCacheCreationTokens,
+		TotalCacheReadTokens:     totalCacheReadTokens,
+		TotalTokens:              totalInputTokens + totalOutputTokens + totalCacheTokens,
+		TotalCost:                totalCost,
+		TotalActualCost:          totalActualCost,
+		AverageDurationMs:        avgDuration,
+		Endpoints:                []usagestats.EndpointStat{},
+	}, nil
 }
 func (r *stubUsageLogRepo) GetAllGroupUsageSummary(ctx context.Context, todayStart time.Time) ([]usagestats.GroupUsageSummary, error) {
 	return nil, errors.New("not implemented")

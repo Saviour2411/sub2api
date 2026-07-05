@@ -301,31 +301,6 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 	return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
 }
 
-func paymentOrderBaseAmount(o *dbent.PaymentOrder) float64 {
-	if o == nil {
-		return 0
-	}
-	if o.BaseAmount > 0 {
-		return o.BaseAmount
-	}
-	if o.OrderType != payment.OrderTypeBalance {
-		return o.Amount
-	}
-	if o.Amount <= 0 {
-		return 0
-	}
-	if o.FeeRate > 0 {
-		base := o.PayAmount / (1 + o.FeeRate/100)
-		if base > 0 {
-			return math.Round(base*100) / 100
-		}
-	}
-	if o.Amount >= o.PayAmount {
-		return o.PayAmount
-	}
-	return o.Amount
-}
-
 func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrder, auditAction string) error {
 	now := time.Now()
 	_, err := s.entClient.PaymentOrder.Update().Where(paymentorder.IDEQ(o.ID), paymentorder.StatusEQ(OrderStatusRecharging)).SetStatus(OrderStatusCompleted).SetCompletedAt(now).Save(ctx)
@@ -334,9 +309,6 @@ func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrde
 	}
 	s.writeAuditLog(ctx, o.ID, auditAction, "system", map[string]any{
 		"rechargeCode":   o.RechargeCode,
-		"baseAmount":     paymentOrderBaseAmount(o),
-		"bonusAmount":    o.BonusAmount,
-		"bonusRate":      o.BonusRate,
 		"creditedAmount": o.Amount,
 		"payAmount":      o.PayAmount,
 	})
@@ -381,8 +353,6 @@ func (s *PaymentService) sendBalanceRechargeSuccessNotification(ctx context.Cont
 		SourceType:     "payment_order",
 		SourceID:       strconv.FormatInt(o.ID, 10),
 		Variables: map[string]string{
-			"base_amount":     fmt.Sprintf("%.2f", paymentOrderBaseAmount(o)),
-			"bonus_amount":    fmt.Sprintf("%.2f", o.BonusAmount),
 			"recharge_amount": fmt.Sprintf("%.2f", o.Amount),
 			"current_balance": currentBalance,
 			"order_id":        strconv.FormatInt(o.ID, 10),
@@ -490,7 +460,7 @@ func (s *PaymentService) hasAuditLog(ctx context.Context, orderID int64, action 
 }
 
 func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *dbent.PaymentOrder) error {
-	baseAmount := paymentOrderBaseAmount(o)
+	baseAmount := affiliateRebateBaseAmount(o)
 	if o == nil || baseAmount <= 0 {
 		return nil
 	}
@@ -564,6 +534,18 @@ func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *db
 		return fmt.Errorf("commit affiliate rebate tx: %w", err)
 	}
 	return nil
+}
+
+func affiliateRebateBaseAmount(o *dbent.PaymentOrder) float64 {
+	if o == nil {
+		return 0
+	}
+	switch o.OrderType {
+	case payment.OrderTypeBalance, payment.OrderTypeSubscription:
+		return o.Amount
+	default:
+		return 0
+	}
 }
 
 func (s *PaymentService) tryClaimAffiliateRebateAudit(ctx context.Context, client *dbent.Client, orderID int64, baseAmount float64) (bool, error) {

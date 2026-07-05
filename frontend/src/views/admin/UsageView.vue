@@ -64,11 +64,11 @@
           <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
         </div>
       </div>
-      <UsageFilters v-model="filters" :start-date="startDate" :end-date="endDate" :exporting="exporting" :model-options="modelNameOptions" @change="applyFilters" @refresh="refreshData" @reset="resetFilters" @cleanup="openCleanupDialog" @export="exportToExcel">
+      <UsageFilters v-model="filters" :mode="activeTab === 'errors' ? 'errors' : 'usage'" :start-date="startDate" :end-date="endDate" :exporting="exporting" :model-options="modelNameOptions" @change="applyFilters" @refresh="refreshData" @reset="resetFilters" @cleanup="openCleanupDialog" @export="exportToExcel">
         <template #after-reset>
           <div class="relative" ref="columnDropdownRef">
             <button
-              @click="toggleColumnDropdown"
+              @click="showColumnDropdown = !showColumnDropdown"
               class="btn btn-secondary px-2 md:px-3"
               :title="t('admin.users.columnSettings')"
             >
@@ -79,21 +79,19 @@
             </button>
             <Teleport to="body">
               <div
-                v-if="showColumnDropdown && columnDropdownPosition"
-                ref="columnDropdownPortalRef"
-                class="usage-column-dropdown fixed z-[100000020] w-48 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-xl ring-1 ring-black/5 dark:border-dark-600 dark:bg-dark-800 dark:ring-white/10"
-                :style="columnDropdownStyle"
-                @click.stop
+                v-if="showColumnDropdown"
+                class="usage-column-dropdown fixed right-4 top-20 z-[9999] w-48 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-600 dark:bg-dark-800"
+                :style="{ maxHeight: 'min(20rem, calc(100vh - 6rem))' }"
               >
                 <button
-                  v-for="col in toggleableColumns"
+                  v-for="col in currentToggleableColumns"
                   :key="col.key"
-                  @click="toggleColumn(col.key)"
+                  @click="toggleCurrentColumn(col.key)"
                   class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
                 >
                   <span>{{ col.label }}</span>
                   <Icon
-                    v-if="isColumnVisible(col.key)"
+                    v-if="isCurrentColumnVisible(col.key)"
                     name="check"
                     size="sm"
                     class="text-primary-500"
@@ -123,6 +121,7 @@
           :default-sort-order="'desc'"
           @sort="handleSort"
           @userClick="handleUserClick"
+          @ipGeoBatchFailed="handleIpGeoBatchFailed"
         />
         <Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" />
       </div>
@@ -130,9 +129,14 @@
         <OpsErrorLogTable
           :rows="errRows" :total="errTotal" :loading="errLoading"
           :page="errPage" :page-size="errPageSize"
+          :visible-column-keys="errVisibleColumnKeys"
+          user-clickable
+          @userClick="handleUserClick"
           @openErrorDetail="openError"
+          @sort="onErrSort"
           @update:page="onErrPage"
-          @update:pageSize="onErrPageSize" />
+          @update:pageSize="onErrPageSize"
+          @ipGeoBatchFailed="handleIpGeoBatchFailed" />
         <OpsErrorDetailModal v-model:show="showErrorModal" :error-id="selectedErrorId" :error-type="'request'" />
       </div>
     </div>
@@ -155,7 +159,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { saveAs } from 'file-saver'
 import { useRoute } from 'vue-router'
@@ -259,7 +263,7 @@ const getGranularityForRange = (start: string, end: string): 'day' | 'hour' => {
 const defaultRange = getLast24HoursRangeDates()
 const startDate = ref(defaultRange.start); const endDate = ref(defaultRange.end)
 const filters = ref<AdminUsageQueryParams>({ user_id: undefined, model: undefined, group_id: undefined, request_type: undefined, billing_type: null, start_date: startDate.value, end_date: endDate.value })
-const pagination = reactive({ page: 1, page_size: getPersistedPageSize(), total: 0, pages: 0 })
+const pagination = reactive({ page: 1, page_size: getPersistedPageSize(), total: 0 })
 const sortState = reactive({
   sort_by: 'created_at',
   sort_order: 'desc' as 'asc' | 'desc'
@@ -328,31 +332,14 @@ const buildUsageListParams = (
   }
 }
 
-const getUsageMaxPage = (total: number, pageSize: number) => {
-  if (total <= 0) return 1
-  return Math.max(1, Math.ceil(total / pageSize))
-}
-
 const loadLogs = async () => {
   abortController?.abort(); const c = new AbortController(); abortController = c; loading.value = true
   try {
-    let res = await adminAPI.usage.list(
+    const res = await adminAPI.usage.list(
       buildUsageListParams(pagination.page, pagination.page_size, false),
       { signal: c.signal }
     )
-    if (c.signal.aborted) return
-    const maxPage = getUsageMaxPage(res.total || 0, pagination.page_size)
-    if ((res.total || 0) > 0 && pagination.page > maxPage) {
-      pagination.page = maxPage
-      res = await adminAPI.usage.list(
-        buildUsageListParams(pagination.page, pagination.page_size, false),
-        { signal: c.signal }
-      )
-      if (c.signal.aborted) return
-    }
-    usageLogs.value = res.items
-    pagination.total = res.total
-    pagination.pages = res.pages || getUsageMaxPage(res.total || 0, pagination.page_size)
+    if(!c.signal.aborted) { usageLogs.value = res.items; pagination.total = res.total }
   } catch (error: any) { if(error?.name !== 'AbortError') console.error('Failed to load usage logs:', error) } finally { if(abortController === c) loading.value = false }
 }
 const loadStats = async (force = false) => {
@@ -508,6 +495,10 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
   pagination.page = 1
   loadLogs()
 }
+
+const handleIpGeoBatchFailed = () => {
+  appStore.showError(t('usage.ipGeo.batchFailed'))
+}
 const cancelExport = () => exportAbortController?.abort()
 const openCleanupDialog = () => { cleanupDialogVisible.value = true }
 const getRequestTypeLabel = (log: AdminUsageLog): string => {
@@ -626,6 +617,74 @@ const toggleColumn = (key: string) => {
   }
 }
 
+// ---- 错误请求 tab 列设置(与用量明细同机制,独立存储) ----
+const ERR_ALWAYS_VISIBLE = ['user', 'status', 'created_at', 'actions']
+const ERR_DEFAULT_HIDDEN_COLUMNS = ['user_agent']
+const ERR_HIDDEN_COLUMNS_KEY = 'usage-error-hidden-columns'
+
+// key 集合须与 OpsErrorLogTable 内部 allColumns 一致
+const errAllColumns = computed(() => [
+  { key: 'user', label: t('admin.ops.errorLog.user') },
+  { key: 'api_key', label: t('admin.ops.errorLog.apiKey') },
+  { key: 'account', label: t('admin.ops.errorLog.account') },
+  { key: 'platform', label: t('admin.ops.errorLog.platform') },
+  { key: 'model', label: t('admin.ops.errorLog.model') },
+  { key: 'endpoint', label: t('admin.ops.errorLog.endpoint') },
+  { key: 'group', label: t('admin.ops.errorLog.group') },
+  { key: 'type', label: t('admin.ops.errorLog.type') },
+  { key: 'category', label: t('usage.errors.category') },
+  { key: 'status', label: t('admin.ops.errorLog.status') },
+  { key: 'message', label: t('admin.ops.errorLog.message') },
+  { key: 'created_at', label: t('admin.ops.errorLog.time') },
+  { key: 'user_agent', label: t('usage.userAgent') },
+  { key: 'client_ip', label: t('admin.ops.errorLog.ip') },
+  { key: 'actions', label: t('admin.ops.errorLog.action') },
+])
+
+const errHiddenColumns = reactive<Set<string>>(new Set())
+
+const errToggleableColumns = computed(() =>
+  errAllColumns.value.filter(col => !ERR_ALWAYS_VISIBLE.includes(col.key))
+)
+
+const errVisibleColumnKeys = computed(() =>
+  errAllColumns.value
+    .filter(col => ERR_ALWAYS_VISIBLE.includes(col.key) || !errHiddenColumns.has(col.key))
+    .map(col => col.key)
+)
+
+const toggleErrColumn = (key: string) => {
+  if (errHiddenColumns.has(key)) {
+    errHiddenColumns.delete(key)
+  } else {
+    errHiddenColumns.add(key)
+  }
+  try {
+    localStorage.setItem(ERR_HIDDEN_COLUMNS_KEY, JSON.stringify([...errHiddenColumns]))
+  } catch (e) {
+    console.error('Failed to save error columns:', e)
+  }
+}
+
+const loadSavedErrColumns = () => {
+  try {
+    const saved = localStorage.getItem(ERR_HIDDEN_COLUMNS_KEY)
+    const keys = saved ? (JSON.parse(saved) as string[]) : ERR_DEFAULT_HIDDEN_COLUMNS
+    keys.forEach((key) => errHiddenColumns.add(key))
+  } catch {
+    ERR_DEFAULT_HIDDEN_COLUMNS.forEach((key) => errHiddenColumns.add(key))
+  }
+}
+
+// 列设置下拉按当前 tab 分发
+const currentToggleableColumns = computed(() =>
+  activeTab.value === 'errors' ? errToggleableColumns.value : toggleableColumns.value
+)
+const isCurrentColumnVisible = (key: string) =>
+  activeTab.value === 'errors' ? !errHiddenColumns.has(key) : isColumnVisible(key)
+const toggleCurrentColumn = (key: string) =>
+  activeTab.value === 'errors' ? toggleErrColumn(key) : toggleColumn(key)
+
 const loadSavedColumns = () => {
   try {
     const saved = localStorage.getItem(HIDDEN_COLUMNS_KEY)
@@ -652,6 +711,8 @@ const errLoading = ref(false)
 const errPage = ref(1)
 const errPageSize = ref(20)
 const errTotal = ref(0)
+const errSortBy = ref('created_at')
+const errSortOrder = ref<'asc' | 'desc'>('desc')
 const showErrorModal = ref(false)
 const selectedErrorId = ref<number | null>(null)
 
@@ -673,6 +734,11 @@ const loadAdminErrors = async () => {
       account_id: filters.value.account_id ?? undefined,
       group_id: filters.value.group_id ?? undefined,
       model: filters.value.model || undefined,
+      phase: filters.value.error_phase || undefined,
+      category: filters.value.error_category || undefined,
+      status_codes: filters.value.status_code != null ? String(filters.value.status_code) : undefined,
+      sort_by: errSortBy.value,
+      sort_order: errSortOrder.value,
     })
     errRows.value = resp.items
     errTotal.value = resp.total
@@ -684,6 +750,12 @@ const loadAdminErrors = async () => {
   }
 }
 
+const onErrSort = (sortBy: string, sortOrder: 'asc' | 'desc') => {
+  errSortBy.value = sortBy
+  errSortOrder.value = sortOrder
+  errPage.value = 1
+  loadAdminErrors()
+}
 const onErrPage = (p: number) => { errPage.value = p; loadAdminErrors() }
 const onErrPageSize = (s: number) => { errPageSize.value = s; errPage.value = 1; loadAdminErrors() }
 const openError = (id: number) => { selectedErrorId.value = id; showErrorModal.value = true }
@@ -691,79 +763,11 @@ const switchToErrorsTab = () => { activeTab.value = 'errors'; if (errRows.value.
 
 const showColumnDropdown = ref(false)
 const columnDropdownRef = ref<HTMLElement | null>(null)
-const columnDropdownPortalRef = ref<HTMLElement | null>(null)
-const columnDropdownPosition = ref<{ top?: number; bottom?: number; left: number; maxHeight: number } | null>(null)
-
-const updateColumnDropdownPosition = () => {
-  const trigger = columnDropdownRef.value?.querySelector('button')
-  if (!trigger) return
-
-  const rect = trigger.getBoundingClientRect()
-  const viewportWidth = window.innerWidth || 192
-  const viewportHeight = window.innerHeight || 320
-  const padding = 12
-  const gap = 6
-  const dropdownWidth = 192
-  const preferredHeight = 320
-  const left = Math.min(
-    Math.max(rect.right - dropdownWidth, padding),
-    Math.max(padding, viewportWidth - dropdownWidth - padding)
-  )
-  const spaceBelow = viewportHeight - rect.bottom - padding - gap
-  const spaceAbove = rect.top - padding - gap
-
-  if (spaceBelow < 220 && spaceAbove > spaceBelow) {
-    columnDropdownPosition.value = {
-      bottom: Math.max(padding, viewportHeight - rect.top + gap),
-      left,
-      maxHeight: Math.min(preferredHeight, Math.max(160, spaceAbove))
-    }
-    return
-  }
-
-  columnDropdownPosition.value = {
-    top: Math.min(rect.bottom + gap, viewportHeight - padding),
-    left,
-    maxHeight: Math.min(preferredHeight, Math.max(160, spaceBelow))
-  }
-}
-
-const columnDropdownStyle = computed(() => {
-  const position = columnDropdownPosition.value
-  if (!position) return {}
-
-  return {
-    top: position.top !== undefined ? `${position.top}px` : undefined,
-    bottom: position.bottom !== undefined ? `${position.bottom}px` : undefined,
-    left: `${position.left}px`,
-    maxHeight: `${position.maxHeight}px`
-  }
-})
-
-const toggleColumnDropdown = async () => {
-  showColumnDropdown.value = !showColumnDropdown.value
-  if (!showColumnDropdown.value) {
-    columnDropdownPosition.value = null
-    return
-  }
-  updateColumnDropdownPosition()
-  await nextTick()
-  updateColumnDropdownPosition()
-}
-
-const handleColumnViewportChange = () => {
-  if (showColumnDropdown.value) {
-    updateColumnDropdownPosition()
-  }
-}
 
 const handleColumnClickOutside = (event: MouseEvent) => {
-  const target = event.target as Node
-  if (columnDropdownRef.value?.contains(target) || columnDropdownPortalRef.value?.contains(target)) {
-    return
+  if (columnDropdownRef.value && !columnDropdownRef.value.contains(event.target as HTMLElement)) {
+    showColumnDropdown.value = false
   }
-  showColumnDropdown.value = false
-  columnDropdownPosition.value = null
 }
 
 onMounted(() => {
@@ -775,17 +779,10 @@ onMounted(() => {
     void loadChartData()
   }, 120)
   loadSavedColumns()
+  loadSavedErrColumns()
   document.addEventListener('click', handleColumnClickOutside)
-  window.addEventListener('resize', handleColumnViewportChange)
-  window.addEventListener('scroll', handleColumnViewportChange, true)
 })
-onUnmounted(() => {
-  abortController?.abort()
-  exportAbortController?.abort()
-  document.removeEventListener('click', handleColumnClickOutside)
-  window.removeEventListener('resize', handleColumnViewportChange)
-  window.removeEventListener('scroll', handleColumnViewportChange, true)
-})
+onUnmounted(() => { abortController?.abort(); exportAbortController?.abort(); document.removeEventListener('click', handleColumnClickOutside) })
 
 watch(modelDistributionSource, (source) => {
   void loadModelStats(source)

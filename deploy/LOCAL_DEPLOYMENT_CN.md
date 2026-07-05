@@ -23,20 +23,25 @@
 
 ## 本地文件
 
-- Compose 文件：`deploy/docker-compose.sub2api.yml`
-  - 本地构建镜像：`sub2api:local`
-  - 使用根目录 `Dockerfile`
-  - Dockerfile 固定使用 `pnpm@9`，与 GitHub Actions 保持一致，避免 `pnpm@latest` 的依赖脚本审批策略导致构建失败。
+- 当前生产服务器实际使用的 Compose 文件：`/root/proj/sub2api/deploy/docker-compose.yml`
+  - 该文件必须与 `deploy/docker-compose.sub2api.yml` 保持一致。
+  - 不要在生产服务器使用 `docker-compose.local.yml`、`docker-compose.standalone.yml` 或 `docker-compose.dev.yml`。
+  - 后续 agent 执行远程操作时，统一进入 `/root/proj/sub2api/deploy` 后使用 `docker compose -f docker-compose.yml ...`。
+  - 镜像由 `deploy/.env` 中的 `SUB2API_IMAGE` / `SUB2API_TAG` 控制，当前为 `saviour2411/sub2api:0.1.172`。
   - 数据持久化目录：
     - `deploy/data`
     - `deploy/postgres_data`
     - `deploy/redis_data`
+  - 禁止把生产服务切换到 Docker named volumes（例如 `deploy_postgres_data`、`deploy_sub2api_data`、`deploy_redis_data`），否则会出现账号和业务数据“消失”的假象。
 - 环境文件：`deploy/.env`
   - 该文件包含密钥，不提交 Git。
   - 当前关键配置：
     - `BIND_HOST=127.0.0.1`
     - `SERVER_PORT=18080`
     - `ADMIN_EMAIL=saviour2411@163.com`
+    - `SECURITY_URL_ALLOWLIST_ENABLED=false`
+    - `SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=true`
+    - `SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=true`
     - `POSTGRES_PASSWORD`、`JWT_SECRET`、`TOTP_ENCRYPTION_KEY` 已固定生成。
 - Nginx 模板：`deploy/nginx-sub2api-api.saviour.cc.cd.conf`
   - 目标安装路径：`/etc/nginx/sites-available/sub2api-api.saviour.cc.cd`
@@ -108,15 +113,16 @@ sudo systemctl reload nginx
 启动 Sub2API：
 
 ```bash
-cd /root/proj/sub2api
-docker compose --env-file deploy/.env -f deploy/docker-compose.sub2api.yml up -d --build
+cd /root/proj/sub2api/deploy
+docker compose -f docker-compose.yml up -d
 ```
 
 查看状态和日志：
 
 ```bash
-docker compose --env-file deploy/.env -f deploy/docker-compose.sub2api.yml ps
-docker compose --env-file deploy/.env -f deploy/docker-compose.sub2api.yml logs -f sub2api
+cd /root/proj/sub2api/deploy
+docker compose -f docker-compose.yml ps
+docker compose -f docker-compose.yml logs -f sub2api
 ```
 
 ## 验证命令
@@ -151,6 +157,20 @@ curl https://api.saviour.cc.cd/health
 ss -ltnp
 ```
 
+检查当前生产服务是否仍挂载正确数据目录：
+
+```bash
+docker inspect sub2api-postgres --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{println}}{{end}}'
+docker inspect sub2api --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{println}}{{end}}'
+```
+
+预期必须包含：
+
+```text
+/root/proj/sub2api/deploy/postgres_data -> /var/lib/postgresql/data
+/root/proj/sub2api/deploy/data -> /app/data
+```
+
 如果在受限执行环境中验证，`curl 127.0.0.1:18080` 或 `ss -ltnp` 可能因为沙箱网络/权限限制失败；以宿主机权限执行或以 Docker healthcheck 为准。
 
 预期：
@@ -173,9 +193,9 @@ git merge upstream/main
 处理冲突后，先测试再发布：
 
 ```bash
-cd /root/proj/sub2api
-docker compose --env-file deploy/.env -f deploy/docker-compose.sub2api.yml build
-docker compose --env-file deploy/.env -f deploy/docker-compose.sub2api.yml up -d
+cd /root/proj/sub2api/deploy
+docker compose -f docker-compose.yml pull sub2api
+docker compose -f docker-compose.yml up -d sub2api
 ```
 
 后续如果改为 GHCR 或 Docker Hub 镜像发布，需要更新：

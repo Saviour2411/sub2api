@@ -2,8 +2,8 @@
   <AuthLayout>
     <div class="space-y-6">
       <!-- Title -->
-      <div class="text-center auth-form-title">
-        <h2 class="text-2xl font-black text-gray-900 dark:text-white">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
           {{ t('auth.welcomeBack') }}
         </h2>
         <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
@@ -28,7 +28,7 @@
               required
               autofocus
               autocomplete="email"
-              :disabled="authInputDisabled"
+              :disabled="authActionDisabled"
               class="input pl-11"
               :class="{ 'input-error': errors.email }"
               :placeholder="t('auth.emailPlaceholder')"
@@ -51,7 +51,7 @@
               :type="showPassword ? 'text' : 'password'"
               required
               autocomplete="current-password"
-              :disabled="authInputDisabled"
+              :disabled="authActionDisabled"
               class="input pl-11 pr-11"
               :class="{ 'input-error': errors.password }"
               :placeholder="t('auth.passwordPlaceholder')"
@@ -59,7 +59,7 @@
             <button
               type="button"
               @click="showPassword = !showPassword"
-              :disabled="authInputDisabled"
+              :disabled="authActionDisabled"
               class="absolute inset-y-0 right-0 flex items-center pr-3.5 text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-dark-300"
             >
               <Icon v-if="showPassword" name="eyeOff" size="md" />
@@ -92,7 +92,7 @@
         <!-- Submit Button -->
         <button
           type="submit"
-          :disabled="authSubmitDisabled || (turnstileEnabled && !turnstileToken)"
+          :disabled="authActionDisabled || (turnstileEnabled && !turnstileToken)"
           class="btn btn-primary w-full"
         >
           <svg
@@ -141,7 +141,7 @@
           </div>
 
           <EmailOAuthButtons
-            :disabled="authSubmitDisabled"
+            :disabled="authActionDisabled"
             :github-enabled="githubOAuthEnabled"
             :google-enabled="googleOAuthEnabled"
             :show-divider="false"
@@ -149,22 +149,22 @@
 
           <LinuxDoOAuthSection
             v-if="linuxdoOAuthEnabled"
-            :disabled="authSubmitDisabled"
+            :disabled="authActionDisabled"
             :show-divider="false"
           />
           <DingTalkOAuthSection
             v-if="dingtalkOAuthEnabled"
-            :disabled="authSubmitDisabled"
+            :disabled="authActionDisabled"
             :show-divider="false"
           />
           <WechatOAuthSection
             v-if="wechatOAuthEnabled"
-            :disabled="authSubmitDisabled"
+            :disabled="authActionDisabled"
             :show-divider="false"
           />
           <OidcOAuthSection
             v-if="oidcOAuthEnabled"
-            :disabled="authSubmitDisabled"
+            :disabled="authActionDisabled"
             :provider-name="oidcOAuthProviderName"
             :show-divider="false"
           />
@@ -212,10 +212,9 @@ import TotpLoginModal from '@/components/auth/TotpLoginModal.vue'
 import Icon from '@/components/icons/Icon.vue'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
 import { useAuthStore, useAppStore } from '@/stores'
-import { isTotp2FARequired, isWeChatWebOAuthEnabled } from '@/api/auth'
+import { getPublicSettings, isTotp2FARequired, isWeChatWebOAuthEnabled } from '@/api/auth'
 import type { LoginAgreementDocument, TotpLoginResponse } from '@/types'
 import { extractI18nErrorMessage } from '@/utils/apiError'
-import { safeLocalStorage, safeSessionStorage } from '@/utils/browserStorage'
 import { clearAllAffiliateReferralCodes } from '@/utils/oauthAffiliate'
 
 const { t } = useI18n()
@@ -283,12 +282,8 @@ const agreementGateActive = computed(
   () => loginAgreementEnabled.value && !agreementAccepted.value
 )
 
-const authInputDisabled = computed(
-  () => isLoading.value || !publicSettingsLoaded.value
-)
-
-const authSubmitDisabled = computed(
-  () => authInputDisabled.value || agreementGateActive.value
+const authActionDisabled = computed(
+  () => isLoading.value || !publicSettingsLoaded.value || agreementGateActive.value
 )
 
 const showOAuthLogin = computed(
@@ -311,34 +306,29 @@ watch(validationToastMessage, (value, previousValue) => {
 // ==================== Lifecycle ====================
 
 onMounted(async () => {
-  const expiredFlag = safeSessionStorage.getItem('auth_expired')
+  const expiredFlag = sessionStorage.getItem('auth_expired')
   if (expiredFlag) {
-    safeSessionStorage.removeItem('auth_expired')
+    sessionStorage.removeItem('auth_expired')
     const message = t('auth.reloginRequired')
     errorMessage.value = message
     appStore.showWarning(message)
   }
 
   try {
-    const settings = await appStore.fetchPublicSettings()
-    if (settings) {
-      turnstileEnabled.value = settings.turnstile_enabled
-      turnstileSiteKey.value = settings.turnstile_site_key || ''
-      linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled
-      dingtalkOAuthEnabled.value = settings.dingtalk_oauth_enabled ?? false
-      wechatOAuthEnabled.value = isWeChatWebOAuthEnabled(settings)
-      backendModeEnabled.value = settings.backend_mode_enabled
-      oidcOAuthEnabled.value = settings.oidc_oauth_enabled
-      oidcOAuthProviderName.value = settings.oidc_oauth_provider_name || 'OIDC'
-      githubOAuthEnabled.value = settings.github_oauth_enabled
-      googleOAuthEnabled.value = settings.google_oauth_enabled
-      backendModeEnabled.value = settings.backend_mode_enabled
-      passwordResetEnabled.value = settings.password_reset_enabled
-      applyLoginAgreementSettings(settings)
-    } else {
-      loginAgreementEnabled.value = false
-      agreementAccepted.value = true
-    }
+    const settings = await getPublicSettings()
+    turnstileEnabled.value = settings.turnstile_enabled
+    turnstileSiteKey.value = settings.turnstile_site_key || ''
+    linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled
+    dingtalkOAuthEnabled.value = settings.dingtalk_oauth_enabled ?? false
+    wechatOAuthEnabled.value = isWeChatWebOAuthEnabled(settings)
+    backendModeEnabled.value = settings.backend_mode_enabled
+    oidcOAuthEnabled.value = settings.oidc_oauth_enabled
+    oidcOAuthProviderName.value = settings.oidc_oauth_provider_name || 'OIDC'
+    githubOAuthEnabled.value = settings.github_oauth_enabled
+    googleOAuthEnabled.value = settings.google_oauth_enabled
+    backendModeEnabled.value = settings.backend_mode_enabled
+    passwordResetEnabled.value = settings.password_reset_enabled
+    applyLoginAgreementSettings(settings)
   } catch (error) {
     console.error('Failed to load public settings:', error)
     loginAgreementEnabled.value = false
@@ -378,7 +368,7 @@ function hasAcceptedLoginAgreement(revision: string): boolean {
     return false
   }
   try {
-    const raw = safeLocalStorage.getItem(LOGIN_AGREEMENT_STORAGE_KEY)
+    const raw = localStorage.getItem(LOGIN_AGREEMENT_STORAGE_KEY)
     if (!raw) {
       return false
     }
@@ -391,7 +381,7 @@ function hasAcceptedLoginAgreement(revision: string): boolean {
 
 function acceptLoginAgreement(): void {
   if (loginAgreementRevision.value) {
-    safeLocalStorage.setItem(
+    localStorage.setItem(
       LOGIN_AGREEMENT_STORAGE_KEY,
       JSON.stringify({
         revision: loginAgreementRevision.value,
@@ -404,10 +394,10 @@ function acceptLoginAgreement(): void {
 }
 
 function rejectLoginAgreement(): void {
-  safeLocalStorage.removeItem(LOGIN_AGREEMENT_STORAGE_KEY)
+  localStorage.removeItem(LOGIN_AGREEMENT_STORAGE_KEY)
   agreementAccepted.value = false
   showAgreementModal.value = false
-  appStore.showWarning('未同意最新条款前，无法登录或使用快捷登录。')
+  appStore.showWarning(t('legal.loginAgreementPrompt.loginRejectedWarning'))
 }
 
 // ==================== Turnstile Handlers ====================
@@ -438,7 +428,7 @@ function validateForm(): boolean {
   let isValid = true
 
   if (agreementGateActive.value) {
-    appStore.showWarning('请先阅读并同意最新条款后再登录。')
+    appStore.showWarning(t('legal.loginAgreementPrompt.loginRequiredWarning'))
     if (loginAgreementMode.value !== 'checkbox') {
       showAgreementModal.value = true
     }

@@ -6,14 +6,13 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
 import type { ApiResponse } from '@/types'
 import { getLocale } from '@/i18n'
-import { safeLocalStorage, safeSessionStorage } from '@/utils/browserStorage'
+import { getAPIBaseURL } from './url'
+export { buildApiUrl, buildGatewayUrl } from './url'
 
 // ==================== Axios Instance Configuration ====================
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
-
 export const apiClient: AxiosInstance = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: getAPIBaseURL(),
   withCredentials: true,
   timeout: 30000,
   headers: {
@@ -54,10 +53,42 @@ const getUserTimezone = (): string => {
   }
 }
 
+const safeLocalStorageGet = (key: string): string | null => {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+const safeLocalStorageSet = (key: string, value: string): void => {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // ignore storage failures
+  }
+}
+
+const safeLocalStorageRemove = (key: string): void => {
+  try {
+    localStorage.removeItem(key)
+  } catch {
+    // ignore storage failures
+  }
+}
+
+const safeSessionStorageSet = (key: string, value: string): void => {
+  try {
+    sessionStorage.setItem(key, value)
+  } catch {
+    // ignore storage failures
+  }
+}
+
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     // Attach token from localStorage
-    const token = safeLocalStorage.getItem('auth_token')
+    const token = safeLocalStorageGet('auth_token')
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -127,7 +158,7 @@ apiClient.interceptors.response.use(
       // from ops pages to avoid broken UI states.
       if (status === 404 && apiData.message === 'Ops monitoring is disabled') {
         try {
-          safeLocalStorage.setItem('ops_monitoring_enabled_cached', 'false')
+          localStorage.setItem('ops_monitoring_enabled_cached', 'false')
         } catch {
           // ignore localStorage failures
         }
@@ -149,10 +180,27 @@ apiClient.interceptors.response.use(
         })
       }
 
+      if (status === 423 && apiData.code === 'ADMIN_COMPLIANCE_ACK_REQUIRED') {
+        try {
+          window.dispatchEvent(new CustomEvent('admin-compliance-required', {
+            detail: apiData.metadata || {}
+          }))
+        } catch {
+          // ignore event failures
+        }
+
+        return Promise.reject({
+          status,
+          code: apiData.code,
+          message: apiData.message || error.message,
+          metadata: apiData.metadata,
+        })
+      }
+
       // 401: Try to refresh the token if we have a refresh token
       // This handles TOKEN_EXPIRED, INVALID_TOKEN, TOKEN_REVOKED, etc.
       if (status === 401 && !originalRequest._retry) {
-        const refreshToken = safeLocalStorage.getItem('refresh_token')
+        const refreshToken = safeLocalStorageGet('refresh_token')
         const isAuthEndpoint =
           url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh')
 
@@ -187,7 +235,7 @@ apiClient.interceptors.response.use(
           try {
             // Call refresh endpoint directly to avoid circular dependency
             const refreshResponse = await axios.post(
-              `${API_BASE_URL}/auth/refresh`,
+              `${getAPIBaseURL()}/auth/refresh`,
               { refresh_token: refreshToken },
               { headers: { 'Content-Type': 'application/json' } }
             )
@@ -202,9 +250,9 @@ apiClient.interceptors.response.use(
               const { access_token, refresh_token: newRefreshToken, expires_in } = refreshData.data
 
               // Update tokens in localStorage (convert expires_in to timestamp)
-              safeLocalStorage.setItem('auth_token', access_token)
-              safeLocalStorage.setItem('refresh_token', newRefreshToken)
-              safeLocalStorage.setItem('token_expires_at', String(Date.now() + expires_in * 1000))
+              safeLocalStorageSet('auth_token', access_token)
+              safeLocalStorageSet('refresh_token', newRefreshToken)
+              safeLocalStorageSet('token_expires_at', String(Date.now() + expires_in * 1000))
 
               // Notify subscribers with new token
               onTokenRefreshed(access_token)
@@ -226,11 +274,11 @@ apiClient.interceptors.response.use(
             isRefreshing = false
 
             // Clear tokens and redirect to login
-            safeLocalStorage.removeItem('auth_token')
-            safeLocalStorage.removeItem('refresh_token')
-            safeLocalStorage.removeItem('auth_user')
-            safeLocalStorage.removeItem('token_expires_at')
-            safeSessionStorage.setItem('auth_expired', '1')
+            safeLocalStorageRemove('auth_token')
+            safeLocalStorageRemove('refresh_token')
+            safeLocalStorageRemove('auth_user')
+            safeLocalStorageRemove('token_expires_at')
+            safeSessionStorageSet('auth_expired', '1')
 
             if (!window.location.pathname.includes('/login')) {
               window.location.href = '/login'
@@ -245,7 +293,7 @@ apiClient.interceptors.response.use(
         }
 
         // No refresh token or is auth endpoint - clear auth and redirect
-        const hasToken = !!safeLocalStorage.getItem('auth_token')
+        const hasToken = !!safeLocalStorageGet('auth_token')
         const headers = error.config?.headers as Record<string, unknown> | undefined
         const authHeader = headers?.Authorization ?? headers?.authorization
         const sentAuth =
@@ -255,17 +303,15 @@ apiClient.interceptors.response.use(
               ? authHeader.length > 0
               : !!authHeader
 
-        const shouldRedirectForAuthExpiry = (hasToken || sentAuth) && !isAuthEndpoint
-
-        safeLocalStorage.removeItem('auth_token')
-        safeLocalStorage.removeItem('refresh_token')
-        safeLocalStorage.removeItem('auth_user')
-        safeLocalStorage.removeItem('token_expires_at')
-        if (shouldRedirectForAuthExpiry) {
-          safeSessionStorage.setItem('auth_expired', '1')
+        safeLocalStorageRemove('auth_token')
+        safeLocalStorageRemove('refresh_token')
+        safeLocalStorageRemove('auth_user')
+        safeLocalStorageRemove('token_expires_at')
+        if ((hasToken || sentAuth) && !isAuthEndpoint) {
+          safeSessionStorageSet('auth_expired', '1')
         }
-        // 只有当前请求明确带了登录态时才跳转，避免公开页面上的普通 401 造成注册页白屏/跳转。
-        if (shouldRedirectForAuthExpiry && !window.location.pathname.includes('/login')) {
+        // Only redirect if not already on login page
+        if ((hasToken || sentAuth) && !window.location.pathname.includes('/login')) {
           window.location.href = '/login'
         }
       }

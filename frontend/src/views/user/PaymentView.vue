@@ -47,7 +47,6 @@
                 :amounts="[10, 20, 50, 100, 200, 500, 1000, 2000, 5000]"
                 :min="globalMinAmount"
                 :max="globalMaxAmount"
-                :bonus-label="quickAmountBonusLabel"
               />
               <p v-if="amountError" class="mt-2 text-xs text-amber-600 dark:text-amber-300">{{ amountError }}</p>
             </div>
@@ -72,14 +71,13 @@
                   <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
                   <span class="text-lg font-bold text-primary-600 dark:text-primary-400">{{ formatSelectedPaymentAmount(totalAmount) }}</span>
                 </div>
-                <div v-if="rechargeBonusQuote.bonusAmount > 0" class="flex justify-between">
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.bonusAmount') }}</span>
-                  <span class="text-emerald-600 dark:text-emerald-400">+${{ rechargeBonusQuote.bonusAmount.toFixed(2) }} ({{ rechargeBonusQuote.bonusRate.toFixed(2) }}%)</span>
-                </div>
-                <div class="flex justify-between" :class="{ 'border-t border-gray-200 pt-2 dark:border-dark-600': feeRate <= 0 && rechargeBonusQuote.bonusAmount <= 0 }">
+                <div v-if="balanceRechargeMultiplier !== 1" class="flex justify-between" :class="{ 'border-t border-gray-200 pt-2 dark:border-dark-600': feeRate <= 0 }">
                   <span class="text-gray-500 dark:text-gray-400">{{ t('payment.creditedBalance') }}</span>
                   <span class="text-gray-900 dark:text-white">${{ creditedAmount.toFixed(2) }}</span>
                 </div>
+                <p v-if="balanceRechargeMultiplier !== 1" class="border-t border-gray-200 pt-2 text-xs text-gray-500 dark:border-dark-600 dark:text-gray-400">
+                  {{ t('payment.rechargeRatePreview', { usd: balanceRechargeMultiplier.toFixed(2) }) }}
+                </p>
               </div>
             </div>
             <button :class="['btn w-full py-3 text-base font-medium', paymentButtonClass]" :disabled="!canSubmit || submitting" @click="handleSubmitRecharge">
@@ -106,9 +104,9 @@
                 <!-- Price -->
                 <div class="flex items-baseline gap-2">
                   <span v-if="selectedPlan.original_price" class="text-sm text-gray-400 line-through dark:text-gray-500">
-                    {{ formatSelectedPaymentAmount(selectedPlan.original_price) }}
+                    {{ formatSelectedSubscriptionPaymentAmount(selectedPlan.original_price) }}
                   </span>
-                  <span :class="['text-3xl font-bold', planTextClass]">{{ formatSelectedPaymentAmount(selectedPlan.price) }}</span>
+                  <span :class="['text-3xl font-bold', planTextClass]">{{ formatSelectedSubscriptionPaymentAmount(selectedPlan.price) }}</span>
                   <span class="text-sm text-gray-500 dark:text-gray-400">/ {{ planValiditySuffix }}</span>
                 </div>
                 <!-- Description -->
@@ -121,6 +119,12 @@
                     <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.rate') }}</span>
                     <div class="flex items-baseline">
                       <span :class="['text-lg font-bold', planTextClass]">×{{ selectedPlan.rate_multiplier ?? 1 }}</span>
+                    </div>
+                  </div>
+                  <div v-if="planHasPeakRate(selectedPlan)">
+                    <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.peakRate') }}</span>
+                    <div class="text-sm font-semibold text-amber-700 dark:text-amber-300">
+                      {{ planPeakRateLabel(selectedPlan) }}
                     </div>
                   </div>
                   <div v-if="selectedPlan.daily_limit_usd != null">
@@ -152,7 +156,7 @@
                 <div class="space-y-2 text-sm">
                   <div class="flex justify-between">
                     <span class="text-gray-500 dark:text-gray-400">{{ t('payment.amountLabel') }}</span>
-                    <span class="text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(selectedPlan.price) }}</span>
+                    <span class="text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(subPaymentAmount) }}</span>
                   </div>
                   <div class="flex justify-between">
                     <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
@@ -169,7 +173,7 @@
                   <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                   {{ t('common.processing') }}
                 </span>
-                <span v-else>{{ t('payment.createOrder') }} {{ formatSelectedPaymentAmount(feeRate > 0 ? subTotalAmount : selectedPlan.price) }}</span>
+                <span v-else>{{ t('payment.createOrder') }} {{ formatSelectedPaymentAmount(subTotalAmount) }}</span>
               </button>
               <button class="btn btn-secondary w-full" @click="selectedPlan = null">{{ t('common.cancel') }}</button>
             </template>
@@ -196,6 +200,7 @@
                       </div>
                       <div class="flex flex-wrap gap-x-3 text-[11px] text-gray-400 dark:text-gray-500">
                         <span>{{ t('payment.planCard.rate') }}: ×{{ sub.group?.rate_multiplier ?? 1 }}</span>
+                        <span v-if="subscriptionHasPeakRate(sub)">{{ t('payment.planCard.peakRate') }}: {{ subscriptionPeakRateLabel(sub) }}</span>
                         <span v-if="sub.group?.daily_limit_usd == null && sub.group?.weekly_limit_usd == null && sub.group?.monthly_limit_usd == null">{{ t('payment.planCard.quota') }}: {{ t('payment.planCard.unlimited') }}</span>
                         <span v-if="sub.expires_at">{{ t('userSubscriptions.daysRemaining', { days: getDaysRemaining(sub.expires_at) }) }}</span>
                         <span v-else>{{ t('userSubscriptions.noExpiration') }}</span>
@@ -257,6 +262,7 @@ import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
+import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel, type PeakRateFields } from '@/utils/peak-rate'
 import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
@@ -278,7 +284,6 @@ import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatPaymentAmount, normalizePaymentCurrency } from '@/components/payment/currency'
-import { calculateBonusQuote } from '@/components/payment/bonus'
 import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
 import { buildPaymentErrorToastMessage, describePaymentScenarioError } from './paymentUx'
 import { hasWechatResumeQuery, parseWechatResumeRoute, stripWechatResumeQuery } from './paymentWechatResume'
@@ -298,6 +303,14 @@ const activeSubscriptions = computed(() => subscriptionStore.activeSubscriptions
 function getDaysRemaining(expiresAt: string): number {
   const diff = new Date(expiresAt).getTime() - Date.now()
   return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)))
+}
+
+function subscriptionHasPeakRate(sub: { group?: PeakRateFields | null }): boolean {
+  return hasPeakRate(sub.group)
+}
+
+function subscriptionPeakRateLabel(sub: { group?: PeakRateFields | null }): string {
+  return formatPeakRateWindow(sub.group, serverTimezoneLabel(appStore.cachedPublicSettings?.server_utc_offset))
 }
 
 const loading = ref(true)
@@ -481,7 +494,8 @@ function onPaymentSettled() {
 // All checkout data from single API call
 const checkout = ref<CheckoutInfoResponse>({
   methods: {}, global_min: 0, global_max: 0,
-  plans: [], balance_disabled: false, balance_recharge_multiplier: 1, balance_recharge_bonus_rules: [], recharge_fee_rate: 0, help_text: '', help_image_url: '', stripe_publishable_key: '',
+  plans: [], balance_disabled: false, balance_recharge_multiplier: 1, recharge_fee_rate: 0, help_text: '', help_image_url: '', stripe_publishable_key: '',
+  balance_recharge_bonus_rules: [],
 })
 
 const tabs = computed(() => {
@@ -494,15 +508,11 @@ const tabs = computed(() => {
 const visibleMethods = computed(() => getVisibleMethods(checkout.value.methods))
 const enabledMethods = computed(() => Object.keys(visibleMethods.value))
 const validAmount = computed(() => amount.value ?? 0)
-const rechargeBonusQuote = computed(() =>
-  calculateBonusQuote(validAmount.value, checkout.value.balance_recharge_bonus_rules, checkout.value.balance_recharge_multiplier)
-)
-const creditedAmount = computed(() => rechargeBonusQuote.value.creditedAmount)
-
-function quickAmountBonusLabel(quickAmount: number): string {
-  const quote = calculateBonusQuote(quickAmount, checkout.value.balance_recharge_bonus_rules, checkout.value.balance_recharge_multiplier)
-  return quote.bonusRate > 0 ? `+${quote.bonusRate.toFixed(0)}%` : ''
-}
+const balanceRechargeMultiplier = computed(() => {
+  const multiplier = checkout.value.balance_recharge_multiplier
+  return Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1
+})
+const creditedAmount = computed(() => Math.round((validAmount.value * balanceRechargeMultiplier.value) * 100) / 100)
 
 // Adaptive grid: center single card, 2-col for 2 plans, 3-col for 3+
 const planGridClass = computed(() => {
@@ -547,8 +557,35 @@ const localeCode = computed(() => {
   return undefined
 })
 
+function currencyFractionDigits(currency: string): number {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency,
+    }).resolvedOptions().maximumFractionDigits ?? 2
+  } catch {
+    return 2
+  }
+}
+
+function roundPaymentAmount(value: number, currency: string): number {
+  if (!Number.isFinite(value)) return 0
+  const factor = 10 ** currencyFractionDigits(currency)
+  return Math.round(value * factor) / factor
+}
+
+function ceilPaymentAmount(value: number, currency: string): number {
+  if (!Number.isFinite(value)) return 0
+  const factor = 10 ** currencyFractionDigits(currency)
+  return Math.ceil(value * factor) / factor
+}
+
 function formatSelectedPaymentAmount(value: number): string {
   return formatPaymentAmount(value, selectedCurrency.value, localeCode.value)
+}
+
+function formatSelectedSubscriptionPaymentAmount(value: number): string {
+  return formatSelectedPaymentAmount(roundPaymentAmount(value, selectedCurrency.value))
 }
 
 const methodOptions = computed<PaymentMethodOption[]>(() =>
@@ -595,34 +632,45 @@ const canSubmit = computed(() =>
     && selectedLimit.value?.available !== false
 )
 
-// Subscription-specific: method options based on plan price
+const subPaymentAmount = computed(() => {
+  const price = selectedPlan.value?.price ?? 0
+  return roundPaymentAmount(price, selectedCurrency.value)
+})
+
+const subFeeAmount = computed(() => {
+  if (feeRate.value <= 0 || subPaymentAmount.value <= 0) return 0
+  return ceilPaymentAmount((subPaymentAmount.value * feeRate.value) / 100, selectedCurrency.value)
+})
+
+const subTotalAmount = computed(() => {
+  if (feeRate.value <= 0 || subPaymentAmount.value <= 0) return subPaymentAmount.value
+  return roundPaymentAmount(subPaymentAmount.value + subFeeAmount.value, selectedCurrency.value)
+})
+
+function subscriptionTotalAmountForCurrency(value: number, currency: string): number {
+  const paymentAmount = roundPaymentAmount(value, currency)
+  if (feeRate.value <= 0 || paymentAmount <= 0) return paymentAmount
+  const fee = ceilPaymentAmount((paymentAmount * feeRate.value) / 100, currency)
+  return roundPaymentAmount(paymentAmount + fee, currency)
+}
+
+// Subscription-specific: method options based on gateway pay amount
 const subMethodOptions = computed<PaymentMethodOption[]>(() => {
-  const planPrice = selectedPlan.value?.price ?? 0
+  const price = selectedPlan.value?.price ?? 0
   return enabledMethods.value.map((type) => {
     const ml = visibleMethods.value[type]
+    const currency = normalizePaymentCurrency(ml?.currency)
     return {
       type,
       fee_rate: ml?.fee_rate ?? 0,
-      available: ml?.available !== false && amountFitsMethod(planPrice, type),
+      available: ml?.available !== false && amountFitsMethod(subscriptionTotalAmountForCurrency(price, currency), type),
     }
   })
 })
 
-const subFeeAmount = computed(() => {
-  const price = selectedPlan.value?.price ?? 0
-  if (feeRate.value <= 0 || price <= 0) return 0
-  return Math.ceil(((price * feeRate.value) / 100) * 100) / 100
-})
-
-const subTotalAmount = computed(() => {
-  const price = selectedPlan.value?.price ?? 0
-  if (feeRate.value <= 0 || price <= 0) return price
-  return Math.round((price + subFeeAmount.value) * 100) / 100
-})
-
 const canSubmitSubscription = computed(() =>
   selectedPlan.value !== null
-    && amountFitsMethod(selectedPlan.value.price, selectedMethod.value)
+    && amountFitsMethod(subTotalAmount.value, selectedMethod.value)
     && selectedLimit.value?.available !== false
 )
 
@@ -663,6 +711,14 @@ const planValiditySuffix = computed(() => {
   if (u === 'year') return t('payment.perYear')
   return `${selectedPlan.value.validity_days}${t('payment.days')}`
 })
+
+function planHasPeakRate(plan: SubscriptionPlan): boolean {
+  return hasPeakRate(plan)
+}
+
+function planPeakRateLabel(plan: SubscriptionPlan): string {
+  return formatPeakRateWindow(plan, serverTimezoneLabel(appStore.cachedPublicSettings?.server_utc_offset))
+}
 
 function selectPlan(plan: SubscriptionPlan) {
   selectedPlan.value = plan
@@ -1062,15 +1118,12 @@ onMounted(async () => {
     if (checkout.value.balance_disabled) {
       activeTab.value = 'subscription'
     }
-    // Handle subscription navigation: ?tab=subscription&plan_id=123 or ?tab=subscription&group=123
-    if (route.query.tab === 'subscription' || route.query.plan_id) {
+    // Handle renewal navigation: ?tab=subscription&group=123
+    if (route.query.tab === 'subscription') {
       activeTab.value = 'subscription'
-      const planId = typeof route.query.plan_id === 'string' ? Number(route.query.plan_id) : 0
-      if (Number.isFinite(planId) && planId > 0) {
-        const matchedPlan = checkout.value.plans.find(p => p.id === planId)
-        if (matchedPlan) {
-          selectedPlan.value = matchedPlan
-        }
+      if (route.query.plan_id) {
+        const planId = Number(route.query.plan_id)
+        selectedPlan.value = checkout.value.plans.find(plan => plan.id === planId) ?? null
       } else if (route.query.group) {
         const groupId = Number(route.query.group)
         const groupPlans = checkout.value.plans.filter(p => p.group_id === groupId)

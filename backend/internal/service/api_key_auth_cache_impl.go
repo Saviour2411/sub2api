@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 12 // v12: include exclusive group authorization fields
+const apiKeyAuthSnapshotVersion = 13 // v13: include group peak rate fields
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -265,7 +265,6 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			ImagePrice2K:                    apiKey.Group.ImagePrice2K,
 			ImagePrice4K:                    apiKey.Group.ImagePrice4K,
 			ClaudeCodeOnly:                  apiKey.Group.ClaudeCodeOnly,
-			ClaudeCodeUpstreamMimicry:       apiKey.Group.ClaudeCodeUpstreamMimicry,
 			FallbackGroupID:                 apiKey.Group.FallbackGroupID,
 			FallbackGroupIDOnInvalidRequest: apiKey.Group.FallbackGroupIDOnInvalidRequest,
 			ModelRouting:                    apiKey.Group.ModelRouting,
@@ -277,6 +276,10 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			MessagesDispatchModelConfig:     apiKey.Group.MessagesDispatchModelConfig,
 			ModelsListConfig:                apiKey.Group.ModelsListConfig,
 			RPMLimit:                        apiKey.Group.RPMLimit,
+			PeakRateEnabled:                 apiKey.Group.PeakRateEnabled,
+			PeakStart:                       apiKey.Group.PeakStart,
+			PeakEnd:                         apiKey.Group.PeakEnd,
+			PeakRateMultiplier:              apiKey.Group.PeakRateMultiplier,
 		}
 	}
 	return snapshot
@@ -339,7 +342,6 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			ImagePrice2K:                    snapshot.Group.ImagePrice2K,
 			ImagePrice4K:                    snapshot.Group.ImagePrice4K,
 			ClaudeCodeOnly:                  snapshot.Group.ClaudeCodeOnly,
-			ClaudeCodeUpstreamMimicry:       snapshot.Group.ClaudeCodeUpstreamMimicry,
 			FallbackGroupID:                 snapshot.Group.FallbackGroupID,
 			FallbackGroupIDOnInvalidRequest: snapshot.Group.FallbackGroupIDOnInvalidRequest,
 			ModelRouting:                    snapshot.Group.ModelRouting,
@@ -351,6 +353,10 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			MessagesDispatchModelConfig:     snapshot.Group.MessagesDispatchModelConfig,
 			ModelsListConfig:                snapshot.Group.ModelsListConfig,
 			RPMLimit:                        snapshot.Group.RPMLimit,
+			PeakRateEnabled:                 snapshot.Group.PeakRateEnabled,
+			PeakStart:                       snapshot.Group.PeakStart,
+			PeakEnd:                         snapshot.Group.PeakEnd,
+			PeakRateMultiplier:              snapshot.Group.PeakRateMultiplier,
 		}
 	}
 	s.compileAPIKeyIPRules(apiKey)

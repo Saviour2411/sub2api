@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import router from '@/router'
 
 const authStore = vi.hoisted(() => ({
   checkAuth: vi.fn(),
@@ -44,8 +45,7 @@ vi.mock('@/composables/useRoutePrefetch', () => ({
 }))
 
 describe('router WeChat OAuth route', () => {
-  it('registers the WeChat callback route as a public route', async () => {
-    const { default: router } = await import('@/router')
+  it('registers the WeChat callback route as a public route', () => {
     const route = router.getRoutes().find((record) => record.name === 'WeChatOAuthCallback')
 
     expect(route?.path).toBe('/auth/wechat/callback')
@@ -53,8 +53,7 @@ describe('router WeChat OAuth route', () => {
     expect(route?.meta.title).toBe('WeChat OAuth Callback')
   })
 
-  it('registers the WeChat payment callback route as a public route', async () => {
-    const { default: router } = await import('@/router')
+  it('registers the WeChat payment callback route as a public route', () => {
     const route = router.getRoutes().find((record) => record.name === 'WeChatPaymentOAuthCallback')
 
     expect(route?.path).toBe('/auth/wechat/payment/callback')

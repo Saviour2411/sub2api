@@ -18,9 +18,9 @@ import type {
   AdminDataImportResult,
   CodexSessionImportRequest,
   CodexSessionImportResult,
+  OpenAICodexPATCreateRequest,
   CheckMixedChannelRequest,
-  CheckMixedChannelResponse,
-  AccountPlatform
+  CheckMixedChannelResponse
 } from '@/types'
 
 /**
@@ -123,17 +123,6 @@ export async function listWithEtag(
  */
 export async function getById(id: number): Promise<Account> {
   const { data } = await apiClient.get<Account>(`/admin/accounts/${id}`)
-  return data
-}
-
-export interface AccountAPIKeyRevealResponse {
-  api_key: string
-  has_api_key: boolean
-}
-
-// 管理员按需查看账号 API Key 明文；普通账号列表仍保持脱敏。
-export async function getApiKey(id: number): Promise<AccountAPIKeyRevealResponse> {
-  const { data } = await apiClient.get<AccountAPIKeyRevealResponse>(`/admin/accounts/${id}/api-key`)
   return data
 }
 
@@ -489,16 +478,6 @@ export interface SyncUpstreamModelsResult {
   models: string[]
 }
 
-export interface SyncUpstreamModelsPreviewRequest {
-  platform: AccountPlatform
-  type: 'apikey'
-  credentials?: Record<string, unknown>
-  base_url?: string
-  api_key?: string
-  proxy_id?: number | null
-  concurrency?: number
-}
-
 /**
  * Sync live supported models from the account's upstream model-list endpoint
  * @param id - Account ID
@@ -509,17 +488,25 @@ export async function syncUpstreamModels(id: number): Promise<SyncUpstreamModels
   return data
 }
 
+export interface SyncUpstreamPreviewParams {
+  platform: string
+  type: string
+  base_url?: string
+  api_key?: string
+  credentials?: Record<string, unknown>
+  proxy_id?: number | null
+  concurrency?: number
+}
+
+export type SyncUpstreamModelsPreviewRequest = SyncUpstreamPreviewParams
+
 /**
- * 使用未保存的 API Key 账号凭证同步上游支持模型。
- * 该接口只探测上游，不会持久化凭证。
+ * Preview upstream models without a saved account (create-flow)
+ * @param params - Connection credentials
+ * @returns List of model IDs returned by the upstream
  */
-export async function syncUpstreamModelsPreview(
-  payload: SyncUpstreamModelsPreviewRequest
-): Promise<SyncUpstreamModelsResult> {
-  const { data } = await apiClient.post<SyncUpstreamModelsResult>(
-    '/admin/accounts/models/sync-upstream/preview',
-    payload
-  )
+export async function syncUpstreamModelsPreview(params: SyncUpstreamPreviewParams): Promise<SyncUpstreamModelsResult> {
+  const { data } = await apiClient.post<SyncUpstreamModelsResult>('/admin/accounts/models/sync-upstream-preview', params)
   return data
 }
 
@@ -627,7 +614,14 @@ export async function importData(payload: {
 }
 
 export async function importCodexSession(payload: CodexSessionImportRequest): Promise<CodexSessionImportResult> {
-  const { data } = await apiClient.post<CodexSessionImportResult>('/admin/accounts/import/codex-session', payload)
+  const { data } = await apiClient.post<CodexSessionImportResult>('/admin/accounts/import/codex-session', payload, {
+    timeout: 120000 // 120s timeout for large session imports
+  })
+  return data
+}
+
+export async function createOpenAICodexPAT(payload: OpenAICodexPATCreateRequest): Promise<Account> {
+  const { data } = await apiClient.post<Account>('/admin/openai/create-from-codex-pat', payload)
   return data
 }
 
@@ -747,8 +741,13 @@ export interface OpenAIAdditionalRateLimit {
   rate_limit?: OpenAIRateLimit | null
 }
 
+export interface OpenAIRateLimitResetCreditDetail {
+  expires_at?: string
+}
+
 export interface OpenAIRateLimitResetCredits {
   available_count: number
+  credits?: OpenAIRateLimitResetCreditDetail[]
 }
 
 export interface OpenAIQuotaUsage {
@@ -794,11 +793,22 @@ export async function resetOpenAIQuota(id: number): Promise<OpenAIQuotaResetResu
   return data
 }
 
+export interface SparkShadowCreatePayload {
+  name?: string
+  priority?: number
+  concurrency?: number
+  group_ids?: number[]
+}
+
+export async function createSparkShadow(parentId: number, payload: SparkShadowCreatePayload): Promise<Account> {
+  const { data } = await apiClient.post<Account>(`/admin/accounts/${parentId}/shadow`, payload)
+  return data
+}
+
 export const accountsAPI = {
   list,
   listWithEtag,
   getById,
-  getApiKey,
   create,
   update,
   checkMixedChannelRisk,
@@ -832,13 +842,15 @@ export const accountsAPI = {
   exportData,
   importData,
   importCodexSession,
+  createOpenAICodexPAT,
   getAntigravityDefaultModelMapping,
   batchClearError,
   batchRefresh,
   setPrivacy,
   revertProxyFallback,
   queryOpenAIQuota,
-  resetOpenAIQuota
+  resetOpenAIQuota,
+  createSparkShadow
 }
 
 export default accountsAPI

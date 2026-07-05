@@ -142,23 +142,14 @@ type SystemSettings struct {
 	CustomMenuItems             []CustomMenuItem `json:"custom_menu_items"`
 	CustomEndpoints             []CustomEndpoint `json:"custom_endpoints"`
 
-	DefaultConcurrency               int                               `json:"default_concurrency"`
-	DefaultBalance                   float64                           `json:"default_balance"`
-	DailyCheckinEnabled              bool                              `json:"daily_checkin_enabled"`
-	DailyCheckinRewardMode           string                            `json:"daily_checkin_reward_mode"`
-	DailyCheckinRewardAmount         float64                           `json:"daily_checkin_reward_amount"`
-	DailyCheckinRewardMin            float64                           `json:"daily_checkin_reward_min"`
-	DailyCheckinRewardMax            float64                           `json:"daily_checkin_reward_max"`
-	DailyCheckinPrizes               []service.DailyCheckinPrizeConfig `json:"daily_checkin_prizes"`
-	DailyCheckinUnpaidFullDays       int                               `json:"daily_checkin_unpaid_full_days"`
-	DailyCheckinUnpaidDecayRules     []service.DailyCheckinDecayRule   `json:"daily_checkin_unpaid_decay_rules"`
-	DailyCheckinLinuxDoExemptEnabled bool                              `json:"daily_checkin_linuxdo_exempt_enabled"`
-	AffiliateRebateRate              float64                           `json:"affiliate_rebate_rate"`
-	AffiliateRebateFreezeHours       int                               `json:"affiliate_rebate_freeze_hours"`
-	AffiliateRebateDurationDays      int                               `json:"affiliate_rebate_duration_days"`
-	AffiliateRebatePerInviteeCap     float64                           `json:"affiliate_rebate_per_invitee_cap"`
-	DefaultUserRPMLimit              int                               `json:"default_user_rpm_limit"`
-	DefaultSubscriptions             []DefaultSubscriptionSetting      `json:"default_subscriptions"`
+	DefaultConcurrency           int                          `json:"default_concurrency"`
+	DefaultBalance               float64                      `json:"default_balance"`
+	AffiliateRebateRate          float64                      `json:"affiliate_rebate_rate"`
+	AffiliateRebateFreezeHours   int                          `json:"affiliate_rebate_freeze_hours"`
+	AffiliateRebateDurationDays  int                          `json:"affiliate_rebate_duration_days"`
+	AffiliateRebatePerInviteeCap float64                      `json:"affiliate_rebate_per_invitee_cap"`
+	DefaultUserRPMLimit          int                          `json:"default_user_rpm_limit"`
+	DefaultSubscriptions         []DefaultSubscriptionSetting `json:"default_subscriptions"`
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
@@ -187,23 +178,25 @@ type SystemSettings struct {
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
 
 	// Gateway forwarding behavior
-	EnableFingerprintUnification           bool                `json:"enable_fingerprint_unification"`
-	EnableMetadataPassthrough              bool                `json:"enable_metadata_passthrough"`
-	EnableCCHSigning                       bool                `json:"enable_cch_signing"`
-	EnableClaudeOAuthSystemPromptInjection bool                `json:"enable_claude_oauth_system_prompt_injection"`
-	ClaudeOAuthSystemPrompt                string              `json:"claude_oauth_system_prompt"`
-	ClaudeOAuthSystemPromptBlocks          string              `json:"claude_oauth_system_prompt_blocks"`
-	EnableAnthropicCacheTTL1hInjection     bool                `json:"enable_anthropic_cache_ttl_1h_injection"`
-	RewriteMessageCacheControl             bool                `json:"rewrite_message_cache_control"`
-	AntigravityUserAgentVersion            string              `json:"antigravity_user_agent_version"`
-	PreResponseStreamKeepaliveEnabled      bool                `json:"pre_response_stream_keepalive_enabled"`
-	PreResponseStreamKeepaliveInitialDelay int                 `json:"pre_response_stream_keepalive_initial_delay"`
-	SemanticErrorDetectionEnabled          bool                `json:"semantic_error_detection_enabled"`
-	SemanticErrorMatchMaxChars             int                 `json:"semantic_error_match_max_chars"`
-	SemanticErrorRules                     []SemanticErrorRule `json:"semantic_error_rules"`
-	OpenAICodexUserAgent                   string              `json:"openai_codex_user_agent"`
-	OpenAIAllowClaudeCodeCodexPlugin       bool                `json:"openai_allow_claude_code_codex_plugin"`
-	ScheduledTestDefaultPrompt             string              `json:"scheduled_test_default_prompt"`
+	EnableFingerprintUnification           bool   `json:"enable_fingerprint_unification"`
+	EnableMetadataPassthrough              bool   `json:"enable_metadata_passthrough"`
+	EnableCCHSigning                       bool   `json:"enable_cch_signing"`
+	EnableClaudeOAuthSystemPromptInjection bool   `json:"enable_claude_oauth_system_prompt_injection"`
+	ClaudeOAuthSystemPrompt                string `json:"claude_oauth_system_prompt"`
+	ClaudeOAuthSystemPromptBlocks          string `json:"claude_oauth_system_prompt_blocks"`
+	EnableAnthropicCacheTTL1hInjection     bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
+	RewriteMessageCacheControl             bool   `json:"rewrite_message_cache_control"`
+	EnableClientDatelineNormalization      bool   `json:"enable_client_dateline_normalization"`
+	AntigravityUserAgentVersion            string `json:"antigravity_user_agent_version"`
+	OpenAICodexUserAgent                   string `json:"openai_codex_user_agent"`
+
+	// codex_cli_only 加固
+	MinCodexVersion                      string `json:"min_codex_version"`
+	MaxCodexVersion                      string `json:"max_codex_version"`
+	CodexCLIOnlyBlacklist                string `json:"codex_cli_only_blacklist"`
+	CodexCLIOnlyWhitelist                string `json:"codex_cli_only_whitelist"`
+	CodexCLIOnlyAllowAppServerClients    bool   `json:"codex_cli_only_allow_app_server_clients"`
+	CodexCLIOnlyEngineFingerprintSignals string `json:"codex_cli_only_engine_fingerprint_signals"`
 
 	// Web Search Emulation
 	WebSearchEmulationEnabled bool `json:"web_search_emulation_enabled"`
@@ -218,22 +211,21 @@ type SystemSettings struct {
 	OpenAIAdvancedSchedulerEnabled bool `json:"openai_advanced_scheduler_enabled"`
 
 	// Payment configuration
-	PaymentEnabled                   bool                       `json:"payment_enabled"`
-	PaymentMinAmount                 float64                    `json:"payment_min_amount"`
-	PaymentMaxAmount                 float64                    `json:"payment_max_amount"`
-	PaymentDailyLimit                float64                    `json:"payment_daily_limit"`
-	PaymentOrderTimeoutMin           int                        `json:"payment_order_timeout_minutes"`
-	PaymentMaxPendingOrders          int                        `json:"payment_max_pending_orders"`
-	PaymentEnabledTypes              []string                   `json:"payment_enabled_types"`
-	PaymentBalanceDisabled           bool                       `json:"payment_balance_disabled"`
-	PaymentBalanceRechargeMultiplier float64                    `json:"payment_balance_recharge_multiplier"`
-	PaymentBalanceRechargeBonusRules []service.PaymentBonusRule `json:"payment_balance_recharge_bonus_rules"`
-	PaymentRechargeFeeRate           float64                    `json:"payment_recharge_fee_rate"`
-	PaymentLoadBalanceStrat          string                     `json:"payment_load_balance_strategy"`
-	PaymentProductNamePrefix         string                     `json:"payment_product_name_prefix"`
-	PaymentProductNameSuffix         string                     `json:"payment_product_name_suffix"`
-	PaymentHelpImageURL              string                     `json:"payment_help_image_url"`
-	PaymentHelpText                  string                     `json:"payment_help_text"`
+	PaymentEnabled                   bool     `json:"payment_enabled"`
+	PaymentMinAmount                 float64  `json:"payment_min_amount"`
+	PaymentMaxAmount                 float64  `json:"payment_max_amount"`
+	PaymentDailyLimit                float64  `json:"payment_daily_limit"`
+	PaymentOrderTimeoutMin           int      `json:"payment_order_timeout_minutes"`
+	PaymentMaxPendingOrders          int      `json:"payment_max_pending_orders"`
+	PaymentEnabledTypes              []string `json:"payment_enabled_types"`
+	PaymentBalanceDisabled           bool     `json:"payment_balance_disabled"`
+	PaymentBalanceRechargeMultiplier float64  `json:"payment_balance_recharge_multiplier"`
+	PaymentRechargeFeeRate           float64  `json:"payment_recharge_fee_rate"`
+	PaymentLoadBalanceStrat          string   `json:"payment_load_balance_strategy"`
+	PaymentProductNamePrefix         string   `json:"payment_product_name_prefix"`
+	PaymentProductNameSuffix         string   `json:"payment_product_name_suffix"`
+	PaymentHelpImageURL              string   `json:"payment_help_image_url"`
+	PaymentHelpText                  string   `json:"payment_help_text"`
 
 	// Cancel rate limit
 	PaymentCancelRateLimitEnabled bool   `json:"payment_cancel_rate_limit_enabled"`
@@ -260,11 +252,6 @@ type SystemSettings struct {
 	// Available Channels feature switch (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
-	// Model Marketplace feature switch (public aggregate view)
-	ModelMarketplaceEnabled  bool    `json:"model_marketplace_enabled"`
-	ModelMarketplaceIntro    string  `json:"model_marketplace_intro"`
-	ModelMarketplaceGroupIDs []int64 `json:"model_marketplace_group_ids"`
-
 	// 风控中心功能开关
 	RiskControlEnabled bool `json:"risk_control_enabled"`
 
@@ -283,16 +270,6 @@ type SystemSettings struct {
 
 	// 允许终端用户在用量页查看自己的失败请求
 	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
-}
-
-type SemanticErrorRule struct {
-	Enabled       bool     `json:"enabled"`
-	Name          string   `json:"name"`
-	Platforms     []string `json:"platforms"`
-	MatchType     string   `json:"match_type"`
-	Pattern       string   `json:"pattern"`
-	CustomMessage string   `json:"custom_message"`
-	Priority      int      `json:"priority"`
 }
 
 type DefaultSubscriptionSetting struct {
@@ -330,7 +307,6 @@ type PublicSettings struct {
 	TablePageSizeOptions             []int                    `json:"table_page_size_options"`
 	CustomMenuItems                  []CustomMenuItem         `json:"custom_menu_items"`
 	CustomEndpoints                  []CustomEndpoint         `json:"custom_endpoints"`
-	DailyCheckinEnabled              bool                     `json:"daily_checkin_enabled"`
 	DingTalkOAuthEnabled             bool                     `json:"dingtalk_oauth_enabled"`
 	LinuxDoOAuthEnabled              bool                     `json:"linuxdo_oauth_enabled"`
 	WeChatOAuthEnabled               bool                     `json:"wechat_oauth_enabled"`
@@ -345,23 +321,27 @@ type PublicSettings struct {
 	BackendModeEnabled               bool                     `json:"backend_mode_enabled"`
 	PaymentEnabled                   bool                     `json:"payment_enabled"`
 	Version                          string                   `json:"version"`
-	BalanceLowNotifyEnabled          bool                     `json:"balance_low_notify_enabled"`
-	AccountQuotaNotifyEnabled        bool                     `json:"account_quota_notify_enabled"`
-	BalanceLowNotifyThreshold        float64                  `json:"balance_low_notify_threshold"`
-	BalanceLowNotifyRechargeURL      string                   `json:"balance_low_notify_recharge_url"`
+	// 服务器全局时区（IANA 名称与当前 UTC 偏移，如 "Asia/Shanghai" / "+08:00"）。
+	// 高峰时段等按服务器本地时间判定的窗口，前端展示时据此标注，避免用户按浏览器本地时间误读。
+	ServerTimezone              string  `json:"server_timezone"`
+	ServerUTCOffset             string  `json:"server_utc_offset"`
+	BalanceLowNotifyEnabled     bool    `json:"balance_low_notify_enabled"`
+	AccountQuotaNotifyEnabled   bool    `json:"account_quota_notify_enabled"`
+	BalanceLowNotifyThreshold   float64 `json:"balance_low_notify_threshold"`
+	BalanceLowNotifyRechargeURL string  `json:"balance_low_notify_recharge_url"`
 
 	ChannelMonitorEnabled                bool `json:"channel_monitor_enabled"`
 	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
 
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
-	ModelMarketplaceEnabled bool `json:"model_marketplace_enabled"`
-
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 
 	RiskControlEnabled bool `json:"risk_control_enabled"`
 
 	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
+	DailyCheckinEnabled        bool `json:"daily_checkin_enabled"`
+	ModelMarketplaceEnabled    bool `json:"model_marketplace_enabled"`
 }
 
 type LoginAgreementDocument struct {

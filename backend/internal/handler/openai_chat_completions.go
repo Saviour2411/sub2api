@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
@@ -24,8 +23,6 @@ import (
 func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	streamStarted := false
 	defer h.recoverResponsesPanic(c, &streamStarted)
-	auditCapture, restoreAuditCapture := h.beginSuccessfulConversationAuditCapture(c)
-	defer restoreAuditCapture()
 
 	requestStart := time.Now()
 
@@ -104,6 +101,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	}
 
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
+	requestPlatform := openAICompatibleRequestPlatform(apiKey)
 
 	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
 	routingStart := time.Now()
@@ -147,6 +145,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			service.OpenAIUpstreamTransportAny,
 			service.OpenAIEndpointCapabilityChatCompletions,
 			false,
+			requestPlatform,
 		)
 		if err != nil {
 			reqLog.Warn("openai_chat_completions.account_select_failed",
@@ -154,8 +153,11 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
 			if len(failedAccountIDs) == 0 {
-				markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
-				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
+				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, service.PlatformOpenAI)
+				if !cls.ModelNotFound {
+					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+				}
+				h.handleStreamingAwareError(c, cls.Status, cls.ErrType, cls.Message, streamStarted)
 				return
 			} else {
 				if lastFailoverErr != nil {
@@ -167,8 +169,11 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			}
 		}
 		if selection == nil || selection.Account == nil {
-			markOpsRoutingCapacityLimited(c)
-			h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", streamStarted)
+			cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, service.PlatformOpenAI)
+			if !cls.ModelNotFound {
+				markOpsRoutingCapacityLimited(c)
+			}
+			h.handleStreamingAwareError(c, cls.Status, cls.ErrType, cls.Message, streamStarted)
 			return
 		}
 		account := selection.Account
@@ -181,7 +186,6 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		if !acquired {
 			return
 		}
-		preResponseKeepalive := startPreResponseStreamKeepalive(c, h.settingService, reqStream, SSEPingFormatComment)
 
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
@@ -190,7 +194,6 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
-		forwardCtx := withPreResponseKeepalive(c.Request.Context(), preResponseKeepalive)
 		writerSizeBeforeForward := c.Writer.Size()
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
@@ -198,12 +201,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 					accountReleaseFunc()
 				}
 			}()
-			return h.gatewayService.ForwardAsChatCompletions(forwardCtx, c, account, forwardBody, promptCacheKey, "")
+			return h.gatewayService.ForwardAsChatCompletions(c.Request.Context(), c, account, forwardBody, promptCacheKey, "")
 		}()
-		preResponseStarted := stopPreResponseKeepaliveFromContext(forwardCtx)
-		if preResponseStarted {
-			streamStarted = true
-		}
 		cyberBlockKeyChat := ""
 		if service.GetOpsCyberPolicy(c) != nil {
 			cyberBlockKeyChat = service.CyberSessionBlockKey(apiKey.ID, c, body)
@@ -235,12 +234,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 						return
 					}
 					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
-					strictFailureUnscheduled := failoverErr.SemanticError
-					if !strictFailureUnscheduled {
-						strictFailureUnscheduled = h.gatewayService.HandleUpstreamFailoverError(c.Request.Context(), account, failoverErr)
-					}
 					// Pool mode: retry on the same account
-					if failoverErr.RetryableOnSameAccount && !strictFailureUnscheduled {
+					if failoverErr.RetryableOnSameAccount {
 						retryLimit := account.GetPoolModeRetryCount()
 						if sameAccountRetryCount[account.ID] < retryLimit {
 							sameAccountRetryCount[account.ID]++
@@ -262,11 +257,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 					failedAccountIDs[account.ID] = struct{}{}
 					lastFailoverErr = failoverErr
 					if switchCount >= maxAccountSwitches {
-						if preResponseStarted {
-							h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed", true)
-						} else {
-							h.handleFailoverExhausted(c, failoverErr, streamStarted)
-						}
+						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
 					switchCount++
@@ -307,17 +298,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		clientIP := ip.GetClientIP(c)
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account)
-		sessionID, clientSessionID, sessionSource := resolveOpenAISessionAuditFields(promptCacheKey, sessionHash)
-		h.recordSuccessfulConversationAudit(c, apiKey, subject, service.ContentModerationProtocolOpenAIChat, reqModel, result.UpstreamModel, result.Stream, body, result.Usage, successfulConversationAuditOptions{
-			SessionID:          sessionID,
-			ClientSessionID:    clientSessionID,
-			SessionSource:      sessionSource,
-			UserAgent:          userAgent,
-			Originator:         c.GetHeader("Originator"),
-			ResponseID:         result.ResponseID,
-			PreviousResponseID: strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String()),
-			RawResponse:        auditCapture.Bytes(),
-		})
+		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 
 		cyberBlocked := service.GetOpsCyberPolicy(c) != nil
 		h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
@@ -332,6 +313,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				UserAgent:          userAgent,
 				IPAddress:          clientIP,
 				APIKeyService:      h.apiKeyService,
+				QuotaPlatform:      quotaPlatform,
 				ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
 				CyberBlocked:       cyberBlocked,
 			}); err != nil {
