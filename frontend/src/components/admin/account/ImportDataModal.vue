@@ -24,7 +24,7 @@
             ? 'border-primary-400 bg-primary-50/70 dark:border-primary-500 dark:bg-primary-900/20'
             : 'border-gray-300 bg-gray-50 dark:border-dark-600 dark:bg-dark-800'"
           @dragenter.prevent="handleDragEnter"
-          @dragover.prevent="handleDragOver"
+          @dragover.prevent
           @dragleave.prevent="handleDragLeave"
           @drop.prevent="handleDrop"
         >
@@ -205,7 +205,6 @@ const setSelectedFiles = (sourceFiles: FileList | File[] | null | undefined) => 
   const incoming = Array.from(sourceFiles || [])
   const picked = incoming.filter(isJsonFile)
   if (!picked.length) {
-    files.value = []
     appStore.showError(t('admin.accounts.dataImportSelectFile'))
     return
   }
