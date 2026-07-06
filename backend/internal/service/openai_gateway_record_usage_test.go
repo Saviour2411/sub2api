@@ -1803,7 +1803,7 @@ func TestOpenAIGatewayServiceRecordUsage_ImageIndependentMultiplierUsesImageRate
 	require.Equal(t, string(BillingModeImage), *usageRepo.lastLog.BillingMode)
 }
 
-func TestGrokVideoMediaBillingUsesImageRateMultiplier(t *testing.T) {
+func TestOpenAIGatewayServiceRecordUsage_GrokVideoUsesImageRateMultiplier(t *testing.T) {
 	mediaPrice2K := 0.4
 	groupID := int64(126)
 
