@@ -282,6 +282,10 @@ func resolveOpenAIResponsesImageBillingConfigDetailedFromBody(body []byte, fallb
 	}, nil
 }
 
+func ResolveOpenAIResponsesImageBillingConfigDetailedFromBody(body []byte, fallbackModel string) (OpenAIResponsesImageBillingConfig, error) {
+	return resolveOpenAIResponsesImageBillingConfigDetailedFromBody(body, fallbackModel)
+}
+
 func isOpenAIImageBillingModelAlias(model string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(model))
 	if normalized == "" {

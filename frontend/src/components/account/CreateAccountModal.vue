@@ -2838,6 +2838,25 @@
             + {{ t('admin.accounts.addMapping') }}
           </button>
         </div>
+        <div>
+          <label class="input-label mb-2 block">{{ t('admin.accounts.openai.imageSizeTiers') }}</label>
+          <div class="grid grid-cols-3 gap-2">
+            <label
+              v-for="option in openAIImageSizeTierOptions"
+              :key="option.value"
+              class="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-dark-600"
+            >
+              <input
+                type="checkbox"
+                class="rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500"
+                :checked="openAIImageSizeTiers.includes(option.value)"
+                @change="toggleOpenAIImageSizeTier(option.value)"
+              />
+              <span class="text-gray-700 dark:text-gray-200">{{ option.label }}</span>
+            </label>
+          </div>
+          <p class="input-hint">{{ t('admin.accounts.openai.imageSizeTiersDesc') }}</p>
+        </div>
       </div>
 
       <!-- OpenAI APIKey Responses API support mode -->
@@ -3369,7 +3388,8 @@ import type {
   CodexSessionImportMessage,
   OpenAICompactMode,
   OpenAIResponsesMode,
-  OpenAIEndpointCapability
+  OpenAIEndpointCapability,
+  OpenAIImageSizeTier
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -3541,6 +3561,7 @@ const allowedModels = ref<string[]>([])
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
 const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
+const DEFAULT_OPENAI_APIKEY_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429, 502, 503, 504]
 const poolModeEnabled = ref(false)
 const poolModeRetryCount = ref(DEFAULT_POOL_MODE_RETRY_COUNT)
 const poolModeRetryStatusCodesInput = ref('')
@@ -3574,6 +3595,7 @@ const codexCLIEmulationEnabled = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
+const openAIImageSizeTiers = ref<OpenAIImageSizeTier[]>([])
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
@@ -3653,6 +3675,11 @@ const openAIEndpointCapabilityOptions = computed<{ value: OpenAIEndpointCapabili
   { value: 'chat_completions', label: openAITextEndpointCapabilityLabel.value },
   { value: 'embeddings', label: t('admin.accounts.openai.capabilityEmbeddings') }
 ])
+const openAIImageSizeTierOptions = computed<{ value: OpenAIImageSizeTier; label: string }[]>(() => [
+  { value: '1K', label: '1K' },
+  { value: '2K', label: '2K' },
+  { value: '4K', label: '4K' }
+])
 const openAITextGenerationCapabilityEnabled = computed(() =>
   openAIEndpointCapabilities.value.includes('chat_completions')
 )
@@ -3691,6 +3718,14 @@ const applyOpenAIEndpointCapabilities = (credentials: Record<string, unknown>) =
     return
   }
   credentials.openai_capabilities = capabilities
+}
+
+const toggleOpenAIImageSizeTier = (tier: OpenAIImageSizeTier) => {
+  if (openAIImageSizeTiers.value.includes(tier)) {
+    openAIImageSizeTiers.value = openAIImageSizeTiers.value.filter((value) => value !== tier)
+    return
+  }
+  openAIImageSizeTiers.value = [...openAIImageSizeTiers.value, tier]
 }
 
 function buildAntigravityExtra(): Record<string, unknown> | undefined {
@@ -3992,6 +4027,31 @@ watch(
   { immediate: true }
 )
 
+watch(
+  [() => form.platform, accountCategory],
+  ([platform, category], oldValue) => {
+    const [oldPlatform, oldCategory] = oldValue || []
+    const openAIDefaultCodes = DEFAULT_OPENAI_APIKEY_POOL_MODE_RETRY_STATUS_CODES.join(', ')
+    if (platform === 'openai' && category === 'apikey') {
+      poolModeEnabled.value = true
+      poolModeRetryCount.value = DEFAULT_POOL_MODE_RETRY_COUNT
+      poolModeRetryStatusCodesInput.value = openAIDefaultCodes
+      return
+    }
+    if (
+      oldPlatform === 'openai' &&
+      oldCategory === 'apikey' &&
+      poolModeEnabled.value &&
+      poolModeRetryStatusCodesInput.value === openAIDefaultCodes
+    ) {
+      poolModeEnabled.value = false
+      poolModeRetryCount.value = DEFAULT_POOL_MODE_RETRY_COUNT
+      poolModeRetryStatusCodesInput.value = ''
+    }
+  },
+  { immediate: true }
+)
+
 // Reset platform-specific settings when platform changes
 watch(
   () => form.platform,
@@ -4056,6 +4116,7 @@ watch(
     if (newPlatform !== 'openai') {
       openaiPassthroughEnabled.value = false
       openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
+      openAIImageSizeTiers.value = []
       openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       codexCLIOnlyEnabled.value = false
@@ -4462,6 +4523,7 @@ const resetForm = () => {
   openAICompactMode.value = 'auto'
   openAIResponsesMode.value = 'auto'
   openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
+  openAIImageSizeTiers.value = []
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIEmulationEnabled.value = false
@@ -4578,6 +4640,11 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
     extra.openai_responses_mode = openAIResponsesMode.value
   } else {
     delete extra.openai_responses_mode
+  }
+  if (openAIImageSizeTiers.value.length > 0) {
+    extra.openai_image_size_tiers = [...openAIImageSizeTiers.value]
+  } else {
+    delete extra.openai_image_size_tiers
   }
 
   return Object.keys(extra).length > 0 ? extra : undefined

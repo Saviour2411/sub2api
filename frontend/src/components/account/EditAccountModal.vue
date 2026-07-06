@@ -1507,6 +1507,30 @@
         </div>
       </div>
 
+      <!-- OpenAI image generation size tiers -->
+      <div
+        v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <label class="input-label mb-2 block">{{ t('admin.accounts.openai.imageSizeTiers') }}</label>
+        <div class="grid grid-cols-3 gap-2">
+          <label
+            v-for="option in openAIImageSizeTierOptions"
+            :key="option.value"
+            class="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-dark-600"
+          >
+            <input
+              type="checkbox"
+              class="rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500"
+              :checked="openAIImageSizeTiers.includes(option.value)"
+              @change="toggleOpenAIImageSizeTier(option.value)"
+            />
+            <span class="text-gray-700 dark:text-gray-200">{{ option.label }}</span>
+          </label>
+        </div>
+        <p class="input-hint">{{ t('admin.accounts.openai.imageSizeTiersDesc') }}</p>
+      </div>
+
       <!-- Anthropic API Key 自动透传开关 -->
       <div
         v-if="account?.platform === 'anthropic' && account?.type === 'apikey'"
@@ -2420,7 +2444,8 @@ import type {
   CheckMixedChannelResponse,
   OpenAICompactMode,
   OpenAIResponsesMode,
-  OpenAIEndpointCapability
+  OpenAIEndpointCapability,
+  OpenAIImageSizeTier
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -2623,6 +2648,7 @@ const openaiPassthroughEnabled = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
+const openAIImageSizeTiers = ref<OpenAIImageSizeTier[]>([])
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
@@ -2772,6 +2798,11 @@ const openAIEndpointCapabilityOptions = computed<{ value: OpenAIEndpointCapabili
   { value: 'chat_completions', label: openAITextEndpointCapabilityLabel.value },
   { value: 'embeddings', label: t('admin.accounts.openai.capabilityEmbeddings') }
 ])
+const openAIImageSizeTierOptions = computed<{ value: OpenAIImageSizeTier; label: string }[]>(() => [
+  { value: '1K', label: '1K' },
+  { value: '2K', label: '2K' },
+  { value: '4K', label: '4K' }
+])
 const openAITextGenerationCapabilityEnabled = computed(() =>
   openAIEndpointCapabilities.value.includes('chat_completions')
 )
@@ -2830,6 +2861,20 @@ const applyOpenAIEndpointCapabilities = (credentials: Record<string, unknown>) =
     return
   }
   credentials.openai_capabilities = capabilities
+}
+const readOpenAIImageSizeTiers = (extra?: Record<string, unknown>): OpenAIImageSizeTier[] => {
+  const raw = extra?.openai_image_size_tiers
+  if (!Array.isArray(raw)) return []
+  return (['1K', '2K', '4K'] as OpenAIImageSizeTier[]).filter((tier) =>
+    raw.some((value) => String(value).trim().toUpperCase() === tier)
+  )
+}
+const toggleOpenAIImageSizeTier = (tier: OpenAIImageSizeTier) => {
+  if (openAIImageSizeTiers.value.includes(tier)) {
+    openAIImageSizeTiers.value = openAIImageSizeTiers.value.filter((value) => value !== tier)
+    return
+  }
+  openAIImageSizeTiers.value = [...openAIImageSizeTiers.value, tier]
 }
 const normalizeOpenAIResponsesMode = (mode: unknown): OpenAIResponsesMode => {
   if (mode === 'force_responses' || mode === 'force_chat_completions') {
@@ -3049,6 +3094,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   openAICompactMode.value = 'auto'
   openAIResponsesMode.value = 'auto'
   openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
+  openAIImageSizeTiers.value = []
   openAICompactModelMappings.value = []
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
@@ -3061,6 +3107,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   if (newAccount.platform === 'openai' && (newAccount.type === 'oauth' || newAccount.type === 'setup-token' || newAccount.type === 'apikey')) {
     openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
     openAICompactMode.value = (extra?.openai_compact_mode as OpenAICompactMode) || 'auto'
+    openAIImageSizeTiers.value = readOpenAIImageSizeTiers(extra)
     if (newAccount.type === 'apikey') {
       openAIResponsesMode.value = normalizeOpenAIResponsesMode(extra?.openai_responses_mode)
       openAIEndpointCapabilities.value = readOpenAIEndpointCapabilities(
@@ -4202,6 +4249,11 @@ const handleSubmit = async () => {
           newExtra.openai_responses_mode = openAIResponsesMode.value
         }
 		}
+      if (openAIImageSizeTiers.value.length > 0) {
+        newExtra.openai_image_size_tiers = [...openAIImageSizeTiers.value]
+      } else {
+        delete newExtra.openai_image_size_tiers
+      }
 		if (autoPause5hThreshold.value != null && autoPause5hThreshold.value > 0) {
 			newExtra.auto_pause_5h_threshold = autoPause5hThreshold.value / 100
 		} else {

@@ -1484,6 +1484,7 @@ export default {
       totalAccounts: '账号总数',
       activeAccounts: '活跃账号',
       todayRequests: '今日请求',
+      newUsersToday: '今日新增用户',
       totalRequests: '总请求数',
       todayCost: '今日消费',
       totalCost: '总消费',
@@ -1497,6 +1498,10 @@ export default {
       cacheToday: '今日缓存',
       performance: '性能指标',
       avgResponse: '平均响应',
+      active: '活跃',
+      ok: '正常',
+      err: '异常',
+      create: '创建',
       averageTime: '平均时间',
       timeRange: '时间范围',
       granularity: '粒度',
@@ -1507,6 +1512,7 @@ export default {
       metricTokens: '按 Token',
       metricActualCost: '按实际消费',
       tokenUsageTrend: 'Token 使用趋势',
+      userUsageTrend: '用户使用趋势（前 12）',
       noDataAvailable: '暂无数据',
       model: '模型',
       group: '分组',
@@ -2467,6 +2473,14 @@ export default {
         tooltip: '启用后，当请求包含 MCP 工具时，会在 system prompt 中注入 XML 格式调用协议提示词。关闭此选项可避免对某些客户端造成干扰。',
         enabled: '已启用',
         disabled: '已禁用'
+      },
+      claudeMaxSimulation: {
+        title: 'Claude Max 用量模拟',
+        tooltip:
+          '启用后，当 Claude 模型上游没有 cache-write 用量时，系统会确定性地将 Token 映射为少量输入与 1h 缓存创建，同时保持总 Token 不变。',
+        enabled: '已启用（模拟 1h 缓存）',
+        disabled: '已禁用',
+        hint: '仅调整用量计费日志中的 Token 分类，不持久化单请求映射状态。'
       },
       supportedScopes: {
         title: '支持的模型系列',
@@ -3715,6 +3729,9 @@ export default {
         endpointCapabilities: '端点能力',
         endpointCapabilitiesDesc:
           '用于调度筛选。文本端点会跟随上方 Responses API 支持显示为 Responses、Chat Completions 或自动模式；Embeddings 独立控制 /v1/embeddings。',
+        imageSizeTiers: '生图规格',
+        imageSizeTiersDesc:
+          '可选的生图路由约束。全部不勾选表示保持原逻辑，允许 1K、2K、4K。',
         capabilityResponses: 'Responses',
         capabilityTextAuto: 'Responses / Chat Completions（自动）',
         capabilityResponsesAuto: 'Responses（自动探测）',

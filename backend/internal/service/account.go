@@ -79,7 +79,10 @@ const (
 	OpenAIEndpointCapabilityEmbeddings      OpenAIEndpointCapability = "embeddings"
 )
 
-const openAIEndpointCapabilitiesCredentialKey = "openai_capabilities"
+const (
+	openAIEndpointCapabilitiesCredentialKey = "openai_capabilities"
+	openAIImageSizeTiersExtraKey            = "openai_image_size_tiers"
+)
 
 const (
 	OpenAIAuthModePersonalAccessToken = "personalAccessToken"
@@ -1406,6 +1409,76 @@ func (a *Account) SupportsOpenAIImageCapability(capability OpenAIImagesCapabilit
 	default:
 		return true
 	}
+}
+
+func (a *Account) SupportsOpenAIImageSizeTier(sizeTier string) bool {
+	sizeTier = strings.TrimSpace(sizeTier)
+	if sizeTier == "" {
+		return true
+	}
+	if !a.IsOpenAI() {
+		return false
+	}
+	configured, found := a.openAIImageSizeTierSet()
+	if !found || len(configured) == 0 {
+		return true
+	}
+	normalized, ok := ClassifyImageBillingTier(sizeTier)
+	if !ok {
+		normalized = strings.ToUpper(sizeTier)
+	}
+	return configured[normalized]
+}
+
+func (a *Account) openAIImageSizeTierSet() (map[string]bool, bool) {
+	if a == nil || a.Extra == nil {
+		return nil, false
+	}
+	raw, found := a.Extra[openAIImageSizeTiersExtraKey]
+	if !found || raw == nil {
+		return nil, false
+	}
+
+	result := make(map[string]bool)
+	add := func(value string) {
+		if tier, ok := ClassifyImageBillingTier(value); ok {
+			result[tier] = true
+		}
+	}
+
+	switch tiers := raw.(type) {
+	case []any:
+		for _, item := range tiers {
+			if value, ok := item.(string); ok {
+				add(value)
+			}
+		}
+	case []string:
+		for _, value := range tiers {
+			add(value)
+		}
+	case map[string]any:
+		for key, value := range tiers {
+			enabled, ok := value.(bool)
+			if ok && enabled {
+				add(key)
+			}
+		}
+	case map[string]bool:
+		for key, enabled := range tiers {
+			if enabled {
+				add(key)
+			}
+		}
+	case string:
+		for _, value := range strings.FieldsFunc(tiers, func(r rune) bool {
+			return r == ',' || r == ';' || r == ' ' || r == '\n' || r == '\t'
+		}) {
+			add(value)
+		}
+	}
+
+	return result, true
 }
 
 func (a *Account) GetChatGPTUserID() string {

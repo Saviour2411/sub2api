@@ -267,12 +267,16 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 
 	imageIntent := service.IsImageGenerationIntent("/v1/responses", reqModel, body)
+	imageSizeTier := ""
 	if imageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
 		h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 		return
 	}
 	var imageReleaseFunc func()
 	if imageIntent {
+		if cfg, err := service.ResolveOpenAIResponsesImageBillingConfigDetailedFromBody(body, reqModel); err == nil {
+			imageSizeTier = cfg.SizeTier
+		}
 		var imageAcquired bool
 		imageReleaseFunc, imageAcquired = h.acquireImageGenerationSlot(c, streamStarted)
 		if !imageAcquired {
@@ -340,7 +344,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	for {
 		// Select account supporting the requested model
 		reqLog.Debug("openai.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
-		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
+		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForCapabilityAndImageTier(
 			c.Request.Context(),
 			apiKey.GroupID,
 			previousResponseID,
@@ -349,6 +353,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			failedAccountIDs,
 			service.OpenAIUpstreamTransportAny,
 			service.OpenAIEndpointCapabilityChatCompletions,
+			imageSizeTier,
 			requireCompact,
 			requestPlatform,
 		)

@@ -145,6 +145,31 @@ type UpdateAccountRequest struct {
 	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 }
 
+var defaultOpenAIAPIKeyPoolRetryStatusCodes = []int{401, 403, 429, 502, 503, 504}
+
+func applyOpenAIAPIKeyPoolModeDefaults(platform, accountType string, credentials map[string]any) map[string]any {
+	if platform != service.PlatformOpenAI || accountType != service.AccountTypeAPIKey {
+		return credentials
+	}
+	if credentials == nil {
+		credentials = make(map[string]any)
+	}
+	if raw, exists := credentials["pool_mode"]; exists {
+		if enabled, ok := raw.(bool); ok && !enabled {
+			return credentials
+		}
+	} else {
+		credentials["pool_mode"] = true
+	}
+	if _, exists := credentials["pool_mode_retry_count"]; !exists {
+		credentials["pool_mode_retry_count"] = 3
+	}
+	if _, exists := credentials["pool_mode_retry_status_codes"]; !exists {
+		credentials["pool_mode_retry_status_codes"] = append([]int(nil), defaultOpenAIAPIKeyPoolRetryStatusCodes...)
+	}
+	return credentials
+}
+
 // SyncUpstreamModelsPreviewRequest 表示账号保存前的上游模型同步预览请求。
 type SyncUpstreamModelsPreviewRequest struct {
 	Platform    string         `json:"platform" binding:"required,oneof=openai anthropic gemini antigravity"`
@@ -615,6 +640,7 @@ func (h *AccountHandler) Create(c *gin.Context) {
 	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
 	sanitizeExtraBaseRPM(req.Extra)
+	req.Credentials = applyOpenAIAPIKeyPoolModeDefaults(req.Platform, req.Type, req.Credentials)
 
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
@@ -1439,6 +1465,7 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 
 			// base_rpm 输入校验：负值归零，超过 10000 截断
 			sanitizeExtraBaseRPM(item.Extra)
+			item.Credentials = applyOpenAIAPIKeyPoolModeDefaults(item.Platform, item.Type, item.Credentials)
 
 			skipCheck := item.ConfirmMixedChannelRisk != nil && *item.ConfirmMixedChannelRisk
 

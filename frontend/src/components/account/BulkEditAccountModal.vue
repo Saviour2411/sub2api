@@ -927,6 +927,51 @@
         </div>
       </div>
 
+      <!-- OpenAI image generation size tiers -->
+      <div v-if="allOpenAIPassthroughCapable" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between">
+          <div class="flex-1 pr-4">
+            <label
+              id="bulk-edit-openai-image-size-tiers-label"
+              class="input-label mb-0"
+              for="bulk-edit-openai-image-size-tiers-enabled"
+            >
+              {{ t('admin.accounts.openai.imageSizeTiers') }}
+            </label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.imageSizeTiersDesc') }}
+            </p>
+          </div>
+          <input
+            v-model="enableOpenAIImageSizeTiers"
+            id="bulk-edit-openai-image-size-tiers-enabled"
+            type="checkbox"
+            aria-controls="bulk-edit-openai-image-size-tiers"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </div>
+        <div
+          id="bulk-edit-openai-image-size-tiers"
+          :class="!enableOpenAIImageSizeTiers && 'pointer-events-none opacity-50'"
+        >
+          <div class="grid grid-cols-3 gap-2">
+            <label
+              v-for="option in openAIImageSizeTierOptions"
+              :key="option.value"
+              class="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-dark-600"
+            >
+              <input
+                type="checkbox"
+                class="rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500"
+                :checked="openAIImageSizeTiers.includes(option.value)"
+                @change="toggleOpenAIImageSizeTier(option.value)"
+              />
+              <span class="text-gray-700 dark:text-gray-200">{{ option.label }}</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
       <!-- RPM Limit (仅全部为 Anthropic OAuth/SetupToken 时显示) -->
       <div v-if="allAnthropicOAuthOrSetupToken" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
@@ -1137,7 +1182,7 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
-import type { Proxy as ProxyConfig, AdminGroup, AccountPlatform, AccountType, OpenAICompactMode } from '@/types'
+import type { Proxy as ProxyConfig, AdminGroup, AccountPlatform, AccountType, OpenAICompactMode, OpenAIImageSizeTier } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
@@ -1267,6 +1312,7 @@ const enableCodexCLIOnly = ref(false)
 const enableCodexCLIOnlyAppServer = ref(false)
 const enableOpenAICompactMode = ref(false)
 const enableOpenAICompactModelMapping = ref(false)
+const enableOpenAIImageSizeTiers = ref(false)
 const enableRpmLimit = ref(false)
 
 // State - field values
@@ -1295,6 +1341,7 @@ const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openAICompactModelMappings = ref<ModelMapping[]>([])
+const openAIImageSizeTiers = ref<OpenAIImageSizeTier[]>([])
 const rpmLimitEnabled = ref(false)
 const bulkBaseRpm = ref<number | null>(null)
 const bulkRpmStrategy = ref<'tiered' | 'sticky_exempt'>('tiered')
@@ -1339,6 +1386,11 @@ const openAICompactModeOptions = computed(() => [
   { value: 'force_on', label: t('admin.accounts.openai.compactModeForceOn') },
   { value: 'force_off', label: t('admin.accounts.openai.compactModeForceOff') }
 ])
+const openAIImageSizeTierOptions = computed<{ value: OpenAIImageSizeTier; label: string }[]>(() => [
+  { value: '1K', label: '1K' },
+  { value: '2K', label: '2K' },
+  { value: '4K', label: '4K' }
+])
 const openAIWSModeConcurrencyHintKey = computed(() =>
   resolveOpenAIWSModeConcurrencyHintKey(openaiOAuthResponsesWebSocketV2Mode.value)
 )
@@ -1361,6 +1413,14 @@ const addOpenAICompactModelMapping = () => {
 
 const removeOpenAICompactModelMapping = (index: number) => {
   openAICompactModelMappings.value.splice(index, 1)
+}
+
+const toggleOpenAIImageSizeTier = (tier: OpenAIImageSizeTier) => {
+  if (openAIImageSizeTiers.value.includes(tier)) {
+    openAIImageSizeTiers.value = openAIImageSizeTiers.value.filter((value) => value !== tier)
+    return
+  }
+  openAIImageSizeTiers.value = [...openAIImageSizeTiers.value, tier]
 }
 
 const addPresetMapping = (from: string, to: string) => {
@@ -1565,6 +1625,11 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     credentialsChanged = true
   }
 
+  if (enableOpenAIImageSizeTiers.value) {
+    const extra = ensureExtra()
+    extra.openai_image_size_tiers = [...openAIImageSizeTiers.value]
+  }
+
   // RPM limit settings (写入 extra 字段)
   if (enableRpmLimit.value) {
     const extra = ensureExtra()
@@ -1664,6 +1729,7 @@ const handleSubmit = async () => {
     enableCodexCLIOnlyAppServer.value ||
     enableOpenAICompactMode.value ||
     enableOpenAICompactModelMapping.value ||
+    enableOpenAIImageSizeTiers.value ||
     enableRpmLimit.value ||
     userMsgQueueMode.value !== null
 
@@ -1767,6 +1833,7 @@ watch(
       enableCodexCLIOnlyAppServer.value = false
       enableOpenAICompactMode.value = false
       enableOpenAICompactModelMapping.value = false
+      enableOpenAIImageSizeTiers.value = false
       enableRpmLimit.value = false
 
       // Reset all values
@@ -1791,6 +1858,7 @@ watch(
       codexCLIOnlyAppServerEnabled.value = false
       openAICompactMode.value = 'auto'
       openAICompactModelMappings.value = []
+      openAIImageSizeTiers.value = []
       rpmLimitEnabled.value = false
       bulkBaseRpm.value = null
       bulkRpmStrategy.value = 'tiered'

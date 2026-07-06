@@ -6,7 +6,8 @@ type LocaleCode = 'en' | 'zh'
 type LocaleMessages = Record<string, any>
 
 const LOCALE_KEY = 'sub2api_locale'
-const DEFAULT_LOCALE: LocaleCode = 'en'
+const DEFAULT_LOCALE: LocaleCode = 'zh'
+const FALLBACK_LOCALE: LocaleCode = 'en'
 
 const localeLoaders: Record<LocaleCode, () => Promise<{ default: LocaleMessages }>> = {
   en: () => import('./locales/en'),
@@ -34,7 +35,7 @@ function getDefaultLocale(): LocaleCode {
 export const i18n = createI18n({
   legacy: false,
   locale: getDefaultLocale(),
-  fallbackLocale: DEFAULT_LOCALE,
+  fallbackLocale: FALLBACK_LOCALE,
   messages: {},
   // 禁用 HTML 消息警告 - 引导步骤使用富文本内容（driver.js 支持 HTML）
   // 这些内容是内部定义的，不存在 XSS 风险

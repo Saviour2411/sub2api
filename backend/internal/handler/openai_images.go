@@ -152,6 +152,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			requestModel,
 			failedAccountIDs,
 			parsed.RequiredCapability,
+			parsed.SizeTier,
 		)
 		if err != nil {
 			reqLog.Warn("openai.images.account_select_failed",

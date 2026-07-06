@@ -3540,6 +3540,9 @@ export default {
         endpointCapabilities: 'Endpoint capabilities',
         endpointCapabilitiesDesc:
           'Used by account routing. The text endpoint follows the Responses API support setting above and is shown as Responses, Chat Completions, or auto mode; Embeddings independently controls /v1/embeddings.',
+        imageSizeTiers: 'Image size tiers',
+        imageSizeTiersDesc:
+          'Optional routing constraint for image generation. Leave all unchecked to keep existing behavior and allow 1K, 2K, and 4K.',
         capabilityResponses: 'Responses',
         capabilityTextAuto: 'Responses / Chat Completions (Auto)',
         capabilityResponsesAuto: 'Responses (auto probe)',
