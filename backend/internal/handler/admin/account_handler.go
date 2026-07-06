@@ -320,6 +320,8 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 	return item
 }
 
+// scoreOpenAIAccountSchedulerPool 对池内 OpenAI 账号计算调度分数快照。
+// loadMap 为共享的账号负载数据（含池内全部账号即可，多余条目无害）；传 nil 时自行批查。
 func (h *AccountHandler) scoreOpenAIAccountSchedulerPool(ctx context.Context, accounts []service.Account, loadMap map[int64]*service.AccountLoadInfo) map[int64]AccountSchedulerScore {
 	if len(accounts) == 0 {
 		return nil
@@ -359,6 +361,8 @@ func (h *AccountHandler) scoreOpenAIAccountSchedulerPool(ctx context.Context, ac
 	return result
 }
 
+// fetchOpenAIAccountLoadMap 一次性批查给定 OpenAI 账号的负载数据；
+// 失败时记录日志并返回空表（分数按零负载计算，属可接受降级）。
 func (h *AccountHandler) fetchOpenAIAccountLoadMap(ctx context.Context, openAIAccounts []*service.Account) map[int64]*service.AccountLoadInfo {
 	loadMap := map[int64]*service.AccountLoadInfo{}
 	if h.concurrencyService == nil || len(openAIAccounts) == 0 {
@@ -422,6 +426,8 @@ func (h *AccountHandler) buildOpenAIAccountSchedulerScores(
 		return nil, nil
 	}
 
+	// 先取各分组池，再对"过滤池 ∪ 分组池"的账号并集做一次负载批查，
+	// 避免每个池各查一次 Redis 的 N+1。
 	groupIDList := make([]int64, 0, len(groupIDs))
 	for groupID := range groupIDs {
 		groupIDList = append(groupIDList, groupID)
@@ -530,6 +536,8 @@ func (h *AccountHandler) listAccountSchedulerScoreFilterPool(
 	if h.adminService == nil || (platform != "" && platform != service.PlatformOpenAI) {
 		return nil
 	}
+	// 池只用于 OpenAI 分数计算（非 OpenAI 账号会在打分时被丢弃），
+	// 无论列表页平台过滤为何，查询一律限定 openai，避免无过滤时全表扫描。
 	accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(ctx, service.PlatformOpenAI, accountType, status, search, groupID, privacyMode)
 	if err != nil {
 		slog.Warn("openai_scheduler_filter_score_pool_failed", "error", err)
