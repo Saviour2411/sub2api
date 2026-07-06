@@ -327,6 +327,7 @@ jobs:
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || vars.DEPLOY_PORT || '22748' }}
           DEPLOY_DIR: ${{ secrets.DEPLOY_DIR || vars.DEPLOY_DIR || '/root/proj/sub2api/deploy' }}
           DEPLOY_COMPOSE_FILE: ${{ secrets.DEPLOY_COMPOSE_FILE || vars.DEPLOY_COMPOSE_FILE || 'docker-compose.yml' }}
+          DEPLOY_UPLOAD_COMPOSE: ${{ secrets.DEPLOY_UPLOAD_COMPOSE || vars.DEPLOY_UPLOAD_COMPOSE || 'false' }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME || vars.DOCKERHUB_USERNAME }}
         run: |
@@ -341,6 +342,7 @@ jobs:
           echo "port=$DEPLOY_PORT" >> "$GITHUB_OUTPUT"
           echo "dir=$DEPLOY_DIR" >> "$GITHUB_OUTPUT"
           echo "compose_file=$DEPLOY_COMPOSE_FILE" >> "$GITHUB_OUTPUT"
+          echo "upload_compose=$DEPLOY_UPLOAD_COMPOSE" >> "$GITHUB_OUTPUT"
 
       - name: Resolve release version
         if: ${{ steps.deploy_config.outputs.enabled == 'true' }}
@@ -407,8 +409,9 @@ jobs:
           DEPLOY_PORT: ${{ steps.deploy_config.outputs.port }}
           DEPLOY_DIR: ${{ steps.deploy_config.outputs.dir }}
           COMPOSE_FILE: ${{ steps.deploy_config.outputs.compose_file }}
+          DEPLOY_UPLOAD_COMPOSE: ${{ steps.deploy_config.outputs.upload_compose }}
         run: |
-          if [ ! -f "deploy/$COMPOSE_FILE" ]; then
+          if [ "$DEPLOY_UPLOAD_COMPOSE" = "true" ] && [ ! -f "deploy/$COMPOSE_FILE" ]; then
             echo "deploy/$COMPOSE_FILE not found"
             exit 1
           fi
@@ -445,7 +448,11 @@ jobs:
           }
 
           upload_with_retry "上传远端部署脚本" "cat > /tmp/sub2api-remote-deploy.sh" "deploy/remote-deploy.sh"
-          upload_with_retry "上传 Compose 文件" "cat > '${DEPLOY_DIR}/${COMPOSE_FILE}'" "deploy/$COMPOSE_FILE"
+          if [ "$DEPLOY_UPLOAD_COMPOSE" = "true" ]; then
+            upload_with_retry "上传 Compose 文件" "cat > '${DEPLOY_DIR}/${COMPOSE_FILE}'" "deploy/$COMPOSE_FILE"
+          else
+            echo "跳过 Compose 文件上传，保留远端现有 ${DEPLOY_DIR}/${COMPOSE_FILE}"
+          fi
 
       - name: Deploy on remote host
         if: ${{ steps.deploy_config.outputs.enabled == 'true' }}
