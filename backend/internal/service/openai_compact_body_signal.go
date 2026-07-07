@@ -26,3 +26,7 @@ func HasCompactionTriggerInInput(body []byte) bool {
 	}
 	return input.Get("type").String() == "compaction_trigger"
 }
+
+func hasCompactionTriggerInInput(body []byte) bool {
+	return HasCompactionTriggerInInput(body)
+}
