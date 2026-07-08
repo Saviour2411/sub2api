@@ -222,13 +222,6 @@ const handleDragEnter = () => {
   dragDepth.value += 1
 }
 
-const handleDragOver = () => {
-  if (importing.value) return
-  if (dragDepth.value === 0) {
-    dragDepth.value = 1
-  }
-}
-
 const handleDragLeave = () => {
   dragDepth.value = Math.max(0, dragDepth.value - 1)
 }
