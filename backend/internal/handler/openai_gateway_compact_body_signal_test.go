@@ -23,6 +23,10 @@ func newCompactBodySignalTestContext(t *testing.T, path string, body []byte) *gi
 	return c
 }
 
+// body-signal 提升后必须与 path-based compact 走同一条链路：
+// path 改写、requireCompact 判定、stream/store/prompt_cache_key 归一化删除。
+// 回归防护：若 stream 字段存活，Forward 会用流式 handler 解析 compact 的
+// JSON 响应，导致 "stream ended before a terminal event" 的换号 failover 风暴。
 func TestNormalizeOpenAIResponsesCompactRequest_BodySignalPromoted(t *testing.T) {
 	h := &OpenAIGatewayHandler{}
 	body := []byte(`{
@@ -42,6 +46,7 @@ func TestNormalizeOpenAIResponsesCompactRequest_BodySignalPromoted(t *testing.T)
 
 	require.Equal(t, "/v1/responses/compact", c.Request.URL.Path)
 	require.True(t, isOpenAIRemoteCompactPath(c))
+
 	require.False(t, gjson.GetBytes(normalized, "stream").Exists())
 	require.False(t, gjson.GetBytes(normalized, "store").Exists())
 	require.False(t, gjson.GetBytes(normalized, "prompt_cache_key").Exists())

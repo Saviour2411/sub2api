@@ -569,6 +569,8 @@ func isOpenAIRemoteCompactPath(c *gin.Context) bool {
 	return strings.HasSuffix(normalizedPath, "/responses/compact")
 }
 
+// isBareOpenAIResponsesPath 仅匹配裸 /responses 端点（无 /compact 等子路径），
+// body-signal 提升只允许发生在这里，避免误伤 /responses/{id}/... 形态的请求。
 func isBareOpenAIResponsesPath(c *gin.Context) bool {
 	if c == nil || c.Request == nil || c.Request.URL == nil {
 		return false
@@ -577,6 +579,13 @@ func isBareOpenAIResponsesPath(c *gin.Context) bool {
 	return strings.HasSuffix(normalizedPath, "/responses")
 }
 
+// normalizeOpenAIResponsesCompactRequest 统一处理两种入站 compact 形态：
+// path-based（POST /v1/responses/compact）与 Codex remote compact v2 的
+// body-signal（普通 POST /v1/responses 的 input 中携带 type=compaction_trigger，
+// 见 #3777）。body-signal 命中时在 stream 解析、compact body 归一化与
+// requireCompact 调度判定之前改写 URL path，使后续全部链路（含 passthrough
+// 分支与上游 URL 构建）与 path-based 完全一致。
+// 返回归一化后的 body；ok=false 表示错误响应已写出，调用方应直接 return。
 func (h *OpenAIGatewayHandler) normalizeOpenAIResponsesCompactRequest(c *gin.Context, reqLog *zap.Logger, body []byte) ([]byte, bool) {
 	isCompactRequest := service.IsOpenAIResponsesCompactPathForTest(c)
 	if !isCompactRequest && isBareOpenAIResponsesPath(c) && service.HasCompactionTriggerInInput(body) {
