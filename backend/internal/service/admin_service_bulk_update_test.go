@@ -106,6 +106,10 @@ func (s *accountRepoStubForBulkUpdate) ListWithFilters(_ context.Context, params
 	return s.listData, &pagination.PaginationResult{Total: int64(len(s.listData))}, nil
 }
 
+func (s *accountRepoStubForBulkUpdate) ListAllWithFilters(_ context.Context, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, error) {
+	return s.listData, s.listErr
+}
+
 // TestAdminService_BulkUpdateAccounts_AllSuccessIDs 验证批量更新成功时返回 success_ids/failed_ids。
 func TestAdminService_BulkUpdateAccounts_AllSuccessIDs(t *testing.T) {
 	repo := &accountRepoStubForBulkUpdate{}
