@@ -53,6 +53,7 @@ func TestHasCompactionTriggerInInput_StringInput(t *testing.T) {
 func TestHasCompactionTriggerInInput_ObjectInput(t *testing.T) {
 	body := []byte(`{"model":"gpt-5.5","input":{"type":"compaction_trigger"}}`)
 	require.True(t, HasCompactionTriggerInInput(body))
+	require.True(t, hasCompactionTriggerInInput(body))
 }
 
 func TestHasCompactionTriggerInInput_CompactTriggerOnly(t *testing.T) {

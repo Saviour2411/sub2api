@@ -2618,7 +2618,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		c.JSON(http.StatusForbidden, gin.H{
 			"error": gin.H{
 				"type":    "forbidden_error",
-				"message": "This account only allows Codex official clients",
+				"message": CodexClientRestrictionMessage(restrictionResult),
 			},
 		})
 		return nil, errors.New("codex_cli_only restriction: only codex official clients are allowed")
@@ -2778,6 +2778,19 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 	upstreamModel := billingModel
 	isCompactRequest := isOpenAIResponsesCompactPath(c)
+	// Body-signal detection: Codex remote compact v2 can send the compact
+	// trigger inside a normal POST /v1/responses body (input item with
+	// type "compaction_trigger") instead of calling /v1/responses/compact
+	// directly. Detect and promote to compact request (#3777).
+	if !isCompactRequest && hasCompactionTriggerInInput(body) {
+		isCompactRequest = true
+		// Rewrite the request path so downstream URL builders
+		// (appendOpenAIResponsesRequestPathSuffix) route to /responses/compact.
+		if c != nil && c.Request != nil && c.Request.URL != nil {
+			c.Request.URL.Path = strings.TrimRight(c.Request.URL.Path, "/") + "/compact"
+		}
+		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Compact body-signal detected: input contains compaction_trigger (account: %s)", account.Name)
+	}
 	compactMapped := false
 	if isCompactRequest {
 		compactMappedModel := resolveOpenAICompactForwardModel(account, billingModel)
@@ -2974,6 +2987,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				return nil, blocked
 			case BetaPolicyActionFilter:
 				markPatchDelete("service_tier")
+			case OpenAIFastPolicyActionForcePriority:
+				if rawTier != OpenAIFastTierPriority {
+					markPatchSet("service_tier", OpenAIFastTierPriority)
+				}
 			default:
 				if normTier != rawTier {
 					markPatchSet("service_tier", normTier)
@@ -3783,6 +3800,9 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	if req.Header.Get("content-type") == "" {
 		req.Header.Set("content-type", "application/json")
 	}
+
+	// 账号级请求头覆写（仅 openai api_key 账号启用时生效；OAuth 路径 no-op）
+	account.ApplyHeaderOverrides(req.Header)
 
 	return req, nil
 }
@@ -4606,6 +4626,9 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	if req.Header.Get("content-type") == "" {
 		req.Header.Set("content-type", "application/json")
 	}
+
+	// 账号级请求头覆写（仅 openai api_key 账号启用时生效；OAuth 路径 no-op）
+	account.ApplyHeaderOverrides(req.Header)
 
 	return req, nil
 }
@@ -7414,8 +7437,8 @@ func openAIFastPolicySettingsFromContext(ctx context.Context) *OpenAIFastPolicyS
 // applyOpenAIFastPolicyToBody applies the OpenAI fast policy to a raw request
 // body. When action=filter it removes the service_tier field; when
 // action=block it returns (body, *OpenAIFastBlockedError). On pass it
-// normalizes the service_tier value (e.g. client alias "fast" → "priority"),
-// rewriting the body so the upstream receives a slug it recognizes.
+// normalizes the service_tier value (e.g. client alias "fast" → "priority").
+// action=force_priority rewrites any matched known tier to "priority".
 //
 // Rationale for normalize-on-pass: chat-completions / messages 入口在调用本
 // 函数之前已经通过 normalizeResponsesBodyServiceTier 把 service_tier 归一化
@@ -7448,6 +7471,12 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToBody(ctx context.Context, 
 			return body, fmt.Errorf("strip service_tier from body: %w", err)
 		}
 		return trimmed, nil
+	case OpenAIFastPolicyActionForcePriority:
+		updated, err := sjson.SetBytes(body, "service_tier", OpenAIFastTierPriority)
+		if err != nil {
+			return body, fmt.Errorf("force service_tier priority on body: %w", err)
+		}
+		return updated, nil
 	default:
 		// pass：把别名（如 "fast"）写回为规范值（"priority"）。
 		if normTier == rawTier {
@@ -7484,6 +7513,7 @@ func writeOpenAIFastPolicyBlockedResponse(c *gin.Context, err *OpenAIFastBlocked
 //
 //   - pass: keeps service_tier, normalizing aliases such as "fast" to "priority"
 //   - filter: returns a copy with top-level service_tier removed
+//   - force_priority: keeps service_tier and rewrites it to "priority"
 //   - block: returns (frame, *OpenAIFastBlockedError)
 //
 // Only frames whose "type" field strictly equals "response.create" are
@@ -7545,6 +7575,12 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToWSResponseCreate(
 			return frame, nil, fmt.Errorf("strip service_tier from ws frame: %w", err)
 		}
 		return trimmed, nil, nil
+	case OpenAIFastPolicyActionForcePriority:
+		updated, err := sjson.SetBytes(frame, "service_tier", OpenAIFastTierPriority)
+		if err != nil {
+			return frame, nil, fmt.Errorf("force service_tier priority in ws frame: %w", err)
+		}
+		return updated, nil, nil
 	default:
 		if normTier == rawTier {
 			return frame, nil, nil

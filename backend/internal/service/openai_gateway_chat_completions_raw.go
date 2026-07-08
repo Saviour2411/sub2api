@@ -105,6 +105,33 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 		return nil, policyErr
 	}
 	upstreamBody = updatedBody
+
+	// Grok Composer does not accept image_url parts directly, but Grok Build
+	// can describe the images first. Bridge only this exact failure mode.
+	token, tokenKind, err := s.GetAccessToken(ctx, account)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(token) == "" {
+		return nil, fmt.Errorf("account %d missing %s credential", account.ID, tokenKind)
+	}
+
+	var bridgeUsage OpenAIUsage
+	if account.Platform == PlatformGrok {
+		bridgedBody, usage, bridged, bridgeErr := s.bridgeGrokComposerImageInputs(ctx, c, account, upstreamBody, token)
+		if bridgeErr != nil {
+			var failoverErr *UpstreamFailoverError
+			if !errors.As(bridgeErr, &failoverErr) && c != nil && c.Writer != nil && !c.Writer.Written() {
+				writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", bridgeErr.Error())
+			}
+			return nil, bridgeErr
+		}
+		if bridged {
+			upstreamBody = bridgedBody
+			addOpenAIUsage(&bridgeUsage, usage)
+		}
+	}
+
 	if clientStream {
 		var usageErr error
 		upstreamBody, usageErr = ensureOpenAIChatStreamUsage(upstreamBody)
@@ -122,14 +149,6 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	)
 
 	// 5. Build upstream request
-	token, tokenKind, err := s.GetAccessToken(ctx, account)
-	if err != nil {
-		return nil, err
-	}
-	if strings.TrimSpace(token) == "" {
-		return nil, fmt.Errorf("account %d missing %s credential", account.ID, tokenKind)
-	}
-
 	targetURL, err := s.rawChatCompletionsURL(account)
 	if err != nil {
 		return nil, err
@@ -166,6 +185,9 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 		upstreamReq.Header.Set("user-agent", "sub2api-grok/1.0")
 	}
 	applyOpenAICodexCLIEmulationHeaders(ctx, upstreamReq.Header, account, s.settingService, false)
+
+	// 账号级请求头覆写（仅 openai api_key 账号启用时生效）
+	account.ApplyHeaderOverrides(upstreamReq.Header)
 
 	// 6. Send request
 	proxyURL := ""
@@ -244,13 +266,17 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	}
 
 	// 8. Forward response
-	if clientStream {
-		return s.streamRawChatCompletions(ctx, c, account, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, len(body))
+	var result *OpenAIForwardResult
+	var forwardErr error
+	if clientStream || isEventStreamResponse(resp.Header) {
+		result, forwardErr = s.streamRawChatCompletions(ctx, c, account, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, len(body))
+	} else {
+		result, forwardErr = s.bufferRawChatCompletions(ctx, c, account, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 	}
-	if isEventStreamResponse(resp.Header) {
-		return s.streamRawChatCompletions(ctx, c, account, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, len(body))
+	if result != nil {
+		addOpenAIUsage(&result.Usage, bridgeUsage)
 	}
-	return s.bufferRawChatCompletions(ctx, c, account, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+	return result, forwardErr
 }
 
 func (s *OpenAIGatewayService) rawChatCompletionsURL(account *Account) (string, error) {

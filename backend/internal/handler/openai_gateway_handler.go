@@ -347,6 +347,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			service.OpenAIEndpointCapabilityChatCompletions,
 			imageSizeTier,
 			requireCompact,
+			false,
 			requestPlatform,
 		)
 		if err != nil {
@@ -568,6 +569,8 @@ func isOpenAIRemoteCompactPath(c *gin.Context) bool {
 	return strings.HasSuffix(normalizedPath, "/responses/compact")
 }
 
+// isBareOpenAIResponsesPath 仅匹配裸 /responses 端点（无 /compact 等子路径），
+// body-signal 提升只允许发生在这里，避免误伤 /responses/{id}/... 形态的请求。
 func isBareOpenAIResponsesPath(c *gin.Context) bool {
 	if c == nil || c.Request == nil || c.Request.URL == nil {
 		return false
@@ -576,6 +579,13 @@ func isBareOpenAIResponsesPath(c *gin.Context) bool {
 	return strings.HasSuffix(normalizedPath, "/responses")
 }
 
+// normalizeOpenAIResponsesCompactRequest 统一处理两种入站 compact 形态：
+// path-based（POST /v1/responses/compact）与 Codex remote compact v2 的
+// body-signal（普通 POST /v1/responses 的 input 中携带 type=compaction_trigger，
+// 见 #3777）。body-signal 命中时在 stream 解析、compact body 归一化与
+// requireCompact 调度判定之前改写 URL path，使后续全部链路（含 passthrough
+// 分支与上游 URL 构建）与 path-based 完全一致。
+// 返回归一化后的 body；ok=false 表示错误响应已写出，调用方应直接 return。
 func (h *OpenAIGatewayHandler) normalizeOpenAIResponsesCompactRequest(c *gin.Context, reqLog *zap.Logger, body []byte) ([]byte, bool) {
 	isCompactRequest := service.IsOpenAIResponsesCompactPathForTest(c)
 	if !isCompactRequest && isBareOpenAIResponsesPath(c) && service.HasCompactionTriggerInInput(body) {
@@ -812,6 +822,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			failedAccountIDs,
 			service.OpenAIUpstreamTransportAny,
 			service.OpenAIEndpointCapabilityChatCompletions,
+			false,
 			false,
 			requestPlatform,
 		)
@@ -1296,6 +1307,8 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "previous_response_id must be a response.id (resp_*), not a message id")
 		return
 	}
+	firstMessageToolCoverage := service.AnalyzeToolCallOutputContextCoverageBytes(firstMessage)
+	previousResponseCanMove := !firstMessageToolCoverage.HasFunctionCallOutput || firstMessageToolCoverage.ContextCoversAllCallIDs
 	reqLog = reqLog.With(
 		zap.Bool("ws_ingress", true),
 		zap.String("model", reqModel),
@@ -1348,7 +1361,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	// 必须尽早注册，确保任何 early return 都能释放已获取的并发槽位。
 	defer releaseTurnSlots()
 
-	userReleaseFunc, userAcquired, err := h.concurrencyHelper.TryAcquireUserSlot(ctx, subject.UserID, subject.Concurrency)
+	userReleaseFunc, userAcquired, err := h.concurrencyHelper.TryAcquireUserSlotForAPIKey(ctx, subject.UserID, subject.Concurrency, apiKey.ID)
 	if err != nil {
 		reqLog.Warn("openai.websocket_user_slot_acquire_failed", zap.Error(err))
 		closeOpenAIClientWS(wsConn, coderws.StatusInternalError, "failed to acquire user concurrency slot")
@@ -1363,7 +1376,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		if currentUserRelease != nil {
 			return true
 		}
-		userReleaseFunc, userAcquired, err := h.concurrencyHelper.TryAcquireUserSlot(ctx, subject.UserID, subject.Concurrency)
+		userReleaseFunc, userAcquired, err := h.concurrencyHelper.TryAcquireUserSlotForAPIKey(ctx, subject.UserID, subject.Concurrency, apiKey.ID)
 		if err != nil {
 			reqLog.Warn("openai.websocket_user_slot_reacquire_failed", zap.Error(err))
 			closeOpenAIClientWS(wsConn, coderws.StatusInternalError, "failed to acquire user concurrency slot")
@@ -1411,6 +1424,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			requiredTransport,
 			service.OpenAIEndpointCapabilityChatCompletions,
 			false,
+			previousResponseCanMove,
 			requestPlatform,
 		)
 		if err != nil {
@@ -1514,7 +1528,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				// 防御式清理：避免异常路径下旧槽位覆盖导致泄漏。
 				releaseTurnSlots()
 				// 非首轮 turn 需要重新抢占并发槽位，避免长连接空闲占槽。
-				userReleaseFunc, userAcquired, err := h.concurrencyHelper.TryAcquireUserSlot(ctx, subject.UserID, subject.Concurrency)
+				userReleaseFunc, userAcquired, err := h.concurrencyHelper.TryAcquireUserSlotForAPIKey(ctx, subject.UserID, subject.Concurrency, apiKey.ID)
 				if err != nil {
 					return service.NewOpenAIWSClientCloseError(coderws.StatusInternalError, "failed to acquire user concurrency slot", err)
 				}
@@ -1611,8 +1625,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		// 说明该会话链不属于本次调度到的账号，原样转发会触发上游会话链鉴权失败（“鉴权失败，请检查 API Key”）。
 		// 故剥离首包里的 previous_response_id，改用首包内 input 重建上下文；带 function_call_output 的
 		// 工具续链无法重建，保持原样。仅作用于首轮首包，后续 turn 的续链由 WS 转发层既有逻辑处理。
-		if previousResponseID != "" && !scheduleDecision.StickyPreviousHit &&
-			!service.ValidateFunctionCallOutputContextBytes(wsFirstMessage).HasFunctionCallOutput {
+		if previousResponseID != "" && !scheduleDecision.StickyPreviousHit && previousResponseCanMove {
 			wsFirstMessage = service.RemovePreviousResponseIDFromBody(wsFirstMessage)
 			reqLog.Debug("openai.websocket_previous_response_id_stripped_cross_group",
 				zap.Int64("account_id", account.ID),
