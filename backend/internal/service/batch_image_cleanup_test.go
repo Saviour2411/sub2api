@@ -28,7 +28,7 @@ func TestBatchImageCleanupService_DeleteOutputsForOwner(t *testing.T) {
 		require.Equal(t, []CleanupTarget{CleanupTargetOutput}, provider.cleanupTargets)
 		require.NotNil(t, repo.jobs["imgbatch_cleanup"].OutputDeletedAt)
 		require.Equal(t, BatchImageJobStatusOutputDeleted, repo.jobs["imgbatch_cleanup"].Status)
-		body := mustBatchImageCleanupJSON(t, got)
+		body := mustJSONForBatchImageCleanupTest(t, got)
 		requireBatchImagePublicJSONHasNoInternals(t, body)
 	})
 
@@ -223,7 +223,7 @@ func cleanupTestJob(batchID, status string) *BatchImageJob {
 	}
 }
 
-func mustBatchImageCleanupJSON(t *testing.T, v any) string {
+func mustJSONForBatchImageCleanupTest(t *testing.T, v any) string {
 	t.Helper()
 	b, err := json.Marshal(v)
 	require.NoError(t, err)

@@ -421,6 +421,23 @@ func normalizeDailyCheckinPrizes(raw []DailyCheckinPrizeConfig, legacyMode strin
 	return out
 }
 
+func normalizeDailyCheckinSettings(mode string, amount, minAmount, maxAmount float64) (string, float64, float64, float64) {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode != "range" {
+		mode = "fixed"
+	}
+	if amount < 0 {
+		amount = 0
+	}
+	if minAmount < 0 {
+		minAmount = 0
+	}
+	if maxAmount < minAmount {
+		maxAmount = minAmount
+	}
+	return mode, amount, minAmount, maxAmount
+}
+
 func legacyDailyCheckinPrizes(mode string, amount, minAmount, maxAmount float64) []DailyCheckinPrizeConfig {
 	prize := DailyCheckinPrizeConfig{
 		ID:             "legacy_balance",

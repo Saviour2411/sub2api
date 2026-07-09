@@ -19,23 +19,16 @@ func HasCompactionTriggerInInput(body []byte) bool {
 		return false
 	}
 	input := gjson.GetBytes(body, "input")
-	if !input.Exists() {
+	if !input.IsArray() {
 		return false
 	}
-	if input.IsArray() {
-		found := false
-		input.ForEach(func(_, item gjson.Result) bool {
-			if item.Get("type").String() == "compaction_trigger" {
-				found = true
-				return false
-			}
-			return true
-		})
-		return found
-	}
-	return input.Get("type").String() == "compaction_trigger"
-}
-
-func hasCompactionTriggerInInput(body []byte) bool {
-	return HasCompactionTriggerInInput(body)
+	found := false
+	input.ForEach(func(_, item gjson.Result) bool {
+		if item.Get("type").String() == "compaction_trigger" {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
 }

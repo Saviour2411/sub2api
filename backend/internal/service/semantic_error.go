@@ -14,6 +14,7 @@ import (
 
 const semanticErrorResponseStatus = http.StatusBadGateway
 
+//nolint:unused
 type semanticErrorPrefixDetector struct {
 	config   SemanticErrorConfig
 	platform string
@@ -21,6 +22,7 @@ type semanticErrorPrefixDetector struct {
 	released bool
 }
 
+//nolint:unused
 func newSemanticErrorPrefixDetector(config SemanticErrorConfig, platform string) *semanticErrorPrefixDetector {
 	if config.MatchMaxChars <= 0 {
 		config.MatchMaxChars = defaultSemanticErrorMatchMaxChars
@@ -31,14 +33,17 @@ func newSemanticErrorPrefixDetector(config SemanticErrorConfig, platform string)
 	}
 }
 
+//nolint:unused
 func (d *semanticErrorPrefixDetector) Enabled() bool {
 	return d != nil && d.config.Enabled && d.config.MatchMaxChars > 0 && len(d.config.Rules) > 0
 }
 
+//nolint:unused
 func (d *semanticErrorPrefixDetector) Released() bool {
 	return d == nil || d.released
 }
 
+//nolint:unused
 func (d *semanticErrorPrefixDetector) Observe(text string) bool {
 	if !d.Enabled() || d.released || text == "" {
 		return d == nil || d.released
@@ -55,6 +60,7 @@ func (d *semanticErrorPrefixDetector) Observe(text string) bool {
 	return false
 }
 
+//nolint:unused
 func (d *semanticErrorPrefixDetector) MatchIfComplete() *SemanticErrorMatch {
 	if !d.Enabled() || d.released {
 		return nil
@@ -119,6 +125,7 @@ func writeAnthropicSemanticErrorJSON(c *gin.Context, message string) {
 	})
 }
 
+//nolint:unused
 func newSemanticErrorFailoverError(match *SemanticErrorMatch) *UpstreamFailoverError {
 	message := "Upstream semantic error"
 	ruleName := ""
@@ -147,6 +154,7 @@ func (s *RateLimitService) HandleSemanticFailureScheduling(ctx context.Context, 
 	return s.HandleStrictFailureScheduling(ctx, account, semanticErrorResponseStatus, reason)
 }
 
+//nolint:unused
 func handleSemanticErrorScheduling(rateLimitService *RateLimitService, ctx context.Context, account *Account, match *SemanticErrorMatch) bool {
 	if rateLimitService == nil || match == nil {
 		return false
@@ -158,6 +166,7 @@ func handleSemanticErrorScheduling(rateLimitService *RateLimitService, ctx conte
 	return rateLimitService.HandleSemanticFailureScheduling(ctx, account, reason)
 }
 
+//nolint:unused
 func recordSemanticErrorOps(c *gin.Context, account *Account, match *SemanticErrorMatch, body []byte, upstreamRequestID string) {
 	if c == nil || match == nil {
 		return

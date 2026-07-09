@@ -197,8 +197,6 @@
           :sort-storage-key="ACCOUNT_SORT_STORAGE_KEY"
           :estimate-row-height="72"
           :overscan="5"
-          :virtualized="false"
-          :scroll-reset-key="accountTableScrollResetKey"
         >
           <template #header-select>
             <input
@@ -821,18 +819,6 @@ const syncAccountListDerivedParams = () => {
   const requestParams = params as any
   requestParams.include_scheduler_score = shouldIncludeSchedulerScore() ? '1' : '0'
 }
-
-const accountTableScrollResetKey = computed(() => JSON.stringify({
-  page: pagination.page,
-  page_size: pagination.page_size,
-  sort_by: sortState.sort_by,
-  sort_order: sortState.sort_order,
-  search: params.search,
-  platform: params.platform,
-  type: params.type,
-  status: params.status,
-  group: params.group
-}))
 
 const {
   items: accounts,

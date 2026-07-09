@@ -123,6 +123,25 @@ func (Group) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(0.6).
 			Comment("批量图片生成冻结价格比例，按普通生图原价乘以该比例冻结，结算后释放差额"),
+		field.Bool("video_rate_independent").
+			Default(false).
+			Comment("视频生成是否使用独立倍率；false 表示共享分组有效倍率"),
+		field.Float("video_rate_multiplier").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			Default(1.0).
+			Comment("视频生成独立倍率，仅 video_rate_independent=true 时生效"),
+		field.Float("video_price_480p").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
+		field.Float("video_price_720p").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
+		field.Float("video_price_1080p").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
 
 		// Claude Code 客户端限制 (added by migration 029)
 		field.Bool("claude_code_only").
@@ -130,7 +149,7 @@ func (Group) Fields() []ent.Field {
 			Comment("是否仅允许 Claude Code 客户端"),
 		field.Bool("claude_code_upstream_mimicry").
 			Default(false).
-			Comment("是否将非 Claude Code 请求模拟为 Claude Code 客户端转发到 Anthropic 上游"),
+			Comment("API Key 上游伪装 Claude Code"),
 		field.Int64("fallback_group_id").
 			Optional().
 			Nillable().

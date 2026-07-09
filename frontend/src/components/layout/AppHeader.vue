@@ -1,5 +1,5 @@
 <template>
-  <header class="glass command-header sticky top-0 z-30 border-b border-slate-200/70 dark:border-primary-400/25">
+  <header class="glass sticky top-0 z-30 border-b border-gray-200/50 dark:border-dark-700/50">
     <div class="flex h-16 items-center justify-between px-4 md:px-6">
       <!-- Left: Mobile Menu Toggle + Page Title -->
       <div class="flex items-center gap-4">
@@ -12,25 +12,12 @@
         </button>
 
         <div class="hidden lg:block">
-          <div class="flex items-center gap-2.5">
-            <PulseDot tone="success" :title="t('common.online') || 'ONLINE'" />
-            <h1 class="command-title font-mono text-lg font-black uppercase text-slate-950 dark:text-white">
-              {{ pageTitle }}
-            </h1>
-          </div>
-          <p v-if="pageDescription" class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+          <h1 class="text-lg font-semibold text-gray-900 dark:text-white">
+            {{ pageTitle }}
+          </h1>
+          <p v-if="pageDescription" class="text-xs text-gray-500 dark:text-dark-400">
             {{ pageDescription }}
           </p>
-        </div>
-
-        <!-- System Clock (HUD) -->
-        <div class="command-clock hidden items-center gap-2 px-3 py-1 lg:flex">
-          <span class="font-mono text-[10px] uppercase tracking-[0.2em] text-primary-600 dark:text-primary-300">
-            {{ tz }}
-          </span>
-          <span class="font-mono text-sm font-semibold text-slate-700 dark:text-slate-200 tabular-nums">
-            {{ time }}
-          </span>
         </div>
       </div>
 
@@ -45,7 +32,7 @@
           :href="docUrl"
           target="_blank"
           rel="noopener noreferrer"
-          class="command-chip flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-primary-50 hover:text-primary-700 dark:text-slate-400 dark:hover:bg-primary-500/10 dark:hover:text-white"
+          class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
         >
           <Icon name="book" size="sm" />
           <span class="hidden sm:inline">{{ t('nav.docs') }}</span>
@@ -60,7 +47,7 @@
         <!-- Balance Display -->
         <div
           v-if="user"
-          class="command-chip group relative hidden items-center gap-2 rounded-md border border-primary-200/70 bg-primary-50/95 px-3 py-1.5 shadow-sm shadow-primary-500/10 dark:border-primary-400/25 dark:bg-primary-500/10 sm:flex"
+          class="group relative hidden items-center gap-2 rounded-xl bg-primary-50 px-3 py-1.5 dark:bg-primary-900/20 sm:flex"
         >
           <svg
             class="h-4 w-4 text-primary-600 dark:text-primary-400"
@@ -108,10 +95,10 @@
         <div v-if="user" class="relative" ref="dropdownRef">
           <button
             @click="toggleDropdown"
-          class="command-chip flex items-center gap-2 rounded-md p-1.5 transition-colors hover:bg-primary-50 dark:hover:bg-primary-500/10"
+            class="flex items-center gap-2 rounded-xl p-1.5 transition-colors hover:bg-gray-100 dark:hover:bg-dark-800"
             aria-label="User Menu"
           >
-            <div class="armor-cut flex h-8 w-8 items-center justify-center overflow-hidden border border-primary-200/70 bg-gradient-to-br from-primary-300 via-primary-500 to-primary-800 text-sm font-medium text-white shadow-sm shadow-primary-500/25">
+            <div class="flex h-8 w-8 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 text-sm font-medium text-white shadow-sm">
               <img
                 v-if="avatarUrl"
                 :src="avatarUrl"
@@ -121,10 +108,10 @@
               <span v-else>{{ userInitials }}</span>
             </div>
             <div class="hidden text-left md:block">
-              <div class="text-sm font-medium text-slate-900 dark:text-white">
+              <div class="text-sm font-medium text-gray-900 dark:text-white">
                 {{ displayName }}
               </div>
-              <div class="text-xs capitalize text-slate-500 dark:text-slate-400">
+              <div class="text-xs capitalize text-gray-500 dark:text-dark-400">
                 {{ user.role }}
               </div>
             </div>
@@ -262,8 +249,7 @@ import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMini.vue'
 import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
 import Icon from '@/components/icons/Icon.vue'
-import PulseDot from '@/components/common/PulseDot.vue'
-import { useSystemClock } from '@/composables/useSystemClock'
+import { sanitizeUrl } from '@/utils/url'
 
 const router = useRouter()
 const route = useRoute()
@@ -277,7 +263,7 @@ const user = computed(() => authStore.user)
 const dropdownOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
 const contactInfo = computed(() => appStore.contactInfo)
-const docUrl = computed(() => appStore.docUrl)
+const docUrl = computed(() => sanitizeUrl(appStore.docUrl))
 const avatarUrl = computed(() => user.value?.avatar_url?.trim() || '')
 const availableBalance = computed(() => Number(user.value?.balance || 0))
 const frozenBalance = computed(() => Number(user.value?.frozen_balance || 0))
@@ -286,9 +272,6 @@ const balanceAvailableText = computed(() => t('common.availableBalance') === 'co
 const balanceFrozenText = computed(() => t('common.frozenBalance') === 'common.frozenBalance' ? '冻结金额' : t('common.frozenBalance'))
 const balanceTotalText = computed(() => t('common.totalBalance') === 'common.totalBalance' ? '总余额' : t('common.totalBalance'))
 const balanceFrozenLabel = computed(() => `${balanceFrozenText.value} ${formatHeaderMoney(frozenBalance.value)}`)
-
-// HUD system clock
-const { time, tz } = useSystemClock()
 
 // 只在标准模式的管理员下显示新手引导按钮
 const showOnboardingButton = computed(() => {
@@ -396,23 +379,5 @@ onBeforeUnmount(() => {
 .dropdown-leave-to {
   opacity: 0;
   transform: scale(0.95) translateY(-4px);
-}
-
-.command-clock {
-  position: relative;
-  border: 1px solid rgba(75, 181, 255, 0.22);
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.85),
-    rgba(232, 245, 255, 0.55)
-  );
-  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86);
-}
-
-:global(.dark) .command-clock {
-  background: linear-gradient(135deg, rgba(7, 16, 28, 0.78), rgba(4, 10, 18, 0.6));
-  border-color: rgba(75, 181, 255, 0.3);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 </style>

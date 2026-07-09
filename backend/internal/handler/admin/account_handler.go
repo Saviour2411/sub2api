@@ -57,7 +57,6 @@ type AccountHandler struct {
 	accountTestService      *service.AccountTestService
 	concurrencyService      *service.ConcurrencyService
 	crsSyncService          *service.CRSSyncService
-	scheduledTestSvc        *service.ScheduledTestService
 	sessionLimitCache       service.SessionLimitCache
 	rpmCache                service.RPMCache
 	tokenCacheInvalidator   service.TokenCacheInvalidator
@@ -75,15 +74,10 @@ func NewAccountHandler(
 	accountTestService *service.AccountTestService,
 	concurrencyService *service.ConcurrencyService,
 	crsSyncService *service.CRSSyncService,
-	scheduledTestSvc *service.ScheduledTestService,
 	sessionLimitCache service.SessionLimitCache,
 	rpmCache service.RPMCache,
-	tokenCacheInvalidators ...service.TokenCacheInvalidator,
+	tokenCacheInvalidator service.TokenCacheInvalidator,
 ) *AccountHandler {
-	var tokenCacheInvalidator service.TokenCacheInvalidator
-	if len(tokenCacheInvalidators) > 0 {
-		tokenCacheInvalidator = tokenCacheInvalidators[0]
-	}
 	return &AccountHandler{
 		adminService:            adminService,
 		oauthService:            oauthService,
@@ -95,15 +89,61 @@ func NewAccountHandler(
 		accountTestService:      accountTestService,
 		concurrencyService:      concurrencyService,
 		crsSyncService:          crsSyncService,
-		scheduledTestSvc:        scheduledTestSvc,
 		sessionLimitCache:       sessionLimitCache,
 		rpmCache:                rpmCache,
 		tokenCacheInvalidator:   tokenCacheInvalidator,
 	}
 }
 
-func (h *AccountHandler) SetScheduledTestService(scheduledTestSvc *service.ScheduledTestService) {
-	h.scheduledTestSvc = scheduledTestSvc
+// GetAPIKey returns the stored API key credential for an account.
+// GET /api/v1/admin/accounts/:id/api-key
+func (h *AccountHandler) GetAPIKey(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+
+	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	apiKey := ""
+	if account != nil && account.Credentials != nil {
+		if raw, ok := account.Credentials["api_key"]; ok {
+			apiKey = strings.TrimSpace(fmt.Sprint(raw))
+		}
+	}
+
+	response.Success(c, gin.H{
+		"api_key":     apiKey,
+		"has_api_key": apiKey != "",
+	})
+}
+
+func applyOpenAIAPIKeyPoolModeDefaults(platform, accountType string, credentials map[string]any) map[string]any {
+	if !strings.EqualFold(strings.TrimSpace(platform), service.PlatformOpenAI) ||
+		!strings.EqualFold(strings.TrimSpace(accountType), service.AccountTypeAPIKey) {
+		return credentials
+	}
+	if credentials == nil {
+		credentials = make(map[string]any)
+	}
+	if poolMode, ok := credentials["pool_mode"].(bool); ok && !poolMode {
+		return credentials
+	}
+	if _, ok := credentials["pool_mode"]; !ok {
+		credentials["pool_mode"] = true
+	}
+	if _, ok := credentials["pool_mode_retry_count"]; !ok {
+		credentials["pool_mode_retry_count"] = 3
+	}
+	if _, ok := credentials["pool_mode_retry_status_codes"]; !ok {
+		credentials["pool_mode_retry_status_codes"] = []int{401, 403, 429, 502, 503, 504}
+	}
+	return credentials
 }
 
 // CreateAccountRequest represents create account request
@@ -145,42 +185,6 @@ type UpdateAccountRequest struct {
 	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 }
 
-var defaultOpenAIAPIKeyPoolRetryStatusCodes = []int{401, 403, 429, 502, 503, 504}
-
-func applyOpenAIAPIKeyPoolModeDefaults(platform, accountType string, credentials map[string]any) map[string]any {
-	if platform != service.PlatformOpenAI || accountType != service.AccountTypeAPIKey {
-		return credentials
-	}
-	if credentials == nil {
-		credentials = make(map[string]any)
-	}
-	if raw, exists := credentials["pool_mode"]; exists {
-		if enabled, ok := raw.(bool); ok && !enabled {
-			return credentials
-		}
-	} else {
-		credentials["pool_mode"] = true
-	}
-	if _, exists := credentials["pool_mode_retry_count"]; !exists {
-		credentials["pool_mode_retry_count"] = 3
-	}
-	if _, exists := credentials["pool_mode_retry_status_codes"]; !exists {
-		credentials["pool_mode_retry_status_codes"] = append([]int(nil), defaultOpenAIAPIKeyPoolRetryStatusCodes...)
-	}
-	return credentials
-}
-
-// SyncUpstreamModelsPreviewRequest 表示账号保存前的上游模型同步预览请求。
-type SyncUpstreamModelsPreviewRequest struct {
-	Platform    string         `json:"platform" binding:"required,oneof=openai anthropic gemini antigravity"`
-	Type        string         `json:"type" binding:"required"`
-	Credentials map[string]any `json:"credentials"`
-	BaseURL     string         `json:"base_url"`
-	APIKey      string         `json:"api_key"`
-	ProxyID     *int64         `json:"proxy_id"`
-	Concurrency int            `json:"concurrency"`
-}
-
 // BulkUpdateAccountsRequest represents the payload for bulk editing accounts
 type BulkUpdateAccountsRequest struct {
 	AccountIDs              []int64                   `json:"account_ids"`
@@ -218,10 +222,9 @@ type CheckMixedChannelRequest struct {
 // AccountWithConcurrency extends Account with real-time concurrency info
 type AccountWithConcurrency struct {
 	*dto.Account
-	CurrentConcurrency       int                          `json:"current_concurrency"`
-	SchedulerScore           *AccountSchedulerScore       `json:"scheduler_score,omitempty"`
-	SchedulerScores          []AccountSchedulerGroupScore `json:"scheduler_scores,omitempty"`
-	LastScheduledTestFailure *AccountScheduledTestFailure `json:"last_scheduled_test_failure,omitempty"`
+	CurrentConcurrency int                          `json:"current_concurrency"`
+	SchedulerScore     *AccountSchedulerScore       `json:"scheduler_score,omitempty"`
+	SchedulerScores    []AccountSchedulerGroupScore `json:"scheduler_scores,omitempty"`
 	// 以下字段仅对 Anthropic OAuth/SetupToken 账号有效，且仅在启用相应功能时返回
 	CurrentWindowCost *float64 `json:"current_window_cost,omitempty"` // 当前窗口费用
 	ActiveSessions    *int     `json:"active_sessions,omitempty"`     // 当前活跃会话数
@@ -240,36 +243,6 @@ type AccountSchedulerGroupScore struct {
 	GroupName     string `json:"group_name,omitempty"`
 	GroupPriority *int   `json:"group_priority,omitempty"`
 	AccountSchedulerScore
-}
-
-type AccountScheduledTestFailure struct {
-	PlanID       int64     `json:"plan_id"`
-	ResultID     int64     `json:"result_id"`
-	ModelID      string    `json:"model_id"`
-	ErrorMessage string    `json:"error_message"`
-	StartedAt    time.Time `json:"started_at"`
-	FinishedAt   time.Time `json:"finished_at"`
-	CreatedAt    time.Time `json:"created_at"`
-}
-
-type AccountAPIKeyResponse struct {
-	APIKey    string `json:"api_key"`
-	HasAPIKey bool   `json:"has_api_key"`
-}
-
-func accountScheduledTestFailureFromService(failure *service.ScheduledTestLatestFailure) *AccountScheduledTestFailure {
-	if failure == nil {
-		return nil
-	}
-	return &AccountScheduledTestFailure{
-		PlanID:       failure.PlanID,
-		ResultID:     failure.ResultID,
-		ModelID:      failure.ModelID,
-		ErrorMessage: failure.ErrorMessage,
-		StartedAt:    failure.StartedAt,
-		FinishedAt:   failure.FinishedAt,
-		CreatedAt:    failure.CreatedAt,
-	}
 }
 
 const accountListGroupUngroupedQueryValue = "ungrouped"
@@ -411,6 +384,9 @@ func (h *AccountHandler) buildOpenAIAccountSchedulerScores(
 			continue
 		}
 		pageOpenAIAccountIDs[account.ID] = struct{}{}
+		if len(account.AccountGroups) == 0 && len(account.GroupIDs) == 0 {
+			continue
+		}
 		for _, accountGroup := range account.AccountGroups {
 			if accountGroup.GroupID > 0 {
 				groupIDs[accountGroup.GroupID] = struct{}{}
@@ -518,9 +494,6 @@ func (h *AccountHandler) buildOpenAIAccountSchedulerScores(
 		sort.SliceStable(groupScoresByAccount[accountID], func(i, j int) bool {
 			left := groupScoresByAccount[accountID][i]
 			right := groupScoresByAccount[accountID][j]
-			if left.GroupID == nil || right.GroupID == nil {
-				return left.GroupID != nil
-			}
 			return *left.GroupID < *right.GroupID
 		})
 	}
@@ -687,25 +660,15 @@ func (h *AccountHandler) List(c *gin.Context) {
 		_ = g.Wait()
 	}
 
-	latestScheduledTestFailures := map[int64]*service.ScheduledTestLatestFailure{}
-	if h.scheduledTestSvc != nil && len(accountIDs) > 0 {
-		if failures, failureErr := h.scheduledTestSvc.ListLatestFailuresByAccountIDs(c.Request.Context(), accountIDs); failureErr == nil && failures != nil {
-			latestScheduledTestFailures = failures
-		} else if failureErr != nil {
-			slog.Warn("account_list_latest_scheduled_test_failures_failed", "error", failureErr)
-		}
-	}
-
 	// Build response with concurrency info
 	result := make([]AccountWithConcurrency, len(accounts))
 	for i := range accounts {
 		acc := &accounts[i]
 		item := AccountWithConcurrency{
-			Account:                  dto.AccountFromService(acc),
-			CurrentConcurrency:       concurrencyCounts[acc.ID],
-			SchedulerScore:           schedulerScores[acc.ID],
-			SchedulerScores:          schedulerGroupScores[acc.ID],
-			LastScheduledTestFailure: accountScheduledTestFailureFromService(latestScheduledTestFailures[acc.ID]),
+			Account:            dto.AccountFromService(acc),
+			CurrentConcurrency: concurrencyCounts[acc.ID],
+			SchedulerScore:     schedulerScores[acc.ID],
+			SchedulerScores:    schedulerGroupScores[acc.ID],
 		}
 
 		// 添加窗口费用（仅当启用时）
@@ -818,28 +781,6 @@ func (h *AccountHandler) GetByID(c *gin.Context) {
 	}
 
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
-}
-
-// GetAPIKey 按需返回账号已保存的 API Key 明文，仅管理员接口可访问。
-// GET /api/v1/admin/accounts/:id/api-key
-func (h *AccountHandler) GetAPIKey(c *gin.Context) {
-	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		response.BadRequest(c, "Invalid account ID")
-		return
-	}
-
-	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
-	apiKey := account.GetCredential("api_key")
-	response.Success(c, AccountAPIKeyResponse{
-		APIKey:    apiKey,
-		HasAPIKey: strings.TrimSpace(apiKey) != "",
-	})
 }
 
 // CheckMixedChannel handles checking mixed channel risk for account-group binding.
@@ -2581,18 +2522,48 @@ func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
 	response.Success(c, gin.H{"models": models})
 }
 
-// SyncUpstreamModelsPreview 在账号保存前按临时凭证同步上游支持的模型。
-// POST /api/v1/admin/accounts/models/sync-upstream/preview
+// SyncUpstreamModelsPreview handles syncing live supported models using provided credentials (no account ID needed).
 // POST /api/v1/admin/accounts/models/sync-upstream-preview
 func (h *AccountHandler) SyncUpstreamModelsPreview(c *gin.Context) {
-	var req SyncUpstreamModelsPreviewRequest
+	var req struct {
+		Platform    string         `json:"platform" binding:"required"`
+		Type        string         `json:"type" binding:"required"`
+		Credentials map[string]any `json:"credentials"`
+		ProxyID     *int64         `json:"proxy_id"`
+		Concurrency int            `json:"concurrency"`
+		BaseURL     string         `json:"base_url"`
+		APIKey      string         `json:"api_key"`
+	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
-	if req.Type != service.AccountTypeAPIKey {
-		response.BadRequest(c, "Only API key accounts support preview model sync")
-		return
+
+	credentials := make(map[string]any, len(req.Credentials)+2)
+	for key, value := range req.Credentials {
+		credentials[key] = value
+	}
+	if strings.TrimSpace(req.APIKey) != "" {
+		credentials["api_key"] = req.APIKey
+	}
+	if strings.TrimSpace(req.BaseURL) != "" {
+		credentials["base_url"] = req.BaseURL
+	}
+
+	tempAccount := &service.Account{
+		Platform:    req.Platform,
+		Type:        req.Type,
+		Credentials: credentials,
+		ProxyID:     req.ProxyID,
+		Concurrency: req.Concurrency,
+	}
+	if req.ProxyID != nil && h.adminService != nil {
+		proxy, err := h.adminService.GetProxy(c.Request.Context(), *req.ProxyID)
+		if err != nil {
+			response.BadRequest(c, "Proxy not found")
+			return
+		}
+		tempAccount.Proxy = proxy
 	}
 
 	if h.accountTestService == nil {
@@ -2600,45 +2571,7 @@ func (h *AccountHandler) SyncUpstreamModelsPreview(c *gin.Context) {
 		return
 	}
 
-	if req.Concurrency <= 0 {
-		req.Concurrency = 1
-	}
-	if req.Credentials == nil {
-		req.Credentials = map[string]any{}
-	}
-	if req.APIKey != "" {
-		req.Credentials["api_key"] = req.APIKey
-	}
-	if req.BaseURL != "" {
-		req.Credentials["base_url"] = req.BaseURL
-	}
-	if strings.TrimSpace(fmt.Sprint(req.Credentials["api_key"])) == "" {
-		response.BadRequest(c, "api_key is required")
-		return
-	}
-
-	account := &service.Account{
-		Platform:    req.Platform,
-		Type:        req.Type,
-		Credentials: req.Credentials,
-		ProxyID:     req.ProxyID,
-		Concurrency: req.Concurrency,
-	}
-
-	if req.ProxyID != nil && *req.ProxyID > 0 {
-		if h.adminService == nil {
-			response.InternalError(c, "Admin service is not configured")
-			return
-		}
-		proxy, err := h.adminService.GetProxy(c.Request.Context(), *req.ProxyID)
-		if err != nil || proxy == nil {
-			response.NotFound(c, "Proxy not found")
-			return
-		}
-		account.Proxy = proxy
-	}
-
-	models, err := h.accountTestService.FetchUpstreamSupportedModels(c.Request.Context(), account)
+	models, err := h.accountTestService.FetchUpstreamSupportedModels(c.Request.Context(), tempAccount)
 	if err != nil {
 		var syncErr *service.UpstreamModelSyncError
 		if errors.As(err, &syncErr) {

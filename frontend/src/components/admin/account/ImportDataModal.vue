@@ -59,7 +59,7 @@
           {{ t('admin.accounts.dataImportResult') }}
         </div>
         <div class="text-sm text-gray-700 dark:text-dark-300">
-          {{ resultSummary }}
+          {{ t('admin.accounts.dataImportResultSummary', result) }}
         </div>
 
         <div v-if="errorItems.length" class="mt-2">
@@ -70,7 +70,7 @@
             class="mt-2 max-h-48 overflow-auto rounded-lg bg-gray-50 p-3 font-mono text-xs dark:bg-dark-800"
           >
             <div v-for="(item, idx) in errorItems" :key="idx" class="whitespace-pre-wrap">
-              {{ formatErrorItem(item) }}
+              {{ item.kind }} {{ item.name || item.proxy_key || '-' }} — {{ item.message }}
             </div>
           </div>
         </div>
@@ -101,13 +101,7 @@ import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import { adminAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
-import type {
-  AdminDataImportError,
-  AdminDataImportResult,
-  AdminDataPayload,
-  CodexSessionImportMessage,
-  CodexSessionImportResult,
-} from '@/types'
+import type { AdminDataImportResult, AdminDataPayload } from '@/types'
 
 interface Props {
   show: boolean
@@ -129,7 +123,7 @@ const files = ref<File[]>([])
 const dragDepth = ref(0)
 const dragActive = computed(() => dragDepth.value > 0)
 const hasCreatedData = ref(false)
-const result = ref<ImportResult | null>(null)
+const result = ref<AdminDataImportResult | null>(null)
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const selectedFilesLabel = computed(() => {
@@ -139,27 +133,7 @@ const selectedFilesLabel = computed(() => {
 })
 const fileListTitle = computed(() => files.value.map((item) => item.name).join(', '))
 
-type ImportResult =
-  | {
-      type: 'data'
-      payload: AdminDataImportResult
-    }
-  | {
-      type: 'codex'
-      payload: CodexSessionImportResult
-    }
-
-type ImportErrorItem = AdminDataImportError | CodexSessionImportMessage
-
-const errorItems = computed<ImportErrorItem[]>(() => result.value?.payload.errors || [])
-
-const resultSummary = computed(() => {
-  if (!result.value) return ''
-  if (result.value.type === 'codex') {
-    return t('admin.accounts.codexImportResultSummary', result.value.payload)
-  }
-  return t('admin.accounts.dataImportResultSummary', result.value.payload)
-})
+const errorItems = computed(() => result.value?.errors || [])
 
 watch(
   () => props.show,
@@ -250,128 +224,29 @@ const readFileAsText = async (sourceFile: File): Promise<string> => {
   })
 }
 
-const isObject = (value: unknown): value is Record<string, unknown> => {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
-}
-
-const getNestedValue = (value: Record<string, unknown>, path: string[]): unknown => {
-  let current: unknown = value
-  for (const key of path) {
-    if (!isObject(current)) return undefined
-    current = current[key]
-  }
-  return current
-}
-
-const hasNonEmptyStringAt = (value: Record<string, unknown>, path: string[]): boolean => {
-  const candidate = getNestedValue(value, path)
-  return typeof candidate === 'string' && candidate.trim() !== ''
-}
-
-const isCodexImportEntry = (value: unknown): boolean => {
-  if (!isObject(value)) return false
-  if (value.type === 'codex') return true
-
-  return [
-    ['access_token'],
-    ['accessToken'],
-    ['refresh_token'],
-    ['refreshToken'],
-    ['id_token'],
-    ['idToken'],
-    ['tokens', 'access_token'],
-    ['tokens', 'accessToken'],
-  ].some((path) => hasNonEmptyStringAt(value, path))
-}
-
-const isCodexImportPayload = (value: unknown): boolean => {
-  if (Array.isArray(value)) {
-    return value.length > 0 && value.every((item) => isCodexImportEntry(item))
-  }
-  return isCodexImportEntry(value)
-}
-
-const formatErrorItem = (item: ImportErrorItem): string => {
-  if ('kind' in item) {
-    return `${item.kind} ${item.name || item.proxy_key || '-'} - ${item.message}`
-  }
-  return `#${item.index} ${item.name || '-'} - ${item.message}`
-}
-
-const handleCodexImport = async (text: string) => {
-  const res = await adminAPI.accounts.importCodexSession({
-    content: text,
-    update_existing: true,
-    skip_default_group_bind: true
-  })
-  result.value = {
-    type: 'codex',
-    payload: res
-  }
-
-  const msgParams: Record<string, unknown> = {
-    total: res.total,
-    created: res.created,
-    updated: res.updated,
-    skipped: res.skipped,
-    failed: res.failed,
-  }
-  if (res.failed > 0) {
-    appStore.showError(t('admin.accounts.codexImportCompletedWithErrors', msgParams))
-  } else {
-    appStore.showSuccess(t('admin.accounts.codexImportSuccess', msgParams))
-    emit('imported')
-  }
-}
-
-const handleDataImport = async (dataPayload: unknown) => {
-  const res = await adminAPI.accounts.importData({
-    data: dataPayload as AdminDataPayload,
-    skip_default_group_bind: true
-  })
-  result.value = {
-    type: 'data',
-    payload: res
-  }
-
-  const msgParams: Record<string, unknown> = {
-    account_created: res.account_created,
-    account_failed: res.account_failed,
-    proxy_created: res.proxy_created,
-    proxy_reused: res.proxy_reused,
-    proxy_failed: res.proxy_failed,
-  }
-  if (res.account_failed > 0 || res.proxy_failed > 0) {
-    if (res.account_created > 0 || res.proxy_created > 0) {
-      hasCreatedData.value = true
-    }
-    appStore.showError(t('admin.accounts.dataImportCompletedWithErrors', msgParams))
-  } else {
-    appStore.showSuccess(t('admin.accounts.dataImportSuccess', msgParams))
-    emit('imported')
-  }
-}
-
 const SUPPORTED_DATA_TYPES = ['sub2api-data', 'sub2api-bundle']
 const SUPPORTED_DATA_VERSION = 1
 
+// 与后端 validateDataHeader 对齐:合并前逐文件校验,避免坏文件混入合并 payload 后
+// 报错无法定位来源,或绕过后端本会对单文件做的 type/version 检查。
 const isValidDataPayload = (payload: unknown): payload is AdminDataPayload => {
-  if (!isObject(payload)) return false
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false
+  const candidate = payload as Record<string, unknown>
   if (
-    payload.type !== undefined &&
-    payload.type !== '' &&
-    !SUPPORTED_DATA_TYPES.includes(payload.type as string)
+    candidate.type !== undefined &&
+    candidate.type !== '' &&
+    !SUPPORTED_DATA_TYPES.includes(candidate.type as string)
   ) {
     return false
   }
   if (
-    payload.version !== undefined &&
-    payload.version !== 0 &&
-    payload.version !== SUPPORTED_DATA_VERSION
+    candidate.version !== undefined &&
+    candidate.version !== 0 &&
+    candidate.version !== SUPPORTED_DATA_VERSION
   ) {
     return false
   }
-  return Array.isArray(payload.proxies) && Array.isArray(payload.accounts)
+  return Array.isArray(candidate.proxies) && Array.isArray(candidate.accounts)
 }
 
 const mergeDataPayloads = (payloads: AdminDataPayload[]): AdminDataPayload => {
@@ -400,37 +275,48 @@ const handleImport = async () => {
   importing.value = true
   try {
     const dataPayloads: AdminDataPayload[] = []
-    let firstText = ''
     for (const sourceFile of files.value) {
-      let text = ''
       let parsed: unknown
       try {
-        text = await readFileAsText(sourceFile)
-        parsed = JSON.parse(text)
+        parsed = JSON.parse(await readFileAsText(sourceFile))
       } catch {
         appStore.showError(
           t('admin.accounts.dataImportParseFailedFile', { name: sourceFile.name })
         )
         return
       }
-      if (!firstText) {
-        firstText = text
-      }
-
-      if (files.value.length === 1 && isCodexImportPayload(parsed)) {
-        await handleCodexImport(firstText)
-        return
-      }
-
       if (!isValidDataPayload(parsed)) {
         appStore.showError(t('admin.accounts.dataImportInvalidFile', { name: sourceFile.name }))
         return
       }
       dataPayloads.push(parsed)
     }
-
     const dataPayload = mergeDataPayloads(dataPayloads)
-    await handleDataImport(dataPayload)
+
+    const res = await adminAPI.accounts.importData({
+      data: dataPayload,
+      skip_default_group_bind: true
+    })
+
+    result.value = res
+
+    const msgParams: Record<string, unknown> = {
+      account_created: res.account_created,
+      account_failed: res.account_failed,
+      proxy_created: res.proxy_created,
+      proxy_reused: res.proxy_reused,
+      proxy_failed: res.proxy_failed,
+    }
+    if (res.account_failed > 0 || res.proxy_failed > 0) {
+      // 部分成功也创建了数据;弹窗关闭时通过 imported 通知父组件刷新列表
+      if (res.account_created > 0 || res.proxy_created > 0) {
+        hasCreatedData.value = true
+      }
+      appStore.showError(t('admin.accounts.dataImportCompletedWithErrors', msgParams))
+    } else {
+      appStore.showSuccess(t('admin.accounts.dataImportSuccess', msgParams))
+      emit('imported')
+    }
   } catch (error: any) {
     appStore.showError(error?.message || t('admin.accounts.dataImportFailed'))
   } finally {

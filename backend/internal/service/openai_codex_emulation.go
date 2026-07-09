@@ -9,6 +9,7 @@ import (
 
 const openAICodexCLIEmulationExtraKey = "openai_codex_cli_emulation_enabled"
 
+//nolint:unused
 func resolveOpenAICodexUserAgent(ctx context.Context, settingService *SettingService) string {
 	if settingService != nil {
 		if value := strings.TrimSpace(settingService.GetOpenAICodexUserAgent(ctx)); value != "" {
@@ -18,6 +19,7 @@ func resolveOpenAICodexUserAgent(ctx context.Context, settingService *SettingSer
 	return DefaultOpenAICodexUserAgent
 }
 
+//nolint:unused
 func applyOpenAICodexCLIEmulationHeaders(
 	ctx context.Context,
 	headers http.Header,

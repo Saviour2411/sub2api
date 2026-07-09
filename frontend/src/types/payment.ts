@@ -25,6 +25,12 @@ export type OrderType = 'balance' | 'subscription'
 
 // ==================== Configuration ====================
 
+export interface PaymentBonusRule {
+  min_amount: number
+  max_amount: number | null
+  bonus_rate: number
+}
+
 export interface PaymentConfig {
   payment_enabled: boolean
   min_amount: number
@@ -40,12 +46,6 @@ export interface PaymentConfig {
   help_image_url: string
   help_text: string
   stripe_publishable_key: string
-}
-
-export interface PaymentBonusRule {
-  min_amount: number
-  max_amount?: number | null
-  bonus_rate: number
 }
 
 export interface MethodLimit {
@@ -92,10 +92,9 @@ export interface PaymentOrder {
   id: number
   user_id: number
   amount: number
-  base_amount: number
+  pay_amount: number
   bonus_amount: number
   bonus_rate: number
-  pay_amount: number
   currency?: string
   fee_rate: number
   payment_type: string
@@ -208,9 +207,6 @@ export interface WechatJSAPIPayload {
 export interface CreateOrderResult {
   order_id: number
   amount: number
-  base_amount: number
-  bonus_amount: number
-  bonus_rate: number
   pay_url?: string
   qr_code?: string
   client_secret?: string
@@ -219,6 +215,8 @@ export interface CreateOrderResult {
   country_code?: string
   payment_env?: string
   pay_amount: number
+  bonus_amount: number
+  bonus_rate: number
   fee_rate: number
   expires_at: string
   result_type?: CreateOrderResultType

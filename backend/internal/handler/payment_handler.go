@@ -91,6 +91,99 @@ func (h *PaymentHandler) GetPlans(c *gin.Context) {
 	response.Success(c, result)
 }
 
+// GetPublicModelPricing returns public subscription plan pricing for unauthenticated pages.
+// GET /api/v1/model-pricing
+func (h *PaymentHandler) GetPublicModelPricing(c *gin.Context) {
+	cfg, err := h.configService.GetPaymentConfig(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	type publicPlan struct {
+		ID                 int64    `json:"id"`
+		GroupPlatform      string   `json:"group_platform"`
+		GroupName          string   `json:"group_name"`
+		RateMultiplier     float64  `json:"rate_multiplier"`
+		PeakRateEnabled    bool     `json:"peak_rate_enabled"`
+		PeakStart          string   `json:"peak_start,omitempty"`
+		PeakEnd            string   `json:"peak_end,omitempty"`
+		PeakRateMultiplier float64  `json:"peak_rate_multiplier,omitempty"`
+		DailyLimitUSD      *float64 `json:"daily_limit_usd,omitempty"`
+		WeeklyLimitUSD     *float64 `json:"weekly_limit_usd,omitempty"`
+		MonthlyLimitUSD    *float64 `json:"monthly_limit_usd,omitempty"`
+		Name               string   `json:"name"`
+		Description        string   `json:"description"`
+		Price              float64  `json:"price"`
+		OriginalPrice      *float64 `json:"original_price,omitempty"`
+		ValidityDays       int      `json:"validity_days"`
+		ValidityUnit       string   `json:"validity_unit"`
+		Features           []string `json:"features"`
+		ProductName        string   `json:"product_name"`
+		SortOrder          int      `json:"sort_order"`
+	}
+
+	plans := []publicPlan{}
+	if cfg.Enabled {
+		salePlans, err := h.configService.ListPlansForSale(c.Request.Context())
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		groupInfo := h.configService.GetGroupInfoMap(c.Request.Context(), salePlans)
+		for _, p := range salePlans {
+			gi := groupInfo[p.GroupID]
+			if gi.Status != service.StatusActive || gi.SubscriptionType != service.SubscriptionTypeSubscription {
+				continue
+			}
+			plans = append(plans, publicPlan{
+				ID:                 int64(p.ID),
+				GroupPlatform:      gi.Platform,
+				GroupName:          gi.Name,
+				RateMultiplier:     gi.RateMultiplier,
+				PeakRateEnabled:    gi.PeakRateEnabled,
+				PeakStart:          gi.PeakStart,
+				PeakEnd:            gi.PeakEnd,
+				PeakRateMultiplier: gi.PeakRateMultiplier,
+				DailyLimitUSD:      gi.DailyLimitUSD,
+				WeeklyLimitUSD:     gi.WeeklyLimitUSD,
+				MonthlyLimitUSD:    gi.MonthlyLimitUSD,
+				Name:               p.Name,
+				Description:        p.Description,
+				Price:              p.Price,
+				OriginalPrice:      p.OriginalPrice,
+				ValidityDays:       p.ValidityDays,
+				ValidityUnit:       p.ValidityUnit,
+				Features:           splitPublicPlanFeatures(p.Features),
+				ProductName:        p.ProductName,
+				SortOrder:          p.SortOrder,
+			})
+		}
+	}
+
+	response.Success(c, gin.H{
+		"enabled":                      cfg.Enabled,
+		"generated_at":                 time.Now().UTC().Format(time.RFC3339),
+		"balance_recharge_multiplier":  cfg.BalanceRechargeMultiplier,
+		"balance_recharge_bonus_rules": cfg.BalanceRechargeBonusRules,
+		"help_text":                    cfg.HelpText,
+		"help_image_url":               cfg.HelpImageURL,
+		"plans":                        plans,
+	})
+}
+
+func splitPublicPlanFeatures(raw string) []string {
+	lines := strings.Split(raw, "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
 // GetChannels returns enabled payment channels.
 // GET /api/v1/payment/channels
 func (h *PaymentHandler) GetChannels(c *gin.Context) {
@@ -150,7 +243,6 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 		Plans:                     planList,
 		BalanceDisabled:           cfg.BalanceDisabled,
 		BalanceRechargeMultiplier: cfg.BalanceRechargeMultiplier,
-		BalanceRechargeBonusRules: cfg.BalanceRechargeBonusRules,
 		SubscriptionUSDToCNYRate:  cfg.SubscriptionUSDToCNYRate,
 		RechargeFeeRate:           cfg.RechargeFeeRate,
 		HelpText:                  cfg.HelpText,
@@ -167,7 +259,6 @@ type checkoutInfoResponse struct {
 	Plans                     []checkoutPlan                  `json:"plans"`
 	BalanceDisabled           bool                            `json:"balance_disabled"`
 	BalanceRechargeMultiplier float64                         `json:"balance_recharge_multiplier"`
-	BalanceRechargeBonusRules []service.PaymentBonusRule      `json:"balance_recharge_bonus_rules"`
 	SubscriptionUSDToCNYRate  float64                         `json:"subscription_usd_to_cny_rate"`
 	RechargeFeeRate           float64                         `json:"recharge_fee_rate"`
 	HelpText                  string                          `json:"help_text"`
@@ -198,90 +289,6 @@ type checkoutPlan struct {
 	ValidityUnit       string   `json:"validity_unit"`
 	Features           []string `json:"features"`
 	ProductName        string   `json:"product_name"`
-}
-
-type publicModelPricingResponse struct {
-	Enabled                   bool                     `json:"enabled"`
-	GeneratedAt               string                   `json:"generated_at"`
-	Plans                     []publicModelPricingPlan `json:"plans"`
-	BalanceRechargeMultiplier float64                  `json:"balance_recharge_multiplier"`
-	HelpText                  string                   `json:"help_text"`
-	HelpImageURL              string                   `json:"help_image_url"`
-}
-
-type publicModelPricingPlan struct {
-	ID              int64    `json:"id"`
-	GroupPlatform   string   `json:"group_platform"`
-	GroupName       string   `json:"group_name"`
-	RateMultiplier  float64  `json:"rate_multiplier"`
-	DailyLimitUSD   *float64 `json:"daily_limit_usd"`
-	WeeklyLimitUSD  *float64 `json:"weekly_limit_usd"`
-	MonthlyLimitUSD *float64 `json:"monthly_limit_usd"`
-	ModelScopes     []string `json:"supported_model_scopes"`
-	Name            string   `json:"name"`
-	Description     string   `json:"description"`
-	Price           float64  `json:"price"`
-	OriginalPrice   *float64 `json:"original_price,omitempty"`
-	ValidityDays    int      `json:"validity_days"`
-	ValidityUnit    string   `json:"validity_unit"`
-	Features        []string `json:"features"`
-}
-
-// GetPublicModelPricing returns the public subscription pricing catalog.
-// GET /api/v1/model-pricing
-func (h *PaymentHandler) GetPublicModelPricing(c *gin.Context) {
-	ctx := c.Request.Context()
-
-	cfg, err := h.configService.GetPaymentConfig(ctx)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
-	out := publicModelPricingResponse{
-		Enabled:                   cfg.Enabled,
-		GeneratedAt:               time.Now().UTC().Format(time.RFC3339),
-		Plans:                     []publicModelPricingPlan{},
-		BalanceRechargeMultiplier: cfg.BalanceRechargeMultiplier,
-		HelpText:                  cfg.HelpText,
-		HelpImageURL:              cfg.HelpImageURL,
-	}
-	if !cfg.Enabled {
-		response.Success(c, out)
-		return
-	}
-
-	plans, err := h.configService.ListPlansForSale(ctx)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	groupInfo := h.configService.GetGroupInfoMap(ctx, plans)
-	for _, p := range plans {
-		gi, ok := groupInfo[p.GroupID]
-		if !ok || gi.Status != service.StatusActive || gi.SubscriptionType != service.SubscriptionTypeSubscription {
-			continue
-		}
-		out.Plans = append(out.Plans, publicModelPricingPlan{
-			ID:              int64(p.ID),
-			GroupPlatform:   gi.Platform,
-			GroupName:       gi.Name,
-			RateMultiplier:  gi.RateMultiplier,
-			DailyLimitUSD:   gi.DailyLimitUSD,
-			WeeklyLimitUSD:  gi.WeeklyLimitUSD,
-			MonthlyLimitUSD: gi.MonthlyLimitUSD,
-			ModelScopes:     gi.ModelScopes,
-			Name:            p.Name,
-			Description:     p.Description,
-			Price:           p.Price,
-			OriginalPrice:   p.OriginalPrice,
-			ValidityDays:    p.ValidityDays,
-			ValidityUnit:    p.ValidityUnit,
-			Features:        parseFeatures(p.Features),
-		})
-	}
-
-	response.Success(c, out)
 }
 
 // parseFeatures splits a newline-separated features string into a string slice.
@@ -566,9 +573,6 @@ type PublicOrderResult struct {
 	ID                  int64      `json:"id"`
 	OutTradeNo          string     `json:"out_trade_no"`
 	Amount              float64    `json:"amount"`
-	BaseAmount          float64    `json:"base_amount"`
-	BonusAmount         float64    `json:"bonus_amount"`
-	BonusRate           float64    `json:"bonus_rate"`
 	PayAmount           float64    `json:"pay_amount"`
 	FeeRate             float64    `json:"fee_rate"`
 	Currency            string     `json:"currency"`
@@ -604,9 +608,6 @@ func buildPublicOrderResult(order *dbent.PaymentOrder) PublicOrderResult {
 		ID:                  order.ID,
 		OutTradeNo:          order.OutTradeNo,
 		Amount:              order.Amount,
-		BaseAmount:          order.BaseAmount,
-		BonusAmount:         order.BonusAmount,
-		BonusRate:           order.BonusRate,
 		PayAmount:           order.PayAmount,
 		FeeRate:             order.FeeRate,
 		Currency:            service.PaymentOrderCurrency(order),
@@ -715,9 +716,6 @@ type PaymentOrderResult struct {
 	ID                  int64      `json:"id"`
 	UserID              int64      `json:"user_id"`
 	Amount              float64    `json:"amount"`
-	BaseAmount          float64    `json:"base_amount"`
-	BonusAmount         float64    `json:"bonus_amount"`
-	BonusRate           float64    `json:"bonus_rate"`
 	PayAmount           float64    `json:"pay_amount"`
 	FeeRate             float64    `json:"fee_rate"`
 	Currency            string     `json:"currency"`
@@ -756,9 +754,6 @@ func sanitizePaymentOrderForResponse(order *dbent.PaymentOrder) *PaymentOrderRes
 		ID:                  order.ID,
 		UserID:              order.UserID,
 		Amount:              order.Amount,
-		BaseAmount:          order.BaseAmount,
-		BonusAmount:         order.BonusAmount,
-		BonusRate:           order.BonusRate,
 		PayAmount:           order.PayAmount,
 		FeeRate:             order.FeeRate,
 		Currency:            service.PaymentOrderCurrency(order),

@@ -77,13 +77,6 @@ func ProvideAccountTestService(
 	)
 }
 
-func ProvideTokenCacheInvalidators(invalidator TokenCacheInvalidator) []TokenCacheInvalidator {
-	if invalidator == nil {
-		return nil
-	}
-	return []TokenCacheInvalidator{invalidator}
-}
-
 // ProvideOpenAIOAuthService creates OpenAIOAuthService with privacy/account enrichment support.
 func ProvideOpenAIOAuthService(
 	proxyRepo ProxyRepository,
@@ -633,7 +626,6 @@ var ProviderSet = wire.NewSet(
 	ProvideRateLimitService,
 	NewAccountUsageService,
 	ProvideAccountTestService,
-	ProvideTokenCacheInvalidators,
 	ProvideSettingService,
 	NewDataManagementService,
 	ProvideBackupService,
@@ -649,6 +641,7 @@ var ProviderSet = wire.NewSet(
 	ProvideEmailQueueService,
 	NewTurnstileService,
 	NewSubscriptionService,
+	NewDailyCheckinService,
 	wire.Bind(new(DefaultSubscriptionAssigner), new(*SubscriptionService)),
 	ProvideConcurrencyService,
 	ProvideUserMessageQueueService,
@@ -682,7 +675,6 @@ var ProviderSet = wire.NewSet(
 	NewChannelService,
 	NewModelPricingResolver,
 	NewContentModerationService,
-	NewDailyCheckinService,
 	NewAffiliateService,
 	ProvidePaymentConfigService,
 	ProvidePaymentService,

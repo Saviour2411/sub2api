@@ -149,7 +149,6 @@ func (h *RedeemHandler) Generate(c *gin.Context) {
 			Count:        req.Count,
 			Type:         req.Type,
 			Value:        req.Value,
-			MaxUses:      req.MaxUses,
 			GroupID:      req.GroupID,
 			ValidityDays: req.ValidityDays,
 			ExpiresAt:    expiresAt,

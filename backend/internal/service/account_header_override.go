@@ -9,6 +9,9 @@ import (
 	"golang.org/x/net/http/httpguts"
 )
 
+// 请求头覆写（header override）：仅对 Anthropic / OpenAI 平台的 api_key 账号生效。
+// 管理员在账号上配置一组 header name -> value，转发到上游前用配置值覆盖同名请求头
+// （匹配不区分大小写）；value 为空的条目视为"未填写"，不参与覆盖。
 const (
 	credKeyHeaderOverrideEnabled = "header_override_enabled"
 	credKeyHeaderOverrides       = "header_overrides"
@@ -63,6 +66,8 @@ func isHeaderOverrideBlockedName(lowerName string) bool {
 	return blocked
 }
 
+// IsHeaderOverrideEligible 报告账号类型是否支持请求头覆写。
+// 目前仅开放 Anthropic / OpenAI 两个平台的 api_key 账号。
 func (a *Account) IsHeaderOverrideEligible() bool {
 	if a == nil || a.Type != AccountTypeAPIKey {
 		return false
@@ -70,6 +75,7 @@ func (a *Account) IsHeaderOverrideEligible() bool {
 	return a.Platform == PlatformAnthropic || a.Platform == PlatformOpenAI
 }
 
+// IsHeaderOverrideEnabled 报告账号是否启用了请求头覆写。
 func (a *Account) IsHeaderOverrideEnabled() bool {
 	if !a.IsHeaderOverrideEligible() || a.Credentials == nil {
 		return false
@@ -176,6 +182,9 @@ func (a *Account) ApplyHeaderOverrides(h http.Header) {
 	}
 }
 
+// NormalizeHeaderOverrideCredentials 校验并原地规范化 credentials 中的请求头覆写字段。
+// 供账号创建/更新/批量更新的保存路径调用；credentials 未携带相关字段时为 no-op。
+// 规范化内容：header 名转小写并去除首尾空白，value 去除首尾空白，丢弃名和值均为空的条目。
 func NormalizeHeaderOverrideCredentials(credentials map[string]any) error {
 	if credentials == nil {
 		return nil

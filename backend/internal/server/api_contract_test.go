@@ -234,6 +234,7 @@ func TestAPIContracts(t *testing.T) {
 					"ip_whitelist": null,
 					"ip_blacklist": null,
 					"last_used_at": null,
+					"last_used_ip": null,
 					"current_concurrency": 0,
 					"quota": 0,
 					"quota_used": 0,
@@ -284,6 +285,7 @@ func TestAPIContracts(t *testing.T) {
 							"ip_whitelist": null,
 							"ip_blacklist": null,
 							"last_used_at": null,
+							"last_used_ip": null,
 							"current_concurrency": 0,
 							"quota": 0,
 							"quota_used": 0,
@@ -368,8 +370,12 @@ func TestAPIContracts(t *testing.T) {
 						"image_rate_independent": false,
 						"image_rate_multiplier": 0,
 						"claude_code_only": false,
-						"claude_code_upstream_mimicry": false,
 						"allow_messages_dispatch": false,
+						"video_price_480p": null,
+						"video_price_720p": null,
+						"video_price_1080p": null,
+						"video_rate_independent": false,
+						"video_rate_multiplier": 0,
 						"fallback_group_id": null,
 						"fallback_group_id_on_invalid_request": null,
 						"require_oauth_only": false,
@@ -464,9 +470,6 @@ func TestAPIContracts(t *testing.T) {
 						"value": 1.25,
 						"status": "used",
 						"used_by": 1,
-						"used_count": 0,
-						"max_uses": 0,
-						"remaining_uses": 1,
 						"used_at": "2025-01-02T03:04:05Z",
 						"created_at": "2025-01-02T03:04:05Z",
 						"group_id": null,
@@ -1369,7 +1372,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 	settingRepo := newStubSettingRepo()
 	settingService := service.NewSettingService(settingRepo, cfg)
 
-	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService, nil, nil)

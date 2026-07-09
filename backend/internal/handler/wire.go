@@ -104,7 +104,6 @@ func ProvideHandlers(
 	apiKeyHandler *APIKeyHandler,
 	usageHandler *UsageHandler,
 	redeemHandler *RedeemHandler,
-	dailyCheckinHandler *DailyCheckinHandler,
 	subscriptionHandler *SubscriptionHandler,
 	announcementHandler *AnnouncementHandler,
 	channelMonitorUserHandler *ChannelMonitorUserHandler,
@@ -116,8 +115,9 @@ func ProvideHandlers(
 	paymentHandler *PaymentHandler,
 	paymentWebhookHandler *PaymentWebhookHandler,
 	availableChannelHandler *AvailableChannelHandler,
-	modelMarketplaceHandler *ModelMarketplaceHandler,
 	batchImageHandler *BatchImageHandler,
+	dailyCheckinHandler *DailyCheckinHandler,
+	modelMarketplaceHandler *ModelMarketplaceHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
@@ -127,7 +127,6 @@ func ProvideHandlers(
 		APIKey:           apiKeyHandler,
 		Usage:            usageHandler,
 		Redeem:           redeemHandler,
-		DailyCheckin:     dailyCheckinHandler,
 		Subscription:     subscriptionHandler,
 		Announcement:     announcementHandler,
 		ChannelMonitor:   channelMonitorUserHandler,
@@ -139,8 +138,9 @@ func ProvideHandlers(
 		Payment:          paymentHandler,
 		PaymentWebhook:   paymentWebhookHandler,
 		AvailableChannel: availableChannelHandler,
-		ModelMarketplace: modelMarketplaceHandler,
 		BatchImage:       batchImageHandler,
+		DailyCheckin:     dailyCheckinHandler,
+		ModelMarketplace: modelMarketplaceHandler,
 	}
 }
 
@@ -152,7 +152,6 @@ var ProviderSet = wire.NewSet(
 	NewAPIKeyHandler,
 	NewUsageHandler,
 	NewRedeemHandler,
-	NewDailyCheckinHandler,
 	NewSubscriptionHandler,
 	NewAnnouncementHandler,
 	NewChannelMonitorUserHandler,
@@ -163,8 +162,9 @@ var ProviderSet = wire.NewSet(
 	NewPaymentHandler,
 	NewPaymentWebhookHandler,
 	NewAvailableChannelHandler,
-	NewModelMarketplaceHandler,
 	NewBatchImageHandler,
+	NewDailyCheckinHandler,
+	NewModelMarketplaceHandler,
 
 	// Admin handlers
 	admin.NewDashboardHandler,

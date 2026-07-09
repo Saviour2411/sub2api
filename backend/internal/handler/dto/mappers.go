@@ -89,6 +89,7 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 		IPWhitelist:        k.IPWhitelist,
 		IPBlacklist:        k.IPBlacklist,
 		LastUsedAt:         k.LastUsedAt,
+		LastUsedIP:         k.LastUsedIP,
 		Quota:              k.Quota,
 		QuotaUsed:          k.QuotaUsed,
 		ExpiresAt:          k.ExpiresAt,
@@ -186,6 +187,8 @@ func groupFromServiceBase(g *service.Group) Group {
 		ImageRateMultiplier:             g.ImageRateMultiplier,
 		BatchImageDiscountMultiplier:    g.BatchImageDiscountMultiplier,
 		BatchImageHoldMultiplier:        g.BatchImageHoldMultiplier,
+		VideoRateIndependent:            g.VideoRateIndependent,
+		VideoRateMultiplier:             g.VideoRateMultiplier,
 		PeakRateEnabled:                 g.PeakRateEnabled,
 		PeakStart:                       g.PeakStart,
 		PeakEnd:                         g.PeakEnd,
@@ -193,8 +196,10 @@ func groupFromServiceBase(g *service.Group) Group {
 		ImagePrice1K:                    g.ImagePrice1K,
 		ImagePrice2K:                    g.ImagePrice2K,
 		ImagePrice4K:                    g.ImagePrice4K,
+		VideoPrice480P:                  g.VideoPrice480P,
+		VideoPrice720P:                  g.VideoPrice720P,
+		VideoPrice1080P:                 g.VideoPrice1080P,
 		ClaudeCodeOnly:                  g.ClaudeCodeOnly,
-		ClaudeCodeUpstreamMimicry:       g.ClaudeCodeUpstreamMimicry,
 		FallbackGroupID:                 g.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: g.FallbackGroupIDOnInvalidRequest,
 		AllowMessagesDispatch:           g.AllowMessagesDispatch,
@@ -543,38 +548,6 @@ func RedeemCodeFromServiceAdmin(rc *service.RedeemCode) *AdminRedeemCode {
 	}
 }
 
-func redeemCodeFromServiceBase(rc *service.RedeemCode) RedeemCode {
-	out := RedeemCode{
-		ID:            rc.ID,
-		Code:          rc.Code,
-		Type:          rc.Type,
-		Value:         rc.Value,
-		Status:        rc.Status,
-		MaxUses:       rc.MaxUses,
-		UsedCount:     rc.UsedCount,
-		RemainingUses: rc.RemainingUses(),
-		UsedBy:        rc.UsedBy,
-		UsedAt:        rc.UsedAt,
-		CreatedAt:     rc.CreatedAt,
-		ExpiresAt:     rc.ExpiresAt,
-		GroupID:       rc.GroupID,
-		ValidityDays:  rc.ValidityDays,
-		User:          UserFromServiceShallow(rc.User),
-		Group:         GroupFromServiceShallow(rc.Group),
-	}
-	if rc.IsExpired() {
-		out.Status = service.StatusExpired
-	}
-
-	// For admin_balance/admin_concurrency types, include notes so users can see
-	// why they were charged or credited by admin
-	if (rc.Type == "admin_balance" || rc.Type == "admin_concurrency") && rc.Notes != "" {
-		out.Notes = &rc.Notes
-	}
-
-	return out
-}
-
 func RedeemCodeUsageFromService(usage *service.RedeemCodeUsage) *RedeemCodeUsage {
 	if usage == nil {
 		return nil
@@ -590,7 +563,37 @@ func RedeemCodeUsageFromService(usage *service.RedeemCodeUsage) *RedeemCodeUsage
 		UsedAt:       usage.UsedAt,
 		User:         UserFromServiceShallow(usage.User),
 		Group:        GroupFromServiceShallow(usage.Group),
+		RedeemCode:   RedeemCodeFromService(usage.RedeemCode),
 	}
+}
+
+func redeemCodeFromServiceBase(rc *service.RedeemCode) RedeemCode {
+	out := RedeemCode{
+		ID:           rc.ID,
+		Code:         rc.Code,
+		Type:         rc.Type,
+		Value:        rc.Value,
+		Status:       rc.Status,
+		UsedBy:       rc.UsedBy,
+		UsedAt:       rc.UsedAt,
+		CreatedAt:    rc.CreatedAt,
+		ExpiresAt:    rc.ExpiresAt,
+		GroupID:      rc.GroupID,
+		ValidityDays: rc.ValidityDays,
+		User:         UserFromServiceShallow(rc.User),
+		Group:        GroupFromServiceShallow(rc.Group),
+	}
+	if rc.IsExpired() {
+		out.Status = service.StatusExpired
+	}
+
+	// For admin_balance/admin_concurrency types, include notes so users can see
+	// why they were charged or credited by admin
+	if (rc.Type == "admin_balance" || rc.Type == "admin_concurrency") && rc.Notes != "" {
+		out.Notes = &rc.Notes
+	}
+
+	return out
 }
 
 // AccountSummaryFromService returns a minimal AccountSummary for usage log display.
