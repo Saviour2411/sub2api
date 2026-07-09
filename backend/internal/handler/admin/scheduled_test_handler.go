@@ -22,6 +22,7 @@ func NewScheduledTestHandler(scheduledTestSvc *service.ScheduledTestService) *Sc
 type createScheduledTestPlanRequest struct {
 	AccountID      int64  `json:"account_id" binding:"required"`
 	ModelID        string `json:"model_id"`
+	Prompt         string `json:"prompt"`
 	CronExpression string `json:"cron_expression" binding:"required"`
 	Enabled        *bool  `json:"enabled"`
 	MaxResults     int    `json:"max_results"`
@@ -29,11 +30,12 @@ type createScheduledTestPlanRequest struct {
 }
 
 type updateScheduledTestPlanRequest struct {
-	ModelID        string `json:"model_id"`
-	CronExpression string `json:"cron_expression"`
-	Enabled        *bool  `json:"enabled"`
-	MaxResults     int    `json:"max_results"`
-	AutoRecover    *bool  `json:"auto_recover"`
+	ModelID        string  `json:"model_id"`
+	Prompt         *string `json:"prompt"`
+	CronExpression string  `json:"cron_expression"`
+	Enabled        *bool   `json:"enabled"`
+	MaxResults     int     `json:"max_results"`
+	AutoRecover    *bool   `json:"auto_recover"`
 }
 
 // ListByAccount GET /admin/accounts/:id/scheduled-test-plans
@@ -63,6 +65,7 @@ func (h *ScheduledTestHandler) Create(c *gin.Context) {
 	plan := &service.ScheduledTestPlan{
 		AccountID:      req.AccountID,
 		ModelID:        req.ModelID,
+		Prompt:         req.Prompt,
 		CronExpression: req.CronExpression,
 		Enabled:        true,
 		MaxResults:     req.MaxResults,
@@ -104,6 +107,9 @@ func (h *ScheduledTestHandler) Update(c *gin.Context) {
 
 	if req.ModelID != "" {
 		existing.ModelID = req.ModelID
+	}
+	if req.Prompt != nil {
+		existing.Prompt = *req.Prompt
 	}
 	if req.CronExpression != "" {
 		existing.CronExpression = req.CronExpression

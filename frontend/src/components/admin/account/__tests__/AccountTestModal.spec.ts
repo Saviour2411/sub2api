@@ -2,8 +2,9 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AccountTestModal from '../AccountTestModal.vue'
 
-const { getAvailableModels, copyToClipboard } = vi.hoisted(() => ({
+const { getAvailableModels, getSettings, copyToClipboard } = vi.hoisted(() => ({
   getAvailableModels: vi.fn(),
+  getSettings: vi.fn(),
   copyToClipboard: vi.fn()
 }))
 
@@ -11,6 +12,9 @@ vi.mock('@/api/admin', () => ({
   adminAPI: {
     accounts: {
       getAvailableModels
+    },
+    settings: {
+      getSettings
     }
   }
 }))
@@ -88,6 +92,7 @@ function mountModal(account: Record<string, unknown> = {
 
 describe('AccountTestModal', () => {
   beforeEach(() => {
+    getSettings.mockResolvedValue({ scheduled_test_default_prompt: 'ping from settings' })
     getAvailableModels.mockResolvedValue([
       { id: 'gemini-2.0-flash', display_name: 'Gemini 2.0 Flash' },
       { id: 'gemini-2.5-flash-image', display_name: 'Gemini 2.5 Flash Image' },
@@ -179,7 +184,7 @@ describe('AccountTestModal', () => {
     const [, request] = (global.fetch as any).mock.calls[0]
     expect(JSON.parse(request.body)).toEqual({
       model_id: 'grok-4.3',
-      prompt: ''
+      prompt: 'ping from settings'
     })
   })
 
@@ -212,7 +217,7 @@ describe('AccountTestModal', () => {
     const [, request] = (global.fetch as any).mock.calls[0]
     expect(JSON.parse(request.body)).toMatchObject({
       model_id: 'gpt-5.4',
-      prompt: '',
+      prompt: 'ping from settings',
       mode: 'compact'
     })
   })

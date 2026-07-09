@@ -227,6 +227,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOpenAIAdvancedSchedulerWeightPreviousResponse:      "",
 		SettingKeyOpenAIAdvancedSchedulerWeightSessionSticky:         "",
 
+		SettingKeyScheduledTestDefaultPrompt: DefaultScheduledTestPrompt,
 		SettingKeyAllowUserViewErrorRequests: "false",
 	}
 
@@ -764,6 +765,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	}
 	result.AntigravityUserAgentVersion = antigravity.NormalizeUserAgentVersion(settings[SettingKeyAntigravityUserAgentVersion])
 	result.OpenAICodexUserAgent = strings.TrimSpace(settings[SettingKeyOpenAICodexUserAgent])
+	result.ScheduledTestDefaultPrompt = firstNonEmpty(settings[SettingKeyScheduledTestDefaultPrompt], DefaultScheduledTestPrompt)
 	// codex_cli_only 加固
 	result.MinCodexVersion = settings[SettingKeyMinCodexVersion]
 	result.MaxCodexVersion = settings[SettingKeyMaxCodexVersion]

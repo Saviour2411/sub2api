@@ -317,6 +317,7 @@ const baseSettingsResponse = {
   totp_encryption_key_configured: false,
   default_balance: 0,
   default_concurrency: 1,
+  scheduled_test_default_prompt: "hi",
   default_subscriptions: [],
   site_name: "Sub2API",
   site_logo: "",

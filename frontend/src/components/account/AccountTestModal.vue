@@ -66,12 +66,12 @@
         />
       </div>
 
-      <div v-if="supportsImageTest" class="space-y-1.5">
+      <div class="space-y-1.5">
         <TextArea
           v-model="testPrompt"
-          :label="t('admin.accounts.imagePromptLabel')"
-          :placeholder="t('admin.accounts.imagePromptPlaceholder')"
-          :hint="t('admin.accounts.imageTestHint')"
+          :label="promptLabel"
+          :placeholder="promptPlaceholder"
+          :hint="promptHint"
           :disabled="status === 'connecting'"
           rows="3"
         />
@@ -283,6 +283,7 @@ const errorMessage = ref('')
 const availableModels = ref<ClaudeModel[]>([])
 const selectedModelId = ref('')
 const testPrompt = ref('')
+const defaultTextTestPrompt = ref('hi')
 const loadingModels = ref(false)
 let abortController: AbortController | null = null
 const generatedImages = ref<PreviewImage[]>([])
@@ -308,6 +309,15 @@ const supportsOpenAIImageTest = computed(() => {
 })
 
 const supportsImageTest = computed(() => supportsGeminiImageTest.value || supportsOpenAIImageTest.value)
+const promptLabel = computed(() =>
+  supportsImageTest.value ? t('admin.accounts.imagePromptLabel') : t('admin.accounts.testPromptLabel')
+)
+const promptPlaceholder = computed(() =>
+  supportsImageTest.value ? t('admin.accounts.imagePromptPlaceholder') : t('admin.accounts.testPromptPlaceholder')
+)
+const promptHint = computed(() =>
+  supportsImageTest.value ? t('admin.accounts.imageTestHint') : t('admin.accounts.testPromptHint')
+)
 
 const sortTestModels = (models: ClaudeModel[]) => {
   const priorityMap = new Map(prioritizedGeminiModels.map((id, index) => [id, index]))
@@ -326,9 +336,11 @@ watch(
   async (newVal) => {
     if (newVal && props.account) {
       testPrompt.value = ''
+      defaultTextTestPrompt.value = 'hi'
       testMode.value = 'default'
       resetState()
-      await loadAvailableModels()
+      await Promise.all([loadDefaultTextTestPrompt(), loadAvailableModels()])
+      applyPromptDefault(true)
     } else {
       abortStream()
     }
@@ -336,10 +348,29 @@ watch(
 )
 
 watch(selectedModelId, () => {
-  if (supportsImageTest.value && !testPrompt.value.trim()) {
-    testPrompt.value = t('admin.accounts.imagePromptDefault')
-  }
+  applyPromptDefault(false)
 })
+
+const loadDefaultTextTestPrompt = async () => {
+  try {
+    const settings = await adminAPI.settings.getSettings()
+    defaultTextTestPrompt.value = settings.scheduled_test_default_prompt?.trim() || 'hi'
+  } catch (error) {
+    console.error('Failed to load default test prompt:', error)
+    defaultTextTestPrompt.value = 'hi'
+  }
+}
+
+const applyPromptDefault = (force: boolean) => {
+  const current = testPrompt.value.trim()
+  const imageDefault = t('admin.accounts.imagePromptDefault')
+  const textDefault = defaultTextTestPrompt.value.trim() || 'hi'
+  const currentIsDefault = current === imageDefault || current === textDefault
+
+  if (force || !current || currentIsDefault) {
+    testPrompt.value = supportsImageTest.value ? imageDefault : textDefault
+  }
+}
 
 const loadAvailableModels = async () => {
   if (!props.account) return
@@ -430,7 +461,7 @@ const startTest = async () => {
       },
       body: JSON.stringify({
         model_id: selectedModelId.value,
-        prompt: supportsImageTest.value ? testPrompt.value.trim() : '',
+        prompt: testPrompt.value.trim(),
         mode: isOpenAIAccount.value ? testMode.value : 'default'
       }),
       signal: abortController.signal
@@ -500,7 +531,7 @@ const handleEvent = (event: {
       addLine(
         supportsImageTest.value
             ? t('admin.accounts.sendingImageRequest')
-            : t('admin.accounts.sendingTestMessage'),
+            : t('admin.accounts.sendingTestMessage', { prompt: testPrompt.value.trim() || defaultTextTestPrompt.value }),
         'text-gray-400'
       )
       addLine('', 'text-gray-300')

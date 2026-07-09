@@ -3,14 +3,18 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { defineComponent } from 'vue'
 import AccountTestModal from '../AccountTestModal.vue'
 
-const { getAvailableModelsMock } = vi.hoisted(() => ({
-  getAvailableModelsMock: vi.fn()
+const { getAvailableModelsMock, getSettingsMock } = vi.hoisted(() => ({
+  getAvailableModelsMock: vi.fn(),
+  getSettingsMock: vi.fn()
 }))
 
 vi.mock('@/api/admin', () => ({
   adminAPI: {
     accounts: {
       getAvailableModels: getAvailableModelsMock
+    },
+    settings: {
+      getSettings: getSettingsMock
     }
   }
 }))
@@ -102,6 +106,8 @@ describe('AccountTestModal', () => {
     getAvailableModelsMock.mockResolvedValue([
       { id: 'gpt-5.4', display_name: 'GPT-5.4' }
     ])
+    getSettingsMock.mockReset()
+    getSettingsMock.mockResolvedValue({ scheduled_test_default_prompt: 'ping from settings' })
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       body: {

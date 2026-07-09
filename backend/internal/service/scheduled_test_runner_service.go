@@ -24,7 +24,7 @@ var scheduledTestAutoManagedBackoffSteps = []time.Duration{
 }
 
 type scheduledAccountTester interface {
-	RunTestBackground(ctx context.Context, accountID int64, modelID string) (*ScheduledTestResult, error)
+	RunTestBackground(ctx context.Context, accountID int64, modelID string, prompt ...string) (*ScheduledTestResult, error)
 }
 
 type scheduledAccountRecovery interface {
@@ -145,7 +145,7 @@ func (s *ScheduledTestRunnerService) runScheduled() {
 }
 
 func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *ScheduledTestPlan) {
-	result, err := s.accountTestSvc.RunTestBackground(ctx, plan.AccountID, plan.ModelID)
+	result, err := s.accountTestSvc.RunTestBackground(ctx, plan.AccountID, plan.ModelID, plan.Prompt)
 	if err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d RunTestBackground error: %v", plan.ID, err)
 		return

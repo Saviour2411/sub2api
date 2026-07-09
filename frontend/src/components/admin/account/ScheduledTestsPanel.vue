@@ -66,6 +66,15 @@
               :hint="t('admin.scheduledTests.cronHelp')"
             />
           </div>
+          <div class="sm:col-span-2">
+            <TextArea
+              v-model="newPlan.prompt"
+              :label="t('admin.scheduledTests.prompt')"
+              :placeholder="t('admin.scheduledTests.promptPlaceholder')"
+              :hint="t('admin.scheduledTests.promptHelp')"
+              rows="2"
+            />
+          </div>
           <div>
             <label class="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
               {{ t('admin.scheduledTests.maxResults') }}
@@ -163,6 +172,9 @@
                 </div>
                 <div class="mt-0.5 font-mono text-xs text-gray-500 dark:text-gray-400">
                   {{ plan.cron_expression }}
+                </div>
+                <div v-if="plan.prompt" class="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.scheduledTests.prompt') }}: {{ plan.prompt }}
                 </div>
               </div>
 
@@ -274,6 +286,15 @@
                   v-model="editForm.cron_expression"
                   :placeholder="'*/30 * * * *'"
                   :hint="t('admin.scheduledTests.cronHelp')"
+                />
+              </div>
+              <div class="sm:col-span-2">
+                <TextArea
+                  v-model="editForm.prompt"
+                  :label="t('admin.scheduledTests.prompt')"
+                  :placeholder="t('admin.scheduledTests.promptPlaceholder')"
+                  :hint="t('admin.scheduledTests.promptHelp')"
+                  rows="2"
                 />
               </div>
               <div>
@@ -470,6 +491,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
 import Input from '@/components/common/Input.vue'
+import TextArea from '@/components/common/TextArea.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import { Icon } from '@/components/icons'
 import { adminAPI } from '@/api/admin'
@@ -505,6 +527,7 @@ const editingPlanId = ref<number | null>(null)
 const updating = ref(false)
 const editForm = reactive({
   model_id: '' as string,
+  prompt: '' as string,
   cron_expression: '' as string,
   max_results: '100' as string,
   enabled: true,
@@ -513,6 +536,7 @@ const editForm = reactive({
 
 const newPlan = reactive({
   model_id: '' as string,
+  prompt: '' as string,
   cron_expression: '' as string,
   max_results: '100' as string,
   enabled: true,
@@ -521,6 +545,7 @@ const newPlan = reactive({
 
 const resetNewPlan = () => {
   newPlan.model_id = ''
+  newPlan.prompt = ''
   newPlan.cron_expression = ''
   newPlan.max_results = '100'
   newPlan.enabled = true
@@ -564,6 +589,7 @@ const handleCreate = async () => {
     await adminAPI.scheduledTests.create({
       account_id: props.accountId,
       model_id: newPlan.model_id,
+      prompt: newPlan.prompt.trim(),
       cron_expression: newPlan.cron_expression,
       enabled: newPlan.enabled,
       max_results: maxResults,
@@ -596,6 +622,7 @@ const handleToggleEnabled = async (plan: ScheduledTestPlan, enabled: boolean) =>
 const startEdit = (plan: ScheduledTestPlan) => {
   editingPlanId.value = plan.id
   editForm.model_id = plan.model_id
+  editForm.prompt = plan.prompt || ''
   editForm.cron_expression = plan.cron_expression
   editForm.max_results = String(plan.max_results)
   editForm.enabled = plan.enabled
@@ -612,6 +639,7 @@ const handleEdit = async () => {
   try {
     const updated = await adminAPI.scheduledTests.update(editingPlanId.value, {
       model_id: editForm.model_id,
+      prompt: editForm.prompt.trim(),
       cron_expression: editForm.cron_expression,
       max_results: Number(editForm.max_results) || 100,
       enabled: editForm.enabled,

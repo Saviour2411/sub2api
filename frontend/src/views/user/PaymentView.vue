@@ -47,6 +47,7 @@
                 :amounts="[10, 20, 50, 100, 200, 500, 1000, 2000, 5000]"
                 :min="globalMinAmount"
                 :max="globalMaxAmount"
+                :bonus-label="quickAmountBonusLabel"
               />
               <p v-if="amountError" class="mt-2 text-xs text-amber-600 dark:text-amber-300">{{ amountError }}</p>
             </div>
@@ -526,6 +527,11 @@ const subscriptionUsdToCnyRate = computed(() => {
 const bonusQuote = computed(() => calculateBonusQuote(validAmount.value, balanceBonusRules.value, balanceRechargeMultiplier.value))
 const creditedAmount = computed(() => bonusQuote.value.creditedAmount)
 const balanceBonusVisible = computed(() => validAmount.value > 0 && (bonusQuote.value.bonusAmount > 0 || bonusQuote.value.creditedAmount !== bonusQuote.value.baseAmount))
+function quickAmountBonusLabel(value: number): string {
+  const quote = calculateBonusQuote(value, balanceBonusRules.value, balanceRechargeMultiplier.value)
+  if (!Number.isFinite(quote.bonusRate) || quote.bonusRate <= 0) return ''
+  return `+${quote.bonusRate % 1 === 0 ? quote.bonusRate.toFixed(0) : quote.bonusRate.toFixed(2)}%`
+}
 const bonusRulePreviewText = computed(() => (
   balanceBonusRules.value.length > 0
     ? t('payment.rechargeBonusRulePreview', { rate: bonusQuote.value.bonusRate.toFixed(2) })

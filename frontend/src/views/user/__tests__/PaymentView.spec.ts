@@ -292,6 +292,35 @@ describe('PaymentView balance recharge bonus preview', () => {
     expect(text).toContain(formatPaymentAmount(165, 'USD'))
     expect(text).toContain('payment.rechargeBonusRulePreview')
   })
+
+  it('passes per-amount bonus labels for quick amount badges', async () => {
+    getCheckoutInfo.mockResolvedValue(checkoutInfoFixture({
+      balance_recharge_multiplier: 1,
+      balance_recharge_bonus_rules: [
+        { min_amount: 0, max_amount: 100, bonus_rate: 5 },
+        { min_amount: 100, max_amount: null, bonus_rate: 12.5 },
+      ],
+    }))
+
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          AmountInput: true,
+          PaymentMethodSelector: true,
+          Teleport: true,
+          Transition: false,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const amountInput = wrapper.findComponent({ name: 'AmountInput' })
+    const bonusLabel = amountInput.props('bonusLabel') as (amount: number) => string
+    expect(bonusLabel(50)).toBe('+5%')
+    expect(bonusLabel(100)).toBe('+12.50%')
+  })
 })
 
 describe('PaymentView subscription confirmation amounts', () => {

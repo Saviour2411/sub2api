@@ -226,6 +226,7 @@ type UpdateSettingsRequest struct {
 	EnableClientDatelineNormalization      *bool   `json:"enable_client_dateline_normalization"`
 	AntigravityUserAgentVersion            *string `json:"antigravity_user_agent_version"`
 	OpenAICodexUserAgent                   *string `json:"openai_codex_user_agent"`
+	ScheduledTestDefaultPrompt             *string `json:"scheduled_test_default_prompt"`
 
 	// codex_cli_only 加固（global-only）
 	MinCodexVersion                      string `json:"min_codex_version"`
@@ -1117,6 +1118,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			return
 		}
 	}
+	if req.ScheduledTestDefaultPrompt != nil {
+		normalized := strings.TrimSpace(*req.ScheduledTestDefaultPrompt)
+		req.ScheduledTestDefaultPrompt = &normalized
+		if len(normalized) > 2048 {
+			response.Error(c, http.StatusBadRequest, "scheduled_test_default_prompt must be at most 2048 characters")
+			return
+		}
+	}
 
 	// codex_cli_only 加固：最低/最高 Codex 版本（空=禁用，或合法 semver；max>=min）
 	if req.MinCodexVersion != "" && !semverPattern.MatchString(req.MinCodexVersion) {
@@ -1388,6 +1397,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.OpenAICodexUserAgent
 			}
 			return previousSettings.OpenAICodexUserAgent
+		}(),
+		ScheduledTestDefaultPrompt: func() string {
+			if req.ScheduledTestDefaultPrompt != nil {
+				return *req.ScheduledTestDefaultPrompt
+			}
+			return previousSettings.ScheduledTestDefaultPrompt
 		}(),
 		MinCodexVersion:       strings.TrimSpace(req.MinCodexVersion),
 		MaxCodexVersion:       strings.TrimSpace(req.MaxCodexVersion),
@@ -1816,6 +1831,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		EnableClientDatelineNormalization:                      updatedSettings.EnableClientDatelineNormalization,
 		AntigravityUserAgentVersion:                            updatedSettings.AntigravityUserAgentVersion,
 		OpenAICodexUserAgent:                                   updatedSettings.OpenAICodexUserAgent,
+		ScheduledTestDefaultPrompt:                             updatedSettings.ScheduledTestDefaultPrompt,
 		MinCodexVersion:                                        updatedSettings.MinCodexVersion,
 		MaxCodexVersion:                                        updatedSettings.MaxCodexVersion,
 		CodexCLIOnlyBlacklist:                                  updatedSettings.CodexCLIOnlyBlacklist,

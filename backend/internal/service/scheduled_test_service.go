@@ -3,12 +3,15 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/robfig/cron/v3"
 )
 
 var scheduledTestCronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+const scheduledTestPromptMaxLength = 2048
 
 // ScheduledTestService provides CRUD operations for scheduled test plans and results.
 type ScheduledTestService struct {
@@ -29,6 +32,9 @@ func NewScheduledTestService(
 
 // CreatePlan validates the cron expression, computes next_run_at, and persists the plan.
 func (s *ScheduledTestService) CreatePlan(ctx context.Context, plan *ScheduledTestPlan) (*ScheduledTestPlan, error) {
+	if err := normalizeScheduledTestPlanPrompt(plan); err != nil {
+		return nil, err
+	}
 	nextRun, err := computeNextRun(plan.CronExpression, time.Now())
 	if err != nil {
 		return nil, fmt.Errorf("invalid cron expression: %w", err)
@@ -54,6 +60,9 @@ func (s *ScheduledTestService) ListPlansByAccount(ctx context.Context, accountID
 
 // UpdatePlan validates cron and updates the plan.
 func (s *ScheduledTestService) UpdatePlan(ctx context.Context, plan *ScheduledTestPlan) (*ScheduledTestPlan, error) {
+	if err := normalizeScheduledTestPlanPrompt(plan); err != nil {
+		return nil, err
+	}
 	nextRun, err := computeNextRun(plan.CronExpression, time.Now())
 	if err != nil {
 		return nil, fmt.Errorf("invalid cron expression: %w", err)
@@ -90,6 +99,17 @@ func (s *ScheduledTestService) SaveResult(ctx context.Context, planID int64, max
 		return err
 	}
 	return s.resultRepo.PruneOldResults(ctx, planID, maxResults)
+}
+
+func normalizeScheduledTestPlanPrompt(plan *ScheduledTestPlan) error {
+	if plan == nil {
+		return nil
+	}
+	plan.Prompt = strings.TrimSpace(plan.Prompt)
+	if len(plan.Prompt) > scheduledTestPromptMaxLength {
+		return fmt.Errorf("prompt must be at most %d characters", scheduledTestPromptMaxLength)
+	}
+	return nil
 }
 
 func computeNextRun(cronExpr string, from time.Time) (time.Time, error) {
