@@ -26,7 +26,7 @@
               </div>
               <div v-if="paidOrder.order_type === 'balance' && paidOrder.bonus_amount > 0" class="flex justify-between">
                 <span class="text-gray-500 dark:text-gray-400">{{ t('payment.bonusAmount') }}</span>
-                <span class="font-medium text-emerald-600 dark:text-emerald-400">+${{ paidOrder.bonus_amount.toFixed(2) }} ({{ paidOrder.bonus_rate.toFixed(2) }}%)</span>
+                <span class="font-medium text-emerald-600 dark:text-emerald-400">+{{ formatCreditedAmount(paidOrder.bonus_amount) }} ({{ paidOrder.bonus_rate.toFixed(2) }}%)</span>
               </div>
               <div class="flex justify-between">
                 <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') }}</span>
@@ -228,6 +228,10 @@ const countdownDisplay = computed(() => {
 
 function formatGatewayAmount(value: number, currency?: string | null): string {
   return formatPaymentAmount(value, currency || paymentCurrency.value, localeCode.value)
+}
+
+function formatCreditedAmount(value: number): string {
+  return formatPaymentAmount(value, 'USD', localeCode.value)
 }
 
 function isSuccessStatus(status: string | null | undefined): boolean {

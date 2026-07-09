@@ -145,12 +145,7 @@ const props = defineProps<{
   platform?: string
   platforms?: string[]
   accountId?: number
-  syncCredentials?: {
-    platform: string
-    type: string
-    base_url?: string
-    api_key: string
-  }
+  previewSyncRequest?: SyncUpstreamPreviewParams | null
 }>()
 
 const emit = defineEmits<{
@@ -187,8 +182,8 @@ const canSyncUpstream = computed(() => {
     if (normalizedPlatforms.value.length === 0) return true
     return normalizedPlatforms.value.some(platform => upstreamSyncPlatforms.has(platform.toLowerCase()))
   }
-  if (props.syncCredentials) {
-    return upstreamSyncPlatforms.has(props.syncCredentials.platform.toLowerCase())
+  if (props.previewSyncRequest) {
+    return upstreamSyncPlatforms.has(props.previewSyncRequest.platform.toLowerCase())
   }
   return false
 })
@@ -262,15 +257,15 @@ const fillRelated = () => {
 
 const syncUpstreamModels = async () => {
   if (isSyncingUpstream.value) return
-  if (!props.accountId && !props.syncCredentials) return
+  if (!props.accountId && !props.previewSyncRequest) return
 
   isSyncingUpstream.value = true
   try {
     let result
     if (props.accountId) {
       result = await accountsAPI.syncUpstreamModels(props.accountId)
-    } else if (props.syncCredentials) {
-      result = await accountsAPI.syncUpstreamModelsPreview(props.syncCredentials as SyncUpstreamPreviewParams)
+    } else if (props.previewSyncRequest) {
+      result = await accountsAPI.syncUpstreamModelsPreview(props.previewSyncRequest)
     } else {
       return
     }

@@ -39,7 +39,7 @@
         </div>
         <div v-if="order?.order_type === 'balance' && order?.bonus_amount > 0" class="mt-1 flex justify-between text-sm">
           <span class="text-gray-500 dark:text-gray-400">{{ t('payment.bonusAmount') }}</span>
-          <span class="font-medium text-emerald-600 dark:text-emerald-400">+¥{{ order?.bonus_amount.toFixed(2) }}</span>
+          <span class="font-medium text-emerald-600 dark:text-emerald-400">+{{ formatCreditedAmount(order.bonus_amount) }}</span>
         </div>
         <div class="mt-1 flex justify-between text-sm">
           <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') }}</span>
@@ -173,7 +173,7 @@ import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import type { PaymentOrder } from '@/types/payment'
 import { formatOrderDateTime } from '@/components/payment/orderUtils'
-import { currencySymbol } from '@/components/payment/currency'
+import { currencySymbol, formatPaymentAmount } from '@/components/payment/currency'
 
 const { t } = useI18n()
 
@@ -194,6 +194,10 @@ const emit = defineEmits<{
 const creditedAmountSymbol = currencySymbol('USD')
 
 const paymentAmountSymbol = computed(() => currencySymbol(props.order?.currency))
+
+function formatCreditedAmount(value: number): string {
+  return formatPaymentAmount(value, 'USD')
+}
 
 const form = reactive({
   amount: 0,

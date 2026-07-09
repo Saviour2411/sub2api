@@ -6485,6 +6485,69 @@
                       }}
                     </p>
                   </div>
+                  <div class="lg:col-span-2">
+                    <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <label class="input-label">{{ localText("余额充值返利规则", "Balance Recharge Bonus Rules") }}</label>
+                        <p class="mt-0.5 text-xs text-gray-400">
+                          {{ localText("配置后按区间返利；未配置时继续使用上方余额充值倍率。最高金额留空表示无上限。", "When configured, bonuses are applied by amount range. If empty, the legacy balance multiplier above is used. Leave max amount empty for no upper bound.") }}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        class="btn btn-secondary inline-flex items-center justify-center gap-2 text-sm"
+                        @click="addPaymentBonusRule"
+                      >
+                        <Icon name="plus" size="sm" />
+                        {{ localText("添加规则", "Add Rule") }}
+                      </button>
+                    </div>
+
+                    <div
+                      v-if="form.payment_balance_recharge_bonus_rules.length === 0"
+                      class="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-500 dark:border-dark-600 dark:bg-dark-800/40 dark:text-dark-300"
+                    >
+                      {{ localText("暂无返利规则，余额充值将按旧倍率入账。", "No bonus rules configured. Balance top-ups will use the legacy multiplier.") }}
+                    </div>
+                    <div v-else class="space-y-2">
+                      <div
+                        v-for="(rule, index) in form.payment_balance_recharge_bonus_rules"
+                        :key="index"
+                        class="grid grid-cols-1 gap-3 rounded-lg border border-gray-100 p-3 dark:border-dark-700 md:grid-cols-[1fr_1fr_1fr_auto]"
+                      >
+                        <label class="block">
+                          <span class="mb-1 block text-xs font-medium text-gray-500 dark:text-dark-300">{{ localText("最低金额", "Min Amount") }}</span>
+                          <input v-model.number="rule.min_amount" type="number" min="0" step="0.01" class="input" />
+                        </label>
+                        <label class="block">
+                          <span class="mb-1 block text-xs font-medium text-gray-500 dark:text-dark-300">{{ localText("最高金额", "Max Amount") }}</span>
+                          <input
+                            :value="rule.max_amount ?? ''"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            class="input"
+                            :placeholder="localText('无上限', 'No limit')"
+                            @input="rule.max_amount = parseOptionalMoney(($event.target as HTMLInputElement).value)"
+                          />
+                        </label>
+                        <label class="block">
+                          <span class="mb-1 block text-xs font-medium text-gray-500 dark:text-dark-300">{{ localText("返利比例 (%)", "Bonus Rate (%)") }}</span>
+                          <input v-model.number="rule.bonus_rate" type="number" min="0" step="0.01" class="input" />
+                        </label>
+                        <div class="flex items-end">
+                          <button
+                            type="button"
+                            class="btn btn-secondary inline-flex w-full items-center justify-center gap-2 text-sm text-red-600 hover:text-red-700 dark:text-red-300"
+                            @click="removePaymentBonusRule(index)"
+                          >
+                            <Icon name="trash" size="sm" />
+                            {{ localText("删除", "Delete") }}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                   <div>
                     <label class="input-label">{{
                       t("admin.settings.payment.subscriptionUsdToCnyRate")
@@ -7351,7 +7414,7 @@ import type {
   NotifyEmailEntry,
   Proxy,
 } from "@/types";
-import type { ProviderInstance } from "@/types/payment";
+import type { PaymentBonusRule, ProviderInstance } from "@/types/payment";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import Icon from "@/components/icons/Icon.vue";
 import Select from "@/components/common/Select.vue";
@@ -8070,6 +8133,7 @@ const form = reactive<SettingsForm>({
   payment_order_timeout_minutes: 30,
   payment_balance_disabled: false,
   payment_balance_recharge_multiplier: 1,
+  payment_balance_recharge_bonus_rules: [],
   payment_subscription_usd_to_cny_rate: 0,
   payment_recharge_fee_rate: 0,
   payment_enabled_types: [],
@@ -8263,6 +8327,62 @@ const form = reactive<SettingsForm>({
   // Allow user view error requests
   allow_user_view_error_requests: false,
 });
+
+function parseOptionalMoney(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function addPaymentBonusRule(): void {
+  const lastRule = form.payment_balance_recharge_bonus_rules.at(-1);
+  form.payment_balance_recharge_bonus_rules.push({
+    min_amount: lastRule?.max_amount ?? 0,
+    max_amount: null,
+    bonus_rate: 0,
+  });
+}
+
+function removePaymentBonusRule(index: number): void {
+  form.payment_balance_recharge_bonus_rules.splice(index, 1);
+}
+
+function normalizePaymentBonusRulesForSubmit(): PaymentBonusRule[] | null {
+  const rules = form.payment_balance_recharge_bonus_rules
+    .map((rule) => ({
+      min_amount: Number(rule.min_amount),
+      max_amount:
+        rule.max_amount === null || rule.max_amount === undefined || String(rule.max_amount).trim() === ""
+          ? null
+          : Number(rule.max_amount),
+      bonus_rate: Number(rule.bonus_rate),
+    }))
+    .filter((rule) => rule.min_amount > 0 || rule.max_amount !== null || rule.bonus_rate > 0);
+
+  for (const rule of rules) {
+    if (!Number.isFinite(rule.min_amount) || rule.min_amount < 0) {
+      appStore.showError(localText("返利规则最低金额必须是非负数字", "Bonus rule min amount must be a non-negative number"));
+      return null;
+    }
+    if (rule.max_amount !== null && (!Number.isFinite(rule.max_amount) || rule.max_amount <= rule.min_amount)) {
+      appStore.showError(localText("返利规则最高金额必须大于最低金额", "Bonus rule max amount must be greater than min amount"));
+      return null;
+    }
+    if (!Number.isFinite(rule.bonus_rate) || rule.bonus_rate < 0) {
+      appStore.showError(localText("返利比例必须是非负数字", "Bonus rate must be a non-negative number"));
+      return null;
+    }
+  }
+
+  return rules
+    .map((rule) => ({
+      min_amount: Math.round(rule.min_amount * 100) / 100,
+      max_amount: rule.max_amount === null ? null : Math.round(rule.max_amount * 100) / 100,
+      bonus_rate: Math.round(rule.bonus_rate * 100) / 100,
+    }))
+    .sort((a, b) => a.min_amount - b.min_amount);
+}
 
 type OpenAIAdvancedSchedulerOverrideKey =
   | "openai_advanced_scheduler_lb_top_k"
@@ -9264,6 +9384,11 @@ async function saveSettings() {
       return;
     }
 
+    const normalizedPaymentBonusRules = normalizePaymentBonusRulesForSubmit();
+    if (normalizedPaymentBonusRules === null) {
+      return;
+    }
+
     form.table_default_page_size = normalizedTableDefaultPageSize;
     form.table_page_size_options = normalizedTablePageSizeOptions;
 
@@ -9572,6 +9697,7 @@ async function saveSettings() {
       payment_balance_disabled: form.payment_balance_disabled,
       payment_balance_recharge_multiplier:
         Number(form.payment_balance_recharge_multiplier) || 1,
+      payment_balance_recharge_bonus_rules: normalizedPaymentBonusRules,
       payment_subscription_usd_to_cny_rate:
         Number(form.payment_subscription_usd_to_cny_rate) || 0,
       payment_recharge_fee_rate: Number(form.payment_recharge_fee_rate) || 0,

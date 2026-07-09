@@ -71,12 +71,16 @@
                   <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
                   <span class="text-lg font-bold text-primary-600 dark:text-primary-400">{{ formatSelectedPaymentAmount(totalAmount) }}</span>
                 </div>
-                <div v-if="balanceRechargeMultiplier !== 1" class="flex justify-between" :class="{ 'border-t border-gray-200 pt-2 dark:border-dark-600': feeRate <= 0 }">
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.creditedBalance') }}</span>
-                  <span class="text-gray-900 dark:text-white">${{ creditedAmount.toFixed(2) }}</span>
+                <div v-if="balanceBonusVisible && bonusQuote.bonusAmount > 0" class="flex justify-between" :class="{ 'border-t border-gray-200 pt-2 dark:border-dark-600': feeRate <= 0 }">
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.bonusAmount') }} ({{ bonusQuote.bonusRate.toFixed(2) }}%)</span>
+                  <span class="font-medium text-emerald-600 dark:text-emerald-400">+{{ formatCreditedAmount(bonusQuote.bonusAmount) }}</span>
                 </div>
-                <p v-if="balanceRechargeMultiplier !== 1" class="border-t border-gray-200 pt-2 text-xs text-gray-500 dark:border-dark-600 dark:text-gray-400">
-                  {{ t('payment.rechargeRatePreview', { usd: balanceRechargeMultiplier.toFixed(2) }) }}
+                <div v-if="balanceBonusVisible" class="flex justify-between" :class="{ 'border-t border-gray-200 pt-2 dark:border-dark-600': feeRate <= 0 && bonusQuote.bonusAmount <= 0 }">
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.creditedBalance') }}</span>
+                  <span class="text-gray-900 dark:text-white">{{ formatCreditedAmount(creditedAmount) }}</span>
+                </div>
+                <p v-if="balanceBonusVisible" class="border-t border-gray-200 pt-2 text-xs text-gray-500 dark:border-dark-600 dark:text-gray-400">
+                  {{ bonusRulePreviewText }}
                 </p>
               </div>
             </div>
@@ -284,6 +288,7 @@ import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { DEFAULT_PAYMENT_CURRENCY, formatPaymentAmount, normalizePaymentCurrency } from '@/components/payment/currency'
+import { calculateBonusQuote } from '@/components/payment/bonus'
 import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
 import { buildPaymentErrorToastMessage, describePaymentScenarioError } from './paymentUx'
 import { hasWechatResumeQuery, parseWechatResumeRoute, stripWechatResumeQuery } from './paymentWechatResume'
@@ -512,12 +517,20 @@ const balanceRechargeMultiplier = computed(() => {
   const multiplier = checkout.value.balance_recharge_multiplier
   return Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1
 })
+const balanceBonusRules = computed(() => checkout.value.balance_recharge_bonus_rules || [])
 // 订阅 CNY 换算汇率（1 USD = X CNY）。0 = 未配置，订阅保持 price 直付（与后端 opt-in 条件严格镜像）。
 const subscriptionUsdToCnyRate = computed(() => {
   const rate = checkout.value.subscription_usd_to_cny_rate
   return Number.isFinite(rate) && rate > 0 ? rate : 0
 })
-const creditedAmount = computed(() => Math.round((validAmount.value * balanceRechargeMultiplier.value) * 100) / 100)
+const bonusQuote = computed(() => calculateBonusQuote(validAmount.value, balanceBonusRules.value, balanceRechargeMultiplier.value))
+const creditedAmount = computed(() => bonusQuote.value.creditedAmount)
+const balanceBonusVisible = computed(() => validAmount.value > 0 && (bonusQuote.value.bonusAmount > 0 || bonusQuote.value.creditedAmount !== bonusQuote.value.baseAmount))
+const bonusRulePreviewText = computed(() => (
+  balanceBonusRules.value.length > 0
+    ? t('payment.rechargeBonusRulePreview', { rate: bonusQuote.value.bonusRate.toFixed(2) })
+    : t('payment.rechargeRatePreview', { usd: balanceRechargeMultiplier.value.toFixed(2) })
+))
 
 // Adaptive grid: center single card, 2-col for 2 plans, 3-col for 3+
 const planGridClass = computed(() => {
@@ -593,6 +606,10 @@ function subscriptionPaymentAmountForCurrency(value: number, currency: string): 
 
 function formatSelectedPaymentAmount(value: number): string {
   return formatPaymentAmount(value, selectedCurrency.value, localeCode.value)
+}
+
+function formatCreditedAmount(value: number): string {
+  return formatPaymentAmount(value, 'USD', localeCode.value)
 }
 
 function formatSelectedSubscriptionPaymentAmount(value: number): string {

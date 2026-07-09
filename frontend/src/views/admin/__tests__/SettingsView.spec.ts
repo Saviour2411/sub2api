@@ -647,6 +647,35 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(payload).not.toHaveProperty("payment_visible_method_wxpay_enabled");
   });
 
+  it("renders and submits structured balance recharge bonus rules", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      payment_balance_recharge_bonus_rules: [
+        { min_amount: 0, max_amount: 100, bonus_rate: 5 },
+        { min_amount: 100, max_amount: null, bonus_rate: 10 },
+      ],
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openPaymentTab(wrapper);
+
+    expect(wrapper.text()).toContain("余额充值返利规则");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payment_balance_recharge_bonus_rules: [
+          { min_amount: 0, max_amount: 100, bonus_rate: 5 },
+          { min_amount: 100, max_amount: null, bonus_rate: 10 },
+        ],
+      }),
+    );
+  });
+
   it("submits Anthropic cache TTL injection gateway setting", async () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,

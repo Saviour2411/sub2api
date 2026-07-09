@@ -26,6 +26,15 @@ vi.mock('@/stores/app', () => ({
   })
 }))
 
+vi.mock('@/composables/useBatchImageAccess', () => ({
+  useBatchImageAccess: () => ({
+    canUseBatchImage: { value: false },
+    batchImageAccessLoaded: { value: true },
+    batchImageAccessLoading: { value: false },
+    refreshBatchImageAccess: vi.fn().mockResolvedValue(false)
+  })
+}))
+
 vi.mock('vue-router', () => ({
   useRouter: () => ({
     push: vi.fn()

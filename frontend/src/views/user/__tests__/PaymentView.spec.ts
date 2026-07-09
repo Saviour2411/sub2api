@@ -105,6 +105,7 @@ function checkoutInfoFixture(overrides: Partial<CheckoutInfoResponse> = {}) {
     plans: [],
     balance_disabled: false,
     balance_recharge_multiplier: 1,
+    balance_recharge_bonus_rules: [],
     subscription_usd_to_cny_rate: 0,
     recharge_fee_rate: 0,
     help_text: '',
@@ -235,6 +236,63 @@ async function mountSubscriptionConfirm(options: Parameters<typeof checkoutInfoW
   await flushPromises()
   return wrapper
 }
+
+describe('PaymentView balance recharge bonus preview', () => {
+  beforeEach(() => {
+    vi.useRealTimers()
+    routeState.path = '/purchase'
+    routeState.query = {}
+    routerReplace.mockReset().mockResolvedValue(undefined)
+    routerPush.mockReset().mockResolvedValue(undefined)
+    routerResolve.mockClear()
+    createOrder.mockReset()
+    refreshUser.mockReset()
+    fetchActiveSubscriptions.mockReset().mockResolvedValue(undefined)
+    showError.mockReset()
+    showInfo.mockReset()
+    showWarning.mockReset()
+    getCheckoutInfo.mockReset()
+    bridgeInvoke.mockReset()
+    window.localStorage.clear()
+    ;(window as Window & { WeixinJSBridge?: { invoke: typeof bridgeInvoke } }).WeixinJSBridge = undefined
+  })
+
+  it('shows configured bonus rate, bonus amount, and credited balance before creating an order', async () => {
+    getCheckoutInfo.mockResolvedValue(checkoutInfoFixture({
+      balance_recharge_multiplier: 1,
+      balance_recharge_bonus_rules: [
+        { min_amount: 0, max_amount: 100, bonus_rate: 5 },
+        { min_amount: 100, max_amount: null, bonus_rate: 10 },
+      ],
+    }))
+
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          AmountInput: {
+            props: ['modelValue'],
+            emits: ['update:modelValue'],
+            template: '<input data-test="amount-input" :value="modelValue ?? ``" @input="$emit(`update:modelValue`, Number($event.target.value))" />',
+          },
+          PaymentMethodSelector: true,
+          Teleport: true,
+          Transition: false,
+        },
+      },
+    })
+
+    await flushPromises()
+    await wrapper.get('[data-test="amount-input"]').setValue('150')
+    await flushPromises()
+
+    const text = wrapper.text()
+    expect(text).toContain('payment.bonusAmount (10.00%)')
+    expect(text).toContain(`+${formatPaymentAmount(15, 'USD')}`)
+    expect(text).toContain(formatPaymentAmount(165, 'USD'))
+    expect(text).toContain('payment.rechargeBonusRulePreview')
+  })
+})
 
 describe('PaymentView subscription confirmation amounts', () => {
   it('shows converted CNY pay amount using the subscription rate, not the balance multiplier', async () => {

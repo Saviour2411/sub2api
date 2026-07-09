@@ -1,4 +1,4 @@
-export default {
+const messages = {
   batchImageGuide: {
     title: 'Batch Image Generation',
     description: 'Submit multiple prompts in one job and download the generated images when complete'
@@ -7555,3 +7555,235 @@ export default {
   },
 
 }
+
+const customMessages = {
+  common: {
+    apply: 'Apply',
+    clear: 'Clear',
+    creating: 'Creating...',
+    online: 'Online',
+    required: 'Required',
+    sending: 'Sending...',
+    tryAgain: 'Try again',
+  },
+  nav: {
+    modelMarketplace: 'Model Marketplace',
+    dailyCheckin: 'Daily Check-in',
+  },
+  home: {
+    modelMarketplace: 'Model Marketplace',
+    live: {
+      label: 'Live Status',
+      coreOnline: 'Core online',
+      activeChannels: 'Active channels',
+      modelsCovered: 'Models covered',
+      avgLatency: 'Avg latency',
+      requestsRouted: 'Requests routed',
+      systemNominal: 'System nominal',
+    },
+    terminal: {
+      title: 'Request Routing',
+      streamHint: 'Streaming enabled',
+      logHandshake: 'Client handshake complete',
+      logRouting: 'Matched account and route',
+      logHit: 'Model policy hit',
+      logSticky: 'Session stickiness kept',
+      logCost: 'Usage and cost recorded',
+      logStream: 'Forwarding upstream stream',
+      response: 'Response complete',
+    },
+  },
+  dailyCheckin: {
+    title: 'Daily Check-in',
+    description: 'Check in daily to receive balance, concurrency, or subscription rewards',
+    kicker: 'Daily Benefits',
+    balance: 'Current Balance',
+    factor: 'Reward Pool',
+    linuxdoPool: 'LinuxDo Reward Pool',
+    result: 'Result',
+    prizePool: 'Prize Pool',
+    recent: 'Recent Records',
+    empty: 'No records',
+    loading: 'Loading',
+    spinning: 'Spinning',
+    spin: 'Check in',
+    done: 'Checked in today',
+    doneHint: 'You have already checked in today. Come back tomorrow.',
+    disabled: 'Daily check-in is disabled',
+    ready: 'Ready to check in',
+    linuxdoExempt: 'LinuxDo users use a dedicated reward pool',
+    loadFailed: 'Failed to load check-in status',
+    success: 'Check-in succeeded: {reward}',
+    failed: 'Check-in failed',
+    days: 'days',
+    types: {
+      balance: 'Balance',
+      concurrency: 'Concurrency',
+      subscription: 'Subscription',
+      none: 'No reward',
+    },
+  },
+  redeem: {
+    dailyCheckinReward: 'Check-in Reward',
+    balanceAddedDailyCheckin: 'Daily Check-in Reward',
+  },
+  payment: {
+    bonusAmount: 'Bonus Amount',
+    rechargeBonusRulePreview: 'This amount matches a bonus rule with a {rate}% bonus rate.',
+  },
+  admin: {
+    accounts: {
+      fromModel: 'Request Model',
+      toModel: 'Upstream Model',
+      codexImportSuccess: 'Codex sessions imported',
+      codexImportCompletedWithErrors: 'Codex session import completed with errors',
+      codexImportResultSummary: '{success} succeeded, {failed} failed',
+      messages: {
+        accountCreated: 'Account created',
+      },
+      status: {
+        lastScheduledTestFailure: 'Last scheduled test failed',
+      },
+      oauth: {
+        openai: {
+          accessTokenAuth: 'Access Token Auth',
+          mobileRefreshTokenAuth: 'Mobile Refresh Token Auth',
+        },
+      },
+      openai: {
+        codexCLIEmulation: 'Codex CLI Emulation',
+        codexCLIEmulationDesc: 'Enable Codex CLI-compatible request handling for this OpenAI API key account.',
+      },
+      failureSchedulingStrategy: {
+        title: 'Failure Scheduling Strategy',
+        hint: 'Control whether the account keeps participating in scheduling after failures.',
+        default: 'Use default strategy',
+        disableUntilTestPass: 'Disable scheduling until a test passes',
+      },
+    },
+    channelMonitor: {
+      advanced: {
+        streamEnabled: 'Streaming Request',
+        streamEnabledHint: 'Use streaming monitor requests to validate long connections and first-token latency.',
+      },
+    },
+    channels: {
+      noGroupsSelected: 'No groups selected',
+      emptyModelsInPricing: 'No models configured for this pricing',
+      form: {
+        defaultPricing: 'Default Pricing',
+        defaultPricingHint: 'Used when a model does not have a dedicated pricing entry.',
+        defaultPricingRequired: 'Configure default pricing first',
+      },
+    },
+    groups: {
+      failedToSave: 'Failed to save group',
+      claudeCode: {
+        upstreamMimicry: 'Upstream Mimicry',
+        upstreamMimicryHint: 'Make Claude Code groups mimic native upstream request characteristics.',
+        upstreamMimicryEnabled: 'Upstream mimicry enabled',
+        upstreamMimicryDisabled: 'Upstream mimicry disabled',
+      },
+    },
+    ops: {
+      result: 'Result',
+      timeRange: {
+        custom: 'Custom',
+      },
+      customTimeRange: {
+        startTime: 'Start Time',
+        endTime: 'End Time',
+      },
+      runtime: {
+        metricThresholds: 'Metric Thresholds',
+        metricThresholdsHint: 'Configure core thresholds used for runtime scoring and alerts.',
+        requestErrorRateMaxPercent: 'Request Error Rate Max',
+        requestErrorRateMaxPercentHint: 'Requests are considered unhealthy above this percentage.',
+        upstreamErrorRateMaxPercent: 'Upstream Error Rate Max',
+        upstreamErrorRateMaxPercentHint: 'Upstream services are considered unhealthy above this percentage.',
+        ttftP99MaxMs: 'P99 TTFT Max',
+        ttftP99MaxMsHint: 'First-token P99 latency is considered high above this value.',
+        slaMinPercent: 'SLA Minimum',
+        slaMinPercentHint: 'Availability is considered unhealthy below this percentage.',
+      },
+    },
+    redeem: {
+      viewUsages: 'View Usage Records',
+      usageRecords: 'Usage Records',
+      usageUser: 'Usage User',
+      maxUses: 'Max Uses',
+      noUsages: 'No usage records',
+      failedToLoadUsages: 'Failed to load usage records',
+      columns: {
+        usage: 'Usage',
+      },
+    },
+    riskControl: {
+      download: 'Download',
+      localAuditEnabled: 'Enable Local Audit',
+      localAuditEnabledHint: 'Persist successful request and response summaries to local files for later audit.',
+      localAuditRecords: 'Local Audit Records',
+      localAuditRecordsHint: 'Shows persisted successful session audit records.',
+      localAuditLoadFailed: 'Failed to load local audit records',
+      localAuditEmpty: 'No local audit records',
+      localAuditDetailTitle: 'Local Audit Detail',
+      localAuditDetailContent: 'Audit Content',
+      localAuditDetailFailed: 'Failed to load local audit detail',
+      localAuditDownloadFailed: 'Failed to download local audit',
+      localAuditDeleteConfirm: 'Delete this local audit record?',
+      localAuditDeleteFailed: 'Failed to delete local audit',
+      localAuditDeleted: 'Local audit record deleted',
+      localAuditMaxStorage: 'Max Storage',
+      localAuditStoragePath: 'Storage Path',
+      localAuditStorageStats: 'Storage Stats',
+      localAuditMaxCaptureConcurrency: 'Capture Concurrency Limit',
+      localAuditMaxCaptureConcurrencyHint: 'Limits concurrent response captures. 0 disables capture.',
+      localAuditScenePolicy: 'Audit Scene',
+      localAuditSceneAll: 'All Scenes',
+      localAuditSceneAllDesc: 'All successful sessions may be written to local audit.',
+      localAuditSceneProgrammingOnly: 'Programming Only',
+      localAuditSceneProgrammingOnlyDesc: 'Only audit likely programming tool, CLI, or agent requests.',
+      localAuditExcludeImage: 'Exclude Image Generation',
+      localAuditExcludeImageHint: 'When enabled, image generation requests are not written to local audit.',
+      localAuditClientPatterns: 'Client Patterns',
+      localAuditToolPatterns: 'Tool Patterns',
+      localAuditToolPatternsHint: 'Tool-name keywords used to detect programming scenes, one per line.',
+      localAuditPatternsHint: 'One keyword per line. Any match marks the request as a programming scene.',
+      localAuditCounts: 'Messages {messages} / Tools {tools} / Calls {calls}',
+      localAuditStabilityTitle: 'Local Audit Capture Queue',
+      localAuditStabilityHint: 'Capturing {active}, skipped {skipped}, response limit {limit}, capture concurrency {concurrency}.',
+      localAuditFilters: {
+        search: 'Search user, model, request ID',
+        model: 'Model',
+      },
+      localAuditTable: {
+        size: 'Size',
+        counts: 'Counts',
+      },
+    },
+    users: {
+      passwordCopied: 'Password copied',
+    },
+  },
+} as const
+
+function deepMerge<T extends Record<string, any>>(base: T, patch: Record<string, any>): T {
+  for (const [key, value] of Object.entries(patch)) {
+    if (
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      base[key] &&
+      typeof base[key] === 'object' &&
+      !Array.isArray(base[key])
+    ) {
+      deepMerge(base[key], value)
+    } else {
+      const target = base as Record<string, any>
+      target[key] = value
+    }
+  }
+  return base
+}
+
+export default deepMerge(messages, customMessages)

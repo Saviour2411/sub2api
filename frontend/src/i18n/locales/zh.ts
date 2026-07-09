@@ -1,4 +1,4 @@
-export default {
+const messages = {
   batchImageGuide: {
     title: '图片批量生成',
     description: '一次提交多条提示词，任务完成后可统一下载图片结果'
@@ -7746,3 +7746,226 @@ export default {
   },
 
 }
+
+const customMessages = {
+  common: {
+    apply: '应用',
+    clear: '清空',
+    creating: '创建中...',
+    online: '在线',
+    required: '必填',
+    sending: '发送中...',
+    tryAgain: '重试',
+  },
+  nav: {
+    modelMarketplace: '模型广场',
+    dailyCheckin: '每日签到',
+  },
+  home: {
+    modelMarketplace: '模型广场',
+    live: {
+      label: '实时状态',
+      coreOnline: '核心服务在线',
+      activeChannels: '活跃渠道',
+      modelsCovered: '覆盖模型',
+      avgLatency: '平均延迟',
+      requestsRouted: '已路由请求',
+      systemNominal: '系统正常',
+    },
+    terminal: {
+      title: '请求路由',
+      streamHint: '流式响应已开启',
+      logHandshake: '完成客户端握手',
+      logRouting: '匹配可用账号并路由',
+      logHit: '命中模型策略',
+      logSticky: '保持会话粘性',
+      logCost: '写入用量与费用',
+      logStream: '转发上游流式输出',
+      response: '响应完成',
+    },
+  },
+  dailyCheckin: {
+    title: '每日签到',
+    description: '每日签到领取余额、并发或订阅奖励',
+    kicker: '每日福利',
+    balance: '当前余额',
+    factor: '专属奖池',
+    linuxdoPool: 'LinuxDo 专属奖池',
+    result: '中奖结果',
+    prizePool: '奖品列表',
+    recent: '最近记录',
+    empty: '暂无记录',
+    loading: '加载中',
+    spinning: '抽奖中',
+    spin: '开始签到',
+    done: '今日已签到',
+    doneHint: '今天已经签到过了，明天再来。',
+    disabled: '每日签到暂未开启',
+    ready: '今日可签到',
+    linuxdoExempt: 'LinuxDo 用户享受专属奖励池',
+    loadFailed: '加载签到状态失败',
+    success: '签到成功：{reward}',
+    failed: '签到失败',
+    days: '天',
+    types: {
+      balance: '余额',
+      concurrency: '并发',
+      subscription: '订阅',
+      none: '谢谢参与',
+    },
+  },
+  redeem: {
+    dailyCheckinReward: '签到奖励',
+    balanceAddedDailyCheckin: '每日签到奖励',
+  },
+  payment: {
+    bonusAmount: '返利金额',
+    rechargeBonusRulePreview: '当前金额命中返利规则，返利比例 {rate}%。',
+  },
+  admin: {
+    accounts: {
+      fromModel: '请求模型',
+      toModel: '上游模型',
+      codexImportSuccess: 'Codex 会话导入成功',
+      codexImportCompletedWithErrors: 'Codex 会话导入完成，但存在错误',
+      codexImportResultSummary: '成功 {success} 个，失败 {failed} 个',
+      messages: {
+        accountCreated: '账号创建成功',
+      },
+      status: {
+        lastScheduledTestFailure: '最近定时测试失败',
+      },
+      oauth: {
+        openai: {
+          accessTokenAuth: 'Access Token 授权',
+          mobileRefreshTokenAuth: '移动端 Refresh Token 授权',
+        },
+      },
+      openai: {
+        codexCLIEmulation: 'Codex CLI 兼容模式',
+        codexCLIEmulationDesc: '为 OpenAI API Key 账号启用 Codex CLI 兼容请求处理。',
+      },
+      failureSchedulingStrategy: {
+        title: '失败调度策略',
+        hint: '控制账号失败后是否继续参与调度。',
+        default: '保持默认策略',
+        disableUntilTestPass: '失败后暂停调度，直到测试通过',
+      },
+    },
+    channelMonitor: {
+      advanced: {
+        streamEnabled: '流式请求',
+        streamEnabledHint: '开启后监控请求使用流式响应，适合验证长连接和首 token 延迟。',
+      },
+    },
+    channels: {
+      noGroupsSelected: '未选择分组',
+      emptyModelsInPricing: '当前定价未配置模型',
+      form: {
+        defaultPricing: '默认定价',
+        defaultPricingHint: '当模型没有单独定价时使用该默认定价。',
+        defaultPricingRequired: '请先配置默认定价',
+      },
+    },
+    groups: {
+      claudeCode: {
+        upstreamMimicry: '上游伪装',
+        upstreamMimicryHint: '让 Claude Code 分组尽量模拟上游原生请求特征。',
+        upstreamMimicryEnabled: '已启用上游伪装',
+        upstreamMimicryDisabled: '未启用上游伪装',
+      },
+    },
+    ops: {
+      runtime: {
+        metricThresholds: '指标阈值',
+        metricThresholdsHint: '配置运行状态评分和告警使用的核心阈值。',
+        requestErrorRateMaxPercent: '请求错误率上限',
+        requestErrorRateMaxPercentHint: '超过该百分比时视为请求错误率异常。',
+        upstreamErrorRateMaxPercent: '上游错误率上限',
+        upstreamErrorRateMaxPercentHint: '超过该百分比时视为上游服务异常。',
+        ttftP99MaxMs: 'P99 首 token 延迟上限',
+        ttftP99MaxMsHint: '首 token P99 延迟超过该值时视为延迟异常。',
+        slaMinPercent: 'SLA 下限',
+        slaMinPercentHint: '低于该百分比时视为可用性异常。',
+      },
+    },
+    redeem: {
+      viewUsages: '查看使用记录',
+      usageRecords: '使用记录',
+      usageUser: '使用用户',
+      maxUses: '最大使用次数',
+      noUsages: '暂无使用记录',
+      failedToLoadUsages: '加载使用记录失败',
+      columns: {
+        usage: '使用情况',
+      },
+    },
+    riskControl: {
+      download: '下载',
+      localAuditEnabled: '启用本地审计',
+      localAuditEnabledHint: '保存成功请求和响应摘要到本地文件，用于事后审计。',
+      localAuditRecords: '本地审计记录',
+      localAuditRecordsHint: '展示已落盘的成功会话审计记录。',
+      localAuditLoadFailed: '加载本地审计记录失败',
+      localAuditEmpty: '暂无本地审计记录',
+      localAuditDetailTitle: '本地审计详情',
+      localAuditDetailContent: '审计内容',
+      localAuditDetailFailed: '加载本地审计详情失败',
+      localAuditDownloadFailed: '下载本地审计失败',
+      localAuditDeleteConfirm: '确定要删除这条本地审计记录吗？',
+      localAuditDeleteFailed: '删除本地审计失败',
+      localAuditDeleted: '本地审计记录已删除',
+      localAuditMaxStorage: '最大存储空间',
+      localAuditStoragePath: '存储路径',
+      localAuditStorageStats: '存储统计',
+      localAuditMaxCaptureConcurrency: '捕获并发上限',
+      localAuditMaxCaptureConcurrencyHint: '限制同时捕获响应的数量，0 表示不捕获。',
+      localAuditScenePolicy: '审计场景',
+      localAuditSceneAll: '全部场景',
+      localAuditSceneAllDesc: '所有成功会话都可进入本地审计。',
+      localAuditSceneProgrammingOnly: '仅编程场景',
+      localAuditSceneProgrammingOnlyDesc: '只审计疑似编程工具、CLI 或代理请求。',
+      localAuditExcludeImage: '排除生图请求',
+      localAuditExcludeImageHint: '开启后图片生成请求不写入本地审计。',
+      localAuditClientPatterns: '客户端特征',
+      localAuditToolPatterns: '工具特征',
+      localAuditToolPatternsHint: '用于识别编程场景的工具名称关键词，每行一个。',
+      localAuditPatternsHint: '每行一个关键词，命中任一关键词即视为编程场景。',
+      localAuditCounts: '消息 {messages} / 工具 {tools} / 调用 {calls}',
+      localAuditStabilityTitle: '本地审计捕获队列',
+      localAuditStabilityHint: '当前捕获 {active}，已跳过 {skipped}，单次响应上限 {limit}，捕获并发上限 {concurrency}。',
+      localAuditFilters: {
+        search: '搜索用户、模型、请求 ID',
+        model: '模型',
+      },
+      localAuditTable: {
+        size: '大小',
+        counts: '统计',
+      },
+    },
+    users: {
+      passwordCopied: '密码已复制',
+    },
+  },
+} as const
+
+function deepMerge<T extends Record<string, any>>(base: T, patch: Record<string, any>): T {
+  for (const [key, value] of Object.entries(patch)) {
+    if (
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      base[key] &&
+      typeof base[key] === 'object' &&
+      !Array.isArray(base[key])
+    ) {
+      deepMerge(base[key], value)
+    } else {
+      const target = base as Record<string, any>
+      target[key] = value
+    }
+  }
+  return base
+}
+
+export default deepMerge(messages, customMessages)

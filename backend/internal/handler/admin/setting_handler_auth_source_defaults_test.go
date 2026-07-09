@@ -255,6 +255,53 @@ func TestSettingHandler_UpdateSettings_PersistsPaymentVisibleMethodsAndAdvancedS
 	require.Equal(t, true, data["openai_advanced_scheduler_subscription_priority_enabled"])
 }
 
+func TestSettingHandler_UpdateSettings_PersistsBalanceRechargeBonusRules(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &settingHandlerRepoStub{
+		values: map[string]string{
+			service.SettingKeyPromoCodeEnabled: "true",
+		},
+	}
+	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
+	paymentCfgSvc := service.NewPaymentConfigService(nil, repo, []byte("test-encryption-key-32-bytes-long"))
+	handler := NewSettingHandler(svc, nil, nil, nil, paymentCfgSvc, nil, nil)
+
+	body := map[string]any{
+		"promo_code_enabled": true,
+		"payment_balance_recharge_bonus_rules": []map[string]any{
+			{"min_amount": 0, "max_amount": 100, "bonus_rate": 5},
+			{"min_amount": 100, "max_amount": nil, "bonus_rate": 10},
+		},
+	}
+	rawBody, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.UpdateSettings(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotEmpty(t, repo.values[service.SettingBalanceBonusRules])
+
+	var resp struct {
+		Data struct {
+			PaymentBalanceRechargeBonusRules []service.PaymentBonusRule `json:"payment_balance_recharge_bonus_rules"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Len(t, resp.Data.PaymentBalanceRechargeBonusRules, 2)
+	require.Equal(t, 0.0, resp.Data.PaymentBalanceRechargeBonusRules[0].MinAmount)
+	require.NotNil(t, resp.Data.PaymentBalanceRechargeBonusRules[0].MaxAmount)
+	require.Equal(t, 100.0, *resp.Data.PaymentBalanceRechargeBonusRules[0].MaxAmount)
+	require.Equal(t, 5.0, resp.Data.PaymentBalanceRechargeBonusRules[0].BonusRate)
+	require.Equal(t, 100.0, resp.Data.PaymentBalanceRechargeBonusRules[1].MinAmount)
+	require.Nil(t, resp.Data.PaymentBalanceRechargeBonusRules[1].MaxAmount)
+	require.Equal(t, 10.0, resp.Data.PaymentBalanceRechargeBonusRules[1].BonusRate)
+}
+
 func TestSettingHandler_UpdateSettings_PreservesLegacyBlankPaymentVisibleMethodSource(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &settingHandlerRepoStub{

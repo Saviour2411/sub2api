@@ -322,7 +322,7 @@ jobs:
       - name: Check deployment configuration
         id: deploy_config
         env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || vars.DEPLOY_HOST || '87.76.198.249' }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || vars.DEPLOY_HOST || '89.58.8.221' }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER || vars.DEPLOY_USER || 'root' }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || vars.DEPLOY_PORT || '22748' }}
           DEPLOY_DIR: ${{ secrets.DEPLOY_DIR || vars.DEPLOY_DIR || '/root/proj/sub2api/deploy' }}
