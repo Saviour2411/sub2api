@@ -62,6 +62,9 @@ func RegisterAdminRoutes(
 		// 系统设置
 		registerSettingsRoutes(admin, h)
 
+		// 二开功能配置
+		registerCustomFeatureRoutes(admin, h)
+
 		// 数据管理
 		registerDataManagementRoutes(admin, h)
 

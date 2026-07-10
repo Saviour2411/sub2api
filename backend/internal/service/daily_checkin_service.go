@@ -357,21 +357,21 @@ func (s *DailyCheckinService) config(ctx context.Context) (dailyCheckinConfig, e
 		cfg.Prizes = legacyDailyCheckinPrizes(cfg.LegacyMode, cfg.LegacyAmount, cfg.LegacyMin, cfg.LegacyMax)
 		return cfg, nil
 	}
-	settings, err := s.settingService.GetAllSettings(ctx)
+	settings, err := s.settingService.GetDailyCheckinSettings(ctx)
 	if err != nil {
 		return cfg, fmt.Errorf("get daily check-in settings: %w", err)
 	}
-	cfg.Enabled = settings.DailyCheckinEnabled
+	cfg.Enabled = settings.Enabled
 	cfg.LegacyMode, cfg.LegacyAmount, cfg.LegacyMin, cfg.LegacyMax = normalizeDailyCheckinSettings(
-		settings.DailyCheckinRewardMode,
-		settings.DailyCheckinRewardAmount,
-		settings.DailyCheckinRewardMin,
-		settings.DailyCheckinRewardMax,
+		settings.LegacyMode,
+		settings.LegacyAmount,
+		settings.LegacyMin,
+		settings.LegacyMax,
 	)
-	cfg.Prizes = normalizeDailyCheckinPrizes(settings.DailyCheckinPrizes, cfg.LegacyMode, cfg.LegacyAmount, cfg.LegacyMin, cfg.LegacyMax)
-	cfg.UnpaidFullDays = normalizeDailyCheckinFullDays(settings.DailyCheckinUnpaidFullDays)
-	cfg.UnpaidDecayRules = normalizeDailyCheckinDecayRules(settings.DailyCheckinUnpaidDecayRules)
-	cfg.LinuxDoExemptEnabled = settings.DailyCheckinLinuxDoExemptEnabled
+	cfg.Prizes = normalizeDailyCheckinPrizes(settings.Prizes, cfg.LegacyMode, cfg.LegacyAmount, cfg.LegacyMin, cfg.LegacyMax)
+	cfg.UnpaidFullDays = normalizeDailyCheckinFullDays(settings.UnpaidFullDays)
+	cfg.UnpaidDecayRules = normalizeDailyCheckinDecayRules(settings.UnpaidDecayRules)
+	cfg.LinuxDoExemptEnabled = settings.LinuxDoExemptEnabled
 	return cfg, nil
 }
 

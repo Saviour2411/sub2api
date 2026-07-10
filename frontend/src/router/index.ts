@@ -577,6 +577,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/custom-features',
+    name: 'AdminCustomFeatures',
+    component: () => import('@/views/admin/CustomFeaturesView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Custom Features',
+      titleKey: 'admin.customFeatures.title',
+      descriptionKey: 'admin.customFeatures.description'
+    }
+  },
+  {
     path: '/admin/settings',
     name: 'AdminSettings',
     component: () => import('@/views/admin/SettingsView.vue'),

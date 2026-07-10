@@ -33,6 +33,7 @@ func TestMatchSemanticErrorRules(t *testing.T) {
 	match := matchSemanticError(cfg, PlatformOpenAI, []byte(`{"message":"Success response quota exceeded"}`))
 	if match == nil {
 		t.Fatal("expected semantic error match")
+		return
 	}
 	if match.RuleName != "高优先级" || match.CustomMessage != "额度异常" {
 		t.Fatalf("unexpected match: %#v", match)

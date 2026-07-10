@@ -57,6 +57,11 @@ describe('AppSidebar header styles', () => {
 })
 
 describe('custom feature navigation entries', () => {
+  it('keeps the independent custom feature admin entry', () => {
+    expect(componentSource).toContain("path: '/admin/custom-features'")
+    expect(componentSource).toContain("label: t('nav.customFeatures')")
+  })
+
   it('wires model marketplace and daily check-in to their feature flags', () => {
     expect(componentSource).toContain('makeSidebarFlag(FeatureFlags.modelMarketplace)')
     expect(componentSource).toContain('makeSidebarFlag(FeatureFlags.dailyCheckin)')
