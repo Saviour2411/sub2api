@@ -568,6 +568,15 @@ const columnsSignature = computed(() =>
   props.columns.map((column) => `${column.key}:${column.sortable ? '1' : '0'}`).join('|')
 )
 
+const clampScrollTop = () => {
+  const el = tableWrapperRef.value
+  if (!el) return
+  const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight)
+  if (el.scrollTop > maxScrollTop) {
+    el.scrollTop = maxScrollTop
+  }
+}
+
 watch(
   isDesktopViewport,
   async (isDesktop) => {
@@ -585,6 +594,7 @@ watch(
   [() => props.data.length, columnsSignature],
   async () => {
     await nextTick()
+    clampScrollTop()
     checkScrollable()
     checkActionsColumnWidth()
   },
@@ -676,6 +686,26 @@ const measureElement = (el: any) => {
     rowVirtualizer.value.measureElement(el as Element)
   }
 }
+
+const scrollToTop = () => {
+  const el = tableWrapperRef.value
+  if (el) {
+    el.scrollTop = 0
+  }
+  if (props.virtualized) {
+    rowVirtualizer.value.scrollToOffset(0)
+  }
+}
+
+watch(
+  () => props.scrollResetKey,
+  async () => {
+    await nextTick()
+    scrollToTop()
+    clampScrollTop()
+  },
+  { flush: 'post' }
+)
 
 const hasActionsColumn = computed(() => {
   return props.columns.some(column => column.key === 'actions')

@@ -197,6 +197,8 @@
           :sort-storage-key="ACCOUNT_SORT_STORAGE_KEY"
           :estimate-row-height="72"
           :overscan="5"
+          :virtualized="false"
+          :scroll-reset-key="accountTableScrollResetKey"
         >
           <template #header-select>
             <input
@@ -844,6 +846,19 @@ const {
     sort_order: sortState.sort_order
   }
 })
+
+const accountTableScrollResetKey = computed(() => JSON.stringify({
+  page: pagination.page,
+  page_size: pagination.page_size,
+  platform: params.platform || '',
+  type: params.type || '',
+  status: params.status || '',
+  privacy_mode: params.privacy_mode || '',
+  group: params.group || '',
+  search: params.search || '',
+  sort_by: sortState.sort_by,
+  sort_order: sortState.sort_order
+}))
 
 const {
   selectedIds: selIds,

@@ -865,7 +865,7 @@ func TestStripOpenAIImageGenerationTools_StripsNamespaceFormats(t *testing.T) {
 	additionalTool, ok := additionalTools[0].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "code_tools", additionalTool["name"])
-	require.False(t, stripOpenAIImageGenerationTools(reqBody))
+	require.False(t, stripOpenAIImageGenerationTools(reqBody), "重复清理应保持幂等")
 }
 
 func TestStripOpenAIImageGenerationTools_KeepsNonImageNamespaces(t *testing.T) {

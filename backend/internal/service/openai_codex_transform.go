@@ -649,6 +649,8 @@ func inputContainsImageGenerationTool(rawInput any) bool {
 	return false
 }
 
+// stripOpenAIImageGenerationTools keeps account-level strip policy symmetric
+// across standard Responses tools, Responses Lite additional_tools, and tool_choice.
 func stripOpenAIImageGenerationTools(reqBody map[string]any) bool {
 	if reqBody == nil {
 		return false
@@ -715,6 +717,7 @@ func stripOpenAIImageGenerationToolsFromInput(reqBody map[string]any) bool {
 		if _, hasTools := item["tools"]; hasTools {
 			filteredInput = append(filteredInput, rawItem)
 		}
+		// 唯一能力被移除后，空的 additional_tools 容器无需继续转发。
 	}
 	if modified {
 		reqBody["input"] = filteredInput
@@ -722,6 +725,7 @@ func stripOpenAIImageGenerationToolsFromInput(reqBody map[string]any) bool {
 	return modified
 }
 
+// stripOpenAIImageGenerationToolsFromRawPayload 统一处理绕过标准请求映射的原始 HTTP 和 WebSocket 载荷。
 func stripOpenAIImageGenerationToolsFromRawPayload(payload []byte) ([]byte, bool, error) {
 	if !openAIRequestBodyHasImageGenerationDeclaration(payload) {
 		if json.Valid(payload) {
@@ -744,11 +748,7 @@ func stripOpenAIImageGenerationToolsFromRawPayload(payload []byte) ([]byte, bool
 	return rebuilt, true, nil
 }
 
-// stripCodexSparkImageGenerationTools removes image_generation tool entries from
-// reqBody["tools"]. gpt-5.3-codex-spark rejects that tool upstream with HTTP 400
-// (invalid_request_error, param=tools), and Codex CLI advertises it by default, so
-// it must be dropped for spark. When the tools list becomes empty the key is removed.
-// Returns true when the body was modified.
+// stripCodexSparkImageGenerationTools 移除图片工具声明和选择项，避免 spark 上游拒绝 Codex 客户端默认声明的能力。
 func stripCodexSparkImageGenerationTools(reqBody map[string]any) bool {
 	return stripOpenAIImageGenerationTools(reqBody)
 }
