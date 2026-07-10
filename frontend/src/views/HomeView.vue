@@ -51,6 +51,16 @@
           <!-- Language Switcher -->
           <LocaleSwitcher />
 
+          <router-link
+            v-if="modelMarketplaceEnabled"
+            to="/models"
+            class="hidden items-center gap-2 rounded-full border border-primary-200/70 bg-white/80 px-3 py-1.5 text-xs font-semibold text-primary-700 shadow-sm backdrop-blur transition hover:border-primary-400 hover:bg-white dark:border-primary-400/25 dark:bg-dark-800/80 dark:text-primary-200 dark:hover:bg-dark-700 sm:inline-flex"
+            :title="t('home.modelMarketplace')"
+          >
+            <Icon name="cube" size="sm" />
+            <span>{{ t('home.modelMarketplace') }}</span>
+          </router-link>
+
           <!-- Doc Link -->
           <a
             v-if="docUrl"
@@ -127,13 +137,21 @@
             </p>
 
             <!-- CTA Button -->
-            <div>
+            <div class="flex flex-col items-center gap-3 sm:flex-row lg:justify-start">
               <router-link
                 :to="isAuthenticated ? dashboardPath : '/login'"
                 class="btn btn-primary px-8 py-3 text-base shadow-lg shadow-primary-500/30"
               >
                 {{ isAuthenticated ? t('home.goToDashboard') : t('home.getStarted') }}
                 <Icon name="arrowRight" size="md" class="ml-2" :stroke-width="2" />
+              </router-link>
+              <router-link
+                v-if="modelMarketplaceEnabled"
+                to="/models"
+                class="btn btn-secondary px-8 py-3 text-base shadow-lg shadow-gray-900/5 dark:shadow-primary-500/10"
+              >
+                <Icon name="cube" size="md" :stroke-width="2" />
+                {{ t('home.modelMarketplace') }}
               </router-link>
             </div>
           </div>
@@ -411,6 +429,7 @@ import { useAuthStore, useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeUrl } from '@/utils/url'
+import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
 
 const { t } = useI18n()
 
@@ -423,6 +442,7 @@ const siteLogo = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.site_
 const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || 'AI API Gateway Platform')
 const docUrl = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.doc_url || appStore.docUrl || ''))
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
+const modelMarketplaceEnabled = computed(() => isFeatureFlagEnabled(FeatureFlags.modelMarketplace))
 
 // Check if homeContent is a URL (for iframe display)
 const isHomeContentUrl = computed(() => {

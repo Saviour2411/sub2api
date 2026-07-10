@@ -223,6 +223,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyAffiliateEnabled,
 		SettingKeyRiskControlEnabled,
 		SettingKeyAllowUserViewErrorRequests,
+		SettingKeyDailyCheckinEnabled,
 		SettingKeyModelMarketplaceEnabled,
 	}
 
@@ -338,6 +339,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		RiskControlEnabled: settings[SettingKeyRiskControlEnabled] == "true",
 
 		AllowUserViewErrorRequests: settings[SettingKeyAllowUserViewErrorRequests] == "true",
+		DailyCheckinEnabled:        settings[SettingKeyDailyCheckinEnabled] == "true",
 		ModelMarketplaceEnabled:    settings[SettingKeyModelMarketplaceEnabled] != "false",
 	}, nil
 }

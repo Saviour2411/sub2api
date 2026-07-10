@@ -232,3 +232,56 @@ func TestPaymentHandler_GetPublicModelPricingDisabledReturnsEmptyPlans(t *testin
 	require.False(t, resp.Data.Enabled)
 	require.Empty(t, resp.Data.Plans)
 }
+
+func TestPaymentHandler_GetCheckoutInfoExposesBalanceRechargeBonusRules(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	client := newPublicPricingTestClient(t)
+	configSvc := service.NewPaymentConfigService(client, publicPricingSettingRepo{values: map[string]string{
+		service.SettingPaymentEnabled:    "true",
+		service.SettingBalanceBonusRules: `[{"min_amount":10,"max_amount":50,"bonus_rate":5},{"min_amount":50,"max_amount":200,"bonus_rate":8},{"min_amount":200,"bonus_rate":10}]`,
+	}}, nil)
+	h := NewPaymentHandler(nil, configSvc, nil)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/payment/checkout-info", nil)
+
+	h.GetCheckoutInfo(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var resp struct {
+		Code int `json:"code"`
+		Data struct {
+			BalanceRechargeBonusRules []service.PaymentBonusRule `json:"balance_recharge_bonus_rules"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.Len(t, resp.Data.BalanceRechargeBonusRules, 3)
+	require.Equal(t, 5.0, resp.Data.BalanceRechargeBonusRules[0].BonusRate)
+	require.Equal(t, 50.0, resp.Data.BalanceRechargeBonusRules[1].MinAmount)
+	require.Nil(t, resp.Data.BalanceRechargeBonusRules[2].MaxAmount)
+}
+
+func TestPaymentHandler_GetCheckoutInfoReturnsEmptyBalanceRechargeBonusRules(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	client := newPublicPricingTestClient(t)
+	configSvc := service.NewPaymentConfigService(client, publicPricingSettingRepo{values: map[string]string{}}, nil)
+	h := NewPaymentHandler(nil, configSvc, nil)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/payment/checkout-info", nil)
+
+	h.GetCheckoutInfo(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var resp struct {
+		Data struct {
+			BalanceRechargeBonusRules []service.PaymentBonusRule `json:"balance_recharge_bonus_rules"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.NotNil(t, resp.Data.BalanceRechargeBonusRules)
+	require.Empty(t, resp.Data.BalanceRechargeBonusRules)
+}

@@ -288,7 +288,7 @@ export default {
     title: 'Recharge / Subscription',
     amountLabel: 'Amount',
     paymentAmount: 'Payment Amount',
-    creditedBalance: 'Credited Balance',
+    creditedBalance: 'Credited Amount',
     quickAmounts: 'Quick Amounts',
     customAmount: 'Custom Amount',
     enterAmount: 'Enter amount',

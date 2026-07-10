@@ -111,6 +111,30 @@ func TestSettingService_GetPublicSettings_ExposesModelMarketplaceEnabled(t *test
 	})
 }
 
+func TestSettingService_GetPublicSettings_ExposesDailyCheckinEnabled(t *testing.T) {
+	t.Run("default disabled", func(t *testing.T) {
+		svc := NewSettingService(&settingPublicRepoStub{values: map[string]string{}}, &config.Config{})
+
+		settings, err := svc.GetPublicSettings(context.Background())
+		require.NoError(t, err)
+		require.False(t, settings.DailyCheckinEnabled)
+	})
+
+	t.Run("explicit true enables", func(t *testing.T) {
+		svc := NewSettingService(&settingPublicRepoStub{values: map[string]string{
+			SettingKeyDailyCheckinEnabled: "true",
+		}}, &config.Config{})
+
+		settings, err := svc.GetPublicSettings(context.Background())
+		require.NoError(t, err)
+		require.True(t, settings.DailyCheckinEnabled)
+
+		payload, err := svc.GetPublicSettingsForInjection(context.Background())
+		require.NoError(t, err)
+		require.True(t, payload.(*PublicSettingsInjectionPayload).DailyCheckinEnabled)
+	})
+}
+
 func TestSettingService_GetModelMarketplaceRuntime_NormalizesGroupIDs(t *testing.T) {
 	svc := NewSettingService(&settingPublicRepoStub{values: map[string]string{
 		SettingKeyModelMarketplaceEnabled:  "true",

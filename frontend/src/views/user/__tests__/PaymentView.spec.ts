@@ -321,6 +321,74 @@ describe('PaymentView balance recharge bonus preview', () => {
     expect(bonusLabel(50)).toBe('+5%')
     expect(bonusLabel(100)).toBe('+12.50%')
   })
+
+  it('always shows actual payment and credited balance for a valid amount', async () => {
+    getCheckoutInfo.mockResolvedValue(checkoutInfoFixture({
+      balance_recharge_multiplier: 1,
+      balance_recharge_bonus_rules: [],
+      recharge_fee_rate: 0,
+    }))
+
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          AmountInput: {
+            props: ['modelValue'],
+            emits: ['update:modelValue'],
+            template: '<input data-test="amount-input" :value="modelValue ?? ``" @input="$emit(`update:modelValue`, Number($event.target.value))" />',
+          },
+          PaymentMethodSelector: true,
+          Teleport: true,
+          Transition: false,
+        },
+      },
+    })
+
+    await flushPromises()
+    await wrapper.get('[data-test="amount-input"]').setValue('25')
+    await flushPromises()
+
+    const text = wrapper.text()
+    expect(text).toContain('payment.amountLabel')
+    expect(text).toContain('payment.actualPay')
+    expect(text).toContain('payment.creditedBalance')
+    expect(text).not.toContain('payment.bonusAmount')
+  })
+
+  it('shows fee-inclusive actual payment without adding the fee to credited amount', async () => {
+    getCheckoutInfo.mockResolvedValue(checkoutInfoFixture({
+      balance_recharge_multiplier: 1,
+      balance_recharge_bonus_rules: [],
+      recharge_fee_rate: 2.5,
+    }))
+
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          AmountInput: {
+            props: ['modelValue'],
+            emits: ['update:modelValue'],
+            template: '<input data-test="amount-input" :value="modelValue ?? ``" @input="$emit(`update:modelValue`, Number($event.target.value))" />',
+          },
+          PaymentMethodSelector: true,
+          Teleport: true,
+          Transition: false,
+        },
+      },
+    })
+
+    await flushPromises()
+    await wrapper.get('[data-test="amount-input"]').setValue('100')
+    await flushPromises()
+
+    const text = wrapper.text()
+    expect(text).toContain('payment.fee (2.5%)')
+    expect(text).toContain(formatPaymentAmount(102.5, 'CNY'))
+    expect(text).toContain(formatPaymentAmount(100, 'USD'))
+    expect(text).toContain('payment.creditedBalance')
+  })
 })
 
 describe('PaymentView subscription confirmation amounts', () => {
