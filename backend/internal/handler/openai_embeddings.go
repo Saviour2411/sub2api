@@ -74,6 +74,9 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 	reqLog = reqLog.With(zap.String("model", reqModel))
 	setOpsRequestContext(c, reqModel, false)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeSync))
+	if !h.validateOpenAIRequestPricing(c, reqLog, apiKey, pricingErrorProtocolOpenAI, "/v1/embeddings", reqModel, body) {
+		return
+	}
 
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
 

@@ -574,6 +574,14 @@ func isKnownCodexModelSuffix(suffix string) bool {
 }
 
 func isCodexDateSuffix(suffix string) bool {
+	if len(suffix) == 8 {
+		for _, r := range suffix {
+			if r < '0' || r > '9' {
+				return false
+			}
+		}
+		return true
+	}
 	parts := strings.Split(suffix, "-")
 	if len(parts) != 3 || len(parts[0]) != 4 || len(parts[1]) != 2 || len(parts[2]) != 2 {
 		return false

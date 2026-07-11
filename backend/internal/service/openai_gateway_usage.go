@@ -154,44 +154,49 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	multiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, baseMultiplier, timezone.Now())
 	videoMultiplier := resolveVideoRateMultiplier(apiKey, baseMultiplier)
 
+	// 文本费用只允许使用用户请求模型及其自身规范别名。映射模型和最终上游模型
+	// 仅用于转发诊断及账号成本，不得进入用户计费候选。
+	requestedModel := strings.TrimSpace(input.OriginalModel)
+	if requestedModel == "" {
+		requestedModel = strings.TrimSpace(result.Model)
+	}
+	billingModel := requestedModel
+	isMediaUsage := result.ImageCount > 0 || result.VideoCount > 0
+	if isMediaUsage {
+		// 媒体路径保留转发阶段明确解析出的媒体计费模型。
+		billingModel = strings.TrimSpace(result.BillingModel)
+		if billingModel == "" {
+			billingModel = strings.TrimSpace(result.Model)
+		}
+	} else if s.cfg == nil || s.cfg.RunMode != config.RunModeSimple {
+		resolvedModel, resolveErr := resolveRequestedModelPricing(
+			ctx, s.cfg, s.resolver, s.billingService, apiKey,
+			requestedModel, PricingUsageToken, "",
+		)
+		if resolveErr != nil {
+			return resolveErr
+		}
+		billingModel = resolvedModel
+	}
+	billingModels := usageBillingModelCandidates(billingModel)
+
 	var cost *CostBreakdown
 	var err error
-	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
-	if result.BillingModel != "" {
-		billingModel = strings.TrimSpace(result.BillingModel)
-	}
-	if input.BillingModelSource == BillingModelSourceChannelMapped && input.ChannelMappedModel != "" && input.ChannelMappedModel != input.OriginalModel {
-		billingModel = input.ChannelMappedModel
-	}
-	if input.BillingModelSource == BillingModelSourceRequested && input.OriginalModel != "" {
-		billingModel = input.OriginalModel
-	}
-	billingModels := usageBillingModelCandidates(
-		billingModel,
-		result.BillingModel,
-		input.ChannelMappedModel,
-		input.OriginalModel,
-		result.UpstreamModel,
-		result.Model,
-	)
 	serviceTier := ""
 	if result.ServiceTier != nil {
 		serviceTier = strings.TrimSpace(*result.ServiceTier)
 	}
 	cost, err = s.calculateOpenAIRecordUsageCost(ctx, result, apiKey, billingModels, multiplier, imageMultiplier, videoMultiplier, tokens, serviceTier)
 	if err != nil {
-		if !isUsagePricingUnavailableError(err) {
+		if s.cfg == nil || s.cfg.RunMode != config.RunModeSimple {
 			return err
 		}
+		// Simple 模式不扣费，允许无价格模型仍写入用量日志。
 		logger.L().With(
 			zap.String("component", "service.openai_gateway"),
 			zap.Strings("billing_models", billingModels),
-			zap.String("requested_model", input.OriginalModel),
-			zap.String("mapped_model", input.ChannelMappedModel),
-			zap.String("upstream_model", result.UpstreamModel),
-			zap.Int64("api_key_id", apiKey.ID),
-			zap.Int64("account_id", account.ID),
-		).Warn("openai_usage.pricing_missing_record_zero_cost", zap.Error(err))
+			zap.String("requested_model", requestedModel),
+		).Warn("openai_usage.simple_mode_pricing_missing", zap.Error(err))
 		cost = &CostBreakdown{BillingMode: string(BillingModeToken)}
 	}
 
@@ -210,12 +215,6 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		if upstreamRequestID := strings.TrimSpace(result.RequestID); upstreamRequestID != "" {
 			requestID = upstreamRequestID
 		}
-	}
-
-	// 确定 RequestedModel（渠道映射前的原始模型）
-	requestedModel := result.Model
-	if input.OriginalModel != "" {
-		requestedModel = input.OriginalModel
 	}
 
 	usageLog := &UsageLog{
@@ -334,6 +333,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	billingErr := func() error {
 		_, err := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
 			Cost:                  cost,
+			AccountQuotaBaseCost:  usageLog.AccountStatsCost,
 			User:                  user,
 			APIKey:                apiKey,
 			Account:               account,
@@ -415,17 +415,6 @@ func isGrokVideoUsageResult(result *OpenAIForwardResult, billingModels []string)
 		}
 	}
 	return false
-}
-
-func isUsagePricingUnavailableError(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, ErrModelPricingUnavailable) {
-		return true
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "no pricing available") || strings.Contains(msg, "pricing not found")
 }
 
 func (s *OpenAIGatewayService) calculateOpenAIRecordUsageTokenCost(
@@ -584,7 +573,7 @@ func (s *OpenAIGatewayService) resolveOpenAIChannelPricing(ctx context.Context, 
 	}
 	gid := apiKey.Group.ID
 	resolved := s.resolver.Resolve(ctx, PricingInput{Model: billingModel, GroupID: &gid})
-	if resolved.Source == PricingSourceChannel {
+	if resolved.ChannelPricingConfigured {
 		return resolved
 	}
 	return nil

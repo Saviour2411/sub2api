@@ -199,6 +199,30 @@ func TestRelay_BasicRelayAndUsage(t *testing.T) {
 	require.JSONEq(t, `{"type":"response.completed","response":{"id":"resp_123","usage":{"input_tokens":7,"output_tokens":3,"input_tokens_details":{"cached_tokens":2}}}}`, string(clientWrites[0].payload))
 }
 
+func TestRelay_InitialRequestModelOverridesMappedFirstFrameForUsage(t *testing.T) {
+	t.Parallel()
+
+	clientConn := newPassthroughTestFrameConn(nil, false)
+	upstreamConn := newPassthroughTestFrameConn([]passthroughTestFrame{{
+		msgType: coderws.MessageText,
+		payload: []byte(`{"type":"response.completed","response":{"id":"resp_requested_model","usage":{"input_tokens":1,"output_tokens":1}}}`),
+	}}, true)
+	firstPayload := []byte(`{"type":"response.create","model":"gpt-5.6-terra","input":[]}`)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	var completed RelayTurnResult
+	result, relayExit := Relay(ctx, clientConn, upstreamConn, firstPayload, RelayOptions{
+		InitialRequestModel: "gpt-5.6-sol",
+		OnTurnComplete: func(turn RelayTurnResult) {
+			completed = turn
+		},
+	})
+	require.Nil(t, relayExit)
+	require.Equal(t, "gpt-5.6-sol", completed.RequestModel)
+	require.Equal(t, "gpt-5.6-sol", result.RequestModel)
+}
+
 func TestRelay_FunctionCallOutputBytesPreserved(t *testing.T) {
 	t.Parallel()
 

@@ -145,6 +145,8 @@ func newTestGatewayHandler(t *testing.T, group *service.Group, accounts []*servi
 
 	schedulerCache := &fakeSchedulerCache{accounts: accounts}
 	schedulerSnapshot := service.NewSchedulerSnapshotService(schedulerCache, nil, nil, nil, nil)
+	// RunModeSimple：跳过计费检查，避免引入 repo/cache 依赖。
+	cfg := &config.Config{RunMode: config.RunModeSimple}
 
 	gwSvc := service.NewGatewayService(
 		nil, // accountRepo (not used: scheduler snapshot hit)
@@ -155,7 +157,7 @@ func newTestGatewayHandler(t *testing.T, group *service.Group, accounts []*servi
 		nil, // userSubRepo
 		nil, // userGroupRateRepo
 		nil, // cache (disable sticky)
-		nil, // cfg
+		cfg,
 		schedulerSnapshot,
 		nil, // concurrencyService (disable load-aware; tryAcquire always acquired)
 		nil, // billingService
@@ -176,8 +178,6 @@ func newTestGatewayHandler(t *testing.T, group *service.Group, accounts []*servi
 		nil, // userPlatformQuotaRepo
 	)
 
-	// RunModeSimple：跳过计费检查，避免引入 repo/cache 依赖。
-	cfg := &config.Config{RunMode: config.RunModeSimple}
 	billingCacheSvc := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
 
 	concurrencySvc := service.NewConcurrencyService(&fakeConcurrencyCache{})
@@ -187,6 +187,7 @@ func newTestGatewayHandler(t *testing.T, group *service.Group, accounts []*servi
 		gatewayService:      gwSvc,
 		billingCacheService: billingCacheSvc,
 		concurrencyHelper:   concurrencyHelper,
+		cfg:                 cfg,
 		// 这些字段对本测试不敏感，保持较小即可
 		maxAccountSwitches:       1,
 		maxAccountSwitchesGemini: 1,

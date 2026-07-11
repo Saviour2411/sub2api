@@ -47,7 +47,7 @@ type Channel struct {
 	Name                  string
 	Description           string
 	Status                string
-	BillingModelSource    string         // "requested", "upstream", or "channel_mapped"
+	BillingModelSource    string         // 兼容字段；service 层固定归一化为 "requested"
 	RestrictModels        bool           // 是否限制模型（仅允许定价列表中的模型）
 	Features              string         // 渠道特性描述（JSON 数组），用于支付页面展示
 	FeaturesConfig        map[string]any // 渠道功能配置（如 web search emulation）
@@ -95,6 +95,8 @@ func (p ChannelDefaultPricing) ToModelPricing() *ModelPricing {
 	}
 	if p.CacheWritePrice != nil {
 		pricing.CacheCreationPricePerToken = *p.CacheWritePrice
+		pricing.CacheCreationPricePerTokenPriority = *p.CacheWritePrice
+		pricing.CacheCreationPriceExplicit = true
 		pricing.CacheCreation5mPrice = *p.CacheWritePrice
 		pricing.CacheCreation1hPrice = *p.CacheWritePrice
 	}
@@ -160,16 +162,13 @@ func (c *Channel) IsActive() bool {
 	return c.Status == StatusActive
 }
 
-// normalizeBillingModelSource 若 BillingModelSource 为空则回填默认值 ChannelMapped。
-// 作为 *Channel 的实体方法集中管理默认值，service 层只需在 Channel 进入内存
-// （缓存装填、repo 读出）时调用一次，下游读路径就无需重复兜底。
+// normalizeBillingModelSource 将渠道计费模型来源统一为用户请求模型。
+// 旧值仍由 API 和数据库兼容接收，但不再影响计费、限制检查或响应。
 func (c *Channel) normalizeBillingModelSource() {
 	if c == nil {
 		return
 	}
-	if c.BillingModelSource == "" {
-		c.BillingModelSource = BillingModelSourceChannelMapped
-	}
+	c.BillingModelSource = BillingModelSourceRequested
 }
 
 // GetModelPricing 根据模型名查找渠道定价，未找到返回 nil。
@@ -426,7 +425,7 @@ type ChannelUsageFields struct {
 	ChannelID          int64  // 渠道 ID（0 = 无渠道）
 	OriginalModel      string // 用户原始请求模型（渠道映射前）
 	ChannelMappedModel string // 渠道映射后的模型名（无映射时等于 OriginalModel）
-	BillingModelSource string // 计费模型来源："requested" / "upstream" / "channel_mapped"
+	BillingModelSource string // 兼容字段；渠道存在时固定为 "requested"
 	ModelMappingChain  string // 映射链描述，如 "a→b→c"
 }
 
@@ -485,6 +484,7 @@ type platformPricingIndex struct {
 	byLower      map[string]*ChannelModelPricing // lowercased model name → pricing (Clone'd)
 	originalCase map[string]string               // lowercased model name → original-case model name
 	names        []string                        // priced model names in their ORIGINAL case, insertion-ordered, deduped case-insensitively (first wins)
+	wildcards    []wildcardPricingEntry          // 通配符定价，按配置顺序优先匹配
 }
 
 // buildPricingIndex 对渠道的定价列表做一次扫描，按 platform 聚合为查找索引。
@@ -501,11 +501,17 @@ func buildPricingIndex(pricings []ChannelModelPricing) map[string]*platformPrici
 				byLower:      make(map[string]*ChannelModelPricing),
 				originalCase: make(map[string]string),
 				names:        make([]string, 0),
+				wildcards:    make([]wildcardPricingEntry, 0),
 			}
 			idx[p.Platform] = pidx
 		}
 		for _, m := range p.Models {
-			if _, wild := splitWildcardSuffix(m); wild {
+			if prefix, wild := splitWildcardSuffix(m); wild {
+				cp := pricings[i].Clone()
+				pidx.wildcards = append(pidx.wildcards, wildcardPricingEntry{
+					prefix:  strings.ToLower(prefix),
+					pricing: &cp,
+				})
 				continue
 			}
 			lower := strings.ToLower(m)
@@ -526,9 +532,8 @@ func buildPricingIndex(pricings []ChannelModelPricing) map[string]*platformPrici
 // 算法（mapping ∪ pricing 并联）：
 //
 //   - Pass A（mapping）：遍历 ModelMapping
-//   - 精确 src → target：显示名 = src（用户视角），定价用 target 在同 platform 定价里查
-//     （mapping 改写后实际计费的是 target；这是用户感知的"实际花费"）。
-//     target 为空或为通配符时退化为按 src 自查。
+//   - 精确 src → target：显示名 = src（用户视角），定价按 src 在同 platform 定价里查。
+//     target 仅影响上游转发，不影响用户计费和价格展示。
 //   - 通配符 src（如 "claude-3-*"）：用同 platform 定价里前缀匹配的模型作为候选展开，
 //     每个候选用自身定价（通配符场景一般是 passthrough，target 通常也是通配符）。
 //   - "*" 单独 mapping key 走通配符分支（前缀为空 → 全展开）。
@@ -567,6 +572,11 @@ func (c *Channel) SupportedModels() []SupportedModel {
 		if p, ok := pidx.byLower[lower]; ok {
 			return pidx.originalCase[lower], p
 		}
+		for _, wildcard := range pidx.wildcards {
+			if strings.HasPrefix(lower, wildcard.prefix) {
+				return name, wildcard.pricing
+			}
+		}
 		return name, nil
 	}
 
@@ -589,7 +599,7 @@ func (c *Channel) SupportedModels() []SupportedModel {
 			continue
 		}
 		pidx := idx[platform]
-		for src, target := range mapping {
+		for src := range mapping {
 			prefix, isWild := splitWildcardSuffix(src)
 			if isWild {
 				if pidx == nil {
@@ -604,15 +614,8 @@ func (c *Channel) SupportedModels() []SupportedModel {
 				}
 				continue
 			}
-			// 精确 mapping：定价按 target 查；target 缺失/通配则退化按 src 查
-			pricingKey := target
-			if pricingKey == "" {
-				pricingKey = src
-			}
-			if _, targetWild := splitWildcardSuffix(pricingKey); targetWild {
-				pricingKey = src
-			}
-			_, pricing := lookup(pidx, pricingKey)
+			// 精确 mapping：映射目标只用于转发，用户展示与定价均按请求侧 src。
+			_, pricing := lookup(pidx, src)
 			// 显示名优先用 src 在定价里的原始大小写（若 src 本身是个定价模型名）
 			displayName, _ := lookup(pidx, src)
 			add(platform, displayName, pricing)

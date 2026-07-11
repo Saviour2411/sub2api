@@ -19,6 +19,8 @@ type ResolvedPricing struct {
 
 	// Token 模式：基础定价（来自 LiteLLM 或 fallback）
 	BasePricing *ModelPricing
+	// TokenPricingConfigured 表示至少存在一项真实 token 价格配置；显式 0 元也算配置。
+	TokenPricingConfigured bool
 
 	// Token 模式：区间定价列表（如有，覆盖 BasePricing 中的对应字段）
 	Intervals []PricingInterval
@@ -28,6 +30,12 @@ type ResolvedPricing struct {
 
 	// 按次/图片模式：默认价格（未命中层级时使用）
 	DefaultPerRequestPrice float64
+	// DefaultPerRequestPriceConfigured 区分显式 0 元与未配置。
+	DefaultPerRequestPriceConfigured bool
+
+	// ChannelPricingConfigured 表示渠道确实提供了当前计费模式可用的价格。
+	// 仅查询到空渠道条目时为 false；显式 0 元和渠道默认价格均为 true。
+	ChannelPricingConfigured bool
 
 	// 来源标识
 	Source string // "channel", "litellm", "fallback"
@@ -79,7 +87,11 @@ func (r *ModelPricingResolver) Resolve(ctx context.Context, input PricingInput) 
 					channelPricing: chPricing,
 				}
 				r.applyRequestTierOverrides(chPricing, resolved)
-				return resolved
+				if resolved.ChannelPricingConfigured {
+					return resolved
+				}
+				// 空的按次/图片条目不应覆盖模型已有的 token 定价。
+				chPricing = nil
 			}
 		}
 	}
@@ -96,15 +108,16 @@ func (r *ModelPricingResolver) Resolve(ctx context.Context, input PricingInput) 
 	}
 
 	resolved := &ResolvedPricing{
-		Mode:                   BillingModeToken,
-		BasePricing:            basePricing,
-		Source:                 source,
-		SupportsCacheBreakdown: basePricing != nil && basePricing.SupportsCacheBreakdown,
+		Mode:                     BillingModeToken,
+		BasePricing:              basePricing,
+		TokenPricingConfigured:   basePricing != nil,
+		Source:                   source,
+		SupportsCacheBreakdown:   basePricing != nil && basePricing.SupportsCacheBreakdown,
+		ChannelPricingConfigured: source == PricingSourceChannel,
 	}
 
 	// 2. 如果有 GroupID，尝试渠道覆盖
 	if chPricing != nil {
-		resolved.Source = PricingSourceChannel
 		resolved.channelPricing = chPricing
 		r.applyTokenOverrides(chPricing, resolved)
 	} else if input.GroupID != nil {
@@ -132,44 +145,68 @@ func (r *ModelPricingResolver) applyChannelOverrides(ctx context.Context, groupI
 		return
 	}
 
-	resolved.Source = PricingSourceChannel
-	resolved.channelPricing = chPricing
-	resolved.Mode = chPricing.BillingMode
-	if resolved.Mode == "" {
-		resolved.Mode = BillingModeToken
+	mode := chPricing.BillingMode
+	if mode == "" {
+		mode = BillingModeToken
 	}
 
-	switch resolved.Mode {
+	switch mode {
 	case BillingModeToken:
+		resolved.channelPricing = chPricing
 		r.applyTokenOverrides(chPricing, resolved)
 	case BillingModePerRequest, BillingModeImage:
-		r.applyRequestTierOverrides(chPricing, resolved)
+		channelResolved := &ResolvedPricing{
+			Mode:           mode,
+			Source:         PricingSourceChannel,
+			channelPricing: chPricing,
+		}
+		r.applyRequestTierOverrides(chPricing, channelResolved)
+		if channelResolved.ChannelPricingConfigured {
+			*resolved = *channelResolved
+		}
 	}
 }
 
 // applyTokenOverrides 应用 token 模式的渠道覆盖
 func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricing, resolved *ResolvedPricing) {
-	// 过滤掉所有价格字段都为空的无效 interval
-	validIntervals := filterValidIntervals(chPricing.Intervals)
+	validIntervals := filterValidTokenIntervals(chPricing.Intervals)
+	hasFlatTokenPricing := chPricing.InputPrice != nil || chPricing.OutputPrice != nil ||
+		chPricing.CacheWritePrice != nil || chPricing.CacheReadPrice != nil
+	hasAnyOverride := hasFlatTokenPricing || chPricing.ImageOutputPrice != nil
+
+	// 空渠道条目不应把未知模型伪装成一个全零价格模型。已有全局价格时也无需覆盖。
+	if len(validIntervals) == 0 && !hasAnyOverride {
+		return
+	}
 
 	// 如果有有效的区间定价，使用区间
 	if len(validIntervals) > 0 {
+		resolved.Source = PricingSourceChannel
+		resolved.ChannelPricingConfigured = true
+		resolved.TokenPricingConfigured = true
 		resolved.Intervals = validIntervals
 		// 区间不匹配时回退到 BasePricing，也需要覆盖图片价格
-		if resolved.BasePricing == nil {
-			resolved.BasePricing = &ModelPricing{}
-		} else {
+		if resolved.BasePricing != nil {
 			// 防止修改 fallbackPrices 中的共享指针
 			cloned := *resolved.BasePricing
 			resolved.BasePricing = &cloned
+			if chPricing.ImageOutputPrice != nil {
+				resolved.BasePricing.ImageOutputPricePerToken = *chPricing.ImageOutputPrice
+			} else {
+				resolved.BasePricing.ImageOutputPricePerToken = 0
+			}
+			resolved.BasePricing.ImageOutputPriceExplicit = true
 		}
-		if chPricing.ImageOutputPrice != nil {
-			resolved.BasePricing.ImageOutputPricePerToken = *chPricing.ImageOutputPrice
-		} else {
-			resolved.BasePricing.ImageOutputPricePerToken = 0
-		}
-		resolved.BasePricing.ImageOutputPriceExplicit = true
 		return
+	}
+	// 仅配置图片输出 token 价格不能让原本未知的文本模型变成可计费模型。
+	if resolved.BasePricing == nil && !hasFlatTokenPricing {
+		return
+	}
+	resolved.Source = PricingSourceChannel
+	resolved.ChannelPricingConfigured = true
+	if hasFlatTokenPricing {
+		resolved.TokenPricingConfigured = true
 	}
 
 	// 否则用 flat 字段覆盖 BasePricing
@@ -211,9 +248,14 @@ func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricin
 
 // applyRequestTierOverrides 应用按次/图片模式的渠道覆盖
 func (r *ModelPricingResolver) applyRequestTierOverrides(chPricing *ChannelModelPricing, resolved *ResolvedPricing) {
-	resolved.RequestTiers = filterValidIntervals(chPricing.Intervals)
+	resolved.RequestTiers = filterValidRequestIntervals(chPricing.Intervals)
 	if chPricing.PerRequestPrice != nil {
 		resolved.DefaultPerRequestPrice = *chPricing.PerRequestPrice
+		resolved.DefaultPerRequestPriceConfigured = true
+	}
+	if resolved.DefaultPerRequestPriceConfigured || len(resolved.RequestTiers) > 0 {
+		resolved.Source = PricingSourceChannel
+		resolved.ChannelPricingConfigured = true
 	}
 }
 
@@ -225,6 +267,27 @@ func filterValidIntervals(intervals []PricingInterval) []PricingInterval {
 		if iv.InputPrice != nil || iv.OutputPrice != nil ||
 			iv.CacheWritePrice != nil || iv.CacheReadPrice != nil ||
 			iv.PerRequestPrice != nil {
+			valid = append(valid, iv)
+		}
+	}
+	return valid
+}
+
+func filterValidTokenIntervals(intervals []PricingInterval) []PricingInterval {
+	var valid []PricingInterval
+	for _, iv := range intervals {
+		if iv.InputPrice != nil || iv.OutputPrice != nil ||
+			iv.CacheWritePrice != nil || iv.CacheReadPrice != nil {
+			valid = append(valid, iv)
+		}
+	}
+	return valid
+}
+
+func filterValidRequestIntervals(intervals []PricingInterval) []PricingInterval {
+	var valid []PricingInterval
+	for _, iv := range intervals {
+		if iv.PerRequestPrice != nil {
 			valid = append(valid, iv)
 		}
 	}
@@ -282,19 +345,31 @@ func intervalToModelPricing(iv *PricingInterval, supportsCacheBreakdown bool, ch
 
 // GetRequestTierPrice 根据层级标签获取按次价格
 func (r *ModelPricingResolver) GetRequestTierPrice(resolved *ResolvedPricing, tierLabel string) float64 {
+	price, _ := r.GetRequestTierPriceWithPresence(resolved, tierLabel)
+	return price
+}
+
+// GetRequestTierPriceWithPresence 返回价格及是否显式配置，用于区分免费与缺价。
+func (r *ModelPricingResolver) GetRequestTierPriceWithPresence(resolved *ResolvedPricing, tierLabel string) (float64, bool) {
 	for _, tier := range resolved.RequestTiers {
 		if tier.TierLabel == tierLabel && tier.PerRequestPrice != nil {
-			return *tier.PerRequestPrice
+			return *tier.PerRequestPrice, true
 		}
 	}
-	return 0
+	return 0, false
 }
 
 // GetRequestTierPriceByContext 根据 context token 数获取按次价格
 func (r *ModelPricingResolver) GetRequestTierPriceByContext(resolved *ResolvedPricing, totalContextTokens int) float64 {
+	price, _ := r.GetRequestTierPriceByContextWithPresence(resolved, totalContextTokens)
+	return price
+}
+
+// GetRequestTierPriceByContextWithPresence 返回上下文区间价格及是否显式配置。
+func (r *ModelPricingResolver) GetRequestTierPriceByContextWithPresence(resolved *ResolvedPricing, totalContextTokens int) (float64, bool) {
 	iv := FindMatchingInterval(resolved.RequestTiers, totalContextTokens)
 	if iv != nil && iv.PerRequestPrice != nil {
-		return *iv.PerRequestPrice
+		return *iv.PerRequestPrice, true
 	}
-	return 0
+	return 0, false
 }

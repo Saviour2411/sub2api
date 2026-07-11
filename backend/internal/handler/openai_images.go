@@ -81,9 +81,14 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		zap.Bool("multipart", parsed.Multipart),
 		zap.String("capability", string(parsed.RequiredCapability)),
 	)
+	setOpsRequestContext(c, requestModel, parsed.Stream)
+	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(parsed.Stream, false)))
 
 	if !service.GroupAllowsImageGeneration(apiKey.Group) {
 		h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
+		return
+	}
+	if !h.validateOpenAIPricingSpec(c, reqLog, apiKey, pricingErrorProtocolOpenAI, requestModel, service.PricingUsageImage, parsed.SizeTier, nil) {
 		return
 	}
 	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIImages, requestModel, parsed.ModerationBody()); decision != nil && decision.Blocked {
@@ -97,13 +102,6 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	if imageReleaseFunc != nil {
 		defer imageReleaseFunc()
 	}
-
-	if parsed.Multipart {
-		setOpsRequestContext(c, requestModel, parsed.Stream)
-	} else {
-		setOpsRequestContext(c, requestModel, parsed.Stream)
-	}
-	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(parsed.Stream, false)))
 
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, requestModel)
 

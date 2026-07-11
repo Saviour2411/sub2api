@@ -11,6 +11,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,6 +21,26 @@ import (
 
 func float64Ptr(v float64) *float64 { return &v }
 func intPtr(v int) *int             { return &v }
+
+func TestCreateChannelRequest_AcceptsLegacyBillingModelSources(t *testing.T) {
+	v := validator.New()
+	v.SetTagName("binding")
+
+	for _, source := range []string{
+		service.BillingModelSourceRequested,
+		service.BillingModelSourceUpstream,
+		service.BillingModelSourceChannelMapped,
+	} {
+		require.NoError(t, v.Struct(createChannelRequest{
+			Name:               "compat-channel",
+			BillingModelSource: source,
+		}))
+	}
+	require.Error(t, v.Struct(createChannelRequest{
+		Name:               "invalid-channel",
+		BillingModelSource: "invalid",
+	}))
+}
 
 // ---------------------------------------------------------------------------
 // 1. channelToResponse
@@ -65,7 +86,7 @@ func TestChannelToResponse_FullChannel(t *testing.T) {
 	require.Equal(t, "test-channel", resp.Name)
 	require.Equal(t, "desc", resp.Description)
 	require.Equal(t, "active", resp.Status)
-	require.Equal(t, "upstream", resp.BillingModelSource)
+	require.Equal(t, service.BillingModelSourceRequested, resp.BillingModelSource)
 	require.True(t, resp.RestrictModels)
 	require.Equal(t, []int64{1, 2, 3}, resp.GroupIDs)
 	require.Equal(t, "2025-06-01T12:00:00Z", resp.CreatedAt)
@@ -109,11 +130,8 @@ func TestChannelToResponse_EmptyDefaults(t *testing.T) {
 		},
 	}
 
-	// handler 层 channelToResponse 现在是纯透传：BillingModelSource 的空值兜底
-	// 已下放到 service 层（Create/GetByID/List/Update/ListAvailable 出口统一处理），
-	// 因此这里构造 fixture 时直接传入归一化后的值。
 	resp := channelToResponse(ch)
-	require.Equal(t, "channel_mapped", resp.BillingModelSource)
+	require.Equal(t, service.BillingModelSourceRequested, resp.BillingModelSource)
 	require.NotNil(t, resp.GroupIDs)
 	require.Empty(t, resp.GroupIDs)
 	require.NotNil(t, resp.ModelMapping)
@@ -124,8 +142,7 @@ func TestChannelToResponse_EmptyDefaults(t *testing.T) {
 	require.Equal(t, "token", resp.ModelPricing[0].BillingMode)
 }
 
-func TestChannelToResponse_BillingModelSourcePassthrough(t *testing.T) {
-	// handler 不再兜底 BillingModelSource：空值应原样透传（由 service 层负责默认回填）。
+func TestChannelToResponse_BillingModelSourceAlwaysRequested(t *testing.T) {
 	ch := &service.Channel{
 		ID:                 1,
 		Name:               "ch",
@@ -134,7 +151,7 @@ func TestChannelToResponse_BillingModelSourcePassthrough(t *testing.T) {
 		UpdatedAt:          time.Now(),
 	}
 	resp := channelToResponse(ch)
-	require.Equal(t, "", resp.BillingModelSource, "handler 应纯透传，默认值由 service.normalizeBillingModelSource 负责")
+	require.Equal(t, service.BillingModelSourceRequested, resp.BillingModelSource)
 }
 
 func TestChannelToResponse_NilModels(t *testing.T) {

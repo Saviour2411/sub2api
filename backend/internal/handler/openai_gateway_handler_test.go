@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -931,9 +932,10 @@ func TestOpenAIResponsesWebSocket_ContentModerationBlocksFirstFrame(t *testing.T
 		return len(repo.logSnapshot()) == 1
 	}, time.Second, 10*time.Millisecond)
 	repo.resetLogs()
+	gatewayService, billingCacheService := newSimpleOpenAIGatewayTestDependencies()
 	h := &OpenAIGatewayHandler{
-		gatewayService:           &service.OpenAIGatewayService{},
-		billingCacheService:      &service.BillingCacheService{},
+		gatewayService:           gatewayService,
+		billingCacheService:      billingCacheService,
 		apiKeyService:            &service.APIKeyService{},
 		contentModerationService: moderationSvc,
 		concurrencyHelper:        NewConcurrencyHelper(service.NewConcurrencyService(&concurrencyCacheMock{}), SSEPingFormatNone, time.Second),
@@ -1018,6 +1020,122 @@ func TestOpenAIResponsesWebSocket_PassthroughUsageLogLeavesUserAgentNilWhenMissi
 	require.Nil(t, got.log.UserAgent, "空入站 User-Agent 不应由上游握手 UA 或默认 UA 兜底")
 	require.NotNil(t, got.log.ReasoningEffort)
 	require.Equal(t, "medium", *got.log.ReasoningEffort)
+}
+
+func TestOpenAIResponsesWebSocket_PassthroughUsageUsesEachTurnRequestedModelAndMapping(t *testing.T) {
+	got := runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
+		firstPayload: `{"type":"response.create","model":"gpt-5.6-sol","stream":false}`,
+		followupPayloads: []string{
+			`{"type":"response.create","model":"gpt-5.6-terra","stream":false,"previous_response_id":"resp_usage_e2e_1"}`,
+		},
+		channelMapping: map[string]string{
+			"gpt-5.6-sol": "gpt-5.6-terra",
+		},
+	})
+
+	require.Len(t, got.logs, 2)
+	require.Equal(t, "gpt-5.6-sol", got.logs[0].RequestedModel)
+	require.Equal(t, "gpt-5.6-sol", got.logs[0].Model)
+	require.NotNil(t, got.logs[0].ModelMappingChain)
+	require.Equal(t, "gpt-5.6-sol→gpt-5.6-terra", *got.logs[0].ModelMappingChain)
+
+	require.Equal(t, "gpt-5.6-terra", got.logs[1].RequestedModel)
+	require.Equal(t, "gpt-5.6-terra", got.logs[1].Model)
+	require.Nil(t, got.logs[1].ModelMappingChain, "第二轮不得沿用首轮 Sol→Terra 映射")
+
+	billingService := service.NewBillingService(&config.Config{}, nil)
+	solCost, err := billingService.CalculateCost("gpt-5.6-sol", service.UsageTokens{InputTokens: 2, OutputTokens: 1}, 1)
+	require.NoError(t, err)
+	terraCost, err := billingService.CalculateCost("gpt-5.6-terra", service.UsageTokens{InputTokens: 2, OutputTokens: 1}, 1)
+	require.NoError(t, err)
+	require.InDelta(t, solCost.TotalCost, got.logs[0].TotalCost, 1e-12)
+	require.InDelta(t, solCost.ActualCost, got.logs[0].ActualCost, 1e-12)
+	require.InDelta(t, terraCost.TotalCost, got.logs[1].TotalCost, 1e-12)
+	require.InDelta(t, terraCost.ActualCost, got.logs[1].ActualCost, 1e-12)
+
+	require.Len(t, got.upstreamPayloads, 2)
+	require.Equal(t, "gpt-5.6-terra", gjson.GetBytes(got.upstreamPayloads[0], "model").String())
+	require.Equal(t, "gpt-5.6-terra", gjson.GetBytes(got.upstreamPayloads[1], "model").String())
+}
+
+func TestOpenAIResponsesWebSocket_PassthroughChannelMappingAppliesToEveryTurn(t *testing.T) {
+	got := runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
+		firstPayload: `{"type":"response.create","model":"gpt-5.6-sol","stream":false}`,
+		followupPayloads: []string{
+			`{"type":"response.create","model":"gpt-5.6-sol","stream":false,"previous_response_id":"resp_usage_e2e_1"}`,
+		},
+		channelMapping: map[string]string{
+			"gpt-5.6-sol": "gpt-5.6-terra",
+		},
+	})
+
+	require.Len(t, got.logs, 2)
+	require.Len(t, got.upstreamPayloads, 2)
+	for i := range got.logs {
+		require.Equal(t, "gpt-5.6-sol", got.logs[i].RequestedModel)
+		require.Equal(t, "gpt-5.6-sol", got.logs[i].Model)
+		require.NotNil(t, got.logs[i].UpstreamModel)
+		require.Equal(t, "gpt-5.6-terra", *got.logs[i].UpstreamModel)
+		require.NotNil(t, got.logs[i].ModelMappingChain)
+		require.Equal(t, "gpt-5.6-sol→gpt-5.6-terra", *got.logs[i].ModelMappingChain)
+		require.Equal(t, "gpt-5.6-terra", gjson.GetBytes(got.upstreamPayloads[i], "model").String())
+	}
+}
+
+func TestOpenAIResponsesWebSocket_PassthroughAccountMappingKeepsRequestedBillingModel(t *testing.T) {
+	got := runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
+		firstPayload: `{"type":"response.create","model":"gpt-5.6-sol","stream":false}`,
+		beforeFollowupPayloads: []string{
+			`{"type":"session.update","session":{"model":"gpt-5.6-sol"}}`,
+		},
+		followupPayloads: []string{
+			`{"type":"response.create","stream":false,"previous_response_id":"resp_usage_e2e_1"}`,
+		},
+		accountMapping: map[string]string{
+			"gpt-5.6-sol": "gpt-5.6-terra",
+		},
+	})
+
+	require.Len(t, got.logs, 2)
+	require.Len(t, got.upstreamPayloads, 2)
+	require.Len(t, got.upstreamControlPayloads, 1)
+	require.Equal(t, "gpt-5.6-terra", gjson.GetBytes(got.upstreamControlPayloads[0], "session.model").String())
+
+	billingService := service.NewBillingService(&config.Config{}, nil)
+	solCost, err := billingService.CalculateCost("gpt-5.6-sol", service.UsageTokens{InputTokens: 2, OutputTokens: 1}, 1)
+	require.NoError(t, err)
+	terraCost, err := billingService.CalculateCost("gpt-5.6-terra", service.UsageTokens{InputTokens: 2, OutputTokens: 1}, 1)
+	require.NoError(t, err)
+	require.NotEqual(t, solCost.TotalCost, terraCost.TotalCost)
+
+	for i := range got.logs {
+		require.Equal(t, "gpt-5.6-sol", got.logs[i].RequestedModel)
+		require.Equal(t, "gpt-5.6-sol", got.logs[i].Model)
+		require.NotNil(t, got.logs[i].UpstreamModel)
+		require.Equal(t, "gpt-5.6-terra", *got.logs[i].UpstreamModel)
+		require.InDelta(t, solCost.TotalCost, got.logs[i].TotalCost, 1e-12)
+		require.NotNil(t, got.logs[i].AccountStatsCost)
+		require.InDelta(t, terraCost.TotalCost, *got.logs[i].AccountStatsCost, 1e-12)
+		require.Equal(t, "gpt-5.6-terra", gjson.GetBytes(got.upstreamPayloads[i], "model").String())
+	}
+}
+
+func TestOpenAIResponsesWebSocket_PassthroughImageToolUsesMediaBilling(t *testing.T) {
+	got := runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
+		firstPayload: `{"type":"response.create","model":"gpt-5.4","stream":false,"tools":[{"type":"image_generation","model":"gpt-image-2","size":"2048x1152"}],"tool_choice":{"type":"image_generation"}}`,
+		imageOutput:  true,
+	})
+
+	require.Equal(t, 1, got.log.ImageCount)
+	require.NotNil(t, got.log.ImageSize)
+	require.Equal(t, "2K", *got.log.ImageSize)
+	require.NotNil(t, got.log.BillingMode)
+	require.Equal(t, string(service.BillingModeImage), *got.log.BillingMode)
+
+	billingService := service.NewBillingService(&config.Config{}, nil)
+	expected := billingService.CalculateImageCost("gpt-image-2", "2K", 1, nil, 1)
+	require.InDelta(t, expected.TotalCost, got.log.TotalCost, 1e-12)
+	require.InDelta(t, expected.ActualCost, got.log.ActualCost, 1e-12)
 }
 
 func TestSetOpenAIClientTransportHTTP(t *testing.T) {
@@ -1140,12 +1258,43 @@ func newOpenAIHandlerForPreviousResponseIDValidation(t *testing.T, cache *concur
 			},
 		}
 	}
+	gatewayService, billingCacheService := newSimpleOpenAIGatewayTestDependencies()
 	return &OpenAIGatewayHandler{
-		gatewayService:      &service.OpenAIGatewayService{},
-		billingCacheService: &service.BillingCacheService{},
+		gatewayService:      gatewayService,
+		billingCacheService: billingCacheService,
 		apiKeyService:       &service.APIKeyService{},
 		concurrencyHelper:   NewConcurrencyHelper(service.NewConcurrencyService(cache), SSEPingFormatNone, time.Second),
 	}
+}
+
+func newSimpleOpenAIGatewayTestDependencies() (*service.OpenAIGatewayService, *service.BillingCacheService) {
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	billingCacheService := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
+	gatewayService := service.NewOpenAIGatewayService(
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		cfg,
+		nil,
+		nil,
+		service.NewBillingService(cfg, nil),
+		nil,
+		billingCacheService,
+		nil,
+		&service.DeferredService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+	return gatewayService, billingCacheService
 }
 
 func newOpenAIWSHandlerTestServer(t *testing.T, h *OpenAIGatewayHandler, subject middleware.AuthSubject) *httptest.Server {
@@ -1167,14 +1316,21 @@ func newOpenAIWSHandlerTestServer(t *testing.T, h *OpenAIGatewayHandler, subject
 }
 
 type openAIResponsesWSUsageLogCase struct {
-	firstPayload   string
-	userAgent      *string
-	channelMapping map[string]string
+	firstPayload           string
+	followupPayloads       []string
+	beforeFollowupPayloads []string
+	userAgent              *string
+	channelMapping         map[string]string
+	accountMapping         map[string]string
+	imageOutput            bool
 }
 
 type openAIResponsesWSUsageLogResult struct {
-	log                  *service.UsageLog
-	upstreamFirstPayload []byte
+	log                     *service.UsageLog
+	logs                    []*service.UsageLog
+	upstreamFirstPayload    []byte
+	upstreamPayloads        [][]byte
+	upstreamControlPayloads [][]byte
 }
 
 type openAIWSUsageHandlerAccountRepoStub struct {
@@ -1479,7 +1635,9 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
-	upstreamPayloadCh := make(chan []byte, 1)
+	clientPayloads := append([]string{tc.firstPayload}, tc.followupPayloads...)
+	upstreamPayloadCh := make(chan []byte, len(clientPayloads))
+	upstreamControlPayloadCh := make(chan []byte, len(tc.beforeFollowupPayloads))
 	upstreamErrCh := make(chan error, 1)
 	upstreamServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
@@ -1493,27 +1651,47 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 			_ = conn.CloseNow()
 		}()
 
-		readCtx, cancelRead := context.WithTimeout(r.Context(), 3*time.Second)
-		msgType, payload, readErr := conn.Read(readCtx)
-		cancelRead()
-		if readErr != nil {
-			upstreamErrCh <- readErr
-			return
-		}
-		if msgType != coderws.MessageText && msgType != coderws.MessageBinary {
-			upstreamErrCh <- errors.New("unexpected upstream websocket message type")
-			return
-		}
-		upstreamPayloadCh <- payload
+		for turn := range clientPayloads {
+			var payload []byte
+			for {
+				readCtx, cancelRead := context.WithTimeout(r.Context(), 3*time.Second)
+				msgType, nextPayload, readErr := conn.Read(readCtx)
+				cancelRead()
+				if readErr != nil {
+					upstreamErrCh <- readErr
+					return
+				}
+				if msgType != coderws.MessageText && msgType != coderws.MessageBinary {
+					upstreamErrCh <- errors.New("unexpected upstream websocket message type")
+					return
+				}
+				if strings.TrimSpace(gjson.GetBytes(nextPayload, "type").String()) != "response.create" {
+					upstreamControlPayloadCh <- nextPayload
+					continue
+				}
+				payload = nextPayload
+				break
+			}
+			upstreamPayloadCh <- payload
 
-		writeCtx, cancelWrite := context.WithTimeout(r.Context(), 3*time.Second)
-		writeErr := conn.Write(writeCtx, coderws.MessageText, []byte(
-			`{"type":"response.completed","response":{"id":"resp_usage_e2e","model":"gpt-5.4","usage":{"input_tokens":2,"output_tokens":1}}}`,
-		))
-		cancelWrite()
-		if writeErr != nil {
-			upstreamErrCh <- writeErr
-			return
+			responseModel := strings.TrimSpace(gjson.GetBytes(payload, "model").String())
+			responseOutput := ""
+			if tc.imageOutput {
+				responseOutput = `,"output":[{"type":"image_generation_call","id":"img_usage_e2e","result":"aW1hZ2U=","size":"2048x1152"}]`
+			}
+			response := fmt.Sprintf(
+				`{"type":"response.completed","response":{"id":"resp_usage_e2e_%d","model":%q%s,"usage":{"input_tokens":2,"output_tokens":1}}}`,
+				turn+1,
+				responseModel,
+				responseOutput,
+			)
+			writeCtx, cancelWrite := context.WithTimeout(r.Context(), 3*time.Second)
+			writeErr := conn.Write(writeCtx, coderws.MessageText, []byte(response))
+			cancelWrite()
+			if writeErr != nil {
+				upstreamErrCh <- writeErr
+				return
+			}
 		}
 		_ = conn.Close(coderws.StatusNormalClosure, "done")
 		upstreamErrCh <- nil
@@ -1521,6 +1699,17 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 	defer upstreamServer.Close()
 
 	groupID := int64(4201)
+	accountCredentials := map[string]any{
+		"api_key":  "sk-test",
+		"base_url": upstreamServer.URL,
+	}
+	if len(tc.accountMapping) > 0 {
+		rawMapping := make(map[string]any, len(tc.accountMapping))
+		for source, target := range tc.accountMapping {
+			rawMapping[source] = target
+		}
+		accountCredentials["model_mapping"] = rawMapping
+	}
 	account := service.Account{
 		ID:          9901,
 		Name:        "openai-ws-passthrough-usage-e2e",
@@ -1529,10 +1718,7 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 		Status:      service.StatusActive,
 		Schedulable: true,
 		Concurrency: 1,
-		Credentials: map[string]any{
-			"api_key":  "sk-test",
-			"base_url": upstreamServer.URL,
-		},
+		Credentials: accountCredentials,
 		Extra: map[string]any{
 			"openai_apikey_responses_websockets_v2_enabled": true,
 			"openai_apikey_responses_websockets_v2_mode":    service.OpenAIWSIngressModePassthrough,
@@ -1553,7 +1739,7 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 	cfg.Gateway.OpenAIWS.WriteTimeoutSeconds = 3
 
 	accountRepo := &openAIWSUsageHandlerAccountRepoStub{account: account}
-	usageRepo := &openAIWSUsageHandlerUsageLogRepoStub{created: make(chan *service.UsageLog, 1)}
+	usageRepo := &openAIWSUsageHandlerUsageLogRepoStub{created: make(chan *service.UsageLog, len(clientPayloads))}
 
 	var channelSvc *service.ChannelService
 	if len(tc.channelMapping) > 0 {
@@ -1641,31 +1827,57 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 		_ = clientConn.CloseNow()
 	}()
 
-	writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)
-	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(tc.firstPayload))
-	cancelWrite()
-	require.NoError(t, err)
+	for i, payload := range clientPayloads {
+		if i > 0 && i-1 < len(tc.beforeFollowupPayloads) {
+			controlPayload := strings.TrimSpace(tc.beforeFollowupPayloads[i-1])
+			if controlPayload != "" {
+				writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)
+				err = clientConn.Write(writeCtx, coderws.MessageText, []byte(controlPayload))
+				cancelWrite()
+				require.NoError(t, err)
+			}
+		}
+		writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)
+		err = clientConn.Write(writeCtx, coderws.MessageText, []byte(payload))
+		cancelWrite()
+		require.NoError(t, err)
 
-	readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
-	_, event, err := clientConn.Read(readCtx)
-	cancelRead()
-	require.NoError(t, err)
-	require.Equal(t, "response.completed", gjson.GetBytes(event, "type").String())
+		readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
+		_, event, readErr := clientConn.Read(readCtx)
+		cancelRead()
+		require.NoError(t, readErr)
+		require.Equal(t, "response.completed", gjson.GetBytes(event, "type").String())
+	}
 	_ = clientConn.Close(coderws.StatusNormalClosure, "done")
 
-	var usageLog *service.UsageLog
-	select {
-	case usageLog = <-usageRepo.created:
-		require.NotNil(t, usageLog)
-	case <-time.After(3 * time.Second):
-		t.Fatal("等待 WebSocket usage log 写入超时")
+	usageLogs := make([]*service.UsageLog, 0, len(clientPayloads))
+	for range clientPayloads {
+		select {
+		case usageLog := <-usageRepo.created:
+			require.NotNil(t, usageLog)
+			usageLogs = append(usageLogs, usageLog)
+		case <-time.After(3 * time.Second):
+			t.Fatal("等待 WebSocket usage log 写入超时")
+		}
 	}
 
-	var upstreamFirstPayload []byte
-	select {
-	case upstreamFirstPayload = <-upstreamPayloadCh:
-	case <-time.After(3 * time.Second):
-		t.Fatal("等待上游 WebSocket 首帧超时")
+	upstreamPayloads := make([][]byte, 0, len(clientPayloads))
+	for range clientPayloads {
+		select {
+		case upstreamPayload := <-upstreamPayloadCh:
+			upstreamPayloads = append(upstreamPayloads, upstreamPayload)
+		case <-time.After(3 * time.Second):
+			t.Fatal("等待上游 WebSocket 帧超时")
+		}
+	}
+	upstreamControlPayloads := make([][]byte, 0, len(tc.beforeFollowupPayloads))
+	for range tc.beforeFollowupPayloads {
+		select {
+		case upstreamPayload := <-upstreamControlPayloadCh:
+			upstreamControlPayloads = append(upstreamControlPayloads, upstreamPayload)
+		case <-time.After(3 * time.Second):
+			t.Fatal("等待上游 WebSocket 控制帧超时")
+		}
 	}
 
 	select {
@@ -1676,8 +1888,11 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 	}
 
 	return openAIResponsesWSUsageLogResult{
-		log:                  usageLog,
-		upstreamFirstPayload: upstreamFirstPayload,
+		log:                     usageLogs[0],
+		logs:                    usageLogs,
+		upstreamFirstPayload:    upstreamPayloads[0],
+		upstreamPayloads:        upstreamPayloads,
+		upstreamControlPayloads: upstreamControlPayloads,
 	}
 }
 

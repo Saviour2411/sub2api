@@ -219,15 +219,6 @@
               </p>
             </div>
 
-            <!-- Billing Basis -->
-            <div>
-              <label class="input-label">{{ t('admin.channels.form.billingModelSource', 'Billing Basis') }}</label>
-              <Select v-model="form.billing_model_source" :options="billingModelSourceOptions" />
-              <p class="mt-1 text-xs text-gray-400">
-                {{ t('admin.channels.form.billingModelSourceHint', 'Controls which model name is used for pricing lookup') }}
-              </p>
-            </div>
-
             <!-- Default Pricing -->
             <div class="border-t border-gray-200 pt-4 dark:border-dark-700">
               <div class="flex items-center justify-between gap-4">
@@ -692,6 +683,7 @@ import Toggle from '@/components/common/Toggle.vue'
 import PricingEntryCard from '@/components/admin/channel/PricingEntryCard.vue'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useKeyedDebouncedSearch } from '@/composables/useKeyedDebouncedSearch'
+import { BILLING_MODEL_SOURCE_REQUESTED } from '@/constants/channel'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -752,12 +744,6 @@ const statusEditOptions = computed(() => [
   { value: 'disabled', label: t('admin.channels.statusDisabled', 'Disabled') }
 ])
 
-const billingModelSourceOptions = computed(() => [
-  { value: 'channel_mapped', label: t('admin.channels.form.billingModelSourceChannelMapped', 'Bill by channel-mapped model') },
-  { value: 'requested', label: t('admin.channels.form.billingModelSourceRequested', 'Bill by requested model') },
-  { value: 'upstream', label: t('admin.channels.form.billingModelSourceUpstream', 'Bill by final upstream model') }
-])
-
 // ── State ──
 const channels = ref<Channel[]>([])
 const loading = ref(false)
@@ -794,7 +780,6 @@ const form = reactive({
   description: '',
   status: 'active',
   restrict_models: false,
-  billing_model_source: 'channel_mapped' as string,
   default_pricing_enabled: false,
   default_pricing: {
     input_price: null,
@@ -1382,7 +1367,6 @@ function resetForm() {
   form.description = ''
   form.status = 'active'
   form.restrict_models = false
-  form.billing_model_source = 'channel_mapped'
   form.default_pricing_enabled = false
   form.default_pricing = defaultPricingToForm(null)
   form.platforms = []
@@ -1406,7 +1390,6 @@ async function openEditDialog(channel: Channel) {
   form.description = channel.description || ''
   form.status = channel.status
   form.restrict_models = channel.restrict_models || false
-  form.billing_model_source = channel.billing_model_source || 'channel_mapped'
   form.default_pricing_enabled = channel.default_pricing_enabled || false
   form.default_pricing = defaultPricingToForm(channel.default_pricing)
   form.apply_pricing_to_account_stats = channel.apply_pricing_to_account_stats || false
@@ -1604,7 +1587,7 @@ async function handleSubmit() {
         group_ids,
         model_pricing,
         model_mapping: Object.keys(model_mapping).length > 0 ? model_mapping : {},
-        billing_model_source: form.billing_model_source,
+        billing_model_source: BILLING_MODEL_SOURCE_REQUESTED,
         restrict_models: form.restrict_models,
         default_pricing_enabled: form.default_pricing_enabled,
         default_pricing: defaultPricingToAPI(),
@@ -1621,7 +1604,7 @@ async function handleSubmit() {
         group_ids,
         model_pricing,
         model_mapping: Object.keys(model_mapping).length > 0 ? model_mapping : {},
-        billing_model_source: form.billing_model_source,
+        billing_model_source: BILLING_MODEL_SOURCE_REQUESTED,
         restrict_models: form.restrict_models,
         default_pricing_enabled: form.default_pricing_enabled,
         default_pricing: defaultPricingToAPI(),

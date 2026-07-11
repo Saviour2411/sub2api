@@ -103,6 +103,15 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 			return
 		}
+		pricingKind := service.PricingUsageImage
+		pricingSizeTier := requestInfo.SizeTier
+		if endpoint == service.GrokMediaEndpointVideosGenerations {
+			pricingKind = service.PricingUsageVideo
+			pricingSizeTier = requestInfo.Resolution
+		}
+		if !h.validateOpenAIPricingSpec(c, reqLog, apiKey, pricingErrorProtocolOpenAI, requestModel, pricingKind, pricingSizeTier, nil) {
+			return
+		}
 		if moderationBody := requestInfo.ModerationBody(); len(moderationBody) > 0 {
 			decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIImages, requestModel, moderationBody)
 			if decision != nil && decision.Blocked {

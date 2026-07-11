@@ -279,6 +279,25 @@ func (s *BillingService) initFallbackPricing() {
 		LongContextInputMultiplier:     openAIGPT54LongContextInputMultiplier,
 		LongContextOutputMultiplier:    openAIGPT54LongContextOutputMultiplier,
 	}
+	s.fallbackPrices["gpt-5.1"] = &ModelPricing{
+		InputPricePerToken:             1.25e-6,
+		InputPricePerTokenPriority:     2.5e-6,
+		OutputPricePerToken:            10e-6,
+		OutputPricePerTokenPriority:    20e-6,
+		CacheCreationPricePerToken:     1.25e-6,
+		CacheReadPricePerToken:         0.125e-6,
+		CacheReadPricePerTokenPriority: 0.25e-6,
+		SupportsCacheBreakdown:         false,
+	}
+	s.fallbackPrices["gpt-5.4-pro"] = &ModelPricing{
+		InputPricePerToken:          30e-6,
+		OutputPricePerToken:         180e-6,
+		CacheReadPricePerToken:      3e-6,
+		SupportsCacheBreakdown:      false,
+		LongContextInputThreshold:   openAIGPT54LongContextInputThreshold,
+		LongContextInputMultiplier:  openAIGPT54LongContextInputMultiplier,
+		LongContextOutputMultiplier: openAIGPT54LongContextOutputMultiplier,
+	}
 	// GPT-5.5 / GPT-5.5 Pro 暂无独立定价，回退到 GPT-5.4。
 	s.fallbackPrices["gpt-5.5"] = s.fallbackPrices["gpt-5.4"]
 	s.fallbackPrices["gpt-5.5-pro"] = s.fallbackPrices["gpt-5.4"]
@@ -346,6 +365,11 @@ func (s *BillingService) initFallbackPricing() {
 		CacheReadPricePerToken:         0.175e-6,
 		CacheReadPricePerTokenPriority: 0.35e-6,
 		SupportsCacheBreakdown:         false,
+	}
+	s.fallbackPrices["gpt-5.2-pro"] = &ModelPricing{
+		InputPricePerToken:     21e-6,
+		OutputPricePerToken:    168e-6,
+		SupportsCacheBreakdown: false,
 	}
 	// Codex 族兜底统一按 GPT-5.3 Codex 价格计费
 	s.fallbackPrices["gpt-5.3-codex"] = &ModelPricing{
@@ -717,7 +741,7 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	}
 
 	// OpenAI（GPT-5 / Codex 族）：仅匹配已知型号，避免未知 OpenAI 型号误计价。
-	if normalized := normalizeKnownOpenAICodexModel(modelLower); normalized != "" {
+	if normalized := normalizeKnownOpenAIPricingModel(modelLower); normalized != "" {
 		switch normalized {
 		case "gpt-5.6-sol":
 			return s.fallbackPrices["gpt-5.6-sol"]
@@ -729,12 +753,18 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 			return s.fallbackPrices["gpt-5.5-pro"]
 		case "gpt-5.5":
 			return s.fallbackPrices["gpt-5.5"]
+		case "gpt-5.4-pro":
+			return s.fallbackPrices["gpt-5.4-pro"]
 		case "gpt-5.4-mini":
 			return s.fallbackPrices["gpt-5.4-mini"]
 		case "gpt-5.4-nano":
 			return s.fallbackPrices["gpt-5.4-nano"]
 		case "gpt-5.4":
 			return s.fallbackPrices["gpt-5.4"]
+		case "gpt-5.1":
+			return s.fallbackPrices["gpt-5.1"]
+		case "gpt-5.2-pro":
+			return s.fallbackPrices["gpt-5.2-pro"]
 		case "gpt-5.2":
 			return s.fallbackPrices["gpt-5.2"]
 		case "gpt-5.3-codex", "gpt-5.3-codex-spark":
@@ -918,8 +948,9 @@ func (s *BillingService) calculateTokenCost(resolved *ResolvedPricing, input Cos
 
 	pricing = s.applyModelSpecificPricingPolicy(input.Model, pricing)
 
-	// 长上下文定价仅在无区间定价时应用（区间定价已包含上下文分层）
-	applyLongCtx := len(resolved.Intervals) == 0
+	// 仅实际命中渠道区间时禁用内置长上下文倍率。区间未命中并回退
+	// BasePricing 时，GPT-5.6 等模型仍需应用自身的 272k 阶梯。
+	applyLongCtx := FindMatchingInterval(resolved.Intervals, totalContext) == nil
 
 	return s.computeTokenBreakdown(pricing, input.Tokens, input.RateMultiplier, input.ServiceTier, applyLongCtx), nil
 }
@@ -1050,19 +1081,24 @@ func (s *BillingService) calculatePerRequestCost(resolved *ResolvedPricing, inpu
 	}
 
 	var unitPrice float64
+	var configured bool
 
 	if input.SizeTier != "" {
-		unitPrice = input.Resolver.GetRequestTierPrice(resolved, input.SizeTier)
+		unitPrice, configured = input.Resolver.GetRequestTierPriceWithPresence(resolved, input.SizeTier)
 	}
 
-	if unitPrice == 0 {
+	if !configured {
 		totalContext := input.Tokens.InputTokens + input.Tokens.CacheCreationTokens + input.Tokens.CacheReadTokens
-		unitPrice = input.Resolver.GetRequestTierPriceByContext(resolved, totalContext)
+		unitPrice, configured = input.Resolver.GetRequestTierPriceByContextWithPresence(resolved, totalContext)
 	}
 
 	// 回退到默认按次价格
-	if unitPrice == 0 {
+	if !configured && (resolved.DefaultPerRequestPriceConfigured || resolved.DefaultPerRequestPrice != 0) {
 		unitPrice = resolved.DefaultPerRequestPrice
+		configured = true
+	}
+	if !configured {
+		return nil, fmt.Errorf("no per-request pricing available for model: %s: %w", input.Model, ErrModelPricingUnavailable)
 	}
 
 	totalCost := unitPrice * float64(count)
@@ -1103,7 +1139,7 @@ func (s *BillingService) applyModelSpecificPricingPolicy(model string, pricing *
 	if pricing == nil {
 		return nil
 	}
-	normalized := normalizeKnownOpenAICodexModel(model)
+	normalized := normalizeKnownOpenAIPricingModel(model)
 	isGPT56 := isOpenAIGPT56Model(normalized)
 	usesLegacyLongContextPricing := usesOpenAILegacyLongContextPricing(normalized)
 	if !isGPT56 && !usesLegacyLongContextPricing {
@@ -1151,7 +1187,8 @@ func (s *BillingService) shouldApplySessionLongContextPricing(tokens UsageTokens
 }
 
 func usesOpenAILegacyLongContextPricing(normalized string) bool {
-	return normalized == "gpt-5.4" || normalized == "gpt-5.5" || normalized == "gpt-5.5-pro"
+	return normalized == "gpt-5.4" || normalized == "gpt-5.4-pro" ||
+		normalized == "gpt-5.5" || normalized == "gpt-5.5-pro"
 }
 
 // CalculateCostWithConfig 使用配置中的默认倍率计算费用

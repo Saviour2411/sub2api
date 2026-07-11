@@ -27,31 +27,33 @@ func resolveAccountStatsCost(
 	requestCount int,
 	totalCost float64,
 ) *float64 {
-	if channelService == nil || upstreamModel == "" {
-		return nil
-	}
-	channel, err := channelService.GetChannelForGroup(ctx, groupID)
-	if err != nil || channel == nil {
+	if upstreamModel == "" {
 		return nil
 	}
 
-	platform := channelService.GetGroupPlatform(ctx, groupID)
+	if channelService != nil {
+		channel, err := channelService.GetChannelForGroup(ctx, groupID)
+		if err == nil && channel != nil {
+			platform := channelService.GetGroupPlatform(ctx, groupID)
 
-	// 优先级 1：自定义规则（始终尝试）
-	if cost := tryCustomRules(channel, accountID, groupID, platform, upstreamModel, tokens, requestCount); cost != nil {
-		return cost
-	}
+			// 优先级 1：自定义规则（始终尝试）
+			if cost := tryCustomRules(channel, accountID, groupID, platform, upstreamModel, tokens, requestCount); cost != nil {
+				return cost
+			}
 
-	// 优先级 2：渠道开启"应用模型定价到账号统计"时，直接使用客户计费（倍率前）
-	if channel.ApplyPricingToAccountStats {
-		cost := totalCost
-		if cost <= 0 {
-			return nil
+			// 优先级 2：渠道开启"应用模型定价到账号统计"时，直接使用客户计费（倍率前）
+			if channel.ApplyPricingToAccountStats {
+				cost := totalCost
+				if cost <= 0 {
+					return nil
+				}
+				return &cost
+			}
 		}
-		return &cost
 	}
 
-	// 优先级 3：模型定价文件（LiteLLM）默认价格
+	// 优先级 3：模型定价文件（LiteLLM）默认价格。无 Channel 时也必须按最终上游模型计算，
+	// 避免账号成本回退为用户请求模型的 total_cost。
 	if billingService != nil {
 		return tryModelFilePricing(billingService, upstreamModel, tokens)
 	}

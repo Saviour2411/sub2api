@@ -170,6 +170,7 @@ func channelToResponse(ch *service.Channel) *channelResponse {
 		Name:                  ch.Name,
 		Description:           ch.Description,
 		Status:                ch.Status,
+		BillingModelSource:    service.BillingModelSourceRequested,
 		RestrictModels:        ch.RestrictModels,
 		Features:              ch.Features,
 		FeaturesConfig:        ch.FeaturesConfig,
@@ -185,7 +186,6 @@ func channelToResponse(ch *service.Channel) *channelResponse {
 		CreatedAt:    ch.CreatedAt.Format("2006-01-02T15:04:05Z"),
 		UpdatedAt:    ch.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 	}
-	resp.BillingModelSource = ch.BillingModelSource
 	if resp.GroupIDs == nil {
 		resp.GroupIDs = []int64{}
 	}

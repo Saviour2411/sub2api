@@ -7,6 +7,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -56,6 +57,7 @@ type RelayExit struct {
 }
 
 type RelayOptions struct {
+	InitialRequestModel             string
 	WriteTimeout                    time.Duration
 	IdleTimeout                     time.Duration
 	UpstreamDrainTimeout            time.Duration
@@ -82,7 +84,11 @@ type RelayTraceEvent struct {
 
 type relayState struct {
 	usage             Usage
+	requestModelMu    sync.Mutex
 	requestModel      string
+	sessionModel      string
+	pendingModels     []string
+	modelByResponseID map[string]string
 	lastResponseID    string
 	terminalEventType string
 	firstTokenMs      *int
@@ -98,17 +104,93 @@ type relayExitSignal struct {
 }
 
 type observedUpstreamEvent struct {
-	terminal   bool
-	eventType  string
-	responseID string
-	usage      Usage
-	duration   time.Duration
-	firstToken *int
+	terminal     bool
+	eventType    string
+	responseID   string
+	requestModel string
+	usage        Usage
+	duration     time.Duration
+	firstToken   *int
 }
 
 type relayTurnTiming struct {
 	startAt      time.Time
 	firstTokenMs *int
+}
+
+func newRelayState(initialRequestModel string) *relayState {
+	initialRequestModel = strings.TrimSpace(initialRequestModel)
+	return &relayState{
+		requestModel:      initialRequestModel,
+		sessionModel:      initialRequestModel,
+		pendingModels:     []string{initialRequestModel},
+		modelByResponseID: make(map[string]string, 4),
+	}
+}
+
+// registerClientFrame 记录每个 response.create 的客户端请求模型。模型与
+// response ID 的绑定要等上游首个带 response.id 的事件到达后才能完成。
+func (s *relayState) registerClientFrame(payload []byte) {
+	if s == nil || len(payload) == 0 {
+		return
+	}
+	eventType := strings.TrimSpace(gjson.GetBytes(payload, "type").String())
+	switch eventType {
+	case "session.update":
+		model := strings.TrimSpace(gjson.GetBytes(payload, "session.model").String())
+		if model == "" {
+			return
+		}
+		s.requestModelMu.Lock()
+		s.sessionModel = model
+		s.requestModelMu.Unlock()
+	case "response.create":
+		model := strings.TrimSpace(gjson.GetBytes(payload, "model").String())
+		s.requestModelMu.Lock()
+		if model == "" {
+			model = s.sessionModel
+		}
+		s.pendingModels = append(s.pendingModels, model)
+		s.requestModelMu.Unlock()
+	}
+}
+
+func (s *relayState) requestModelForResponse(responseID string, terminal bool) string {
+	if s == nil {
+		return ""
+	}
+	responseID = strings.TrimSpace(responseID)
+	s.requestModelMu.Lock()
+	defer s.requestModelMu.Unlock()
+
+	model, ok := s.modelByResponseID[responseID]
+	if !ok {
+		model = s.requestModel
+		if len(s.pendingModels) > 0 {
+			model = s.pendingModels[0]
+			s.pendingModels = s.pendingModels[1:]
+		}
+		if responseID != "" {
+			if s.modelByResponseID == nil {
+				s.modelByResponseID = make(map[string]string, 4)
+			}
+			s.modelByResponseID[responseID] = model
+		}
+	}
+	if terminal {
+		delete(s.modelByResponseID, responseID)
+		s.requestModel = model
+	}
+	return model
+}
+
+func (s *relayState) currentRequestModel() string {
+	if s == nil {
+		return ""
+	}
+	s.requestModelMu.Lock()
+	defer s.requestModelMu.Unlock()
+	return s.requestModel
 }
 
 func Relay(
@@ -118,7 +200,11 @@ func Relay(
 	firstClientMessage []byte,
 	options RelayOptions,
 ) (RelayResult, *RelayExit) {
-	result := RelayResult{RequestModel: strings.TrimSpace(gjson.GetBytes(firstClientMessage, "model").String())}
+	initialRequestModel := strings.TrimSpace(options.InitialRequestModel)
+	if initialRequestModel == "" {
+		initialRequestModel = strings.TrimSpace(gjson.GetBytes(firstClientMessage, "model").String())
+	}
+	result := RelayResult{RequestModel: initialRequestModel}
 	if clientConn == nil || upstreamConn == nil {
 		return result, &RelayExit{Stage: "relay_init", Err: errors.New("relay connection is nil")}
 	}
@@ -143,7 +229,7 @@ func Relay(
 		firstMessageType = coderws.MessageText
 	}
 	startAt := nowFn()
-	state := &relayState{requestModel: result.RequestModel}
+	state := newRelayState(result.RequestModel)
 	onTrace := options.OnTrace
 
 	relayCtx, relayCancel := context.WithCancel(ctx)
@@ -211,7 +297,7 @@ func Relay(
 		if !clientReaderStarted.CompareAndSwap(false, true) {
 			return
 		}
-		go runClientToUpstream(relayCtx, clientConn, options.ReadClientFrame, writeUpstream, markActivity, clientToUpstreamFrames, onTrace, exitCh)
+		go runClientToUpstream(relayCtx, clientConn, options.ReadClientFrame, writeUpstream, markActivity, clientToUpstreamFrames, state, onTrace, exitCh)
 	}
 	if !options.StartClientAfterFirstDownstream {
 		startClientReader()
@@ -373,6 +459,7 @@ func runClientToUpstream(
 	writeUpstream func(msgType coderws.MessageType, payload []byte) error,
 	markActivity func(),
 	forwardedFrames *atomic.Int64,
+	state *relayState,
 	onTrace func(event RelayTraceEvent),
 	exitCh chan<- relayExitSignal,
 ) {
@@ -394,6 +481,7 @@ func runClientToUpstream(
 			return
 		}
 		markActivity()
+		state.registerClientFrame(payload)
 		if err := writeUpstream(msgType, payload); err != nil {
 			emitRelayTrace(onTrace, RelayTraceEvent{
 				Stage:        "write_upstream_failed",
@@ -635,10 +723,17 @@ func observeUpstreamMessage(
 		}
 	}
 	parsedUsage := parseUsageAndAccumulate(state, message, eventType, onUsageParseFailure)
+	terminal := isTerminalEvent(eventType)
+	requestModel := state.currentRequestModel()
+	if responseID != "" {
+		requestModel = state.requestModelForResponse(responseID, terminal)
+	}
 	observed := observedUpstreamEvent{
-		eventType:  eventType,
-		responseID: responseID,
-		usage:      parsedUsage,
+		terminal:     terminal,
+		eventType:    eventType,
+		responseID:   responseID,
+		requestModel: requestModel,
+		usage:        parsedUsage,
 	}
 	if responseID != "" {
 		turnTiming := openAIWSRelayGetOrInitTurnTiming(state, responseID, now)
@@ -649,10 +744,9 @@ func observeUpstreamMessage(
 			}
 		}
 	}
-	if !isTerminalEvent(eventType) {
+	if !terminal {
 		return observed
 	}
-	observed.terminal = true
 	state.terminalEventType = eventType
 	if responseID != "" {
 		state.lastResponseID = responseID
@@ -680,9 +774,9 @@ func emitTurnComplete(
 	if responseID == "" {
 		return
 	}
-	requestModel := ""
-	if state != nil {
-		requestModel = state.requestModel
+	requestModel := observed.requestModel
+	if requestModel == "" && state != nil {
+		requestModel = state.currentRequestModel()
 	}
 	onTurnComplete(RelayTurnResult{
 		RequestModel:      requestModel,
@@ -843,7 +937,7 @@ func enrichResult(result *RelayResult, state *relayState, duration time.Duration
 	if state == nil {
 		return
 	}
-	result.RequestModel = state.requestModel
+	result.RequestModel = state.currentRequestModel()
 	result.Usage = state.usage
 	result.RequestID = state.lastResponseID
 	result.TerminalEventType = state.terminalEventType

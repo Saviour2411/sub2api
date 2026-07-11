@@ -196,6 +196,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 
+	if !h.validateGatewayRequestPricing(c, reqLog, apiKey, pricingErrorProtocolAnthropic, "/v1/messages", reqModel, body) {
+		return
+	}
 	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, body); decision != nil && decision.Blocked {
 		h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
 		return
@@ -841,6 +844,19 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 							return
 						}
 						fallbackAPIKey := cloneAPIKeyWithGroup(apiKey, fallbackGroup)
+						if pricingModel, pricingErr := h.gatewayRequestPricingValidationError(
+							c.Request.Context(), fallbackAPIKey, "/v1/messages", reqModel, body,
+						); pricingErr != nil {
+							status, errType, code, message := requestedPricingErrorDetails(pricingModel, pricingErr)
+							markRequestedPricingOpsContext(c, code)
+							logRequestedPricingValidationFailure(reqLog, pricingModel, code, pricingErr)
+							if streamStarted || c.Writer.Written() {
+								writeAnthropicRequestedPricingStreamError(c, status, errType, code, message)
+							} else {
+								writeRequestedPricingHTTPError(c, pricingErrorProtocolAnthropic, status, errType, code, message)
+							}
+							return
+						}
 						if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), fallbackAPIKey.User, fallbackAPIKey, fallbackGroup, nil, service.PlatformFromAPIKey(fallbackAPIKey)); err != nil {
 							status, code, message, retryAfter := billingErrorDetails(err)
 							if retryAfter > 0 {

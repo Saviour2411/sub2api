@@ -535,14 +535,18 @@ func TestTryModelFilePricing_WithCacheTokens(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestResolveAccountStatsCost_NilChannelService(t *testing.T) {
+	bs := newTestBillingServiceWithPrices(map[string]*ModelPricing{
+		"claude-sonnet-4": {InputPricePerToken: 0.001},
+	})
 	result := resolveAccountStatsCost(
 		context.Background(),
 		nil, // channelService is nil
-		newTestBillingServiceWithPrices(map[string]*ModelPricing{}),
+		bs,
 		1, 1, "claude-sonnet-4",
 		UsageTokens{InputTokens: 100}, 1, 0.5,
 	)
-	require.Nil(t, result)
+	require.NotNil(t, result)
+	require.InDelta(t, 0.1, *result, 1e-12)
 }
 
 func TestResolveAccountStatsCost_EmptyUpstreamModel(t *testing.T) {
@@ -568,14 +572,18 @@ func TestResolveAccountStatsCost_GetChannelForGroupReturnsNil(t *testing.T) {
 		Status: StatusActive,
 	}, 1, "")
 
+	bs := newTestBillingServiceWithPrices(map[string]*ModelPricing{
+		"claude-sonnet-4": {InputPricePerToken: 0.001},
+	})
 	result := resolveAccountStatsCost(
 		context.Background(),
 		cs,
-		newTestBillingServiceWithPrices(map[string]*ModelPricing{}),
+		bs,
 		1, 99, "claude-sonnet-4", // groupID 99 has no channel
 		UsageTokens{InputTokens: 100}, 1, 0.5,
 	)
-	require.Nil(t, result)
+	require.NotNil(t, result)
+	require.InDelta(t, 0.1, *result, 1e-12)
 }
 
 func TestResolveAccountStatsCost_HitsCustomRule(t *testing.T) {

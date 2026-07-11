@@ -282,6 +282,82 @@ func TestCalculateCostUnified_UsesPreResolvedPricing(t *testing.T) {
 	require.Equal(t, string(BillingModePerRequest), cost.BillingMode)
 }
 
+func TestCalculateCostUnified_GPT56PartialIntervalFallbackUsesBuiltInLongContextTier(t *testing.T) {
+	bs := newTestBillingService()
+	resolver := NewModelPricingResolver(nil, bs)
+	basePricing, err := bs.GetModelPricing("gpt-5.6-sol")
+	require.NoError(t, err)
+	maxTokens := 272000
+	resolved := &ResolvedPricing{
+		Mode:        BillingModeToken,
+		BasePricing: basePricing,
+		Intervals: []PricingInterval{{
+			MinTokens:       0,
+			MaxTokens:       &maxTokens,
+			InputPrice:      testPtrFloat64(1e-6),
+			OutputPrice:     testPtrFloat64(2e-6),
+			CacheWritePrice: testPtrFloat64(1.25e-6),
+			CacheReadPrice:  testPtrFloat64(0.1e-6),
+		}},
+	}
+
+	t.Run("272000 hits interval without built in multiplier", func(t *testing.T) {
+		tokens := UsageTokens{
+			InputTokens:         270000,
+			CacheCreationTokens: 1000,
+			CacheReadTokens:     1000,
+			OutputTokens:        100,
+		}
+		cost, costErr := bs.CalculateCostUnified(CostInput{
+			Model: "gpt-5.6-sol", Tokens: tokens, RateMultiplier: 1,
+			Resolver: resolver, Resolved: resolved,
+		})
+		require.NoError(t, costErr)
+		require.InDelta(t, 270000*1e-6, cost.InputCost, 1e-12)
+		require.InDelta(t, 1000*1.25e-6, cost.CacheCreationCost, 1e-12)
+		require.InDelta(t, 1000*0.1e-6, cost.CacheReadCost, 1e-12)
+		require.InDelta(t, 100*2e-6, cost.OutputCost, 1e-12)
+	})
+
+	t.Run("272001 falls back to base and applies built in multiplier", func(t *testing.T) {
+		tokens := UsageTokens{
+			InputTokens:         270001,
+			CacheCreationTokens: 1000,
+			CacheReadTokens:     1000,
+			OutputTokens:        100,
+		}
+		cost, costErr := bs.CalculateCostUnified(CostInput{
+			Model: "gpt-5.6-sol", Tokens: tokens, RateMultiplier: 1,
+			Resolver: resolver, Resolved: resolved,
+		})
+		require.NoError(t, costErr)
+		require.InDelta(t, 270001*5e-6*2, cost.InputCost, 1e-12)
+		require.InDelta(t, 1000*6.25e-6*2, cost.CacheCreationCost, 1e-12)
+		require.InDelta(t, 1000*0.5e-6*2, cost.CacheReadCost, 1e-12)
+		require.InDelta(t, 100*30e-6*1.5, cost.OutputCost, 1e-12)
+	})
+}
+
+func TestCalculateCostUnified_PartialIntervalWithoutBaseFailsClosed(t *testing.T) {
+	bs := newTestBillingService()
+	resolver := NewModelPricingResolver(nil, bs)
+	maxTokens := 100
+
+	_, err := bs.CalculateCostUnified(CostInput{
+		Model:          "unknown-partial-model",
+		Tokens:         UsageTokens{InputTokens: 101},
+		RateMultiplier: 1,
+		Resolver:       resolver,
+		Resolved: &ResolvedPricing{
+			Mode: BillingModeToken,
+			Intervals: []PricingInterval{{
+				MinTokens: 0, MaxTokens: &maxTokens, InputPrice: testPtrFloat64(0),
+			}},
+		},
+	})
+	require.ErrorIs(t, err, ErrModelPricingUnavailable)
+}
+
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------

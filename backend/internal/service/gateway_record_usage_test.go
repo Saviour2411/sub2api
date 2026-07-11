@@ -193,6 +193,43 @@ func TestGatewayServiceRecordUsage_PreservesRequestedAndUpstreamModels(t *testin
 	require.Equal(t, mappedModel, *usageRepo.lastLog.UpstreamModel)
 }
 
+func TestGatewayServiceRecordUsage_LegacyMappedSourceStillBillsRequestedModel(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{})
+	tokens := UsageTokens{InputTokens: 20, OutputTokens: 10}
+
+	expectedCost, err := svc.billingService.CalculateCost("gpt-5.6-sol", tokens, 1.1)
+	require.NoError(t, err)
+
+	err = svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID:     "gateway_sol_to_terra",
+			Usage:         ClaudeUsage{InputTokens: 20, OutputTokens: 10},
+			Model:         "gpt-5.6-sol",
+			UpstreamModel: "gpt-5.6-terra",
+			Duration:      time.Second,
+		},
+		APIKey:  &APIKey{ID: 501},
+		User:    &User{ID: 601},
+		Account: &Account{ID: 701},
+		ChannelUsageFields: ChannelUsageFields{
+			OriginalModel:      "gpt-5.6-sol",
+			ChannelMappedModel: "gpt-5.6-terra",
+			BillingModelSource: BillingModelSourceChannelMapped,
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, "gpt-5.6-sol", usageRepo.lastLog.RequestedModel)
+	require.NotNil(t, usageRepo.lastLog.UpstreamModel)
+	require.Equal(t, "gpt-5.6-terra", *usageRepo.lastLog.UpstreamModel)
+	require.InDelta(t, expectedCost.TotalCost, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, expectedCost.ActualCost, usageRepo.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, expectedCost.ActualCost, userRepo.lastAmount, 1e-12)
+}
+
 func TestGatewayServiceRecordUsage_EmptyImageSizeDefaultsBeforeBillingAndPersistence(t *testing.T) {
 	imagePrice2K := 0.19
 	groupID := int64(901)
@@ -231,6 +268,44 @@ func TestGatewayServiceRecordUsage_EmptyImageSizeDefaultsBeforeBillingAndPersist
 	require.Equal(t, ImageSizeSourceDefault, *usageRepo.lastLog.ImageSizeSource)
 	require.InDelta(t, 0.19, usageRepo.lastLog.TotalCost, 1e-12)
 	require.InDelta(t, 0.19, usageRepo.lastLog.ActualCost, 1e-12)
+}
+
+func TestGatewayServiceRecordUsage_ImageUsesFinalMediaModelPricing(t *testing.T) {
+	groupID := int64(903)
+	channelPrice := 0.25
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+	svc.resolver = newOpenAIImageChannelPricingResolverForTest(t, groupID, "gemini-actual-image", channelPrice)
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID:     "gateway_image_actual_media_model",
+			Model:         "gemini-request-image",
+			UpstreamModel: "gemini-actual-image",
+			ImageCount:    1,
+			ImageSize:     ImageBillingSize2K,
+			Duration:      time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      803,
+			GroupID: i64p(groupID),
+			Group:   &Group{ID: groupID, RateMultiplier: 1},
+		},
+		User:    &User{ID: 603},
+		Account: &Account{ID: 703},
+		ChannelUsageFields: ChannelUsageFields{
+			OriginalModel:      "gemini-request-image",
+			ChannelMappedModel: "gemini-actual-image",
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, "gemini-request-image", usageRepo.lastLog.RequestedModel)
+	require.NotNil(t, usageRepo.lastLog.UpstreamModel)
+	require.Equal(t, "gemini-actual-image", *usageRepo.lastLog.UpstreamModel)
+	require.InDelta(t, channelPrice, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, channelPrice, usageRepo.lastLog.ActualCost, 1e-12)
 }
 
 func TestGatewayServiceRecordUsage_PeakRateAffectsTokenModeImageOutputTokens(t *testing.T) {

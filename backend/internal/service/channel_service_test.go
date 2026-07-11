@@ -914,10 +914,10 @@ func TestResolveChannelMapping_DefaultBillingModelSource(t *testing.T) {
 	svc := newTestChannelService(repo)
 
 	result := svc.ResolveChannelMapping(context.Background(), 10, "claude-opus-4")
-	require.Equal(t, BillingModelSourceChannelMapped, result.BillingModelSource)
+	require.Equal(t, BillingModelSourceRequested, result.BillingModelSource)
 }
 
-func TestResolveChannelMapping_UpstreamBillingModelSource(t *testing.T) {
+func TestResolveChannelMapping_LegacyBillingModelSourceNormalized(t *testing.T) {
 	ch := Channel{
 		ID:                 1,
 		Status:             StatusActive,
@@ -928,7 +928,7 @@ func TestResolveChannelMapping_UpstreamBillingModelSource(t *testing.T) {
 	svc := newTestChannelService(repo)
 
 	result := svc.ResolveChannelMapping(context.Background(), 10, "claude-opus-4")
-	require.Equal(t, BillingModelSourceUpstream, result.BillingModelSource)
+	require.Equal(t, BillingModelSourceRequested, result.BillingModelSource)
 }
 
 func TestResolveChannelMapping_InactiveChannel(t *testing.T) {
@@ -1472,11 +1472,12 @@ func TestCreate_DefaultBillingModelSource(t *testing.T) {
 
 	result, err := svc.Create(context.Background(), &CreateChannelInput{
 		Name:               "new-channel",
-		BillingModelSource: "", // empty, should default to "channel_mapped"
+		BillingModelSource: "",
 	})
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Equal(t, BillingModelSourceChannelMapped, result.BillingModelSource)
+	require.Equal(t, BillingModelSourceRequested, result.BillingModelSource)
+	require.Equal(t, BillingModelSourceRequested, capturedChannel.BillingModelSource)
 }
 
 func TestCreate_InvalidatesCache(t *testing.T) {
@@ -1527,15 +1528,18 @@ func TestCreate_InvalidatesCache(t *testing.T) {
 
 func TestUpdate_Success(t *testing.T) {
 	existing := &Channel{
-		ID:     1,
-		Name:   "original",
-		Status: StatusActive,
+		ID:                 1,
+		Name:               "original",
+		Status:             StatusActive,
+		BillingModelSource: BillingModelSourceUpstream,
 	}
+	var capturedChannel *Channel
 	repo := &mockChannelRepository{
 		getByIDFn: func(_ context.Context, id int64) (*Channel, error) {
 			return existing.Clone(), nil
 		},
-		updateFn: func(_ context.Context, _ *Channel) error {
+		updateFn: func(_ context.Context, ch *Channel) error {
+			capturedChannel = ch.Clone()
 			return nil
 		},
 		getGroupIDsFn: func(_ context.Context, _ int64) ([]int64, error) {
@@ -1548,11 +1552,14 @@ func TestUpdate_Success(t *testing.T) {
 	svc := newTestChannelService(repo)
 
 	result, err := svc.Update(context.Background(), 1, &UpdateChannelInput{
-		Name:        "updated-name",
-		Description: testPtrString("new desc"),
+		Name:               "updated-name",
+		Description:        testPtrString("new desc"),
+		BillingModelSource: BillingModelSourceChannelMapped,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, result)
+	require.Equal(t, BillingModelSourceRequested, capturedChannel.BillingModelSource)
+	require.Equal(t, BillingModelSourceRequested, result.BillingModelSource)
 }
 
 func TestUpdate_NotFound(t *testing.T) {

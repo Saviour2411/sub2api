@@ -65,11 +65,11 @@ func normalizeKnownOpenAICodexModel(model string) string {
 	}
 
 	switch {
-	case strings.Contains(normalized, "gpt-5.6-sol"):
+	case matchesKnownOpenAIModelVariant(normalized, "gpt-5.6-sol"):
 		return "gpt-5.6-sol"
-	case strings.Contains(normalized, "gpt-5.6-terra"):
+	case matchesKnownOpenAIModelVariant(normalized, "gpt-5.6-terra"):
 		return "gpt-5.6-terra"
-	case strings.Contains(normalized, "gpt-5.6-luna"):
+	case matchesKnownOpenAIModelVariant(normalized, "gpt-5.6-luna"):
 		return "gpt-5.6-luna"
 	case normalized == "gpt-5.6":
 		return "gpt-5.6-sol"
@@ -79,49 +79,109 @@ func normalizeKnownOpenAICodexModel(model string) string {
 			return "gpt-5.6-sol"
 		}
 		return ""
-	case strings.Contains(normalized, "gpt-5.5-pro"):
+	case matchesKnownOpenAIModelVariant(normalized, "gpt-5.5-pro"):
 		return "gpt-5.5-pro"
-	case strings.Contains(normalized, "gpt-5.5"):
+	case matchesKnownOpenAIModelVariant(normalized, "gpt-5.5"):
 		return "gpt-5.5"
-	case strings.Contains(normalized, "gpt-5.4-mini"):
+	case matchesKnownOpenAIModelVariant(normalized, "gpt-5.4-mini"):
 		return "gpt-5.4-mini"
-	case strings.Contains(normalized, "gpt-5.4-nano"):
+	case matchesKnownOpenAIModelVariant(normalized, "gpt-5.4-nano"):
 		return "gpt-5.4-nano"
-	case strings.Contains(normalized, "gpt-5.4"):
+	case matchesKnownOpenAIModelVariant(normalized, "gpt-5.4"):
 		return "gpt-5.4"
-	case strings.Contains(normalized, "gpt-5.2"):
+	case matchesKnownOpenAIModelVariant(normalized, "gpt-5.2"):
 		return "gpt-5.2"
-	case strings.Contains(normalized, "gpt-5.3-codex-spark"):
+	case matchesKnownOpenAIModelVariant(normalized, "gpt-5.3-codex-spark"):
 		return "gpt-5.3-codex-spark"
-	case strings.Contains(normalized, "gpt-5.3-codex"):
+	case matchesKnownOpenAIModelVariant(normalized, "gpt-5.3-codex"):
 		return "gpt-5.3-codex"
-	case strings.Contains(normalized, "gpt-5.3"):
+	case matchesKnownOpenAIModelVariant(normalized, "gpt-5.3"):
 		return "gpt-5.3-codex"
-	case strings.Contains(normalized, "codex"):
+	default:
+		return ""
+	}
+}
+
+// normalizeKnownOpenAIPricingModel 只归并官方已知的计费同价型号。它与 Codex
+// 上游路由规范化分开，避免把 Pro 等独立价格型号错误映射到基础型号。
+func normalizeKnownOpenAIPricingModel(model string) string {
+	normalized := canonicalizeOpenAIModelAliasSpelling(model)
+	if normalized == "" {
+		return ""
+	}
+	if strings.HasSuffix(normalized, "-openai-compact") {
+		normalized = strings.TrimSuffix(normalized, "-openai-compact")
+	}
+
+	switch {
+	case matchesKnownOpenAIModelVariant(normalized, "gpt-5.6-sol"):
+		return "gpt-5.6-sol"
+	case matchesKnownOpenAIModelVariant(normalized, "gpt-5.6-terra"):
+		return "gpt-5.6-terra"
+	case matchesKnownOpenAIModelVariant(normalized, "gpt-5.6-luna"):
+		return "gpt-5.6-luna"
+	case normalized == "gpt-5.6":
+		return "gpt-5.6-sol"
+	case strings.HasPrefix(normalized, "gpt-5.6-"):
+		suffix := strings.TrimPrefix(normalized, "gpt-5.6-")
+		if suffix == "max" || isKnownCodexModelSuffix(suffix) {
+			return "gpt-5.6-sol"
+		}
+		return ""
+	case matchesKnownOpenAIModelVariant(normalized, "gpt-5.5-pro"):
+		return "gpt-5.5-pro"
+	case matchesKnownOpenAIModelVariant(normalized, "gpt-5.5"):
+		return "gpt-5.5"
+	case matchesKnownOpenAIModelVariant(normalized, "gpt-5.4-pro"):
+		return "gpt-5.4-pro"
+	case matchesKnownOpenAIModelVariant(normalized, "gpt-5.4-mini"):
+		return "gpt-5.4-mini"
+	case matchesKnownOpenAIModelVariant(normalized, "gpt-5.4-nano"):
+		return "gpt-5.4-nano"
+	case normalized == "gpt-5.4-chat-latest" || matchesKnownOpenAIModelVariant(normalized, "gpt-5.4"):
+		return "gpt-5.4"
+	case matchesKnownOpenAIModelVariant(normalized, "gpt-5.3-codex-spark"):
+		return "gpt-5.3-codex-spark"
+	case matchesKnownOpenAIModelVariant(normalized, "gpt-5.3-codex"):
 		return "gpt-5.3-codex"
-	case strings.Contains(normalized, "gpt-5"):
+	case normalized == "gpt-5.3-chat-latest" || matchesKnownOpenAIModelVariant(normalized, "gpt-5.3"):
+		return "gpt-5.3-codex"
+	case matchesKnownOpenAIModelVariant(normalized, "gpt-5.2-pro"):
+		return "gpt-5.2-pro"
+	case normalized == "gpt-5.2-chat-latest" || normalized == "gpt-5.2-codex" ||
+		matchesKnownOpenAIModelVariant(normalized, "gpt-5.2"):
+		return "gpt-5.2"
+	case normalized == "gpt-5.1-chat-latest" || matchesKnownOpenAIModelVariant(normalized, "gpt-5.1"):
+		return "gpt-5.1"
+	case normalized == "gpt-5.1-codex" || normalized == "gpt-5.1-codex-max" || normalized == "gpt-5.1-codex-mini":
+		return "gpt-5.3-codex"
+	case normalized == "codex-mini-latest" || normalized == "gpt-5-codex":
+		return "gpt-5.3-codex"
+	case normalized == "gpt-5" || normalized == "gpt-5-mini" || normalized == "gpt-5-nano":
 		return "gpt-5.4"
 	default:
 		return ""
 	}
 }
 
+func matchesKnownOpenAIModelVariant(model, base string) bool {
+	if model == base {
+		return true
+	}
+	suffix, ok := strings.CutPrefix(model, base+"-")
+	return ok && (isKnownCodexModelSuffix(suffix) ||
+		(strings.HasPrefix(base, "gpt-5.6-") && (suffix == "max" || suffix == "preview")))
+}
+
 // isOpenAIGPT56Model 判断是否 GPT-5.6 系列模型；入参可为原始模型名
 // （含大小写/路径/后缀变体）或已归一化的基名，两者均能正确识别。
 func isOpenAIGPT56Model(model string) bool {
-	normalized := canonicalizeOpenAIModelAliasSpelling(model)
-	if normalized == "gpt-5.6" {
+	switch normalizeKnownOpenAICodexModel(model) {
+	case "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna":
 		return true
+	default:
+		return false
 	}
-	if suffix, ok := strings.CutPrefix(normalized, "gpt-5.6-"); ok && (suffix == "max" || isKnownCodexModelSuffix(suffix)) {
-		return true
-	}
-	for _, prefix := range []string{"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} {
-		if normalized == prefix || strings.HasPrefix(normalized, prefix+"-") {
-			return true
-		}
-	}
-	return false
 }
 
 func appendUsageBillingModelCandidate(candidates []string, seen map[string]struct{}, model string) []string {
@@ -146,7 +206,7 @@ func appendUsageBillingModelCandidate(candidates []string, seen map[string]struc
 	if canonical := canonicalizeOpenAIModelAliasSpelling(trimmed); canonical != "" {
 		add(canonical)
 	}
-	if normalized := normalizeKnownOpenAICodexModel(trimmed); normalized != "" {
+	if normalized := normalizeKnownOpenAIPricingModel(trimmed); normalized != "" {
 		add(normalized)
 	}
 	return candidates

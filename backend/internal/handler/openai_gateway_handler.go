@@ -205,12 +205,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	if !ok {
 		return
 	}
-	// body-signal compact：上游 unary 等待期间向下游发 SSE 注释行心跳，防止
-	// 反向代理空闲超时掐断长压缩连接（#3887）。首拍延迟一个心跳间隔，快速
-	// 失败仍走 JSON+状态码链路；未标记客户端流式或间隔为 0 时是 no-op。
-	stopCompactKeepalive := service.StartOpenAICompactSSEKeepalive(c, h.openAICompactKeepaliveInterval())
-	defer stopCompactKeepalive()
-
 	// 校验请求体 JSON 合法性
 	if !gjson.ValidBytes(body) {
 		logRequestBodyParseFailure(reqLog, body, nil)
@@ -257,14 +251,20 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 
-	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, body); decision != nil && decision.Blocked {
-		h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
-		return
-	}
-
 	imageIntent := service.IsImageGenerationIntent("/v1/responses", reqModel, body)
 	if imageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
 		h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
+		return
+	}
+	if !h.validateOpenAIRequestPricing(c, reqLog, apiKey, pricingErrorProtocolOpenAI, "/v1/responses", reqModel, body) {
+		return
+	}
+	// 定价校验通过后再启动 compact 心跳，保证本地缺价拒绝仍可返回 HTTP 400，
+	// 不会先提交 200 后把 JSON 错误写入 SSE 流。
+	stopCompactKeepalive := service.StartOpenAICompactSSEKeepalive(c, h.openAICompactKeepaliveInterval())
+	defer stopCompactKeepalive()
+	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, body); decision != nil && decision.Blocked {
+		h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
 		return
 	}
 	var imageReleaseFunc func()
@@ -770,6 +770,9 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 
+	if !h.validateOpenAIRequestPricing(c, reqLog, apiKey, pricingErrorProtocolAnthropic, "/v1/messages", reqModel, body) {
+		return
+	}
 	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, body); decision != nil && decision.Blocked {
 		h.anthropicErrorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
 		return
@@ -1333,14 +1336,22 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	setOpsRequestContext(c, reqModel, true)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeWSV2))
 
+	if service.IsImageGenerationIntent("/v1/responses", reqModel, firstMessage) && !service.GroupAllowsImageGeneration(apiKey.Group) {
+		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, service.ImageGenerationPermissionMessage())
+		return
+	}
+	if pricingErr := h.validateOpenAIRequestPricingForWS(ctx, c, wsConn, reqLog, apiKey, "/v1/responses", reqModel, firstMessage); pricingErr != nil {
+		var closeErr *service.OpenAIWSClientCloseError
+		if errors.As(pricingErr, &closeErr) {
+			closeOpenAIClientWS(wsConn, closeErr.StatusCode(), closeErr.Reason())
+		} else {
+			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "model pricing validation failed")
+		}
+		return
+	}
 	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, firstMessage); decision != nil && decision.Blocked {
 		writeContentModerationWSError(ctx, wsConn, decision)
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, decision.Message)
-		return
-	}
-
-	if service.IsImageGenerationIntent("/v1/responses", reqModel, firstMessage) && !service.GroupAllowsImageGeneration(apiKey.Group) {
-		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, service.ImageGenerationPermissionMessage())
 		return
 	}
 
@@ -1509,7 +1520,8 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			zap.Int("candidate_count", scheduleDecision.CandidateCount),
 		)
 
-		var requestPayloadHash string
+		turnUsageTracker := newOpenAIWSTurnUsageTracker()
+		turnUsageTracker.Store(1, reqModel, channelMappingWS, "")
 		hooks := &service.OpenAIWSIngressHooks{
 			InitialRequestModel: reqModel,
 			BeforeRequest: func(turn int, payload []byte, originalModel string) error {
@@ -1526,10 +1538,27 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if model == "" {
 					model = reqModel
 				}
+				if service.IsImageGenerationIntent("/v1/responses", model, payload) && !service.GroupAllowsImageGeneration(apiKey.Group) {
+					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, service.ImageGenerationPermissionMessage(), nil)
+				}
+				if err := h.validateOpenAIRequestPricingForWS(ctx, c, wsConn, reqLog, apiKey, "/v1/responses", model, payload); err != nil {
+					return err
+				}
+				if h.gatewayService.IsRequestedModelRestricted(ctx, apiKey.GroupID, model) {
+					service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalPolicyDenied)
+					restrictionErr := fmt.Errorf("%w: %s", service.ErrChannelModelRestricted, model)
+					return service.NewOpenAIWSClientCloseError(
+						coderws.StatusPolicyViolation,
+						"requested model is not allowed for this channel",
+						restrictionErr,
+					)
+				}
 				if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, model, payload); decision != nil && decision.Blocked {
 					writeContentModerationWSError(ctx, wsConn, decision)
 					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, decision.Message, nil)
 				}
+				turnChannelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, model)
+				turnUsageTracker.Store(turn, model, turnChannelMapping, service.HashUsageRequestPayload(payload))
 				return nil
 			},
 			BeforeTurn: func(turn int) error {
@@ -1573,7 +1602,28 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				// 届时 defer 已清除标记）。
 				defer clearCyberPolicyTurnState(c)
 				releaseTurnSlots()
-				h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, reqModel, turnErr != nil, cyberBlockKey, channelMappingWS.ToUsageFields(reqModel, ""), requestPayloadHash)
+				turnModel := reqModel
+				turnChannelMapping := channelMappingWS
+				turnPayloadHash := ""
+				if turnUsage, ok := turnUsageTracker.Take(turn); ok {
+					if turnUsage.requestedModel != "" {
+						turnModel = turnUsage.requestedModel
+					}
+					turnChannelMapping = turnUsage.channelMapping
+					turnPayloadHash = turnUsage.requestPayloadHash
+				} else if result != nil {
+					if resultModel := strings.TrimSpace(result.Model); resultModel != "" {
+						turnModel = resultModel
+						turnChannelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, turnModel)
+					}
+				}
+				turnUpstreamModel := ""
+				if result != nil {
+					turnUpstreamModel = result.UpstreamModel
+					result.Model = turnModel
+				}
+				turnChannelFields := turnChannelMapping.ToUsageFields(turnModel, turnUpstreamModel)
+				h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, turnModel, turnErr != nil, cyberBlockKey, turnChannelFields, turnPayloadHash)
 				if service.GetOpsCyberPolicy(c) != nil {
 					cyberBlockedThisConn = true
 				}
@@ -1615,10 +1665,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 						UpstreamEndpoint:   upstreamEndpoint,
 						UserAgent:          userAgent,
 						IPAddress:          clientIP,
-						RequestPayloadHash: requestPayloadHash,
+						RequestPayloadHash: turnPayloadHash,
 						APIKeyService:      h.apiKeyService,
 						QuotaPlatform:      quotaPlatform,
-						ChannelUsageFields: channelMappingWS.ToUsageFields(reqModel, result.UpstreamModel),
+						ChannelUsageFields: turnChannelFields,
 						CyberBlocked:       cyberBlocked,
 					}); err != nil {
 						reqLog.Error("openai.websocket_record_usage_failed",
@@ -1649,7 +1699,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		}
 
 		// WebSocket 首包可能很大，hash 必须在 hooks 外算成字符串，避免 AfterTurn 闭包保活请求体。
-		requestPayloadHash = service.HashUsageRequestPayload(wsFirstMessage)
+		turnUsageTracker.Store(1, reqModel, channelMappingWS, service.HashUsageRequestPayload(wsFirstMessage))
 
 		if err := h.gatewayService.ProxyResponsesWebSocketFromClient(ctx, c, wsConn, account, token, wsFirstMessage, hooks); err != nil {
 			var failoverErr *service.UpstreamFailoverError
@@ -1678,6 +1728,12 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					return
 				}
 				continue
+			}
+			var localCloseErr *service.OpenAIWSClientCloseError
+			if errors.As(err, &localCloseErr) &&
+				(errors.Is(err, service.ErrModelPricingUnavailable) || errors.Is(err, service.ErrChannelModelRestricted)) {
+				closeOpenAIClientWS(wsConn, localCloseErr.StatusCode(), localCloseErr.Reason())
+				return
 			}
 
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)

@@ -106,6 +106,9 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 
+	if !h.validateGatewayRequestPricing(c, reqLog, apiKey, pricingErrorProtocolOpenAI, "/v1/responses", reqModel, body) {
+		return
+	}
 	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, body); decision != nil && decision.Blocked {
 		h.responsesErrorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
 		return

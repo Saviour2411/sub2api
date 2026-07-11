@@ -1148,3 +1148,9 @@ func isImageGenerationModel(model string) bool {
 		modelLower == "gemini-2.5-flash-image-preview" ||
 		strings.HasPrefix(modelLower, "gemini-2.5-flash-image-")
 }
+
+// IsGeneratedImageModel 判断请求模型是否按生成图片计费。
+// 同时覆盖 Gemini/Antigravity 图片模型和 OpenAI/Grok 图片模型。
+func IsGeneratedImageModel(model string) bool {
+	return isImageGenerationModel(model) || isOpenAIImageGenerationModel(model)
+}

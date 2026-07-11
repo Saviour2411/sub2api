@@ -35,6 +35,60 @@ var (
 		Mode:                            "chat",
 		SupportsPromptCaching:           true,
 	}
+	openAIGPT51FallbackPricing = &LiteLLMModelPricing{
+		InputCostPerToken:               1.25e-06,
+		InputCostPerTokenPriority:       2.5e-06,
+		OutputCostPerToken:              1e-05,
+		OutputCostPerTokenPriority:      2e-05,
+		CacheReadInputTokenCost:         1.25e-07,
+		CacheReadInputTokenCostPriority: 2.5e-07,
+		SupportsServiceTier:             true,
+		LiteLLMProvider:                 "openai",
+		Mode:                            "chat",
+		SupportsPromptCaching:           true,
+	}
+	openAIGPT52ProFallbackPricing = &LiteLLMModelPricing{
+		InputCostPerToken:  2.1e-05,
+		OutputCostPerToken: 1.68e-04,
+		LiteLLMProvider:    "openai",
+		Mode:               "responses",
+	}
+	openAIGPT52FallbackPricing = &LiteLLMModelPricing{
+		InputCostPerToken:               1.75e-06,
+		InputCostPerTokenPriority:       3.5e-06,
+		OutputCostPerToken:              1.4e-05,
+		OutputCostPerTokenPriority:      2.8e-05,
+		CacheReadInputTokenCost:         1.75e-07,
+		CacheReadInputTokenCostPriority: 3.5e-07,
+		SupportsServiceTier:             true,
+		LiteLLMProvider:                 "openai",
+		Mode:                            "chat",
+		SupportsPromptCaching:           true,
+	}
+	openAIGPT53FallbackPricing = &LiteLLMModelPricing{
+		InputCostPerToken:               1.5e-06,
+		InputCostPerTokenPriority:       3e-06,
+		OutputCostPerToken:              1.2e-05,
+		OutputCostPerTokenPriority:      2.4e-05,
+		CacheReadInputTokenCost:         1.5e-07,
+		CacheReadInputTokenCostPriority: 3e-07,
+		SupportsServiceTier:             true,
+		LiteLLMProvider:                 "openai",
+		Mode:                            "responses",
+		SupportsPromptCaching:           true,
+	}
+	openAIGPT54ProFallbackPricing = &LiteLLMModelPricing{
+		InputCostPerToken:               3e-05,
+		OutputCostPerToken:              1.8e-04,
+		CacheReadInputTokenCost:         3e-06,
+		LongContextInputTokenThreshold:  openAIGPT54LongContextInputThreshold,
+		LongContextInputCostMultiplier:  openAIGPT54LongContextInputMultiplier,
+		LongContextOutputCostMultiplier: openAIGPT54LongContextOutputMultiplier,
+		SupportsServiceTier:             true,
+		LiteLLMProvider:                 "openai",
+		Mode:                            "responses",
+		SupportsPromptCaching:           true,
+	}
 	openAIGPT56SolFallbackPricing = &LiteLLMModelPricing{
 		InputCostPerToken:                   5e-06,
 		InputCostPerTokenPriority:           1e-05,
@@ -883,7 +937,22 @@ func (s *PricingService) matchByModelFamily(model string) *LiteLLMModelPricing {
 // 5. gpt-5.4* -> 业务静态兜底价
 // 6. 最终回退到 DefaultTestModel (gpt-5.1-codex)
 func (s *PricingService) matchOpenAIModel(model string) *LiteLLMModelPricing {
-	if strings.HasPrefix(model, "gpt-5.3-codex-spark") {
+	normalizedGPT5 := ""
+	if strings.HasPrefix(model, "gpt-5") {
+		normalizedGPT5 = normalizeKnownOpenAIPricingModel(model)
+		if normalizedGPT5 == "" {
+			// GPT-5 只允许白名单型号及明确的官方变体。
+			// 精确出现在 pricingData 中的自定义型号已在调用本函数前命中。
+			return nil
+		}
+	}
+	if normalizedGPT5 != "" {
+		if pricing, ok := s.pricingData[normalizedGPT5]; ok {
+			return pricing
+		}
+	}
+
+	if normalizedGPT5 == "gpt-5.3-codex-spark" {
 		if pricing, ok := s.pricingData["gpt-5.1-codex"]; ok {
 			logger.LegacyPrintf("service.pricing", "[Pricing][SparkBilling] %s -> %s billing", model, "gpt-5.1-codex")
 			logger.With(zap.String("component", "service.pricing")).
@@ -903,50 +972,67 @@ func (s *PricingService) matchOpenAIModel(model string) *LiteLLMModelPricing {
 		}
 	}
 
-	if strings.HasPrefix(model, "gpt-5.3-codex") {
+	if normalizedGPT5 == "gpt-5.3-codex" {
 		if pricing, ok := s.pricingData["gpt-5.2-codex"]; ok {
 			logger.With(zap.String("component", "service.pricing")).
 				Info(fmt.Sprintf("[Pricing] OpenAI fallback matched %s -> %s", model, "gpt-5.2-codex"))
 			return pricing
 		}
 	}
+	if normalizedGPT5 == "gpt-5.1" {
+		return openAIGPT51FallbackPricing
+	}
+	if normalizedGPT5 == "gpt-5.2-pro" {
+		return openAIGPT52ProFallbackPricing
+	}
+	if normalizedGPT5 == "gpt-5.2" {
+		return openAIGPT52FallbackPricing
+	}
+	if normalizedGPT5 == "gpt-5.3-codex" || normalizedGPT5 == "gpt-5.3-codex-spark" {
+		return openAIGPT53FallbackPricing
+	}
 
-	if strings.HasPrefix(model, "gpt-5.6-sol") {
+	if normalizedGPT5 == "gpt-5.6-sol" {
 		logger.With(zap.String("component", "service.pricing")).
 			Info(fmt.Sprintf("[Pricing] OpenAI fallback matched %s -> %s", model, "gpt-5.6-sol(static)"))
 		return openAIGPT56SolFallbackPricing
 	}
-	if strings.HasPrefix(model, "gpt-5.6-terra") {
+	if normalizedGPT5 == "gpt-5.6-terra" {
 		logger.With(zap.String("component", "service.pricing")).
 			Info(fmt.Sprintf("[Pricing] OpenAI fallback matched %s -> %s", model, "gpt-5.6-terra(static)"))
 		return openAIGPT56TerraFallbackPricing
 	}
-	if strings.HasPrefix(model, "gpt-5.6-luna") {
+	if normalizedGPT5 == "gpt-5.6-luna" {
 		logger.With(zap.String("component", "service.pricing")).
 			Info(fmt.Sprintf("[Pricing] OpenAI fallback matched %s -> %s", model, "gpt-5.6-luna(static)"))
 		return openAIGPT56LunaFallbackPricing
 	}
 
 	// GPT-5.5 回退到 GPT-5.4 定价
-	if strings.HasPrefix(model, "gpt-5.5") {
+	if normalizedGPT5 == "gpt-5.5" || normalizedGPT5 == "gpt-5.5-pro" {
 		logger.With(zap.String("component", "service.pricing")).
 			Info(fmt.Sprintf("[Pricing] OpenAI fallback matched %s -> %s", model, "gpt-5.4(static)"))
 		return openAIGPT54FallbackPricing
 	}
 
-	if strings.HasPrefix(model, "gpt-5.4-mini") {
+	if normalizedGPT5 == "gpt-5.4-mini" {
 		logger.With(zap.String("component", "service.pricing")).
 			Info(fmt.Sprintf("[Pricing] OpenAI fallback matched %s -> %s", model, "gpt-5.4-mini(static)"))
 		return openAIGPT54MiniFallbackPricing
 	}
+	if normalizedGPT5 == "gpt-5.4-pro" {
+		logger.With(zap.String("component", "service.pricing")).
+			Info(fmt.Sprintf("[Pricing] OpenAI fallback matched %s -> %s", model, "gpt-5.4-pro(static)"))
+		return openAIGPT54ProFallbackPricing
+	}
 
-	if strings.HasPrefix(model, "gpt-5.4-nano") {
+	if normalizedGPT5 == "gpt-5.4-nano" {
 		logger.With(zap.String("component", "service.pricing")).
 			Info(fmt.Sprintf("[Pricing] OpenAI fallback matched %s -> %s", model, "gpt-5.4-nano(static)"))
 		return openAIGPT54NanoFallbackPricing
 	}
 
-	if strings.HasPrefix(model, "gpt-5.4") {
+	if normalizedGPT5 == "gpt-5.4" {
 		logger.With(zap.String("component", "service.pricing")).
 			Info(fmt.Sprintf("[Pricing] OpenAI fallback matched %s -> %s", model, "gpt-5.4(static)"))
 		return openAIGPT54FallbackPricing

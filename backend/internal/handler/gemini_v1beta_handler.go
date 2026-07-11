@@ -190,6 +190,10 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	setOpsRequestContext(c, modelName, stream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(stream, false)))
 
+	// countTokens 不产生用户费用，保持现有免计费语义。
+	if action != "countTokens" && !h.validateGatewayRequestPricing(c, reqLog, apiKey, pricingErrorProtocolGemini, "/v1beta/models/"+modelName+":"+action, modelName, body) {
+		return
+	}
 	if decision := h.checkContentModeration(c, reqLog, apiKey, authSubject, service.ContentModerationProtocolGemini, modelName, body); decision != nil && decision.Blocked {
 		googleError(c, contentModerationStatus(decision), decision.Message)
 		return
@@ -661,12 +665,23 @@ type pathParseError struct{ msg string }
 func (e *pathParseError) Error() string { return e.msg }
 
 func googleError(c *gin.Context, status int, message string) {
+	googleErrorWithReason(c, status, message, "")
+}
+
+func googleErrorWithReason(c *gin.Context, status int, message, reason string) {
+	errorBody := gin.H{
+		"code":    status,
+		"message": message,
+		"status":  googleapi.HTTPStatusToGoogleStatus(status),
+	}
+	if strings.TrimSpace(reason) != "" {
+		errorBody["details"] = []gin.H{{
+			"@type":  "type.googleapis.com/google.rpc.ErrorInfo",
+			"reason": strings.TrimSpace(reason),
+		}}
+	}
 	c.JSON(status, gin.H{
-		"error": gin.H{
-			"code":    status,
-			"message": message,
-			"status":  googleapi.HTTPStatusToGoogleStatus(status),
-		},
+		"error": errorBody,
 	})
 }
 

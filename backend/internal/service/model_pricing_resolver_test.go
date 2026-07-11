@@ -57,6 +57,41 @@ func TestResolve_UnknownModel(t *testing.T) {
 	require.Equal(t, "fallback", resolved.Source)
 }
 
+func TestResolve_EmptyChannelEntryIsNotConfigured(t *testing.T) {
+	t.Run("known model keeps global pricing", func(t *testing.T) {
+		r := newResolverWithChannel(t, []ChannelModelPricing{{
+			Platform: "anthropic", Models: []string{"claude-sonnet-4"}, BillingMode: BillingModeToken,
+		}})
+
+		resolved := r.Resolve(context.Background(), PricingInput{Model: "claude-sonnet-4", GroupID: groupIDPtr()})
+		require.Equal(t, PricingSourceLiteLLM, resolved.Source)
+		require.False(t, resolved.ChannelPricingConfigured)
+		require.NotNil(t, resolved.BasePricing)
+	})
+
+	t.Run("unknown model remains unavailable", func(t *testing.T) {
+		r := newResolverWithChannel(t, []ChannelModelPricing{{
+			Platform: "anthropic", Models: []string{"unknown-empty-model"}, BillingMode: BillingModeToken,
+		}})
+
+		resolved := r.Resolve(context.Background(), PricingInput{Model: "unknown-empty-model", GroupID: groupIDPtr()})
+		require.Equal(t, PricingSourceFallback, resolved.Source)
+		require.False(t, resolved.ChannelPricingConfigured)
+		require.Nil(t, resolved.BasePricing)
+	})
+
+	t.Run("empty per request entry does not replace global token pricing", func(t *testing.T) {
+		r := newResolverWithChannel(t, []ChannelModelPricing{{
+			Platform: "anthropic", Models: []string{"claude-sonnet-4"}, BillingMode: BillingModePerRequest,
+		}})
+
+		resolved := r.Resolve(context.Background(), PricingInput{Model: "claude-sonnet-4", GroupID: groupIDPtr()})
+		require.Equal(t, BillingModeToken, resolved.Mode)
+		require.Equal(t, PricingSourceLiteLLM, resolved.Source)
+		require.False(t, resolved.ChannelPricingConfigured)
+	})
+}
+
 func TestGetIntervalPricing_NoIntervals(t *testing.T) {
 	bs := newTestBillingServiceForResolver()
 	r := NewModelPricingResolver(&ChannelService{}, bs)
@@ -157,6 +192,35 @@ func TestGPT56ExplicitZeroCacheWritePriceIsPreserved(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.Zero(t, cost.CacheCreationCost)
+	})
+
+	t.Run("channel default price", func(t *testing.T) {
+		pricing := (ChannelDefaultPricing{
+			InputPrice:      testPtrFloat64(5e-6),
+			CacheWritePrice: &zero,
+		}).ToModelPricing()
+		require.NotNil(t, pricing)
+		require.True(t, pricing.CacheCreationPriceExplicit)
+		require.Zero(t, pricing.CacheCreationPricePerToken)
+		require.Zero(t, pricing.CacheCreationPricePerTokenPriority)
+
+		for _, serviceTier := range []string{"", "priority", "flex"} {
+			t.Run(serviceTier, func(t *testing.T) {
+				cost, err := bs.CalculateCostUnified(CostInput{
+					Model:          "gpt-5.6-sol",
+					Tokens:         UsageTokens{CacheCreationTokens: 100},
+					RateMultiplier: 1,
+					ServiceTier:    serviceTier,
+					Resolver:       resolver,
+					Resolved: &ResolvedPricing{
+						Mode:        BillingModeToken,
+						BasePricing: pricing,
+					},
+				})
+				require.NoError(t, err)
+				require.Zero(t, cost.CacheCreationCost)
+			})
+		}
 	})
 }
 
@@ -283,6 +347,7 @@ func TestResolve_WithChannelOverride_TokenFlat(t *testing.T) {
 	require.NotNil(t, resolved)
 	require.Equal(t, BillingModeToken, resolved.Mode)
 	require.Equal(t, "channel", resolved.Source)
+	require.True(t, resolved.ChannelPricingConfigured)
 	require.NotNil(t, resolved.BasePricing)
 	require.InDelta(t, 10e-6, resolved.BasePricing.InputPricePerToken, 1e-12)
 	require.InDelta(t, 10e-6, resolved.BasePricing.InputPricePerTokenPriority, 1e-12)
@@ -385,6 +450,7 @@ func TestResolve_WithChannelDefaultPricingForUnknownModel(t *testing.T) {
 	require.NotNil(t, resolved)
 	require.Equal(t, BillingModeToken, resolved.Mode)
 	require.Equal(t, PricingSourceChannel, resolved.Source)
+	require.True(t, resolved.ChannelPricingConfigured)
 	require.NotNil(t, resolved.BasePricing)
 	require.InDelta(t, 1.5e-6, resolved.BasePricing.InputPricePerToken, 1e-12)
 	require.InDelta(t, 6e-6, resolved.BasePricing.OutputPricePerToken, 1e-12)

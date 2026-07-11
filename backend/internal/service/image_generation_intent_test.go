@@ -106,6 +106,15 @@ func TestIsImageGenerationIntent(t *testing.T) {
 	}
 }
 
+func TestIsImageGenerationToolForced(t *testing.T) {
+	require.True(t, IsImageGenerationToolForced([]byte(`{"tool_choice":{"type":"image_generation"}}`)))
+	require.True(t, IsImageGenerationToolForced([]byte(`{"tool_choice":{"type":"namespace","name":"image_gen"}}`)))
+	require.True(t, IsImageGenerationToolForced([]byte(`{"tools":[{"type":"image_generation"}],"tool_choice":"required"}`)))
+	require.False(t, IsImageGenerationToolForced([]byte(`{"tools":[{"type":"image_generation"}],"tool_choice":"auto"}`)))
+	require.False(t, IsImageGenerationToolForced([]byte(`{"tools":[{"type":"image_generation"}]}`)))
+	require.False(t, IsImageGenerationToolForced([]byte(`{"tools":[{"type":"image_generation"},{"type":"function","name":"lookup"}],"tool_choice":"required"}`)))
+}
+
 func TestIsImageGenerationIntentMap_NamespaceImageGen(t *testing.T) {
 	tests := []struct {
 		name    string

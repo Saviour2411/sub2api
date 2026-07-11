@@ -179,6 +179,55 @@ func TestPricingService_BareGPT56AliasDeterministicallyUsesSol(t *testing.T) {
 	}
 }
 
+func TestPricingService_UnknownGPT5VariantsDoNotUsePrefixOrDefaultFallback(t *testing.T) {
+	pricingSvc := &PricingService{pricingData: map[string]*LiteLLMModelPricing{
+		"gpt-5.6-sol":   {InputCostPerToken: 5e-6},
+		"gpt-5.4":       {InputCostPerToken: 2.5e-6},
+		"gpt-5.1-codex": {InputCostPerToken: 1.5e-6},
+	}}
+	billingSvc := NewBillingService(&config.Config{}, pricingSvc)
+
+	for _, model := range []string{
+		"gpt-5.999",
+		"gpt-5.555",
+		"gpt-5.999-gpt-5.4",
+		"gpt-5.6-sol-weird",
+		"gpt-5.4-custom",
+	} {
+		t.Run(model, func(t *testing.T) {
+			require.Nil(t, pricingSvc.GetModelPricing(model))
+			pricing, err := billingSvc.GetModelPricing(model)
+			require.ErrorIs(t, err, ErrModelPricingUnavailable)
+			require.Nil(t, pricing)
+		})
+	}
+}
+
+func TestPricingService_OfficialGPT5VariantsSurvivePartialPricingData(t *testing.T) {
+	pricingSvc := &PricingService{pricingData: map[string]*LiteLLMModelPricing{
+		"gpt-5.1-codex": {InputCostPerToken: 9e-6},
+	}}
+	tests := []struct {
+		model       string
+		inputPrice  float64
+		outputPrice float64
+	}{
+		{model: "gpt-5.1-2025-11-13", inputPrice: 1.25e-6, outputPrice: 10e-6},
+		{model: "gpt-5.2-chat-latest", inputPrice: 1.75e-6, outputPrice: 14e-6},
+		{model: "gpt-5.2-pro-2025-12-11", inputPrice: 21e-6, outputPrice: 168e-6},
+		{model: "gpt-5.3-chat-latest", inputPrice: 1.5e-6, outputPrice: 12e-6},
+		{model: "gpt-5.4-pro-2026-03-05", inputPrice: 30e-6, outputPrice: 180e-6},
+	}
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			pricing := pricingSvc.GetModelPricing(tt.model)
+			require.NotNil(t, pricing)
+			require.InDelta(t, tt.inputPrice, pricing.InputCostPerToken, 1e-12)
+			require.InDelta(t, tt.outputPrice, pricing.OutputCostPerToken, 1e-12)
+		})
+	}
+}
+
 func TestDefaultPricingIncludesOfficialGPT56Rates(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "resources", "model-pricing", "model_prices_and_context_window.json"))
 	require.NoError(t, err)
@@ -215,6 +264,27 @@ func TestDefaultPricingIncludesOfficialGPT56Rates(t *testing.T) {
 			require.InDelta(t, 1.5, pricing.LongContextOutputMultiplier, 1e-12)
 		})
 	}
+}
+
+func TestDefaultPricingGPT54ProKeepsDedicatedRateAndLongContextPolicy(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "resources", "model-pricing", "model_prices_and_context_window.json"))
+	require.NoError(t, err)
+	pricingSvc := &PricingService{}
+	pricingData, err := pricingSvc.parsePricingData(data)
+	require.NoError(t, err)
+	pricingSvc.pricingData = pricingData
+	billingSvc := NewBillingService(&config.Config{}, pricingSvc)
+
+	pricing, err := billingSvc.GetModelPricing("gpt-5.4-pro")
+	require.NoError(t, err)
+	require.InDelta(t, 30e-6, pricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 180e-6, pricing.OutputPricePerToken, 1e-12)
+	require.Equal(t, 272000, pricing.LongContextInputThreshold)
+
+	cost, err := billingSvc.CalculateCost("gpt-5.4-pro", UsageTokens{InputTokens: 272001, OutputTokens: 1000}, 1)
+	require.NoError(t, err)
+	require.InDelta(t, 272001*30e-6*2, cost.InputCost, 1e-10)
+	require.InDelta(t, 1000*180e-6*1.5, cost.OutputCost, 1e-10)
 }
 
 func TestGPT56DedicatedFallbacksUseOfficialRates(t *testing.T) {

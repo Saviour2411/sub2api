@@ -75,7 +75,7 @@ export interface CreateChannelRequest {
   group_ids?: number[]
   model_pricing?: ChannelModelPricing[]
   model_mapping?: Record<string, Record<string, string>>
-  billing_model_source?: string
+  billing_model_source?: BillingModelSource
   restrict_models?: boolean
   features_config?: Record<string, unknown>
   default_pricing_enabled?: boolean
@@ -91,7 +91,7 @@ export interface UpdateChannelRequest {
   group_ids?: number[]
   model_pricing?: ChannelModelPricing[]
   model_mapping?: Record<string, Record<string, string>>
-  billing_model_source?: string
+  billing_model_source?: BillingModelSource
   restrict_models?: boolean
   features_config?: Record<string, unknown>
   default_pricing_enabled?: boolean

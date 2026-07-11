@@ -97,7 +97,7 @@ type ChannelMappingResult struct {
 	MappedModel        string // 映射后的模型名（无映射时等于原始模型名）
 	ChannelID          int64  // 渠道 ID（0 = 无渠道关联）
 	Mapped             bool   // 是否发生了映射
-	BillingModelSource string // 计费模型来源（"requested" / "upstream" / "channel_mapped"）
+	BillingModelSource string // 兼容字段；缓存内固定为 "requested"
 }
 
 // BuildModelMappingChain 根据映射结果和上游实际模型构建映射链描述。
@@ -305,7 +305,7 @@ func (s *ChannelService) fetchChannelData(ctx context.Context) ([]Channel, map[i
 }
 
 // populateChannelCache 将渠道列表和分组平台映射填充到缓存快照中。
-// 装填时对每个 Channel 统一归一化 BillingModelSource，让缓存命中的所有下游
+// 装填时对每个 Channel 统一固定 BillingModelSource 为 requested，让缓存命中的所有下游
 // （gateway routing / billing / 未来任何 cache-backed 读路径）都拿到已归一化的实体，
 // 避免"每个出口各自记得 normalize"反模式。
 func populateChannelCache(channels []Channel, groupPlatforms map[int64]string) *channelCache {
@@ -497,7 +497,7 @@ func (s *ChannelService) GetChannelDefaultPricing(ctx context.Context, groupID i
 }
 
 // ResolveChannelMapping 解析渠道级模型映射（热路径 O(1)）
-// 返回映射结果，包含映射后的模型名、渠道 ID、计费模型来源。
+// 返回映射结果，包含映射后的模型名、渠道 ID 和固定的 requested 计费来源。
 func (s *ChannelService) ResolveChannelMapping(ctx context.Context, groupID int64, model string) ChannelMappingResult {
 	lk, err := s.lookupGroupChannel(ctx, groupID)
 	if err != nil {
@@ -772,8 +772,8 @@ func (s *ChannelService) Create(ctx context.Context, input *CreateChannelInput) 
 	return created, nil
 }
 
-// GetByID 获取渠道详情。返回前统一把空 BillingModelSource 回填为 ChannelMapped，
-// 让所有 handler 无需重复处理历史空值。
+// GetByID 获取渠道详情。返回前将 BillingModelSource 固定为 requested，
+// 让所有 handler 无需处理历史三态值。
 func (s *ChannelService) GetByID(ctx context.Context, id int64) (*Channel, error) {
 	ch, err := s.repo.GetByID(ctx, id)
 	if err != nil {
@@ -793,6 +793,7 @@ func (s *ChannelService) Update(ctx context.Context, id int64, input *UpdateChan
 	if err := s.applyUpdateInput(ctx, channel, input); err != nil {
 		return nil, err
 	}
+	channel.normalizeBillingModelSource()
 
 	if err := validateDefaultPricing(channel.DefaultPricingEnabled, channel.DefaultPricing); err != nil {
 		return nil, err

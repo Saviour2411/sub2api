@@ -45,6 +45,27 @@ func IsImageGenerationIntent(endpoint string, requestedModel string, body []byte
 	return openAIJSONToolChoiceSelectsImageGeneration(gjson.GetBytes(body, "tool_choice"))
 }
 
+// IsImageGenerationToolForced 判断 Responses 请求是否明确要求调用图片工具。
+// 仅声明图片工具（tool_choice 缺省或 auto）仍可能只返回文本，不能视为图片专用请求。
+func IsImageGenerationToolForced(body []byte) bool {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return false
+	}
+	toolChoice := gjson.GetBytes(body, "tool_choice")
+	if openAIJSONToolChoiceSelectsImageGeneration(toolChoice) {
+		return true
+	}
+	if toolChoice.Type != gjson.String || !strings.EqualFold(strings.TrimSpace(toolChoice.String()), "required") {
+		return false
+	}
+	tools := gjson.GetBytes(body, "tools")
+	if !tools.IsArray() || len(tools.Array()) != 1 {
+		return false
+	}
+	tool := tools.Array()[0]
+	return isOpenAIImageGenerationType(openAIJSONString(tool.Get("type"))) || isImageGenNamespaceTool(tool)
+}
+
 // IsImageGenerationIntentMap is the map-backed variant used after service-side request mutation.
 func IsImageGenerationIntentMap(endpoint string, requestedModel string, reqBody map[string]any) bool {
 	if IsImageGenerationEndpoint(endpoint) {

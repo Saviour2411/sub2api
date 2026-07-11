@@ -713,9 +713,8 @@ func TestSupportedModels_PricingOnlyNoMapping(t *testing.T) {
 	require.Equal(t, int64(1), got[1].Pricing.ID)
 }
 
-func TestSupportedModels_ExactMappingUsesTargetPricing(t *testing.T) {
-	// 精确 mapping `src → target`：定价应按 target 查（实际计费的是 target），
-	// 而不是按 src 自查。
+func TestSupportedModels_ExactMappingUsesSourcePricing(t *testing.T) {
+	// 精确 mapping `src → target`：映射只影响转发，展示价格按请求侧 src 查。
 	ch := &Channel{
 		ModelPricing: []ChannelModelPricing{
 			{ID: 100, Platform: "anthropic", Models: []string{"req-model"}, InputPrice: testPtrFloat64(3e-6)},
@@ -731,9 +730,44 @@ func TestSupportedModels_ExactMappingUsesTargetPricing(t *testing.T) {
 	require.Len(t, got, 2)
 	require.Equal(t, "req-model", got[0].Name)
 	require.NotNil(t, got[0].Pricing)
-	require.Equal(t, int64(200), got[0].Pricing.ID, "req-model 显示但定价是 served-model 的（mapping target）")
+	require.Equal(t, int64(100), got[0].Pricing.ID, "req-model 应展示请求侧模型自己的定价")
 	require.Equal(t, "served-model", got[1].Name)
 	require.Equal(t, int64(200), got[1].Pricing.ID)
+}
+
+func TestSupportedModels_ExactMappingDoesNotReuseTargetPricing(t *testing.T) {
+	ch := &Channel{
+		ModelPricing: []ChannelModelPricing{
+			{ID: 200, Platform: "anthropic", Models: []string{"served-model"}, InputPrice: testPtrFloat64(1.5e-5)},
+		},
+		ModelMapping: map[string]map[string]string{
+			"anthropic": {"req-model": "served-model"},
+		},
+	}
+
+	got := ch.SupportedModels()
+	require.Len(t, got, 2)
+	require.Equal(t, "req-model", got[0].Name)
+	require.Nil(t, got[0].Pricing)
+	require.Equal(t, "served-model", got[1].Name)
+	require.Equal(t, int64(200), got[1].Pricing.ID)
+}
+
+func TestSupportedModels_ExactMappingUsesWildcardSourcePricing(t *testing.T) {
+	ch := &Channel{
+		ModelPricing: []ChannelModelPricing{
+			{ID: 100, Platform: "openai", Models: []string{"gpt-5.6-*"}, InputPrice: testPtrFloat64(5e-6)},
+		},
+		ModelMapping: map[string]map[string]string{
+			"openai": {"gpt-5.6-sol": "gpt-5.6-terra"},
+		},
+	}
+
+	got := ch.SupportedModels()
+	require.Len(t, got, 1)
+	require.Equal(t, "gpt-5.6-sol", got[0].Name)
+	require.NotNil(t, got[0].Pricing)
+	require.Equal(t, int64(100), got[0].Pricing.ID)
 }
 
 func TestSupportedModels_ExactMappingTargetMissingFromPricing(t *testing.T) {

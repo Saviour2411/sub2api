@@ -50,6 +50,7 @@ func TestRunClientToUpstream_ErrorPaths(t *testing.T) {
 			func() {},
 			nil,
 			nil,
+			nil,
 			exitCh,
 		)
 		sig := <-exitCh
@@ -69,6 +70,7 @@ func TestRunClientToUpstream_ErrorPaths(t *testing.T) {
 			nil,
 			func(_ coderws.MessageType, _ []byte) error { return errors.New("boom") },
 			func() {},
+			nil,
 			nil,
 			nil,
 			exitCh,
@@ -93,6 +95,7 @@ func TestRunClientToUpstream_ErrorPaths(t *testing.T) {
 			func(_ coderws.MessageType, _ []byte) error { return nil },
 			func() {},
 			forwarded,
+			nil,
 			func(event RelayTraceEvent) {
 				traces = append(traces, event)
 			},
@@ -383,6 +386,21 @@ func TestEmitTurnCompleteCoverage(t *testing.T) {
 	require.Equal(t, 2, got.Usage.InputTokens)
 	require.Equal(t, 3, got.Usage.OutputTokens)
 	require.Equal(t, "", got.RequestModel)
+}
+
+func TestRelayState_TracksRequestModelPerResponseCreate(t *testing.T) {
+	t.Parallel()
+
+	state := newRelayState("gpt-5.6-sol")
+	require.Equal(t, "gpt-5.6-sol", state.requestModelForResponse("resp_sol", true))
+
+	state.registerClientFrame([]byte(`{"type":"response.create","model":"gpt-5.6-terra"}`))
+	require.Equal(t, "gpt-5.6-terra", state.requestModelForResponse("resp_terra", true))
+
+	state.registerClientFrame([]byte(`{"type":"session.update","session":{"model":"gpt-5.6-luna"}}`))
+	state.registerClientFrame([]byte(`{"type":"response.create"}`))
+	require.Equal(t, "gpt-5.6-luna", state.requestModelForResponse("resp_luna", true))
+	require.Equal(t, "gpt-5.6-luna", state.currentRequestModel())
 }
 
 func TestIsDisconnectErrorCoverage_CloseStatusesAndMessageBranches(t *testing.T) {

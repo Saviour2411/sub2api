@@ -189,6 +189,24 @@ func TestGetModelPricing_UnknownOpenAIModelReturnsError(t *testing.T) {
 	require.Contains(t, err.Error(), "pricing not found")
 }
 
+func TestGetModelPricing_UnknownGPT5VariantsReturnError(t *testing.T) {
+	svc := newTestBillingService()
+
+	for _, model := range []string{
+		"gpt-5.999",
+		"gpt-5.555",
+		"x-gpt-5.4-y",
+		"gpt-5.999-gpt-5.4",
+		"gpt-5.6-sol-weird",
+	} {
+		t.Run(model, func(t *testing.T) {
+			pricing, err := svc.GetModelPricing(model)
+			require.ErrorIs(t, err, ErrModelPricingUnavailable)
+			require.Nil(t, pricing)
+		})
+	}
+}
+
 func TestGetModelPricing_OpenAIGPT54Fallback(t *testing.T) {
 	svc := newTestBillingService()
 
@@ -201,6 +219,43 @@ func TestGetModelPricing_OpenAIGPT54Fallback(t *testing.T) {
 	require.Equal(t, 272000, pricing.LongContextInputThreshold)
 	require.InDelta(t, 2.0, pricing.LongContextInputMultiplier, 1e-12)
 	require.InDelta(t, 1.5, pricing.LongContextOutputMultiplier, 1e-12)
+}
+
+func TestGetModelPricing_OfficialGPT5VariantsUseDedicatedFallbacks(t *testing.T) {
+	svc := newTestBillingService()
+	tests := []struct {
+		model       string
+		inputPrice  float64
+		outputPrice float64
+		cacheRead   float64
+	}{
+		{model: "gpt-5.1-2025-11-13", inputPrice: 1.25e-6, outputPrice: 10e-6, cacheRead: 0.125e-6},
+		{model: "gpt-5.1-chat-latest", inputPrice: 1.25e-6, outputPrice: 10e-6, cacheRead: 0.125e-6},
+		{model: "gpt-5.2-chat-latest", inputPrice: 1.75e-6, outputPrice: 14e-6, cacheRead: 0.175e-6},
+		{model: "gpt-5.2-pro-2025-12-11", inputPrice: 21e-6, outputPrice: 168e-6},
+		{model: "gpt-5.3-chat-latest", inputPrice: 1.5e-6, outputPrice: 12e-6, cacheRead: 0.15e-6},
+		{model: "gpt-5.4-pro-2026-03-05", inputPrice: 30e-6, outputPrice: 180e-6, cacheRead: 3e-6},
+	}
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			pricing, err := svc.GetModelPricing(tt.model)
+			require.NoError(t, err)
+			require.InDelta(t, tt.inputPrice, pricing.InputPricePerToken, 1e-12)
+			require.InDelta(t, tt.outputPrice, pricing.OutputPricePerToken, 1e-12)
+			require.InDelta(t, tt.cacheRead, pricing.CacheReadPricePerToken, 1e-12)
+		})
+	}
+}
+
+func TestCalculateCost_OpenAIGPT54ProLongContextUsesProRates(t *testing.T) {
+	svc := newTestBillingService()
+	tokens := UsageTokens{InputTokens: 272001, OutputTokens: 1000, CacheReadTokens: 1000}
+
+	cost, err := svc.CalculateCost("gpt-5.4-pro", tokens, 1)
+	require.NoError(t, err)
+	require.InDelta(t, float64(tokens.InputTokens)*30e-6*2, cost.InputCost, 1e-10)
+	require.InDelta(t, float64(tokens.OutputTokens)*180e-6*1.5, cost.OutputCost, 1e-10)
+	require.InDelta(t, float64(tokens.CacheReadTokens)*3e-6*2, cost.CacheReadCost, 1e-10)
 }
 
 func TestGetModelPricing_OpenAICompactAliasesFallback(t *testing.T) {
@@ -438,7 +493,7 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 		{name: "openai gpt5.4 mini", model: "gpt-5.4-mini", expectedInput: 7.5e-7},
 		{name: "openai gpt5.3 codex", model: "gpt-5.3-codex", expectedInput: 1.5e-6},
 		{name: "openai gpt5.3 codex spark", model: "gpt-5.3-codex-spark", expectedInput: 1.5e-6},
-		{name: "openai legacy gpt5.1 falls back to gpt5.4", model: "gpt-5.1", expectedInput: 2.5e-6},
+		{name: "openai gpt5.1 uses official fallback", model: "gpt-5.1", expectedInput: 1.25e-6},
 		{name: "openai legacy gpt5.1 codex falls back to gpt5.3 codex", model: "gpt-5.1-codex", expectedInput: 1.5e-6},
 		{name: "openai legacy codex mini latest falls back to gpt5.3 codex", model: "codex-mini-latest", expectedInput: 1.5e-6},
 		{name: "openai unknown no fallback", model: "gpt-unknown-model", expectNilPricing: true},

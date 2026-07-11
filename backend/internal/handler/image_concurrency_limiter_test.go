@@ -159,9 +159,10 @@ func TestOpenAIGatewayHandlerResponses_ImageIntentRejectedByImageConcurrency(t *
 	})
 	c.Set(string(middleware2.ContextKeyUser), middleware2.AuthSubject{UserID: 20, Concurrency: 1})
 
+	gatewayService, billingCacheService := newSimpleOpenAIGatewayTestDependencies()
 	h := &OpenAIGatewayHandler{
-		gatewayService:          &service.OpenAIGatewayService{},
-		billingCacheService:     &service.BillingCacheService{},
+		gatewayService:          gatewayService,
+		billingCacheService:     billingCacheService,
 		apiKeyService:           &service.APIKeyService{},
 		concurrencyHelper:       &ConcurrencyHelper{concurrencyService: service.NewConcurrencyService(&helperConcurrencyCacheStub{userSeq: []bool{true}})},
 		errorPassthroughService: nil,

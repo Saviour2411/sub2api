@@ -313,7 +313,7 @@ func TestOpenAIGatewayServiceRecordUsage_ZeroUsageStillWritesUsageLog(t *testing
 	require.Zero(t, billingRepo.lastCmd.AccountQuotaCost)
 }
 
-func TestOpenAIGatewayServiceRecordUsage_MissingPricingRecordsZeroCostUsageLog(t *testing.T) {
+func TestOpenAIGatewayServiceRecordUsage_MissingPricingRejectsWithoutBillingOrUsageLog(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
 	userRepo := &openAIRecordUsageUserRepoStub{}
@@ -337,31 +337,15 @@ func TestOpenAIGatewayServiceRecordUsage_MissingPricingRecordsZeroCostUsageLog(t
 		APIKeyService: quotaSvc,
 	})
 
-	require.NoError(t, err)
-	require.Equal(t, 1, billingRepo.calls)
-	require.Equal(t, 1, usageRepo.calls)
+	require.ErrorIs(t, err, ErrModelPricingUnavailable)
+	require.Equal(t, 0, billingRepo.calls)
+	require.Equal(t, 0, usageRepo.calls)
 	require.Equal(t, 0, userRepo.deductCalls)
 	require.Equal(t, 0, subRepo.incrementCalls)
 	require.Equal(t, 0, quotaSvc.quotaCalls)
 	require.Equal(t, 0, quotaSvc.rateLimitCalls)
-
-	require.NotNil(t, usageRepo.lastLog)
-	require.Equal(t, "resp_missing_pricing", usageRepo.lastLog.RequestID)
-	require.Equal(t, "pricing-missing-test-model", usageRepo.lastLog.Model)
-	require.Equal(t, "pricing-missing-test-model", usageRepo.lastLog.RequestedModel)
-	require.Equal(t, 1200, usageRepo.lastLog.InputTokens)
-	require.Equal(t, 300, usageRepo.lastLog.OutputTokens)
-	require.Zero(t, usageRepo.lastLog.TotalCost)
-	require.Zero(t, usageRepo.lastLog.ActualCost)
-	require.NotNil(t, usageRepo.lastLog.BillingMode)
-	require.Equal(t, string(BillingModeToken), *usageRepo.lastLog.BillingMode)
-
-	require.NotNil(t, billingRepo.lastCmd)
-	require.Zero(t, billingRepo.lastCmd.BalanceCost)
-	require.Zero(t, billingRepo.lastCmd.SubscriptionCost)
-	require.Zero(t, billingRepo.lastCmd.APIKeyQuotaCost)
-	require.Zero(t, billingRepo.lastCmd.APIKeyRateLimitCost)
-	require.Zero(t, billingRepo.lastCmd.AccountQuotaCost)
+	require.Nil(t, usageRepo.lastLog)
+	require.Nil(t, billingRepo.lastCmd)
 }
 
 func TestOpenAIGatewayServiceRecordUsage_UsesUserSpecificGroupRate(t *testing.T) {
@@ -1267,15 +1251,13 @@ func TestOpenAIGatewayServiceRecordUsage_BillsMappedRequestsUsingRequestedModel(
 	require.Equal(t, expectedCost.ActualCost, userRepo.lastAmount)
 }
 
-func TestOpenAIGatewayServiceRecordUsage_ChannelMappedDoesNotOverrideBillingModelWhenUnmapped(t *testing.T) {
+func TestOpenAIGatewayServiceRecordUsage_UsesRequestedModelWhenUnmapped(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}
 	subRepo := &openAIRecordUsageSubRepoStub{}
 	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
 	usage := OpenAIUsage{InputTokens: 20, OutputTokens: 10}
 
-	// 渠道未发生模型映射时，应使用 result.BillingModel 中记录的实际上游计费模型，
-	// 而不是未映射的原始请求模型。
 	expectedCost, err := svc.billingService.CalculateCost("gpt-5.1", UsageTokens{
 		InputTokens:  20,
 		OutputTokens: 10,
@@ -1285,48 +1267,7 @@ func TestOpenAIGatewayServiceRecordUsage_ChannelMappedDoesNotOverrideBillingMode
 	err = svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 		Result: &OpenAIForwardResult{
 			RequestID:     "resp_channel_unmapped_billing",
-			Model:         "glm",
-			BillingModel:  "gpt-5.1",
-			UpstreamModel: "gpt-5.1",
-			Usage:         usage,
-			Duration:      time.Second,
-		},
-		APIKey:  &APIKey{ID: 10},
-		User:    &User{ID: 20},
-		Account: &Account{ID: 30},
-		ChannelUsageFields: ChannelUsageFields{
-			ChannelID:          1,
-			OriginalModel:      "glm",
-			ChannelMappedModel: "glm", // channel did NOT map
-			BillingModelSource: BillingModelSourceChannelMapped,
-		},
-	})
-
-	require.NoError(t, err)
-	require.NotNil(t, usageRepo.lastLog)
-	require.Equal(t, expectedCost.ActualCost, usageRepo.lastLog.ActualCost)
-	require.True(t, usageRepo.lastLog.ActualCost > 0, "cost must not be zero")
-}
-
-func TestOpenAIGatewayServiceRecordUsage_ChannelMappedOverridesBillingModelWhenMapped(t *testing.T) {
-	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
-	userRepo := &openAIRecordUsageUserRepoStub{}
-	subRepo := &openAIRecordUsageSubRepoStub{}
-	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
-	usage := OpenAIUsage{InputTokens: 20, OutputTokens: 10}
-
-	// When channel DID map the model (ChannelMappedModel != OriginalModel),
-	// billing should use the channel-mapped model, honoring admin intent.
-	expectedCost, err := svc.billingService.CalculateCost("gpt-5.1", UsageTokens{
-		InputTokens:  20,
-		OutputTokens: 10,
-	}, 1.1)
-	require.NoError(t, err)
-
-	err = svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
-		Result: &OpenAIForwardResult{
-			RequestID:     "resp_channel_mapped_billing",
-			Model:         "glm",
+			Model:         "gpt-5.1",
 			BillingModel:  "gpt-5.1-codex",
 			UpstreamModel: "gpt-5.1-codex",
 			Usage:         usage,
@@ -1337,8 +1278,8 @@ func TestOpenAIGatewayServiceRecordUsage_ChannelMappedOverridesBillingModelWhenM
 		Account: &Account{ID: 30},
 		ChannelUsageFields: ChannelUsageFields{
 			ChannelID:          1,
-			OriginalModel:      "glm",
-			ChannelMappedModel: "gpt-5.1", // channel mapped glm → gpt-5.1
+			OriginalModel:      "gpt-5.1",
+			ChannelMappedModel: "gpt-5.1",
 			BillingModelSource: BillingModelSourceChannelMapped,
 		},
 	})
@@ -1349,24 +1290,161 @@ func TestOpenAIGatewayServiceRecordUsage_ChannelMappedOverridesBillingModelWhenM
 	require.True(t, usageRepo.lastLog.ActualCost > 0, "cost must not be zero")
 }
 
-func TestOpenAIGatewayServiceRecordUsage_ResponsesMappedBillingModelHonorsBillingModelSource(t *testing.T) {
+func TestOpenAIGatewayServiceRecordUsage_ChannelMappingDoesNotOverrideRequestedModel(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+	usage := OpenAIUsage{InputTokens: 20, OutputTokens: 10}
+
+	expectedCost, err := svc.billingService.CalculateCost("gpt-5.6-sol", UsageTokens{
+		InputTokens:  20,
+		OutputTokens: 10,
+	}, 1.1)
+	require.NoError(t, err)
+
+	err = svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:     "resp_channel_mapped_billing",
+			Model:         "gpt-5.6-sol",
+			BillingModel:  "gpt-5.6-terra",
+			UpstreamModel: "gpt-5.6-terra",
+			Usage:         usage,
+			Duration:      time.Second,
+		},
+		APIKey:  &APIKey{ID: 10},
+		User:    &User{ID: 20},
+		Account: &Account{ID: 30},
+		ChannelUsageFields: ChannelUsageFields{
+			ChannelID:          1,
+			OriginalModel:      "gpt-5.6-sol",
+			ChannelMappedModel: "gpt-5.6-terra",
+			BillingModelSource: BillingModelSourceChannelMapped,
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, expectedCost.ActualCost, usageRepo.lastLog.ActualCost)
+	require.True(t, usageRepo.lastLog.ActualCost > 0, "cost must not be zero")
+}
+
+func TestOpenAIGatewayServiceRecordUsage_MappedModelSeparatesUserAndAccountCosts(t *testing.T) {
+	usage := OpenAIUsage{
+		InputTokens:              1200,
+		OutputTokens:             300,
+		CacheCreationInputTokens: 200,
+		CacheReadInputTokens:     400,
+	}
+	tokens := UsageTokens{
+		InputTokens:         600,
+		OutputTokens:        300,
+		CacheCreationTokens: 200,
+		CacheReadTokens:     400,
+	}
+
+	for _, subscriptionBilling := range []bool{false, true} {
+		name := "balance"
+		if subscriptionBilling {
+			name = "subscription"
+		}
+		t.Run(name, func(t *testing.T) {
+			usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+			billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+			quotaSvc := &openAIRecordUsageAPIKeyQuotaStub{}
+			svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(
+				usageRepo,
+				billingRepo,
+				&openAIRecordUsageUserRepoStub{},
+				&openAIRecordUsageSubRepoStub{},
+				nil,
+			)
+
+			solCost, err := svc.billingService.CalculateCost("gpt-5.6-sol", tokens, 1)
+			require.NoError(t, err)
+			terraCost, err := svc.billingService.CalculateCost("gpt-5.6-terra", tokens, 1)
+			require.NoError(t, err)
+			require.NotEqual(t, solCost.TotalCost, terraCost.TotalCost)
+
+			group := &Group{ID: 88, RateMultiplier: 1}
+			var subscription *UserSubscription
+			if subscriptionBilling {
+				group.SubscriptionType = SubscriptionTypeSubscription
+				subscription = &UserSubscription{ID: 99}
+			}
+			accountRateMultiplier := 1.3
+			account := &Account{
+				ID:             300,
+				Type:           AccountTypeAPIKey,
+				RateMultiplier: &accountRateMultiplier,
+				Extra:          map[string]any{"quota_limit": 100.0},
+			}
+
+			err = svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+				Result: &OpenAIForwardResult{
+					RequestID:     "resp_sol_to_terra_" + name,
+					Model:         "gpt-5.6-sol",
+					BillingModel:  "gpt-5.6-terra",
+					UpstreamModel: "gpt-5.6-terra",
+					Usage:         usage,
+					Duration:      time.Second,
+				},
+				APIKey: &APIKey{
+					ID:      100,
+					Quota:   100,
+					GroupID: i64p(group.ID),
+					Group:   group,
+				},
+				User:          &User{ID: 200},
+				Account:       account,
+				Subscription:  subscription,
+				APIKeyService: quotaSvc,
+				ChannelUsageFields: ChannelUsageFields{
+					OriginalModel:      "gpt-5.6-sol",
+					ChannelMappedModel: "gpt-5.6-terra",
+					BillingModelSource: BillingModelSourceChannelMapped,
+				},
+			})
+
+			require.NoError(t, err)
+			require.NotNil(t, usageRepo.lastLog)
+			require.Equal(t, "gpt-5.6-sol", usageRepo.lastLog.RequestedModel)
+			require.NotNil(t, usageRepo.lastLog.UpstreamModel)
+			require.Equal(t, "gpt-5.6-terra", *usageRepo.lastLog.UpstreamModel)
+			require.InDelta(t, solCost.TotalCost, usageRepo.lastLog.TotalCost, 1e-12)
+			require.InDelta(t, solCost.ActualCost, usageRepo.lastLog.ActualCost, 1e-12)
+			require.NotNil(t, usageRepo.lastLog.AccountStatsCost)
+			require.InDelta(t, terraCost.TotalCost, *usageRepo.lastLog.AccountStatsCost, 1e-12)
+
+			require.NotNil(t, billingRepo.lastCmd)
+			require.InDelta(t, solCost.ActualCost, billingRepo.lastCmd.APIKeyQuotaCost, 1e-12)
+			require.InDelta(t, terraCost.TotalCost*accountRateMultiplier, billingRepo.lastCmd.AccountQuotaCost, 1e-12)
+			if subscriptionBilling {
+				require.Zero(t, billingRepo.lastCmd.BalanceCost)
+				require.InDelta(t, solCost.ActualCost, billingRepo.lastCmd.SubscriptionCost, 1e-12)
+			} else {
+				require.InDelta(t, solCost.ActualCost, billingRepo.lastCmd.BalanceCost, 1e-12)
+				require.Zero(t, billingRepo.lastCmd.SubscriptionCost)
+			}
+		})
+	}
+}
+
+func TestOpenAIGatewayServiceRecordUsage_BillingModelSourceDoesNotOverrideRequestedModel(t *testing.T) {
 	usage := OpenAIUsage{InputTokens: 20, OutputTokens: 10}
 	tokens := UsageTokens{InputTokens: 20, OutputTokens: 10}
 
 	tests := []struct {
 		name               string
 		billingModelSource string
-		wantBillingModel   string
 	}{
 		{
-			name:               "upstream uses mapped billing model",
+			name:               "upstream source still uses requested model",
 			billingModelSource: BillingModelSourceUpstream,
-			wantBillingModel:   "gpt-5.5",
 		},
 		{
-			name:               "requested overrides mapped billing model",
+			name:               "requested source uses requested model",
 			billingModelSource: BillingModelSourceRequested,
-			wantBillingModel:   "gpt-5.4",
 		},
 	}
 
@@ -1377,7 +1455,7 @@ func TestOpenAIGatewayServiceRecordUsage_ResponsesMappedBillingModelHonorsBillin
 			subRepo := &openAIRecordUsageSubRepoStub{}
 			svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
 
-			expectedCost, err := svc.billingService.CalculateCost(tt.wantBillingModel, tokens, 1.1)
+			expectedCost, err := svc.billingService.CalculateCost("gpt-5.4", tokens, 1.1)
 			require.NoError(t, err)
 
 			err = svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
@@ -1445,20 +1523,14 @@ func TestOpenAIGatewayServiceRecordUsage_BillsCompactOpenAIModelAlias(t *testing
 	require.InDelta(t, expectedCost.ActualCost, userRepo.lastAmount, 1e-12)
 }
 
-func TestOpenAIGatewayServiceRecordUsage_FallsBackToUpstreamModelWhenPrimaryUnpriceable(t *testing.T) {
+func TestOpenAIGatewayServiceRecordUsage_DoesNotFallBackToUpstreamModelWhenRequestedUnpriceable(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}
 	subRepo := &openAIRecordUsageSubRepoStub{}
 	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
 	usage := OpenAIUsage{InputTokens: 20, OutputTokens: 10}
 
-	expectedCost, err := svc.billingService.CalculateCost("gpt-5.4", UsageTokens{
-		InputTokens:  20,
-		OutputTokens: 10,
-	}, 1.1)
-	require.NoError(t, err)
-
-	err = svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 		Result: &OpenAIForwardResult{
 			RequestID:     "resp_unpriceable_primary_upstream_fallback",
 			Model:         "not-priceable-alias",
@@ -1472,14 +1544,13 @@ func TestOpenAIGatewayServiceRecordUsage_FallsBackToUpstreamModelWhenPrimaryUnpr
 		Account: &Account{ID: 30},
 	})
 
-	require.NoError(t, err)
-	require.NotNil(t, usageRepo.lastLog)
-	require.InDelta(t, expectedCost.ActualCost, usageRepo.lastLog.ActualCost, 1e-12)
-	require.True(t, usageRepo.lastLog.ActualCost > 0, "cost must not be zero")
-	require.InDelta(t, expectedCost.ActualCost, userRepo.lastAmount, 1e-12)
+	require.ErrorIs(t, err, ErrModelPricingUnavailable)
+	require.Zero(t, usageRepo.calls)
+	require.Nil(t, usageRepo.lastLog)
+	require.Zero(t, userRepo.deductCalls)
 }
 
-func TestOpenAIGatewayServiceRecordUsage_UnpricedTokenModelFallsBackToZeroCostUsageLog(t *testing.T) {
+func TestOpenAIGatewayServiceRecordUsage_UnpricedTokenModelReturnsError(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}
 	subRepo := &openAIRecordUsageSubRepoStub{}
@@ -1497,14 +1568,9 @@ func TestOpenAIGatewayServiceRecordUsage_UnpricedTokenModelFallsBackToZeroCostUs
 		Account: &Account{ID: 30},
 	})
 
-	require.NoError(t, err)
-	require.Equal(t, 1, usageRepo.calls)
-	require.NotNil(t, usageRepo.lastLog)
-	require.Equal(t, "not-priceable-alias", usageRepo.lastLog.Model)
-	require.Equal(t, 20, usageRepo.lastLog.InputTokens)
-	require.Equal(t, 10, usageRepo.lastLog.OutputTokens)
-	require.Zero(t, usageRepo.lastLog.TotalCost)
-	require.Zero(t, usageRepo.lastLog.ActualCost)
+	require.ErrorIs(t, err, ErrModelPricingUnavailable)
+	require.Zero(t, usageRepo.calls)
+	require.Nil(t, usageRepo.lastLog)
 	require.Equal(t, 0, userRepo.deductCalls)
 	require.Equal(t, 0, subRepo.incrementCalls)
 }
@@ -1538,7 +1604,7 @@ func TestOpenAIGatewayServiceRecordUsage_SubscriptionBillingSetsSubscriptionFiel
 	require.Equal(t, 0, userRepo.deductCalls)
 }
 
-func TestOpenAIGatewayServiceRecordUsage_SimpleModeSkipsBillingAfterPersist(t *testing.T) {
+func TestOpenAIGatewayServiceRecordUsage_SimpleModeAllowsUnpricedModel(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}
 	subRepo := &openAIRecordUsageSubRepoStub{}
@@ -1549,7 +1615,7 @@ func TestOpenAIGatewayServiceRecordUsage_SimpleModeSkipsBillingAfterPersist(t *t
 		Result: &OpenAIForwardResult{
 			RequestID: "resp_simple_mode",
 			Usage:     OpenAIUsage{InputTokens: 10, OutputTokens: 5},
-			Model:     "gpt-5.1",
+			Model:     "not-priceable-in-simple-mode",
 			Duration:  time.Second,
 		},
 		APIKey:  &APIKey{ID: 1000},
@@ -2323,6 +2389,58 @@ func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingUsesImageCoun
 	require.Equal(t, string(BillingModeImage), cost.BillingMode)
 	require.InDelta(t, 0.5, cost.TotalCost, 1e-12)
 	require.InDelta(t, 0.5, cost.ActualCost, 1e-12)
+}
+
+func TestGatewayServiceCalculateRecordUsageCost_EmptyChannelImagePricingFallsBackToModelDefault(t *testing.T) {
+	groupID := int64(130)
+	model := "gemini-image"
+	cache := newEmptyChannelCache()
+	cache.pricingByGroupModel[channelModelKey{groupID: groupID, model: model}] = &ChannelModelPricing{
+		BillingMode: BillingModeImage,
+	}
+	cache.channelByGroupID[groupID] = &Channel{ID: groupID, Status: StatusActive}
+	cache.groupPlatform[groupID] = ""
+	cache.loadedAt = time.Now()
+	channelService := &ChannelService{}
+	channelService.cache.Store(cache)
+	billingService := NewBillingService(&config.Config{}, nil)
+	svc := &GatewayService{
+		billingService: billingService,
+		resolver:       NewModelPricingResolver(channelService, billingService),
+	}
+	apiKey := &APIKey{GroupID: i64p(groupID), Group: &Group{ID: groupID}}
+	result := &ForwardResult{Model: model, ImageCount: 2, ImageSize: ImageBillingSize1K}
+
+	cost, err := svc.calculateRecordUsageCostStrict(
+		context.Background(), result, apiKey, model, 1, 1, nil,
+	)
+
+	require.NoError(t, err)
+	expected := billingService.CalculateImageCost(model, ImageBillingSize1K, 2, nil, 1)
+	require.InDelta(t, expected.ActualCost, cost.ActualCost, 1e-12)
+	require.Greater(t, cost.ActualCost, 0.0)
+	require.Equal(t, string(BillingModeImage), cost.BillingMode)
+}
+
+func TestGatewayServiceCalculateRecordUsageCost_ExplicitZeroChannelImagePricingStaysFree(t *testing.T) {
+	groupID := int64(131)
+	model := "gemini-image"
+	billingService := NewBillingService(&config.Config{}, nil)
+	svc := &GatewayService{
+		billingService: billingService,
+		resolver:       newOpenAIImageChannelPricingResolverForTest(t, groupID, model, 0),
+	}
+
+	cost, err := svc.calculateRecordUsageCostStrict(
+		context.Background(),
+		&ForwardResult{Model: model, ImageCount: 1, ImageSize: ImageBillingSize1K},
+		&APIKey{GroupID: i64p(groupID), Group: &Group{ID: groupID}},
+		model, 1, 1, nil,
+	)
+
+	require.NoError(t, err)
+	require.Zero(t, cost.ActualCost)
+	require.Equal(t, string(BillingModeImage), cost.BillingMode)
 }
 
 func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingUsesSizeTier(t *testing.T) {
