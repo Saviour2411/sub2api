@@ -259,20 +259,6 @@ func (r *ModelPricingResolver) applyRequestTierOverrides(chPricing *ChannelModel
 	}
 }
 
-// filterValidIntervals 过滤掉所有价格字段都为空的无效 interval。
-// 前端可能创建了只有 min/max 但无价格的空 interval。
-func filterValidIntervals(intervals []PricingInterval) []PricingInterval {
-	var valid []PricingInterval
-	for _, iv := range intervals {
-		if iv.InputPrice != nil || iv.OutputPrice != nil ||
-			iv.CacheWritePrice != nil || iv.CacheReadPrice != nil ||
-			iv.PerRequestPrice != nil {
-			valid = append(valid, iv)
-		}
-	}
-	return valid
-}
-
 func filterValidTokenIntervals(intervals []PricingInterval) []PricingInterval {
 	var valid []PricingInterval
 	for _, iv := range intervals {

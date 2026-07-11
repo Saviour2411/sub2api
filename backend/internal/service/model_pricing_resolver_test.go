@@ -779,61 +779,59 @@ func TestGetRequestTierPriceByContext_ExactBoundary(t *testing.T) {
 }
 
 // ===========================================================================
-// 8. filterValidIntervals
+// 8. filterValidTokenIntervals / filterValidRequestIntervals
 // ===========================================================================
 
-func TestFilterValidIntervals(t *testing.T) {
+func TestFilterValidPricingIntervals(t *testing.T) {
 	tests := []struct {
-		name      string
-		intervals []PricingInterval
-		wantLen   int
+		name           string
+		intervals      []PricingInterval
+		wantTokenLen   int
+		wantRequestLen int
 	}{
 		{
-			name:      "empty list",
-			intervals: nil,
-			wantLen:   0,
+			name: "empty list",
 		},
 		{
 			name: "all-nil interval filtered out",
 			intervals: []PricingInterval{
 				{MinTokens: 0, MaxTokens: testPtrInt(128000)},
 			},
-			wantLen: 0,
 		},
 		{
 			name: "interval with only InputPrice kept",
 			intervals: []PricingInterval{
 				{MinTokens: 0, MaxTokens: testPtrInt(128000), InputPrice: testPtrFloat64(1e-6)},
 			},
-			wantLen: 1,
+			wantTokenLen: 1,
 		},
 		{
 			name: "interval with only OutputPrice kept",
 			intervals: []PricingInterval{
 				{MinTokens: 0, MaxTokens: testPtrInt(128000), OutputPrice: testPtrFloat64(2e-6)},
 			},
-			wantLen: 1,
+			wantTokenLen: 1,
 		},
 		{
 			name: "interval with only CacheWritePrice kept",
 			intervals: []PricingInterval{
 				{MinTokens: 0, CacheWritePrice: testPtrFloat64(3e-6)},
 			},
-			wantLen: 1,
+			wantTokenLen: 1,
 		},
 		{
 			name: "interval with only CacheReadPrice kept",
 			intervals: []PricingInterval{
 				{MinTokens: 0, CacheReadPrice: testPtrFloat64(0.5e-6)},
 			},
-			wantLen: 1,
+			wantTokenLen: 1,
 		},
 		{
 			name: "interval with only PerRequestPrice kept",
 			intervals: []PricingInterval{
 				{TierLabel: "1K", PerRequestPrice: testPtrFloat64(0.04)},
 			},
-			wantLen: 1,
+			wantRequestLen: 1,
 		},
 		{
 			name: "mixed valid and invalid",
@@ -842,14 +840,14 @@ func TestFilterValidIntervals(t *testing.T) {
 				{MinTokens: 128000, MaxTokens: nil}, // all-nil → filtered out
 				{MinTokens: 256000, OutputPrice: testPtrFloat64(5e-6)},
 			},
-			wantLen: 2,
+			wantTokenLen: 2,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := filterValidIntervals(tt.intervals)
-			require.Len(t, result, tt.wantLen)
+			require.Len(t, filterValidTokenIntervals(tt.intervals), tt.wantTokenLen)
+			require.Len(t, filterValidRequestIntervals(tt.intervals), tt.wantRequestLen)
 		})
 	}
 }

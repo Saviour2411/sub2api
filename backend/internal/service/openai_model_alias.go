@@ -109,9 +109,7 @@ func normalizeKnownOpenAIPricingModel(model string) string {
 	if normalized == "" {
 		return ""
 	}
-	if strings.HasSuffix(normalized, "-openai-compact") {
-		normalized = strings.TrimSuffix(normalized, "-openai-compact")
-	}
+	normalized = strings.TrimSuffix(normalized, "-openai-compact")
 
 	switch {
 	case matchesKnownOpenAIModelVariant(normalized, "gpt-5.6-sol"):

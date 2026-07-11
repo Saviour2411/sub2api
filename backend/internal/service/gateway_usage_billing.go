@@ -879,23 +879,6 @@ func (s *GatewayService) calculateImageCost(
 	return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
 }
 
-// calculateTokenCost 计算 Token 计费：根据 opts 决定走普通/长上下文/渠道统一计费。
-func (s *GatewayService) calculateTokenCost(
-	ctx context.Context,
-	result *ForwardResult,
-	apiKey *APIKey,
-	billingModel string,
-	multiplier float64,
-	opts *recordUsageOpts,
-) *CostBreakdown {
-	cost, err := s.calculateTokenCostStrict(ctx, result, apiKey, billingModel, multiplier, opts)
-	if err != nil {
-		logger.LegacyPrintf("service.gateway", "Calculate cost failed: %v", err)
-		return &CostBreakdown{ActualCost: 0}
-	}
-	return cost
-}
-
 func (s *GatewayService) calculateTokenCostStrict(
 	ctx context.Context,
 	result *ForwardResult,
