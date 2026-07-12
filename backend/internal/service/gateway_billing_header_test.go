@@ -65,3 +65,9 @@ func TestSyncBillingHeaderVersion(t *testing.T) {
 		})
 	}
 }
+
+func TestComputeClaudeCodeFingerprint_UsesCharacterIndexesForChineseText(t *testing.T) {
+	body := []byte(`{"messages":[{"role":"user","content":"甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申酉戌亥"}]}`)
+
+	assert.Equal(t, "649", computeClaudeCodeFingerprint(body, "2.1.195"))
+}

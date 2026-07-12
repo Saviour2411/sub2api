@@ -626,7 +626,6 @@ export interface AdminGroup extends Group {
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   models_list_config?: ModelsListConfig
-  claude_code_upstream_mimicry?: boolean
 
   // 分组排序
   sort_order: number

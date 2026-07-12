@@ -201,6 +201,11 @@ export default {
         description: '配置新账号的池模式默认值、自动测活退避、流式首 Token 超时和 Image 分组成功率。',
         minutes: '分钟',
         saved: '网关配置已保存',
+        anthropicClaudeCodeMimicry: {
+          title: 'Anthropic Claude Code 上游模拟',
+          description: '开启后，所有 Anthropic 类型分组下未开启透传模式的 API Key 账号会模拟 Claude Code 客户端请求。OAuth 账号仍保持自动模拟，真实 Claude Code 请求不会重写。',
+          enabled: '启用模拟',
+        },
         poolDefaults: {
           title: '账号池默认值',
           description: '仅应用于后续新建的 API Key 和 Bedrock 账号，不修改存量账号。',

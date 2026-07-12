@@ -17,6 +17,9 @@ func TestClaudeCodeValidator_ProbeBypass(t *testing.T) {
 	validator := NewClaudeCodeValidator()
 	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages", nil)
 	req.Header.Set("User-Agent", "claude-cli/1.2.3 (darwin; arm64)")
+	req.Header.Set("X-App", "cli")
+	req.Header.Set("anthropic-beta", "interleaved-thinking-2025-05-14")
+	req.Header.Set("anthropic-version", "2023-06-01")
 	req = req.WithContext(context.WithValue(req.Context(), ctxkey.IsMaxTokensOneHaikuRequest, true))
 
 	ok := validator.Validate(req, map[string]any{
@@ -30,6 +33,9 @@ func TestClaudeCodeValidator_ProbeBypassRequiresUA(t *testing.T) {
 	validator := NewClaudeCodeValidator()
 	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages", nil)
 	req.Header.Set("User-Agent", "curl/8.0.0")
+	req.Header.Set("X-App", "cli")
+	req.Header.Set("anthropic-beta", "interleaved-thinking-2025-05-14")
+	req.Header.Set("anthropic-version", "2023-06-01")
 	req = req.WithContext(context.WithValue(req.Context(), ctxkey.IsMaxTokensOneHaikuRequest, true))
 
 	ok := validator.Validate(req, map[string]any{
@@ -51,15 +57,34 @@ func TestClaudeCodeValidator_MessagesWithoutProbeStillNeedStrictValidation(t *te
 	require.False(t, ok)
 }
 
-func TestClaudeCodeValidator_CountTokensPathUAOnly(t *testing.T) {
+func TestClaudeCodeValidator_CountTokensPathRequiresProtocolHeaders(t *testing.T) {
 	validator := NewClaudeCodeValidator()
 	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages/count_tokens", nil)
 	req.Header.Set("User-Agent", "claude-cli/2.1.156 (Claude Code)")
+	req.Header.Set("X-App", "cli")
+	req.Header.Set("anthropic-beta", "claude-code-20250219,interleaved-thinking-2025-05-14,token-counting-2024-11-01")
+	req.Header.Set("anthropic-version", "2023-06-01")
 
 	ok := validator.Validate(req, map[string]any{
 		"model": "claude-opus-4-8",
 	})
 	require.True(t, ok)
+}
+
+func TestClaudeCodeValidator_CountTokensPathRejectsIncompleteFingerprint(t *testing.T) {
+	validator := NewClaudeCodeValidator()
+	for _, missing := range []string{"X-App", "anthropic-beta", "anthropic-version"} {
+		t.Run(missing, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages/count_tokens", nil)
+			req.Header.Set("User-Agent", "claude-cli/2.1.156 (Claude Code)")
+			req.Header.Set("X-App", "cli")
+			req.Header.Set("anthropic-beta", "claude-code-20250219,interleaved-thinking-2025-05-14,token-counting-2024-11-01")
+			req.Header.Set("anthropic-version", "2023-06-01")
+			req.Header.Del(missing)
+
+			require.False(t, validator.Validate(req, map[string]any{"model": "claude-opus-4-8"}))
+		})
+	}
 }
 
 func TestClaudeCodeValidator_CountTokensPathRequiresUA(t *testing.T) {
@@ -78,7 +103,7 @@ func TestClaudeCodeValidator_MessagesPathFullValid(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages", nil)
 	req.Header.Set("User-Agent", "claude-cli/2.1.156 (Claude Code)")
 	req.Header.Set("X-App", "claude-code")
-	req.Header.Set("anthropic-beta", "claude-code-20250219")
+	req.Header.Set("anthropic-beta", "claude-code-20250219,interleaved-thinking-2025-05-14")
 	req.Header.Set("anthropic-version", "2023-06-01")
 
 	ok := validator.Validate(req, map[string]any{
@@ -111,7 +136,7 @@ func TestClaudeCodeValidator_BillingBlockRecognizedWithoutIdentityPrompt(t *test
 	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages", nil)
 	req.Header.Set("User-Agent", "claude-cli/2.1.162 (external, cli)")
 	req.Header.Set("X-App", "cli")
-	req.Header.Set("anthropic-beta", "claude-code-20250219")
+	req.Header.Set("anthropic-beta", "claude-code-20250219,interleaved-thinking-2025-05-14")
 	req.Header.Set("anthropic-version", "2023-06-01")
 
 	// Claude Code 安全监视器子请求：不携带身份 prose，但 system 数组携带计费归因块
@@ -150,7 +175,7 @@ func TestClaudeCodeValidator_BillingBlockVSCodeEntrypointRecognized(t *testing.T
 	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages", nil)
 	req.Header.Set("User-Agent", "claude-cli/2.1.181 (external, claude-vscode, agent-sdk/0.3.181)")
 	req.Header.Set("X-App", "cli")
-	req.Header.Set("anthropic-beta", "claude-code-20250219")
+	req.Header.Set("anthropic-beta", "claude-code-20250219,interleaved-thinking-2025-05-14")
 	req.Header.Set("anthropic-version", "2023-06-01")
 
 	ok := validator.Validate(req, map[string]any{
@@ -177,7 +202,7 @@ func TestClaudeCodeValidator_BillingBlockWithoutEntrypointFallsThrough(t *testin
 	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages", nil)
 	req.Header.Set("User-Agent", "claude-cli/2.1.162 (external, cli)")
 	req.Header.Set("X-App", "cli")
-	req.Header.Set("anthropic-beta", "claude-code-20250219")
+	req.Header.Set("anthropic-beta", "claude-code-20250219,interleaved-thinking-2025-05-14")
 	req.Header.Set("anthropic-version", "2023-06-01")
 
 	// 计费块前缀命中但完全没有 cc_entrypoint= 字段，且无身份 prose：
@@ -206,7 +231,7 @@ func TestClaudeCodeValidator_BillingBlockStillRequiresClaudeCodeUA(t *testing.T)
 	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages", nil)
 	req.Header.Set("User-Agent", "curl/8.0.0")
 	req.Header.Set("X-App", "cli")
-	req.Header.Set("anthropic-beta", "claude-code-20250219")
+	req.Header.Set("anthropic-beta", "claude-code-20250219,interleaved-thinking-2025-05-14")
 	req.Header.Set("anthropic-version", "2023-06-01")
 
 	// 计费块无法绕过 UA 校验：非 claude-cli 客户端在 Step 1 即被拒。
@@ -236,7 +261,7 @@ func TestClaudeCodeValidator_BillingBlockRecognizedWithoutCCH(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages", nil)
 	req.Header.Set("User-Agent", "claude-cli/2.1.162 (external, cli)")
 	req.Header.Set("X-App", "cli")
-	req.Header.Set("anthropic-beta", "claude-code-20250219")
+	req.Header.Set("anthropic-beta", "claude-code-20250219,interleaved-thinking-2025-05-14")
 	req.Header.Set("anthropic-version", "2023-06-01")
 
 	ok := validator.Validate(req, map[string]any{
@@ -266,7 +291,7 @@ func TestClaudeCodeValidator_NoCCHBlockStillRequiresClaudeCodeUA(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages", nil)
 	req.Header.Set("User-Agent", "curl/8.0.0")
 	req.Header.Set("X-App", "cli")
-	req.Header.Set("anthropic-beta", "claude-code-20250219")
+	req.Header.Set("anthropic-beta", "claude-code-20250219,interleaved-thinking-2025-05-14")
 	req.Header.Set("anthropic-version", "2023-06-01")
 
 	ok := validator.Validate(req, map[string]any{
@@ -286,7 +311,7 @@ func TestClaudeCodeValidator_MessagesPathRejectsNonClaudeCodeUA(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages", nil)
 	req.Header.Set("User-Agent", "curl/8.0.0")
 	req.Header.Set("X-App", "claude-code")
-	req.Header.Set("anthropic-beta", "claude-code-20250219")
+	req.Header.Set("anthropic-beta", "claude-code-20250219,interleaved-thinking-2025-05-14")
 	req.Header.Set("anthropic-version", "2023-06-01")
 
 	ok := validator.Validate(req, map[string]any{
@@ -310,7 +335,7 @@ func TestClaudeCodeValidator_MessagesPathWithoutSystemPromptStillRejected(t *tes
 	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages", nil)
 	req.Header.Set("User-Agent", "claude-cli/2.1.156 (Claude Code)")
 	req.Header.Set("X-App", "claude-code")
-	req.Header.Set("anthropic-beta", "claude-code-20250219")
+	req.Header.Set("anthropic-beta", "claude-code-20250219,interleaved-thinking-2025-05-14")
 	req.Header.Set("anthropic-version", "2023-06-01")
 
 	ok := validator.Validate(req, map[string]any{

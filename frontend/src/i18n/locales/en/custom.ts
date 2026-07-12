@@ -201,6 +201,11 @@ export default {
         description: 'Configure account pool defaults, managed probe backoff, streaming first-token timeout and Image group success rates.',
         minutes: 'minutes',
         saved: 'Gateway settings saved',
+        anthropicClaudeCodeMimicry: {
+          title: 'Anthropic Claude Code Upstream Mimicry',
+          description: 'When enabled, API key accounts without passthrough mode in all Anthropic groups mimic Claude Code requests. OAuth accounts continue to mimic automatically, and genuine Claude Code requests are not rewritten.',
+          enabled: 'Enable mimicry',
+        },
         poolDefaults: {
           title: 'Account Pool Defaults',
           description: 'Applies only to new API key and Bedrock accounts. Existing accounts are not changed.',

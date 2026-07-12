@@ -52,9 +52,8 @@ type Group struct {
 	VideoPrice1080P              *float64
 
 	// Claude Code 客户端限制
-	ClaudeCodeOnly            bool
-	ClaudeCodeUpstreamMimicry bool
-	FallbackGroupID           *int64
+	ClaudeCodeOnly  bool
+	FallbackGroupID *int64
 	// 无效请求兜底分组（仅 anthropic 平台使用）
 	FallbackGroupIDOnInvalidRequest *int64
 

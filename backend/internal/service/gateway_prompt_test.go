@@ -10,7 +10,7 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func TestIsClaudeCodeClient(t *testing.T) {
+func TestLegacyClaudeCodeSignalsRequireValidMetadata(t *testing.T) {
 	// 合法的 legacy 格式 metadata.user_id（64位 hex + account uuid + session uuid）
 	legacyUserID := "user_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2_account_550e8400-e29b-41d4-a716-446655440000_session_123e4567-e89b-12d3-a456-426614174000"
 	// 合法的 JSON 格式 metadata.user_id（2.1.78+ 版本）
@@ -80,7 +80,7 @@ func TestIsClaudeCodeClient(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := isClaudeCodeClient(tt.userAgent, tt.metadataUserID)
+			got := claudeCliUserAgentRe.MatchString(tt.userAgent) && ParseMetadataUserID(tt.metadataUserID) != nil
 			require.Equal(t, tt.want, got)
 		})
 	}

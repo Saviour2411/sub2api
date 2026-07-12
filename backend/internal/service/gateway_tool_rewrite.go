@@ -16,6 +16,14 @@ import (
 // 请求阶段写入，响应阶段读取，用于 bytes 级逆向还原假名 → 真名。
 const toolNameRewriteKey = "claude_tool_name_rewrite"
 
+// clearToolNameRewriteFromContext 清除上一次账号尝试留下的工具名映射。
+// 故障转移会复用同一个 gin.Context，每次转发开始时必须先清空旧值。
+func clearToolNameRewriteFromContext(c interface {
+	Set(string, any)
+}) {
+	c.Set(toolNameRewriteKey, nil)
+}
+
 // staticToolNameRewrites 是"静态前缀映射"，与 Parrot src/transform/cc_mimicry.py
 // TOOL_NAME_REWRITES 完全一致。只有以这些前缀开头的工具会被重写。
 var staticToolNameRewrites = map[string]string{

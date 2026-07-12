@@ -26,6 +26,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/tidwall/gjson"
 )
 
 // sseDataPrefix matches SSE data lines with optional whitespace after colon.
@@ -134,7 +135,7 @@ func generateSessionString() (string, error) {
 	return FormatMetadataUserID(hex64, "", sessionUUID, uaVersion), nil
 }
 
-// createTestPayload creates a Claude Code style test request payload
+// createTestPayload 为 OAuth 测试构造 Claude Code 风格请求体。
 func createTestPayload(modelID string, prompts ...string) (map[string]any, error) {
 	sessionID, err := generateSessionString()
 	if err != nil {
@@ -176,8 +177,36 @@ func createTestPayload(modelID string, prompts ...string) (map[string]any, error
 	}, nil
 }
 
+func createPlainAnthropicTestPayload(modelID string, prompts ...string) map[string]any {
+	testPrompt := firstNonEmptyPrompt(prompts, DefaultScheduledTestPrompt)
+	return map[string]any{
+		"model": modelID,
+		"messages": []map[string]any{
+			{
+				"role": "user",
+				"content": []map[string]any{
+					{"type": "text", "text": testPrompt},
+				},
+			},
+		},
+		"max_tokens":  1024,
+		"temperature": 1,
+		"stream":      true,
+	}
+}
+
+func createAPIKeyClaudeCodeTestPayload(account *Account, modelID string, prompts ...string) ([]byte, error) {
+	payloadBytes, err := json.Marshal(createPlainAnthropicTestPayload(modelID, prompts...))
+	if err != nil {
+		return nil, err
+	}
+	payloadBytes = prependClaudeCodeMimicSystemBlocks(payloadBytes)
+	payloadBytes = forceClaudeCodeMetadataUserID(payloadBytes, buildAPIKeyMimicMetadataUserID(nil, account, payloadBytes))
+	payloadBytes, _ = normalizeClaudeOAuthRequestBody(payloadBytes, modelID, claudeOAuthNormalizeOptions{stripSystemCacheControl: false, preserveModel: true})
+	return payloadBytes, nil
+}
+
 // TestAccountConnection tests an account's connection by sending a test request
-// All account types use full Claude Code client characteristics, only auth header differs
 // modelID is optional - if empty, defaults to claude.DefaultTestModel
 // mode is optional - "compact" routes OpenAI accounts to the /responses/compact probe path
 func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int64, modelID string, prompt string, mode string) error {
@@ -243,6 +272,12 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 		return s.testClaudeVertexServiceAccountConnection(c, ctx, account, testModelID, textPrompt)
 	}
 
+	globalMimicryEnabled := false
+	if s.settingService != nil {
+		globalMimicryEnabled = s.settingService.GetGatewayRuntime(ctx).AnthropicClaudeCodeMimicryEnabled
+	}
+	mimicClaudeCode := shouldMimicClaudeCodeForAccount(account, false, globalMimicryEnabled)
+
 	// Determine authentication method and API URL
 	var authToken string
 	var apiURL string
@@ -279,12 +314,26 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	// Create Claude Code style payload (same for all account types)
-	payload, err := createTestPayload(testModelID, textPrompt)
-	if err != nil {
-		return s.sendErrorAndEnd(c, "Failed to create test payload")
+	var payloadBytes []byte
+	var payloadErr error
+	if account.IsOAuth() {
+		payload, payloadErr := createTestPayload(testModelID, textPrompt)
+		if payloadErr != nil {
+			return s.sendErrorAndEnd(c, "Failed to create test payload")
+		}
+		payloadBytes, _ = json.Marshal(payload)
+		payloadBytes = prependClaudeCodeMimicSystemBlocks(payloadBytes)
+	} else if mimicClaudeCode {
+		payloadBytes, payloadErr = createAPIKeyClaudeCodeTestPayload(account, testModelID, textPrompt)
+		if payloadErr != nil {
+			return s.sendErrorAndEnd(c, "Failed to create test payload")
+		}
+	} else {
+		payloadBytes, payloadErr = json.Marshal(createPlainAnthropicTestPayload(testModelID, textPrompt))
+		if payloadErr != nil {
+			return s.sendErrorAndEnd(c, "Failed to create test payload")
+		}
 	}
-	payloadBytes, _ := json.Marshal(payload)
 
 	// Send test_start event
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
@@ -298,22 +347,22 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("anthropic-version", "2023-06-01")
 
-	// Apply Claude Code client headers
-	for key, value := range claude.DefaultHeaders {
-		req.Header.Set(key, value)
-	}
-
 	// Set authentication header
 	if account.IsOAuth() {
 		req.Header.Set("anthropic-beta", claude.DefaultBetaHeader)
 		req.Header.Set("Authorization", "Bearer "+authToken)
 	} else {
-		req.Header.Set("anthropic-beta", claude.APIKeyBetaHeader)
 		setAnthropicAPIKeyAuthHeader(req.Header, account, authToken)
+	}
+	if mimicClaudeCode {
+		applyClaudeCodeAccountTestMimicHeaders(req, account, payloadBytes)
 	}
 
 	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
 	account.ApplyHeaderOverrides(req.Header)
+	if mimicClaudeCode {
+		applyClaudeCodeAccountTestMimicHeaders(req, account, payloadBytes)
+	}
 
 	// Get proxy URL
 	proxyURL := ""
@@ -341,6 +390,20 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 
 	// Process SSE stream
 	return s.processClaudeStream(c, resp.Body, account)
+}
+
+func applyClaudeCodeAccountTestMimicHeaders(req *http.Request, account *Account, payload []byte) {
+	applyClaudeCodeMimicHeaders(req, true)
+	deleteHeaderAllForms(req.Header, "anthropic-beta")
+	if account.IsOAuth() {
+		setHeaderRaw(req.Header, "anthropic-beta", strings.Join(claude.FullClaudeCodeMimicryBetas(), ","))
+	} else {
+		beta := mergeAPIKeyMimicAccountBeta(defaultAPIKeyBetaHeader(payload), account, defaultDroppedBetasSet)
+		setHeaderRaw(req.Header, "anthropic-beta", beta)
+	}
+	if parsed := ParseMetadataUserID(gjson.GetBytes(payload, "metadata.user_id").String()); parsed != nil {
+		setHeaderRaw(req.Header, "X-Claude-Code-Session-Id", parsed.SessionID)
+	}
 }
 
 func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Context, ctx context.Context, account *Account, testModelID string, prompts ...string) error {

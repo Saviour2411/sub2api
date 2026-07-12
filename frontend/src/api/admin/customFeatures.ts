@@ -47,6 +47,7 @@ export interface GatewaySettings {
   upstream_error_status_codes: number[]
   upstream_error_consecutive_threshold: number
   image_group_success_rate_visible: boolean
+  anthropic_claude_code_mimicry_enabled: boolean
 }
 
 export interface ImageGroupSuccessRatesResetResult {

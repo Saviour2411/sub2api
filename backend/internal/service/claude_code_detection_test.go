@@ -83,11 +83,22 @@ func TestValidate_MessagesPath_FullValid(t *testing.T) {
 	req := httptest.NewRequest("POST", "/v1/messages", nil)
 	req.Header.Set("User-Agent", "claude-cli/1.0.0")
 	req.Header.Set("X-App", "claude-code")
-	req.Header.Set("anthropic-beta", "max-tokens-3-5-sonnet-2024-07-15")
+	req.Header.Set("anthropic-beta", "claude-code-20250219,interleaved-thinking-2025-05-14")
 	req.Header.Set("anthropic-version", "2023-06-01")
 
 	result := v.Validate(req, validClaudeCodeBody())
 	require.True(t, result, "完整有效请求应通过")
+}
+
+func TestValidate_MessagesPath_RejectsIncompleteBetaFingerprint(t *testing.T) {
+	v := newTestValidator()
+	req := httptest.NewRequest("POST", "/v1/messages", nil)
+	req.Header.Set("User-Agent", "claude-cli/2.1.195 (external, cli)")
+	req.Header.Set("X-App", "cli")
+	req.Header.Set("anthropic-beta", "some-unrelated-beta")
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	require.False(t, v.Validate(req, validClaudeCodeBody()))
 }
 
 func TestValidate_MessagesPath_MissingHeaders(t *testing.T) {
@@ -108,7 +119,7 @@ func TestValidate_MessagesPath_MissingHeaders(t *testing.T) {
 			req := httptest.NewRequest("POST", "/v1/messages", nil)
 			req.Header.Set("User-Agent", "claude-cli/1.0.0")
 			req.Header.Set("X-App", "claude-code")
-			req.Header.Set("anthropic-beta", "beta")
+			req.Header.Set("anthropic-beta", "claude-code-20250219,interleaved-thinking-2025-05-14")
 			req.Header.Set("anthropic-version", "2023-06-01")
 			req.Header.Del(tt.missingHeader)
 
@@ -130,6 +141,8 @@ func TestValidate_MessagesPath_InvalidMetadataUserID(t *testing.T) {
 		{"空 user_id", map[string]any{"user_id": ""}},
 		{"格式错误", map[string]any{"user_id": "invalid-format"}},
 		{"hex 长度不足", map[string]any{"user_id": "user_abc_account__session_uuid"}},
+		{"现代格式 device_id 非 64 位 hex", map[string]any{"user_id": `{"device_id":"fake","account_uuid":"","session_id":"12345678-1234-1234-1234-123456789abc"}`}},
+		{"现代格式 session_id 非 UUID", map[string]any{"user_id": `{"device_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","account_uuid":"","session_id":"fake"}`}},
 	}
 
 	for _, tt := range tests {
@@ -137,7 +150,7 @@ func TestValidate_MessagesPath_InvalidMetadataUserID(t *testing.T) {
 			req := httptest.NewRequest("POST", "/v1/messages", nil)
 			req.Header.Set("User-Agent", "claude-cli/1.0.0")
 			req.Header.Set("X-App", "claude-code")
-			req.Header.Set("anthropic-beta", "beta")
+			req.Header.Set("anthropic-beta", "claude-code-20250219,interleaved-thinking-2025-05-14")
 			req.Header.Set("anthropic-version", "2023-06-01")
 
 			body := map[string]any{
@@ -165,7 +178,7 @@ func TestValidate_MessagesPath_InvalidSystemPrompt(t *testing.T) {
 	req := httptest.NewRequest("POST", "/v1/messages", nil)
 	req.Header.Set("User-Agent", "claude-cli/1.0.0")
 	req.Header.Set("X-App", "claude-code")
-	req.Header.Set("anthropic-beta", "beta")
+	req.Header.Set("anthropic-beta", "claude-code-20250219,interleaved-thinking-2025-05-14")
 	req.Header.Set("anthropic-version", "2023-06-01")
 
 	body := map[string]any{
@@ -190,7 +203,10 @@ func TestValidate_MaxTokensOneHaikuBypass(t *testing.T) {
 
 	req := httptest.NewRequest("POST", "/v1/messages", nil)
 	req.Header.Set("User-Agent", "claude-cli/1.0.0")
-	// 不设置 X-App 等头，通过 context 标记为 haiku 探测请求
+	req.Header.Set("X-App", "cli")
+	req.Header.Set("anthropic-beta", "interleaved-thinking-2025-05-14")
+	req.Header.Set("anthropic-version", "2023-06-01")
+	// Haiku 探测请求不要求完整 system/metadata，但仍必须通过协议头校验。
 	ctx := context.WithValue(req.Context(), ctxkey.IsMaxTokensOneHaikuRequest, true)
 	req = req.WithContext(ctx)
 
@@ -274,7 +290,7 @@ func TestValidate_NilBody_MessagesPath(t *testing.T) {
 	req := httptest.NewRequest("POST", "/v1/messages", nil)
 	req.Header.Set("User-Agent", "claude-cli/1.0.0")
 	req.Header.Set("X-App", "claude-code")
-	req.Header.Set("anthropic-beta", "beta")
+	req.Header.Set("anthropic-beta", "claude-code-20250219,interleaved-thinking-2025-05-14")
 	req.Header.Set("anthropic-version", "2023-06-01")
 
 	result := v.Validate(req, nil)

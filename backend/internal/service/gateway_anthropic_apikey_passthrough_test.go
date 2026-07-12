@@ -523,7 +523,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ModelMappingPreservesOtherFie
 	require.Equal(t, "hello world", gjson.GetBytes(sentBody, "messages.0.content.0.text").String(), "messages 字段不应被修改")
 	require.Equal(t, "enabled", gjson.GetBytes(sentBody, "thinking.type").String(), "thinking 字段不应被修改")
 	require.Equal(t, int64(5000), gjson.GetBytes(sentBody, "thinking.budget_tokens").Int(), "thinking.budget_tokens 不应被修改")
-	require.Equal(t, int64(1024), gjson.GetBytes(sentBody, "max_tokens").Int(), "max_tokens 不应被修改")
+	require.False(t, gjson.GetBytes(sentBody, "max_tokens").Exists(), "Count Tokens 不接受 max_tokens")
 }
 
 func TestGatewayService_AnthropicAPIKeyPassthrough_CountTokensFiltersGenerationFields(t *testing.T) {
@@ -582,7 +582,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_CountTokensFiltersGenerationF
 	require.Equal(t, "sys", gjson.GetBytes(sentBody, "system.0.text").String())
 	require.Equal(t, "hello", gjson.GetBytes(sentBody, "messages.0.content").String())
 	require.Equal(t, "tool", gjson.GetBytes(sentBody, "tools.0.name").String())
-	require.Equal(t, int64(1024), gjson.GetBytes(sentBody, "max_tokens").Int())
+	require.False(t, gjson.GetBytes(sentBody, "max_tokens").Exists())
 	require.Equal(t, "enabled", gjson.GetBytes(sentBody, "thinking.type").String())
 }
 

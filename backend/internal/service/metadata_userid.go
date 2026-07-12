@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"regexp"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 // NewMetadataFormatMinVersion is the minimum Claude Code version that uses
@@ -22,6 +24,7 @@ type ParsedUserID struct {
 //
 //	user_{64hex}_account_{optional_uuid}_session_{uuid}
 var legacyUserIDRegex = regexp.MustCompile(`^user_([a-fA-F0-9]{64})_account_([a-fA-F0-9-]*)_session_([a-fA-F0-9-]{36})$`)
+var metadataDeviceIDRegex = regexp.MustCompile(`^[a-fA-F0-9]{64}$`)
 
 // jsonUserID is the JSON structure for the new metadata.user_id format.
 type jsonUserID struct {
@@ -66,6 +69,17 @@ func ParseMetadataUserID(raw string) *ParsedUserID {
 		SessionID:   matches[3],
 		IsNewFormat: false,
 	}
+}
+
+// IsValidClaudeCodeMetadataUserID 对客户端识别使用的关键字段做严格校验。
+// 宽松解析仍供兼容路径使用，但不能让任意 JSON 字符串绕过请求模拟。
+func IsValidClaudeCodeMetadataUserID(raw string) bool {
+	parsed := ParseMetadataUserID(raw)
+	if parsed == nil || !metadataDeviceIDRegex.MatchString(parsed.DeviceID) {
+		return false
+	}
+	parsedSession, err := uuid.Parse(parsed.SessionID)
+	return err == nil && strings.EqualFold(parsed.SessionID, parsedSession.String())
 }
 
 // FormatMetadataUserID builds a metadata.user_id string in the format

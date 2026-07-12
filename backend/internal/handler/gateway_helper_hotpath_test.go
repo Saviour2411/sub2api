@@ -213,7 +213,7 @@ func TestSetClaudeCodeClientContext_FastPathAndStrictPath(t *testing.T) {
 		c, _ := newHelperTestContext(http.MethodPost, "/v1/messages")
 		c.Request.Header.Set("User-Agent", "claude-cli/1.0.1")
 		c.Request.Header.Set("X-App", "claude-code")
-		c.Request.Header.Set("anthropic-beta", "message-batches-2024-09-24")
+		c.Request.Header.Set("anthropic-beta", "claude-code-20250219,interleaved-thinking-2025-05-14")
 		c.Request.Header.Set("anthropic-version", "2023-06-01")
 
 		SetClaudeCodeClientContext(c, validClaudeCodeBodyJSON(), nil)
@@ -234,7 +234,7 @@ func TestSetClaudeCodeClientContext_ReuseParsedRequest(t *testing.T) {
 		c, _ := newHelperTestContext(http.MethodPost, "/v1/messages")
 		c.Request.Header.Set("User-Agent", "claude-cli/1.0.1")
 		c.Request.Header.Set("X-App", "claude-code")
-		c.Request.Header.Set("anthropic-beta", "message-batches-2024-09-24")
+		c.Request.Header.Set("anthropic-beta", "claude-code-20250219,interleaved-thinking-2025-05-14")
 		c.Request.Header.Set("anthropic-version", "2023-06-01")
 
 		parsedReq, err := service.ParseGatewayRequest(service.NewRequestBodyRef(validClaudeCodeBodyJSON()), "")

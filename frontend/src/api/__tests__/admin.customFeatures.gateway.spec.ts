@@ -24,6 +24,7 @@ const gatewaySettings: GatewaySettings = {
   upstream_error_status_codes: [502, 503, 504],
   upstream_error_consecutive_threshold: 10,
   image_group_success_rate_visible: true,
+  anthropic_claude_code_mimicry_enabled: false,
 }
 
 describe('admin custom features gateway API', () => {

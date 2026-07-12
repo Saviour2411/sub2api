@@ -86,13 +86,72 @@ func addMessageCacheBreakpoints(body []byte) []byte {
 	return body
 }
 
-// rewriteMessageCacheControlIfEnabled 按系统设置决定是否执行旧版 messages 缓存断点改写。
+// addMessageCacheBreakpointsPreservingClient 只在四个断点配额仍有空位时补代理断点。
+// 客户端已有的 cache_control（包括显式 5m/1h TTL）不会被删除或改写。
+func addMessageCacheBreakpointsPreservingClient(body []byte) []byte {
+	messages := gjson.GetBytes(body, "messages")
+	if !messages.IsArray() || cacheControlBlockCount(body) >= maxCacheControlBlocks {
+		return body
+	}
+	arr := messages.Array()
+	if len(arr) == 0 {
+		return body
+	}
+
+	candidates := []int{len(arr) - 1}
+	if len(arr) >= 4 {
+		userCount := 0
+		for i := len(arr) - 1; i >= 0; i-- {
+			if arr[i].Get("role").String() != "user" {
+				continue
+			}
+			userCount++
+			if userCount == 2 {
+				candidates = append(candidates, i)
+				break
+			}
+		}
+	}
+
+	seen := make(map[int]struct{}, len(candidates))
+	for _, idx := range candidates {
+		if cacheControlBlockCount(body) >= maxCacheControlBlocks {
+			break
+		}
+		if _, duplicate := seen[idx]; duplicate {
+			continue
+		}
+		seen[idx] = struct{}{}
+		message := gjson.GetBytes(body, fmt.Sprintf("messages.%d", idx))
+		content := message.Get("content")
+		if content.IsArray() {
+			blocks := content.Array()
+			if len(blocks) == 0 || blocks[len(blocks)-1].Get("cache_control").Exists() {
+				continue
+			}
+		} else if content.Type != gjson.String {
+			continue
+		}
+		body = injectCacheControlOnLastContentBlock(body, idx, &message)
+	}
+	return body
+}
+
+func cacheControlBlockCount(body []byte) int {
+	invalidThinking, messagePaths, toolPaths, systemPaths := collectCacheControlPaths(body)
+	count := len(invalidThinking) + len(messagePaths) + len(toolPaths) + len(systemPaths)
+	if gjson.GetBytes(body, "cache_control").Exists() {
+		count++
+	}
+	return count
+}
+
+// rewriteMessageCacheControlIfEnabled 按系统设置补充 messages 缓存断点，且不覆盖客户端锚点。
 func (s *GatewayService) rewriteMessageCacheControlIfEnabled(ctx context.Context, body []byte) []byte {
 	if s == nil || !s.isRewriteMessageCacheControlEnabled(ctx) {
 		return body
 	}
-	body = stripMessageCacheControl(body)
-	return addMessageCacheBreakpoints(body)
+	return addMessageCacheBreakpointsPreservingClient(body)
 }
 
 func (s *GatewayService) isRewriteMessageCacheControlEnabled(ctx context.Context) bool {

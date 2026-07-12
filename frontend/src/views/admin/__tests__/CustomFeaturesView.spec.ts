@@ -114,6 +114,7 @@ function settingsFixture(): CustomFeatureSettings {
       upstream_error_status_codes: [502, 503, 504],
       upstream_error_consecutive_threshold: 10,
       image_group_success_rate_visible: true,
+      anthropic_claude_code_mimicry_enabled: false,
     },
   }
 }
@@ -177,6 +178,8 @@ describe('admin CustomFeaturesView', () => {
     expect(wrapper.get<HTMLInputElement>('[data-test="gateway-first-token-consecutive-threshold"]').element.value).toBe('3')
     expect(wrapper.get<HTMLInputElement>('[data-test="gateway-upstream-error-consecutive-threshold"]').element.value).toBe('10')
 
+    await wrapper.get('[data-test="gateway-anthropic-claude-code-mimicry-enabled"]').trigger('click')
+
     await wrapper.get('[data-test="gateway-pool-retry-status-codes"]').setValue('504 401, 504, 429')
     await wrapper.get('[data-test="gateway-upstream-error-status-codes"]').setValue('504 502, 504')
     await wrapper.get('[data-test="gateway-form"]').trigger('submit')
@@ -191,6 +194,7 @@ describe('admin CustomFeaturesView', () => {
       upstream_error_status_codes: [502, 504],
       upstream_error_consecutive_threshold: 10,
       image_group_success_rate_visible: true,
+      anthropic_claude_code_mimicry_enabled: true,
     })
     expect(updateDailyCheckin).not.toHaveBeenCalled()
     expect(showSuccess).toHaveBeenCalledWith('admin.customFeatures.gateway.saved')
@@ -202,6 +206,7 @@ describe('admin CustomFeaturesView', () => {
     delete legacyGateway.first_token_timeout_consecutive_threshold
     delete legacyGateway.upstream_error_status_codes
     delete legacyGateway.upstream_error_consecutive_threshold
+    delete legacyGateway.anthropic_claude_code_mimicry_enabled
     getSettings.mockResolvedValueOnce({
       ...legacySettings,
       gateway: legacyGateway,
@@ -223,6 +228,9 @@ describe('admin CustomFeaturesView', () => {
       wrapper.get<HTMLInputElement>('[data-test="gateway-upstream-error-consecutive-threshold"]')
         .element.value
     ).toBe('10')
+    expect(
+      wrapper.get('[data-test="gateway-anthropic-claude-code-mimicry-enabled"]').text()
+    ).toBe('off')
   })
 
   it('rejects invalid gateway status codes and decreasing probe backoff', async () => {

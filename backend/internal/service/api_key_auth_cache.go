@@ -79,7 +79,6 @@ type APIKeyAuthGroupSnapshot struct {
 	VideoPrice720P                  *float64 `json:"video_price_720p,omitempty"`
 	VideoPrice1080P                 *float64 `json:"video_price_1080p,omitempty"`
 	ClaudeCodeOnly                  bool     `json:"claude_code_only"`
-	ClaudeCodeUpstreamMimicry       bool     `json:"claude_code_upstream_mimicry"`
 	FallbackGroupID                 *int64   `json:"fallback_group_id,omitempty"`
 	FallbackGroupIDOnInvalidRequest *int64   `json:"fallback_group_id_on_invalid_request,omitempty"`
 

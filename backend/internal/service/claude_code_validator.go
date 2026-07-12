@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 )
 
@@ -89,15 +90,16 @@ func (v *ClaudeCodeValidator) Validate(r *http.Request, body map[string]any) boo
 		return true
 	}
 
-	// count_tokens 是 Claude Code 官方辅助请求，通常不携带完整 messages system prompt。
+	// count_tokens 是 Claude Code 官方辅助请求，通常不携带完整 messages system prompt，
+	// 但仍必须具备协议头，不能仅凭可伪造的 UA 跳过后续模拟和清洗。
 	if isMessagesCountTokensPath(path) {
-		return true
+		return hasClaudeCodeProtocolHeaders(r, claude.BetaClaudeCode, claude.BetaInterleavedThinking, claude.BetaTokenCounting)
 	}
 
 	// Step 3: 检查 max_tokens=1 + haiku 探测请求绕过
 	// 这类请求用于 Claude Code 验证 API 连通性，不携带 system prompt
 	if isMaxTokensOneHaiku, ok := IsMaxTokensOneHaikuRequestFromContext(r.Context()); ok && isMaxTokensOneHaiku {
-		return true // 绕过 system prompt 检查，UA 已在 Step 1 验证
+		return hasClaudeCodeProtocolHeaders(r, claude.BetaInterleavedThinking)
 	}
 
 	// Step 4: messages 路径，进行严格验证
@@ -107,19 +109,13 @@ func (v *ClaudeCodeValidator) Validate(r *http.Request, body map[string]any) boo
 		return false
 	}
 
-	// 4.2 检查必需的 headers（值不为空即可）
-	xApp := r.Header.Get("X-App")
-	if xApp == "" {
-		return false
+	// 4.2 检查当前 Claude Code 协议头组合。Haiku 不要求 claude-code beta，
+	// 其余模型必须同时具备 Claude Code 与交错思考能力标识。
+	requiredBetas := []string{claude.BetaInterleavedThinking}
+	if model, _ := body["model"].(string); !strings.Contains(strings.ToLower(model), "haiku") {
+		requiredBetas = append(requiredBetas, claude.BetaClaudeCode)
 	}
-
-	anthropicBeta := r.Header.Get("anthropic-beta")
-	if anthropicBeta == "" {
-		return false
-	}
-
-	anthropicVersion := r.Header.Get("anthropic-version")
-	if anthropicVersion == "" {
+	if !hasClaudeCodeProtocolHeaders(r, requiredBetas...) {
 		return false
 	}
 
@@ -138,10 +134,33 @@ func (v *ClaudeCodeValidator) Validate(r *http.Request, body map[string]any) boo
 		return false
 	}
 
-	if ParseMetadataUserID(userID) == nil {
+	if !IsValidClaudeCodeMetadataUserID(userID) {
 		return false
 	}
 
+	return true
+}
+
+func hasClaudeCodeProtocolHeaders(r *http.Request, requiredBetas ...string) bool {
+	if r == nil {
+		return false
+	}
+	xApp := strings.ToLower(strings.TrimSpace(r.Header.Get("X-App")))
+	if xApp != "cli" && xApp != "claude-code" {
+		return false
+	}
+	if strings.TrimSpace(r.Header.Get("anthropic-version")) != "2023-06-01" {
+		return false
+	}
+	beta := strings.TrimSpace(r.Header.Get("anthropic-beta"))
+	if beta == "" {
+		return false
+	}
+	for _, required := range requiredBetas {
+		if !anthropicBetaTokensContains(beta, required) {
+			return false
+		}
+	}
 	return true
 }
 

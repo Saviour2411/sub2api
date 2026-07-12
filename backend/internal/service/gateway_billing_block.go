@@ -24,9 +24,9 @@ const fingerprintSalt = "59cf53e54c78"
 // 算法来自 Parrot src/transform/cc_mimicry.py:compute_fingerprint，与官方 CLI 字节对齐。
 // 任何偏差都会导致 cc_version=X.Y.Z.{fp} 在上游侧与真实 CLI 不一致。
 func computeClaudeCodeFingerprint(body []byte, version string) string {
-	firstText := extractFirstUserText(body)
+	firstText := []rune(extractFirstUserText(body))
 	indices := []int{4, 7, 20}
-	chars := make([]byte, 0, 3)
+	chars := make([]rune, 0, 3)
 	for _, i := range indices {
 		if i < len(firstText) {
 			chars = append(chars, firstText[i])

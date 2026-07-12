@@ -87,6 +87,9 @@ func sleepWithContext(ctx context.Context, d time.Duration) error {
 
 // Forward 转发请求到Claude API
 func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, parsed *ParsedRequest) (*ForwardResult, error) {
+	if c != nil {
+		clearToolNameRewriteFromContext(c)
+	}
 	startTime := time.Now()
 	if parsed == nil {
 		return nil, fmt.Errorf("parse request: empty request")
@@ -121,18 +124,18 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		return s.forwardBedrock(ctx, c, account, parsed, startTime)
 	}
 
+	// 真实 CC 判定只信任 handler 写入的严格结果。API Key 模拟需要先完成
+	// 账号模型映射，再按最终模型计算 beta policy。
+	isClaudeCode := IsClaudeCodeClient(ctx)
+	shouldMimicClaudeCode := s.shouldMimicClaudeCodeUpstream(ctx, account, isClaudeCode)
+	deferBetaPolicyUntilMapped := shouldMimicClaudeCode
+
 	// Beta policy: evaluate once; block check + cache filter set for buildUpstreamRequest.
 	// Always overwrite the cache to prevent stale values from a previous retry with a different account.
-	if account.Platform == PlatformAnthropic && c != nil {
-		policy := s.evaluateBetaPolicy(ctx, c.GetHeader("anthropic-beta"), account, parsed.Model)
-		if policy.blockErr != nil {
-			return nil, policy.blockErr
+	if !deferBetaPolicyUntilMapped {
+		if err := s.cacheBetaPolicyForRequest(ctx, c, account, parsed.Model); err != nil {
+			return nil, err
 		}
-		filterSet := policy.filterSet
-		if filterSet == nil {
-			filterSet = map[string]struct{}{}
-		}
-		c.Set(betaPolicyFilterSetKey, filterSet)
 	}
 
 	body := parsed.Body.Bytes()
@@ -146,6 +149,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	reqModel := parsed.Model
 	reqStream := parsed.Stream
 	originalModel := reqModel
+	apiKeyMimicModelResolved := false
 
 	// === DEBUG: 打印客户端原始请求（headers + body 摘要）===
 	if c != nil {
@@ -157,21 +161,15 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		})
 	}
 
-	// Claude Code 客户端判定：UA 匹配 claude-cli/* 且携带 metadata.user_id。
+	// Claude Code 客户端已由 handler 的完整校验器判定，包含 UA、system、必要头和 metadata。
 	// 真正的 Claude Code 客户端自带完整的 system prompt、cache_control 断点和 header，
 	// 不需要代理做任何 body 级别的 mimicry；强行替换反而会破坏客户端的缓存策略
 	// （长 system prompt 被替换为 ~45 tokens 的短 prompt，低于 Anthropic 1024 token
 	// 最低缓存门槛，导致系统级缓存失效）。
 	//
-	// 对于非 Claude Code 的第三方客户端（opencode 等），仍然走完整 mimicry。
-	var clientUserAgent string
-	if c != nil {
-		clientUserAgent = c.GetHeader("User-Agent")
-	}
-	isClaudeCode := IsClaudeCodeClient(ctx) || isClaudeCodeClient(clientUserAgent, parsed.MetadataUserID)
-	shouldMimicClaudeCode := account.IsOAuth() && !isClaudeCode
+	// 对于非 Claude Code 的第三方客户端，OAuth 始终模拟，API Key 由全局开关决定。
 
-	if shouldMimicClaudeCode {
+	if shouldMimicClaudeCode && account.IsOAuth() {
 		// 与 Parrot 对齐：OAuth 账号无条件重写 system（即使客户端已发了 Claude Code
 		// 风格的 system prompt）。原因：第三方工具（opencode 等）会发 "You are Claude
 		// Code..." system prompt 但缺少 billing attribution block，导致 Anthropic
@@ -193,23 +191,28 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		// 未重写时（haiku / 注入开关关闭）剥离客户端 cache_control，与原有行为一致。
 		// 两种情况下 enforceCacheControlLimit 都会兜底处理上限。
 		normalizeOpts := claudeOAuthNormalizeOptions{stripSystemCacheControl: !systemRewritten}
+		var fingerprint *Fingerprint
 		if s.identityService != nil && c != nil {
 			fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
 			if err == nil && fp != nil {
-				// metadata 透传开启时跳过 metadata 注入
-				_, mimicMPT, _ := s.settingService.GetGatewayForwardingSettings(ctx)
-				if !mimicMPT {
-					if metadataUserID := s.buildOAuthMetadataUserID(parsed, account, fp); metadataUserID != "" {
-						normalizeOpts.injectMetadata = true
-						normalizeOpts.metadataUserID = metadataUserID
-					}
-				}
+				fingerprint = fp
 			}
+		}
+		// 模拟模式必须生成严格合法的 metadata；透传设置只适用于非模拟请求。
+		if metadataUserID := s.buildOAuthMetadataUserID(c, parsed, account, fingerprint); metadataUserID != "" {
+			normalizeOpts.injectMetadata = true
+			normalizeOpts.metadataUserID = metadataUserID
 		}
 
 		var normalizedBody []byte
 		normalizedBody, reqModel = normalizeClaudeOAuthRequestBody(body, reqModel, normalizeOpts)
 		if err := replaceBody(normalizedBody); err != nil {
+			return nil, err
+		}
+		if err := s.cacheBetaPolicyForRequest(ctx, c, account, reqModel); err != nil {
+			return nil, err
+		}
+		if err := replaceBody(s.sanitizeClaudeCodeOAuthMimicryBody(ctx, c, account, body, reqModel, anthropicMimicEndpointMessages)); err != nil {
 			return nil, err
 		}
 
@@ -232,6 +235,26 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			}
 		}
 	}
+	if shouldMimicClaudeCode && account.Type == AccountTypeAPIKey {
+		mappedModel := account.GetMappedModel(reqModel)
+		apiKeyMimicModelResolved = true
+		if mappedModel != reqModel {
+			if err := replaceBody(s.replaceModelInBody(body, mappedModel)); err != nil {
+				return nil, err
+			}
+			reqModel = mappedModel
+			parsed.Model = mappedModel
+			logger.LegacyPrintf("service.gateway", "Model mapping applied before API Key mimicry: %s -> %s (account: %s)", originalModel, mappedModel, account.Name)
+		}
+		if err := s.cacheBetaPolicyForRequest(ctx, c, account, reqModel); err != nil {
+			return nil, err
+		}
+		normalizedBody, normalizedModel := s.applyClaudeCodeAPIKeyMimicryToBody(ctx, c, account, body, reqModel, anthropicMimicEndpointMessages)
+		if err := replaceBody(normalizedBody); err != nil {
+			return nil, err
+		}
+		reqModel = normalizedModel
+	}
 
 	// 客户端 dateline 归一化：仅对 Anthropic OAuth/SetupToken 账号生效。
 	// 抹除 "Today's date is …" 语句里可能被注入的隐写指纹（4 种撇号 × 2 种日期
@@ -253,7 +276,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	// - OAuth/SetupToken 账号：使用 Anthropic 标准映射（短ID → 长ID）
 	mappedModel := reqModel
 	mappingSource := ""
-	if account.Type == AccountTypeAPIKey {
+	if account.Type == AccountTypeAPIKey && !apiKeyMimicModelResolved {
 		mappedModel = account.GetMappedModel(reqModel)
 		if mappedModel != reqModel {
 			mappingSource = "account"
@@ -286,12 +309,6 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		reqModel = mappedModel
 		parsed.Model = mappedModel
 		logger.LegacyPrintf("service.gateway", "Model mapping applied: %s -> %s (account: %s, source=%s)", originalModel, mappedModel, account.Name, mappingSource)
-	}
-
-	if s.shouldInjectAnthropicCacheTTL1h(ctx, account) {
-		if err := replaceBody(injectAnthropicCacheControlTTL1h(body)); err != nil {
-			return nil, err
-		}
 	}
 
 	// 获取凭证

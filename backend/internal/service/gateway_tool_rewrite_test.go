@@ -204,7 +204,7 @@ func TestRewriteMessageCacheControlIfEnabled_DefaultKeepsClientAnchors(t *testin
 	require.Equal(t, "5m", gjson.GetBytes(out, "messages.2.content.0.cache_control.ttl").String())
 }
 
-func TestRewriteMessageCacheControlIfEnabled_OptInPreservesLegacyRewrite(t *testing.T) {
+func TestRewriteMessageCacheControlIfEnabled_OptInPreservesClientAnchors(t *testing.T) {
 	body := []byte(`{"messages":[
 		{"role":"user","content":[{"type":"text","text":"stable","cache_control":{"type":"ephemeral","ttl":"1h"}}]},
 		{"role":"assistant","content":[{"type":"text","text":"ok"}]},
@@ -219,8 +219,8 @@ func TestRewriteMessageCacheControlIfEnabled_OptInPreservesLegacyRewrite(t *test
 
 	out := svc.rewriteMessageCacheControlIfEnabled(context.Background(), body)
 
-	require.Equal(t, "5m", gjson.GetBytes(out, "messages.0.content.0.cache_control.ttl").String())
-	require.False(t, gjson.GetBytes(out, "messages.2.content.0.cache_control").Exists())
+	require.Equal(t, "1h", gjson.GetBytes(out, "messages.0.content.0.cache_control.ttl").String())
+	require.Equal(t, "1h", gjson.GetBytes(out, "messages.2.content.0.cache_control.ttl").String())
 	require.Equal(t, "5m", gjson.GetBytes(out, "messages.3.content.0.cache_control.ttl").String())
 }
 

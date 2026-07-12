@@ -24,21 +24,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// isClaudeCodeClient 判断请求是否来自真正的 Claude Code 客户端。
-// 判定条件：
-//  1. User-Agent 匹配 claude-cli/X.Y.Z（大小写不敏感）
-//  2. metadata.user_id 符合 Claude Code 格式（legacy 或 JSON 格式）
-//
-// 只检查 metadata.user_id 非空不够严格：第三方工具（opencode 等）可能伪造 UA
-// 并附带任意 metadata.user_id 字符串，从而绕过 mimicry。必须通过 ParseMetadataUserID
-// 验证格式才能确认是真正的 Claude Code 客户端。
-func isClaudeCodeClient(userAgent string, metadataUserID string) bool {
-	if !claudeCliUserAgentRe.MatchString(userAgent) {
-		return false
-	}
-	return ParseMetadataUserID(metadataUserID) != nil
-}
-
 func shouldUseClaudeCodeNoopDeltaKeepalive(userAgent string) bool {
 	version := ExtractCLIVersion(userAgent)
 	if version == "" {

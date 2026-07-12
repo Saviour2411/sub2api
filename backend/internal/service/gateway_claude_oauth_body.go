@@ -45,6 +45,8 @@ type claudeOAuthNormalizeOptions struct {
 	injectMetadata          bool
 	metadataUserID          string
 	stripSystemCacheControl bool
+	preserveSystemText      bool
+	preserveModel           bool
 }
 
 // sanitizeSystemText rewrites only the fixed OpenCode identity sentence (if present).
@@ -152,17 +154,19 @@ func normalizeClaudeOAuthSystemBody(body []byte, opts claudeOAuthNormalizeOption
 
 	switch {
 	case sys.Type == gjson.String:
-		sanitized := sanitizeSystemText(sys.String())
-		if sanitized != sys.String() {
-			if next, ok := setJSONValueBytes(out, "system", sanitized); ok {
-				out = next
-				modified = true
+		if !opts.preserveSystemText {
+			sanitized := sanitizeSystemText(sys.String())
+			if sanitized != sys.String() {
+				if next, ok := setJSONValueBytes(out, "system", sanitized); ok {
+					out = next
+					modified = true
+				}
 			}
 		}
 	case sys.IsArray():
 		index := 0
 		sys.ForEach(func(_, item gjson.Result) bool {
-			if item.Get("type").String() == "text" {
+			if !opts.preserveSystemText && item.Get("type").String() == "text" {
 				textResult := item.Get("text")
 				if textResult.Exists() && textResult.Type == gjson.String {
 					text := textResult.String()
@@ -195,27 +199,12 @@ func ensureClaudeOAuthMetadataUserID(body []byte, userID string) ([]byte, bool) 
 	if strings.TrimSpace(userID) == "" {
 		return body, false
 	}
-
-	metadata := gjson.GetBytes(body, "metadata")
-	if !metadata.Exists() || metadata.Type == gjson.Null {
-		raw, err := marshalAnthropicMetadata(userID)
-		if err != nil {
-			return body, false
-		}
-		return setJSONRawBytes(body, "metadata", raw)
-	}
-
-	trimmedRaw := strings.TrimSpace(metadata.Raw)
-	if strings.HasPrefix(trimmedRaw, "{") {
-		existing := metadata.Get("user_id")
-		if existing.Exists() && existing.Type == gjson.String && existing.String() != "" {
-			return body, false
-		}
-		return setJSONValueBytes(body, "metadata.user_id", userID)
-	}
-
 	raw, err := marshalAnthropicMetadata(userID)
 	if err != nil {
+		return body, false
+	}
+	metadata := gjson.GetBytes(body, "metadata")
+	if metadata.IsObject() && len(metadata.Map()) == 1 && metadata.Get("user_id").String() == userID {
 		return body, false
 	}
 	return setJSONRawBytes(body, "metadata", raw)
@@ -235,7 +224,7 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 	}
 
 	rawModel := gjson.GetBytes(out, "model")
-	if rawModel.Exists() && rawModel.Type == gjson.String {
+	if !opts.preserveModel && rawModel.Exists() && rawModel.Type == gjson.String {
 		normalized := claude.NormalizeModelID(rawModel.String())
 		if normalized != rawModel.String() {
 			if next, ok := setJSONValueBytes(out, "model", normalized); ok {
@@ -320,41 +309,27 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 	return out, modelID
 }
 
-func (s *GatewayService) buildOAuthMetadataUserID(parsed *ParsedRequest, account *Account, fp *Fingerprint) string {
+func (s *GatewayService) buildOAuthMetadataUserID(c *gin.Context, parsed *ParsedRequest, account *Account, fp *Fingerprint) string {
 	if parsed == nil || account == nil {
 		return ""
 	}
-	if parsed.MetadataUserID != "" {
-		return ""
-	}
 
-	userID := strings.TrimSpace(account.GetClaudeUserID())
-	if userID == "" && fp != nil {
-		userID = fp.ClientID
+	deviceID := strings.TrimSpace(account.GetClaudeUserID())
+	if deviceID == "" && fp != nil {
+		deviceID = fp.ClientID
 	}
-	if userID == "" {
-		// Fall back to a random, well-formed client id so we can still satisfy
-		// Claude Code OAuth requirements when account metadata is incomplete.
-		userID = generateClientID()
-	}
-
-	// session_id 用"会话级稳定种子"派生（账号 + 客户端区分因子 + 首条 user 文本）：
-	// 随对话在尾部追加 messages 时保持不变，贴近真实 CC 进程级稳定的 session_id。
-	// 不复用 GenerateSessionHash —— 后者是粘性路由键、按设计逐轮变化（见其测试）。
+	deviceID = normalizeOAuthMimicDeviceID(account.ID, deviceID)
+	sessionID := preferredClaudeCodeMimicSessionID(c, parsed.MetadataUserID)
 	var firstUserText string
 	if parsed.Body != nil {
 		firstUserText = extractFirstUserText(parsed.Body.Bytes())
 	}
-	seed := buildStableSessionSeed(account.ID, sessionContextDiscriminator(parsed.SessionContext), firstUserText)
-	sessionID := generateSessionUUID(seed)
-
-	// 根据指纹 UA 版本选择输出格式
-	var uaVersion string
-	if fp != nil {
-		uaVersion = ExtractCLIVersion(fp.UserAgent)
+	if sessionID == "" {
+		seed := buildStableSessionSeed(account.ID, sessionContextDiscriminator(parsed.SessionContext), firstUserText)
+		sessionID = generateSessionUUID(seed)
 	}
 	accountUUID := strings.TrimSpace(account.GetExtraString("account_uuid"))
-	return FormatMetadataUserID(userID, accountUUID, sessionID, uaVersion)
+	return FormatMetadataUserID(deviceID, accountUUID, sessionID, claude.CLICurrentVersion)
 }
 
 // applyClaudeCodeOAuthMimicryToBody 将"非 Claude Code 客户端 + Claude OAuth 账号"
@@ -383,6 +358,7 @@ func (s *GatewayService) applyClaudeCodeOAuthMimicryToBody(
 	body []byte,
 	systemRaw any,
 	model string,
+	clientDiscriminator string,
 ) []byte {
 	if account == nil || !account.IsOAuth() || len(body) == 0 {
 		return body
@@ -397,22 +373,19 @@ func (s *GatewayService) applyClaudeCodeOAuthMimicryToBody(
 
 	normalizeOpts := claudeOAuthNormalizeOptions{stripSystemCacheControl: !systemRewritten}
 
+	var fingerprint *Fingerprint
 	if s.identityService != nil && c != nil && c.Request != nil {
 		if fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header); err == nil && fp != nil {
-			mimicMPT := false
-			if s.settingService != nil {
-				_, mimicMPT, _ = s.settingService.GetGatewayForwardingSettings(ctx)
-			}
-			if !mimicMPT {
-				if uid := s.buildOAuthMetadataUserIDFromBody(ctx, account, fp, body); uid != "" {
-					normalizeOpts.injectMetadata = true
-					normalizeOpts.metadataUserID = uid
-				}
-			}
+			fingerprint = fp
 		}
+	}
+	if uid := s.buildOAuthMetadataUserIDFromBody(ctx, c, account, fingerprint, body, clientDiscriminator); uid != "" {
+		normalizeOpts.injectMetadata = true
+		normalizeOpts.metadataUserID = uid
 	}
 
 	body, _ = normalizeClaudeOAuthRequestBody(body, model, normalizeOpts)
+	body = s.sanitizeClaudeCodeOAuthMimicryBody(ctx, c, account, body, model, anthropicMimicEndpointMessages)
 
 	// Phase D+E+F: messages cache 策略 + 工具名混淆 + tools[-1] 断点
 	// 对齐 Parrot transform_request 里剩余的字段级改写。顺序有语义约束：
@@ -438,45 +411,50 @@ func (s *GatewayService) applyClaudeCodeOAuthMimicryToBody(
 //
 // 与 buildOAuthMetadataUserID 的唯一区别：
 //   - session hash 从 body 本体按同样规则重算，而不是读取 ParsedRequest 缓存值。
-//   - 如果 body 里已经存在 metadata.user_id，则返回空（由 ensureClaudeOAuthMetadataUserID
-//     自行决定是否覆盖）。
+//   - 合法入站 metadata 只复用 session_id；最终始终输出与当前 CLI 指纹一致的新格式。
 func (s *GatewayService) buildOAuthMetadataUserIDFromBody(
 	ctx context.Context,
+	c *gin.Context,
 	account *Account,
 	fp *Fingerprint,
 	body []byte,
+	clientDiscriminator string,
 ) string {
 	_ = ctx
 	if account == nil {
 		return ""
 	}
-	if existing := gjson.GetBytes(body, "metadata.user_id").String(); existing != "" {
-		return ""
+	deviceID := strings.TrimSpace(account.GetClaudeUserID())
+	if deviceID == "" && fp != nil {
+		deviceID = fp.ClientID
 	}
-
-	userID := strings.TrimSpace(account.GetClaudeUserID())
-	if userID == "" && fp != nil {
-		userID = fp.ClientID
-	}
-	if userID == "" {
-		userID = generateClientID()
-	}
+	deviceID = normalizeOAuthMimicDeviceID(account.ID, deviceID)
 
 	// 与 buildOAuthMetadataUserID 一致：用会话级稳定种子，避免整 body 哈希导致
 	// 每轮（甚至每个 token 变化）都重算出不同的 session_id。
-	var clientDiscriminator string
-	if fp != nil {
+	if clientDiscriminator == "" {
+		clientDiscriminator = claudeCodeMimicClientDiscriminator(c)
+	}
+	if clientDiscriminator == "" && fp != nil {
 		clientDiscriminator = fp.ClientID
 	}
-	seed := buildStableSessionSeed(account.ID, clientDiscriminator, extractFirstUserText(body))
-	sessionID := generateSessionUUID(seed)
-
-	var uaVersion string
-	if fp != nil {
-		uaVersion = ExtractCLIVersion(fp.UserAgent)
+	rawUserID := gjson.GetBytes(body, "metadata.user_id").String()
+	sessionID := preferredClaudeCodeMimicSessionID(c, rawUserID)
+	if sessionID == "" {
+		seed := buildStableSessionSeed(account.ID, clientDiscriminator, extractFirstUserText(body))
+		sessionID = generateSessionUUID(seed)
 	}
 	accountUUID := strings.TrimSpace(account.GetExtraString("account_uuid"))
-	return FormatMetadataUserID(userID, accountUUID, sessionID, uaVersion)
+	return FormatMetadataUserID(deviceID, accountUUID, sessionID, claude.CLICurrentVersion)
+}
+
+func normalizeOAuthMimicDeviceID(accountID int64, candidate string) string {
+	candidate = strings.TrimSpace(candidate)
+	if metadataDeviceIDRegex.MatchString(candidate) {
+		return strings.ToLower(candidate)
+	}
+	hash := sha256.Sum256([]byte("oauth-mimic-user:" + strconv.FormatInt(accountID, 10) + ":" + candidate))
+	return fmt.Sprintf("%x", hash[:])
 }
 
 // buildStableSessionSeed 为伪装路径合成的 metadata.user_id session_id 生成"会话级稳定"种子。
@@ -1018,6 +996,10 @@ func enforceCacheControlLimit(body []byte) []byte {
 	}
 
 	invalidThinking, messagePaths, toolPaths, systemPaths := collectCacheControlPaths(body)
+	topLevelPath := ""
+	if gjson.GetBytes(body, "cache_control").Exists() {
+		topLevelPath = "cache_control"
+	}
 	out := body
 	modified := false
 
@@ -1036,6 +1018,9 @@ func enforceCacheControlLimit(body []byte) []byte {
 	}
 
 	count := len(messagePaths) + len(toolPaths) + len(systemPaths)
+	if topLevelPath != "" {
+		count++
+	}
 	if count <= maxCacheControlBlocks {
 		if modified {
 			return out
@@ -1089,19 +1074,29 @@ func enforceCacheControlLimit(body []byte) []byte {
 		remaining--
 	}
 
+	// 顶层 cache_control 是客户端对整份请求声明的稳定锚点，优先级最高。
+	// 正常情况下前面的 tools/messages/system 已足以降到上限；这里只在异常
+	// 请求仍超限时做最终兜底。
+	if remaining > 0 && topLevelPath != "" && gjson.GetBytes(out, topLevelPath).Exists() {
+		if next, ok := deleteJSONPathBytes(out, topLevelPath); ok {
+			out = next
+			modified = true
+		}
+	}
+
 	if modified {
 		return out
 	}
 	return body
 }
 
-// injectAnthropicCacheControlTTL1h 将已有 ephemeral cache_control 块的 ttl 强制写为 1h。
-// 仅修改已经存在的 cache_control，不新增缓存断点。
+// injectAnthropicCacheControlTTL1h 只为未声明 TTL 的 ephemeral cache_control 补 1h。
+// 客户端显式指定的 5m/1h TTL 均保持不变，也不会新增缓存断点。
 func injectAnthropicCacheControlTTL1h(body []byte) []byte {
-	return forceEphemeralCacheControlTTL(body, cacheTTLTarget1h)
+	return fillMissingEphemeralCacheControlTTL(body, cacheTTLTarget1h)
 }
 
-func forceEphemeralCacheControlTTL(body []byte, ttl string) []byte {
+func fillMissingEphemeralCacheControlTTL(body []byte, ttl string) []byte {
 	if len(body) == 0 || ttl == "" {
 		return body
 	}
@@ -1112,13 +1107,13 @@ func forceEphemeralCacheControlTTL(body []byte, ttl string) []byte {
 		if !cc.Exists() || cc.Get("type").String() != "ephemeral" {
 			return
 		}
-		if cc.Get("ttl").String() == ttl {
+		if cc.Get("ttl").Exists() {
 			return
 		}
 		paths = append(paths, path+".cache_control.ttl")
 	}
 
-	if topCC := gjson.GetBytes(body, "cache_control"); topCC.Exists() && topCC.Get("type").String() == "ephemeral" && topCC.Get("ttl").String() != ttl {
+	if topCC := gjson.GetBytes(body, "cache_control"); topCC.Exists() && topCC.Get("type").String() == "ephemeral" && !topCC.Get("ttl").Exists() {
 		paths = append(paths, "cache_control.ttl")
 	}
 

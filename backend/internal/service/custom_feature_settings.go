@@ -81,6 +81,7 @@ type GatewaySettings struct {
 	UpstreamErrorStatusCodes              []int `json:"upstream_error_status_codes"`
 	UpstreamErrorConsecutiveThreshold     int   `json:"upstream_error_consecutive_threshold"`
 	ImageGroupSuccessRateVisible          bool  `json:"image_group_success_rate_visible"`
+	AnthropicClaudeCodeMimicryEnabled     bool  `json:"anthropic_claude_code_mimicry_enabled"`
 	FailurePolicyRevision                 int64 `json:"-"`
 }
 
@@ -117,6 +118,7 @@ var gatewaySettingKeys = []string{
 	SettingKeyGatewayUpstreamErrorStatusCodes,
 	SettingKeyGatewayUpstreamErrorConsecutiveThreshold,
 	SettingKeyGatewayImageGroupSuccessRateVisible,
+	SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled,
 	SettingKeyGatewayFailurePolicyRevision,
 }
 
@@ -141,6 +143,7 @@ var customFeatureSettingKeys = []string{
 	SettingKeyGatewayUpstreamErrorStatusCodes,
 	SettingKeyGatewayUpstreamErrorConsecutiveThreshold,
 	SettingKeyGatewayImageGroupSuccessRateVisible,
+	SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled,
 	SettingKeyGatewayFailurePolicyRevision,
 }
 
@@ -198,6 +201,7 @@ func DefaultGatewaySettings() GatewaySettings {
 		UpstreamErrorStatusCodes:              append([]int(nil), defaultGatewayUpstreamErrorStatusCodes...),
 		UpstreamErrorConsecutiveThreshold:     DefaultGatewayUpstreamErrorConsecutiveThreshold,
 		ImageGroupSuccessRateVisible:          true,
+		AnthropicClaudeCodeMimicryEnabled:     false,
 		FailurePolicyRevision:                 DefaultGatewayFailurePolicyRevision,
 	}
 }
@@ -285,6 +289,7 @@ func (s *SettingService) UpdateGatewaySettings(ctx context.Context, input Gatewa
 		SettingKeyGatewayUpstreamErrorStatusCodes:              string(upstreamErrorStatusCodesJSON),
 		SettingKeyGatewayUpstreamErrorConsecutiveThreshold:     strconv.Itoa(input.UpstreamErrorConsecutiveThreshold),
 		SettingKeyGatewayImageGroupSuccessRateVisible:          strconv.FormatBool(input.ImageGroupSuccessRateVisible),
+		SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled:     strconv.FormatBool(input.AnthropicClaudeCodeMimicryEnabled),
 	}
 	var revision int64
 	if writer, ok := s.settingRepo.(gatewaySettingsRevisionWriter); ok {
@@ -408,6 +413,9 @@ func parseGatewaySettings(values map[string]string) GatewaySettings {
 	}
 	if raw, ok := values[SettingKeyGatewayImageGroupSuccessRateVisible]; ok {
 		settings.ImageGroupSuccessRateVisible = !isFalseSettingValue(raw)
+	}
+	if raw, ok := values[SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled]; ok {
+		settings.AnthropicClaudeCodeMimicryEnabled = strings.EqualFold(strings.TrimSpace(raw), "true")
 	}
 	if value, err := strconv.ParseInt(strings.TrimSpace(values[SettingKeyGatewayFailurePolicyRevision]), 10, 64); err == nil && value >= DefaultGatewayFailurePolicyRevision {
 		settings.FailurePolicyRevision = value

@@ -163,7 +163,29 @@
         </div>
 
         <div class="space-y-8 px-5 py-6 sm:px-6">
-          <section aria-labelledby="gateway-pool-title">
+          <section aria-labelledby="gateway-anthropic-claude-code-title">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 id="gateway-anthropic-claude-code-title" class="font-semibold text-gray-900 dark:text-white">
+                  {{ t('admin.customFeatures.gateway.anthropicClaudeCodeMimicry.title') }}
+                </h3>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.customFeatures.gateway.anthropicClaudeCodeMimicry.description') }}
+                </p>
+              </div>
+              <div class="flex flex-shrink-0 items-center gap-3">
+                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.customFeatures.gateway.anthropicClaudeCodeMimicry.enabled') }}
+                </span>
+                <Toggle
+                  v-model="gateway.anthropic_claude_code_mimicry_enabled"
+                  data-test="gateway-anthropic-claude-code-mimicry-enabled"
+                />
+              </div>
+            </div>
+          </section>
+
+          <section class="border-t border-gray-100 pt-8 dark:border-dark-700" aria-labelledby="gateway-pool-title">
             <h3 id="gateway-pool-title" class="font-semibold text-gray-900 dark:text-white">
               {{ t('admin.customFeatures.gateway.poolDefaults.title') }}
             </h3>
@@ -720,7 +742,8 @@ const gateway = reactive<GatewaySettings>({
   first_token_timeout_consecutive_threshold: 3,
   upstream_error_status_codes: [502, 503, 504],
   upstream_error_consecutive_threshold: 10,
-  image_group_success_rate_visible: true
+  image_group_success_rate_visible: true,
+  anthropic_claude_code_mimicry_enabled: false
 })
 const gatewayRetryStatusCodesInput = ref(gateway.default_pool_mode_retry_status_codes.join(', '))
 const gatewayUpstreamErrorStatusCodesInput = ref(gateway.upstream_error_status_codes.join(', '))
@@ -767,7 +790,9 @@ function cloneGateway(settings?: Partial<GatewaySettings>): GatewaySettings {
       settings?.first_token_timeout_consecutive_threshold ?? 3,
     upstream_error_status_codes: [...(settings?.upstream_error_status_codes ?? [502, 503, 504])],
     upstream_error_consecutive_threshold: settings?.upstream_error_consecutive_threshold ?? 10,
-    image_group_success_rate_visible: settings?.image_group_success_rate_visible ?? true
+    image_group_success_rate_visible: settings?.image_group_success_rate_visible ?? true,
+    anthropic_claude_code_mimicry_enabled:
+      settings?.anthropic_claude_code_mimicry_enabled ?? false
   }
 }
 
@@ -937,7 +962,8 @@ async function saveGateway() {
       ),
       upstream_error_status_codes: validation.upstreamErrorStatusCodes,
       upstream_error_consecutive_threshold: Number(gateway.upstream_error_consecutive_threshold),
-      image_group_success_rate_visible: gateway.image_group_success_rate_visible
+      image_group_success_rate_visible: gateway.image_group_success_rate_visible,
+      anthropic_claude_code_mimicry_enabled: gateway.anthropic_claude_code_mimicry_enabled
     })
     assignGateway(saved)
     appStore.showSuccess(t('admin.customFeatures.gateway.saved'))

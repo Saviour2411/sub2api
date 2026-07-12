@@ -286,6 +286,7 @@ const (
 	SettingKeyGatewayUpstreamErrorStatusCodes              = "gateway_upstream_error_status_codes"
 	SettingKeyGatewayUpstreamErrorConsecutiveThreshold     = "gateway_upstream_error_consecutive_threshold"
 	SettingKeyGatewayImageGroupSuccessRateVisible          = "gateway_image_group_success_rate_visible"
+	SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled     = "gateway_anthropic_claude_code_mimicry_enabled"
 	SettingKeyGatewayFailurePolicyRevision                 = "gateway_failure_policy_revision"
 	SettingKeyGatewayFailurePolicyFingerprint              = "gateway_failure_policy_fingerprint"
 

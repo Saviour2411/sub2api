@@ -89,6 +89,9 @@ func TestCustomFeatureHandler_GetSettings_返回独立契约(t *testing.T) {
 	require.Contains(t, data, "model_marketplace")
 	require.Contains(t, data, "daily_checkin")
 	require.Contains(t, data, "gateway")
+	gateway, ok := data["gateway"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, false, gateway["anthropic_claude_code_mimicry_enabled"])
 }
 
 func TestCustomFeatureHandler_UpdateModelMarketplace_规范化响应(t *testing.T) {
@@ -174,4 +177,18 @@ func TestCustomFeatureHandler_UpdateGateway_EmptyRetryStatusCodesReturnsArray(t 
 	retryCodes, ok := data["default_pool_mode_retry_status_codes"].([]any)
 	require.True(t, ok)
 	require.Empty(t, retryCodes)
+}
+
+func TestCustomFeatureHandler_UpdateGateway_部分更新保留ClaudeCode模拟开关(t *testing.T) {
+	repo := &customFeatureHandlerRepoStub{values: map[string]string{
+		service.SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled: "true",
+	}}
+	body := bytes.NewBufferString(`{"image_group_success_rate_visible":false}`)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPut, "/api/v1/admin/custom-features/gateway", body)
+	request.Header.Set("Content-Type", "application/json")
+	newCustomFeatureHandlerRouter(repo).ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, "true", repo.values[service.SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled])
 }
