@@ -244,16 +244,12 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 					h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed", true)
 					return
 				}
-				action := fs.HandleFailoverError(requestCtx, h.gatewayService, account.ID, account.Platform, failoverErr)
+				action := fs.HandleFailoverError(requestCtx, h.gatewayService, account.ID, account.Platform, failoverErr, account.GetPoolModeRetryCount())
 				switch action {
 				case FailoverContinue:
 					continue
 				case FailoverExhausted:
-					if preResponseStarted {
-						h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed", true)
-					} else {
-						h.handleResponsesFailoverExhausted(c, fs.LastFailoverErr, streamStarted)
-					}
+					h.handleResponsesFailoverExhausted(c, fs.LastFailoverErr, streamStarted)
 					return
 				case FailoverCanceled:
 					return
@@ -330,6 +326,16 @@ func (h *GatewayHandler) responsesErrorResponse(c *gin.Context, status int, code
 
 // handleResponsesFailoverExhausted writes a failover-exhausted error in Responses format.
 func (h *GatewayHandler) handleResponsesFailoverExhausted(c *gin.Context, lastErr *service.UpstreamFailoverError, streamStarted bool) {
+	streamStarted = normalizeFirstTokenTimeoutStreamState(c, lastErr, streamStarted)
+	if lastErr != nil && lastErr.FirstTokenTimeout {
+		status, errType, message := h.mapUpstreamError(lastErr.StatusCode)
+		if streamStarted {
+			h.handleStreamingAwareError(c, status, errType, message, true)
+			return
+		}
+		h.responsesErrorResponse(c, status, errType, message)
+		return
+	}
 	if streamStarted {
 		h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed", true)
 		return

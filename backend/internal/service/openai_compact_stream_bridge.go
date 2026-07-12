@@ -46,6 +46,12 @@ func openAICompactClientWantsStream(c *gin.Context) bool {
 	return wants
 }
 
+// OpenAICompactClientWantsStream 返回 body-signal compact 请求在归一化前的
+// 客户端流式意图。上游仍使用 unary /responses/compact，此标志只描述下游协议。
+func OpenAICompactClientWantsStream(c *gin.Context) bool {
+	return openAICompactClientWantsStream(c)
+}
+
 // writeOpenAICompactSSEBridge 将 unary compact 的最终 JSON 响应按 Codex remote
 // compact v2 的消费协议合成为最小 Responses SSE 流写回客户端。仅当请求被标记
 // 为 body-signal 客户端流式、状态码为 2xx 且 body 是合法 JSON 对象时生效；

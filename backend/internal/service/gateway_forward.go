@@ -351,22 +351,30 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 
 	// 重试循环
 	var resp *http.Response
+	var firstTokenAttempt *firstTokenAttempt
 	lastWireBody := body
 	retryStart := time.Now()
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
+		firstTokenAttempt = newFirstTokenAttempt(ctx, c, s.rateLimitService, account, reqModel, reqStream)
 		// 构建上游请求（每次重试需要重新构建，因为请求体需要重新读取）
 		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, reqStream)
 		upstreamReq, wireBody, err := s.buildUpstreamRequest(upstreamCtx, c, account, body, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 		releaseUpstreamCtx()
 		if err != nil {
+			firstTokenAttempt.stopBeforeStreaming()
 			return nil, err
 		}
+		upstreamReq = firstTokenAttempt.bindRequest(upstreamReq)
 		// 记录本次实际发送的 wire body；只有请求成功后才写回 ParsedRequest，避免 400 retry 基于已签名 CCH 再改写。
 		lastWireBody = wireBody
 
 		// 发送请求
 		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, tlsProfile)
 		if err != nil {
+			attemptErr := firstTokenAttempt.finishRequestError(err)
+			if isFirstTokenTimeoutFailover(attemptErr) {
+				return nil, attemptErr
+			}
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
 			}
@@ -390,6 +398,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 				},
 			})
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
+		}
+		if resp.StatusCode >= 400 {
+			firstTokenAttempt.stopBeforeStreaming(resp)
 		}
 
 		// 优先检测thinking block签名错误（400）并重试一次
@@ -443,8 +454,19 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					retryReq, retryWireBody, buildErr := s.buildUpstreamRequest(retryCtx, c, account, filteredBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 					releaseRetryCtx()
 					if buildErr == nil {
+						retryFirstTokenAttempt := newFirstTokenAttempt(ctx, c, s.rateLimitService, account, reqModel, reqStream)
+						retryReq = retryFirstTokenAttempt.bindRequest(retryReq)
 						retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, account.Concurrency, tlsProfile)
+						if retryErr != nil {
+							attemptErr := retryFirstTokenAttempt.finishRequestError(retryErr)
+							if isFirstTokenTimeoutFailover(attemptErr) {
+								return nil, attemptErr
+							}
+						}
 						if retryErr == nil {
+							if retryResp.StatusCode >= 400 {
+								retryFirstTokenAttempt.stopBeforeStreaming(retryResp)
+							}
 							if retryResp.StatusCode < 400 {
 								// 重试请求被上游接受后同步 ParsedRequest，保证 usage/日志看到真实请求体。
 								lastWireBody = retryWireBody
@@ -454,6 +476,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 								}
 								logger.LegacyPrintf("service.gateway", "Account %d: thinking block retry succeeded (blocks downgraded)", account.ID)
 								resp = retryResp
+								firstTokenAttempt = retryFirstTokenAttempt
 								break
 							}
 
@@ -484,8 +507,19 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 									retryReq2, retryWireBody2, buildErr2 := s.buildUpstreamRequest(retryCtx2, c, account, filteredBody2, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 									releaseRetryCtx2()
 									if buildErr2 == nil {
+										retryFirstTokenAttempt2 := newFirstTokenAttempt(ctx, c, s.rateLimitService, account, reqModel, reqStream)
+										retryReq2 = retryFirstTokenAttempt2.bindRequest(retryReq2)
 										retryResp2, retryErr2 := s.httpUpstream.DoWithTLS(retryReq2, proxyURL, account.ID, account.Concurrency, tlsProfile)
+										if retryErr2 != nil {
+											attemptErr := retryFirstTokenAttempt2.finishRequestError(retryErr2)
+											if isFirstTokenTimeoutFailover(attemptErr) {
+												return nil, attemptErr
+											}
+										}
 										if retryErr2 == nil {
+											if retryResp2.StatusCode >= 400 {
+												retryFirstTokenAttempt2.stopBeforeStreaming(retryResp2)
+											}
 											if retryResp2.StatusCode < 400 {
 												// 二阶段工具块降级成功时也必须更新当前 body。
 												lastWireBody = retryWireBody2
@@ -493,6 +527,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 													_ = retryResp2.Body.Close()
 													return nil, err
 												}
+												firstTokenAttempt = retryFirstTokenAttempt2
 											}
 											resp = retryResp2
 											break
@@ -563,8 +598,19 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 						budgetRetryReq, budgetWireBody, buildErr := s.buildUpstreamRequest(budgetRetryCtx, c, account, rectifiedBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 						releaseBudgetRetryCtx()
 						if buildErr == nil {
+							budgetFirstTokenAttempt := newFirstTokenAttempt(ctx, c, s.rateLimitService, account, reqModel, reqStream)
+							budgetRetryReq = budgetFirstTokenAttempt.bindRequest(budgetRetryReq)
 							budgetRetryResp, retryErr := s.httpUpstream.DoWithTLS(budgetRetryReq, proxyURL, account.ID, account.Concurrency, tlsProfile)
+							if retryErr != nil {
+								attemptErr := budgetFirstTokenAttempt.finishRequestError(retryErr)
+								if isFirstTokenTimeoutFailover(attemptErr) {
+									return nil, attemptErr
+								}
+							}
 							if retryErr == nil {
+								if budgetRetryResp.StatusCode >= 400 {
+									budgetFirstTokenAttempt.stopBeforeStreaming(budgetRetryResp)
+								}
 								if budgetRetryResp.StatusCode < 400 {
 									// budget 修正请求成功后，ParsedRequest 也要描述被接受的修正版。
 									lastWireBody = budgetWireBody
@@ -572,6 +618,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 										_ = budgetRetryResp.Body.Close()
 										return nil, err
 									}
+									firstTokenAttempt = budgetFirstTokenAttempt
 								}
 								resp = budgetRetryResp
 								break
@@ -647,6 +694,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		break
 	}
 	if resp == nil || resp.Body == nil {
+		firstTokenAttempt.stopBeforeStreaming()
 		return nil, errors.New("upstream request failed: empty response")
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -761,7 +809,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					logger.LegacyPrintf("service.gateway", "Account %d: 400 error, attempting failover", account.ID)
 				}
 				s.handleFailoverSideEffects(ctx, resp, account, reqModel)
-				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBody}
+				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBody, RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode)}
 			}
 		}
 		return s.handleErrorResponse(ctx, resp, c, account, reqModel)
@@ -785,7 +833,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	var firstTokenMs *int
 	var clientDisconnect bool
 	if reqStream {
-		streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, reqModel, shouldMimicClaudeCode)
+		firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolSSE)
+		streamResult, streamErr := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, reqModel, shouldMimicClaudeCode)
+		err := firstTokenAttempt.finish(streamErr)
 		if err != nil {
 			var sseErr *sseStreamErrorEventError
 			if errors.As(err, &sseErr) {
@@ -825,8 +875,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 				)
 
 				return nil, &UpstreamFailoverError{
-					StatusCode:   403,
-					ResponseBody: body,
+					StatusCode:             403,
+					ResponseBody:           body,
+					RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(http.StatusForbidden),
 				}
 			}
 			return nil, err

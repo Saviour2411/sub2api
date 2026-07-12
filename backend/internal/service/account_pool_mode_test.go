@@ -22,7 +22,7 @@ func TestGetPoolModeRetryCount(t *testing.T) {
 				Platform:    PlatformOpenAI,
 				Credentials: map[string]any{},
 			},
-			expected: defaultPoolModeRetryCount,
+			expected: 0,
 		},
 		{
 			name: "default_when_missing_retry_count",

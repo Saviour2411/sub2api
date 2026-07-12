@@ -85,7 +85,7 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	if err != nil {
 		return nil, err
 	}
-	resp, err := s.sendCCUpstreamRequest(ctx, c, account, targetURL, chatBody, clientStream, apiKey, account.GetOpenAIUserAgent())
+	resp, firstTokenAttempt, err := s.sendCCUpstreamRequest(ctx, c, account, targetURL, chatBody, clientStream, upstreamModel, apiKey, account.GetOpenAIUserAgent())
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +100,9 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	}
 
 	if clientStream {
-		return s.streamChatCompletionsAsResponses(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+		firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolSSE)
+		result, streamErr := s.streamChatCompletionsAsResponses(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+		return result, firstTokenAttempt.finish(streamErr)
 	}
 	return s.bufferChatCompletionsAsResponses(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 }

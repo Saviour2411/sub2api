@@ -123,29 +123,6 @@ func (h *AccountHandler) GetAPIKey(c *gin.Context) {
 	})
 }
 
-func applyOpenAIAPIKeyPoolModeDefaults(platform, accountType string, credentials map[string]any) map[string]any {
-	if !strings.EqualFold(strings.TrimSpace(platform), service.PlatformOpenAI) ||
-		!strings.EqualFold(strings.TrimSpace(accountType), service.AccountTypeAPIKey) {
-		return credentials
-	}
-	if credentials == nil {
-		credentials = make(map[string]any)
-	}
-	if poolMode, ok := credentials["pool_mode"].(bool); ok && !poolMode {
-		return credentials
-	}
-	if _, ok := credentials["pool_mode"]; !ok {
-		credentials["pool_mode"] = true
-	}
-	if _, ok := credentials["pool_mode_retry_count"]; !ok {
-		credentials["pool_mode_retry_count"] = 3
-	}
-	if _, ok := credentials["pool_mode_retry_status_codes"]; !ok {
-		credentials["pool_mode_retry_status_codes"] = []int{401, 403, 429, 502, 503, 504}
-	}
-	return credentials
-}
-
 // CreateAccountRequest represents create account request
 type CreateAccountRequest struct {
 	Name                    string         `json:"name" binding:"required"`
@@ -841,7 +818,6 @@ func (h *AccountHandler) Create(c *gin.Context) {
 	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
 	sanitizeExtraBaseRPM(req.Extra)
-	req.Credentials = applyOpenAIAPIKeyPoolModeDefaults(req.Platform, req.Type, req.Credentials)
 
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
@@ -1666,7 +1642,6 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 
 			// base_rpm 输入校验：负值归零，超过 10000 截断
 			sanitizeExtraBaseRPM(item.Extra)
-			item.Credentials = applyOpenAIAPIKeyPoolModeDefaults(item.Platform, item.Type, item.Credentials)
 
 			skipCheck := item.ConfirmMixedChannelRisk != nil && *item.ConfirmMixedChannelRisk
 

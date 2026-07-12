@@ -113,7 +113,7 @@ func (s *GatewayService) forwardBedrock(
 	}
 
 	// 执行上游请求（含重试）
-	resp, err := s.executeBedrockUpstream(ctx, c, account, bedrockBody, mappedModel, region, reqStream, signer, bedrockAPIKey, proxyURL)
+	resp, firstTokenAttempt, err := s.executeBedrockUpstream(ctx, c, account, bedrockBody, mappedModel, region, reqStream, signer, bedrockAPIKey, proxyURL)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +140,9 @@ func (s *GatewayService) forwardBedrock(
 	var firstTokenMs *int
 	var clientDisconnect bool
 	if reqStream {
-		streamResult, err := s.handleBedrockStreamingResponse(ctx, resp, c, account, startTime, reqModel)
+		firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolBedrock)
+		streamResult, streamErr := s.handleBedrockStreamingResponse(ctx, resp, c, account, startTime, reqModel)
+		err := firstTokenAttempt.finish(streamErr)
 		if err != nil {
 			return nil, err
 		}
@@ -181,23 +183,30 @@ func (s *GatewayService) executeBedrockUpstream(
 	signer *BedrockSigner,
 	apiKey string,
 	proxyURL string,
-) (*http.Response, error) {
+) (*http.Response, *firstTokenAttempt, error) {
 	var resp *http.Response
 	var err error
+	var firstTokenAttempt *firstTokenAttempt
 	retryStart := time.Now()
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
+		firstTokenAttempt = newFirstTokenAttempt(ctx, c, s.rateLimitService, account, modelID, stream)
 		var upstreamReq *http.Request
 		if account.IsBedrockAPIKey() {
-			upstreamReq, err = s.buildUpstreamRequestBedrockAPIKey(ctx, body, modelID, region, stream, apiKey)
+			upstreamReq, err = s.buildUpstreamRequestBedrockAPIKey(firstTokenAttempt.upstreamContext(ctx), body, modelID, region, stream, apiKey)
 		} else {
-			upstreamReq, err = s.buildUpstreamRequestBedrock(ctx, body, modelID, region, stream, signer)
+			upstreamReq, err = s.buildUpstreamRequestBedrock(firstTokenAttempt.upstreamContext(ctx), body, modelID, region, stream, signer)
 		}
 		if err != nil {
-			return nil, err
+			firstTokenAttempt.stopBeforeStreaming()
+			return nil, nil, err
 		}
 
 		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, nil)
 		if err != nil {
+			attemptErr := firstTokenAttempt.finishRequestError(err)
+			if isFirstTokenTimeoutFailover(attemptErr) {
+				return nil, nil, attemptErr
+			}
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
 			}
@@ -219,7 +228,11 @@ func (s *GatewayService) executeBedrockUpstream(
 					"message": "Upstream request failed",
 				},
 			})
-			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
+			return nil, nil, fmt.Errorf("upstream request failed: %s", safeErr)
+		}
+
+		if resp.StatusCode >= 400 {
+			firstTokenAttempt.stopBeforeStreaming(resp)
 		}
 
 		if resp.StatusCode >= 400 && resp.StatusCode != 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) {
@@ -258,7 +271,7 @@ func (s *GatewayService) executeBedrockUpstream(
 				logger.LegacyPrintf("service.gateway", "[Bedrock] account %d: upstream error %d, retry %d/%d after %v",
 					account.ID, resp.StatusCode, attempt, maxRetryAttempts, delay)
 				if err := sleepWithContext(ctx, delay); err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 				continue
 			}
@@ -268,9 +281,10 @@ func (s *GatewayService) executeBedrockUpstream(
 		break
 	}
 	if resp == nil || resp.Body == nil {
-		return nil, errors.New("upstream request failed: empty response")
+		firstTokenAttempt.stopBeforeStreaming()
+		return nil, nil, errors.New("upstream request failed: empty response")
 	}
-	return resp, nil
+	return resp, firstTokenAttempt, nil
 }
 
 // handleBedrockUpstreamErrors 处理 Bedrock 上游 4xx/5xx 错误（failover + 错误响应）

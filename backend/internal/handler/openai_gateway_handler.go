@@ -220,7 +220,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 	reqModel := modelResult.String()
 
-	reqStream, ok := parseOpenAICompatibleStream(body)
+	reqStream, ok := parseOpenAIResponsesClientStream(c, body)
 	if !ok {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", invalidStreamFieldTypeMessage)
 		return
@@ -261,7 +261,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 	// 定价校验通过后再启动 compact 心跳，保证本地缺价拒绝仍可返回 HTTP 400，
 	// 不会先提交 200 后把 JSON 错误写入 SSE 流。
-	stopCompactKeepalive := service.StartOpenAICompactSSEKeepalive(c, h.openAICompactKeepaliveInterval())
+	stopCompactKeepalive := service.StartOpenAICompactSSEKeepalivePaused(c, h.openAICompactKeepaliveInterval())
 	defer stopCompactKeepalive()
 	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, body); decision != nil && decision.Blocked {
 		h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
@@ -568,6 +568,16 @@ func isOpenAIRemoteCompactPath(c *gin.Context) bool {
 	}
 	normalizedPath := strings.TrimRight(strings.TrimSpace(c.Request.URL.Path), "/")
 	return strings.HasSuffix(normalizedPath, "/responses/compact")
+}
+
+// parseOpenAIResponsesClientStream 保留 body-signal compact 归一化前的客户端
+// SSE 意图；归一化后的 body 不再携带 stream，但下游仍是流式 Responses 协议。
+func parseOpenAIResponsesClientStream(c *gin.Context, body []byte) (bool, bool) {
+	stream, ok := parseOpenAICompatibleStream(body)
+	if !ok {
+		return false, false
+	}
+	return stream || service.OpenAICompactClientWantsStream(c), true
 }
 
 // isBareOpenAIResponsesPath 仅匹配裸 /responses 端点（无 /compact 等子路径），
@@ -1084,6 +1094,7 @@ func (h *OpenAIGatewayHandler) anthropicStreamingAwareError(c *gin.Context, stat
 
 // handleAnthropicFailoverExhausted maps upstream failover errors to Anthropic format.
 func (h *OpenAIGatewayHandler) handleAnthropicFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, streamStarted bool) {
+	streamStarted = normalizeFirstTokenTimeoutStreamState(c, failoverErr, streamStarted)
 	status, errType, errMsg := h.mapUpstreamError(failoverErr.StatusCode)
 	h.anthropicStreamingAwareError(c, status, errType, errMsg, streamStarted)
 }
@@ -1946,6 +1957,7 @@ func (h *OpenAIGatewayHandler) handleConcurrencyError(c *gin.Context, err error,
 }
 
 func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, streamStarted bool) {
+	streamStarted = normalizeFirstTokenTimeoutStreamState(c, failoverErr, streamStarted)
 	statusCode := failoverErr.StatusCode
 	responseBody := failoverErr.ResponseBody
 	if service.IsOpenAISilentRefusalErrorBody(responseBody) {
@@ -2004,7 +2016,9 @@ func (h *OpenAIGatewayHandler) mapUpstreamError(statusCode int) (int, string, st
 		return http.StatusTooManyRequests, "rate_limit_error", "Upstream rate limit exceeded, please retry later"
 	case 529:
 		return http.StatusServiceUnavailable, "upstream_error", "Upstream service overloaded, please retry later"
-	case 500, 502, 503, 504:
+	case 504:
+		return http.StatusGatewayTimeout, "upstream_timeout", "Upstream response timed out"
+	case 500, 502, 503:
 		return http.StatusBadGateway, "upstream_error", "Upstream service temporarily unavailable"
 	default:
 		return http.StatusBadGateway, "upstream_error", "Upstream request failed"

@@ -152,7 +152,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	if customUA == "" && account.Platform == PlatformGrok {
 		customUA = "sub2api-grok/1.0"
 	}
-	resp, err := s.sendCCUpstreamRequest(ctx, c, account, targetURL, upstreamBody, clientStream, token, customUA)
+	resp, firstTokenAttempt, err := s.sendCCUpstreamRequest(ctx, c, account, targetURL, upstreamBody, clientStream, upstreamModel, token, customUA)
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +196,9 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	var result *OpenAIForwardResult
 	var forwardErr error
 	if clientStream {
+		firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolSSE)
 		result, forwardErr = s.streamRawChatCompletions(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, len(body))
+		forwardErr = firstTokenAttempt.finish(forwardErr)
 	} else {
 		result, forwardErr = s.bufferRawChatCompletions(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 	}

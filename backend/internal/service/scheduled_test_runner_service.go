@@ -40,10 +40,28 @@ type ScheduledTestRunnerService struct {
 	rateLimitSvc   scheduledAccountRecovery
 	accountRepo    AccountRepository
 	cfg            *config.Config
+	settingService *SettingService
 
 	cron      *cron.Cron
 	startOnce sync.Once
 	stopOnce  sync.Once
+}
+
+// SetSettingService 注入网关配置读取服务。
+func (s *ScheduledTestRunnerService) SetSettingService(settingService *SettingService) {
+	if s != nil {
+		s.settingService = settingService
+	}
+}
+
+// EnsureAutoManagedProbe 确保账号存在唯一的自动测活计划，并立即启用。
+func (s *ScheduledTestRunnerService) EnsureAutoManagedProbe(ctx context.Context, accountID int64) error {
+	if s == nil || s.planRepo == nil || accountID <= 0 {
+		return nil
+	}
+	now := time.Now()
+	_, err := s.planRepo.EnsureAutoManaged(ctx, accountID, true, &now)
+	return err
 }
 
 // NewScheduledTestRunnerService creates a new runner.
@@ -242,8 +260,9 @@ func (s *ScheduledTestRunnerService) nextAutoManagedRetry(ctx context.Context, p
 		from = time.Now()
 	}
 	consecutiveFailures := 1
+	backoffSteps := s.autoManagedBackoffSteps(ctx)
 	if s != nil && s.scheduledSvc != nil && plan != nil {
-		results, err := s.scheduledSvc.ListResults(ctx, plan.ID, len(scheduledTestAutoManagedBackoffSteps)+1)
+		results, err := s.scheduledSvc.ListResults(ctx, plan.ID, len(backoffSteps)+1)
 		if err != nil {
 			logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d ListResults for backoff error: %v", plan.ID, err)
 		} else {
@@ -253,7 +272,17 @@ func (s *ScheduledTestRunnerService) nextAutoManagedRetry(ctx context.Context, p
 			}
 		}
 	}
-	return from.Add(scheduledTestAutoManagedBackoffDuration(consecutiveFailures))
+	return from.Add(scheduledTestAutoManagedBackoffDuration(consecutiveFailures, backoffSteps))
+}
+
+func (s *ScheduledTestRunnerService) autoManagedBackoffSteps(ctx context.Context) []time.Duration {
+	if s != nil && s.settingService != nil {
+		steps := s.settingService.GetGatewayRuntime(ctx).AutoManagedProbeBackoffDurations()
+		if len(steps) > 0 {
+			return steps
+		}
+	}
+	return append([]time.Duration(nil), scheduledTestAutoManagedBackoffSteps...)
 }
 
 func countConsecutiveScheduledTestFailures(results []*ScheduledTestResult) int {
@@ -267,15 +296,19 @@ func countConsecutiveScheduledTestFailures(results []*ScheduledTestResult) int {
 	return count
 }
 
-func scheduledTestAutoManagedBackoffDuration(consecutiveFailures int) time.Duration {
+func scheduledTestAutoManagedBackoffDuration(consecutiveFailures int, configured ...[]time.Duration) time.Duration {
+	steps := scheduledTestAutoManagedBackoffSteps
+	if len(configured) > 0 && len(configured[0]) > 0 {
+		steps = configured[0]
+	}
 	if consecutiveFailures <= 1 {
-		return scheduledTestAutoManagedBackoffSteps[0]
+		return steps[0]
 	}
 	index := consecutiveFailures - 1
-	if index >= len(scheduledTestAutoManagedBackoffSteps) {
-		index = len(scheduledTestAutoManagedBackoffSteps) - 1
+	if index >= len(steps) {
+		index = len(steps) - 1
 	}
-	return scheduledTestAutoManagedBackoffSteps[index]
+	return steps[index]
 }
 
 func isAutoManagedProbeNeeded(account *Account, now time.Time) bool {

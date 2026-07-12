@@ -32,7 +32,8 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	body []byte,
 	reqModel string,
 	reasoningEffort *string,
-	reqStream bool,
+	upstreamStream bool,
+	clientStream bool,
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
 	upstreamPassthroughModel := ""
@@ -69,7 +70,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		if normalized {
 			body = normalizedBody
 		}
-		reqStream = gjson.GetBytes(body, "stream").Bool()
+		upstreamStream = gjson.GetBytes(body, "stream").Bool()
 	}
 
 	sanitizedBody, sanitized, err := sanitizeEmptyBase64InputImagesInOpenAIBody(body)
@@ -115,6 +116,9 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	imageSizeTier := ""
 	imageInputSize := ""
 	if IsImageGenerationIntent(openAIResponsesEndpoint, reqModel, body) {
+		if c != nil {
+			c.Set("first_token_timeout_excluded", true)
+		}
 		var imageCfgErr error
 		imageCfg, imageCfgErr := resolveOpenAIResponsesImageBillingConfigDetailedFromBody(body, reqModel)
 		if imageCfgErr != nil {
@@ -139,9 +143,9 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		account.Name,
 		account.Type,
 		reqModel,
-		reqStream,
+		clientStream,
 	)
-	if reqStream && c != nil && c.Request != nil {
+	if clientStream && c != nil && c.Request != nil {
 		if timeoutHeaders := collectOpenAIPassthroughTimeoutHeaders(c.Request.Header); len(timeoutHeaders) > 0 {
 			streamWarnLogger := logger.FromContext(ctx).With(
 				zap.String("component", "service.openai_gateway"),
@@ -162,12 +166,15 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		return nil, err
 	}
 
+	firstTokenAttempt := newFirstTokenAttempt(ctx, c, s.rateLimitService, account, upstreamPassthroughModel, clientStream)
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	upstreamReq, err := s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token)
 	releaseUpstreamCtx()
 	if err != nil {
+		firstTokenAttempt.stopBeforeStreaming()
 		return nil, err
 	}
+	upstreamReq = firstTokenAttempt.bindRequest(upstreamReq)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -182,6 +189,11 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 	if err != nil {
+		attemptErr := firstTokenAttempt.finishRequestError(err)
+		var timeoutErr *UpstreamFailoverError
+		if errors.As(attemptErr, &timeoutErr) && timeoutErr.FirstTokenTimeout {
+			return nil, attemptErr
+		}
 		// Transport-level failure (proxy/DNS/TCP/TLS — no HTTP response). Convert to
 		// a failover so the handler switches to a healthy account, and temporarily
 		// unschedule the account on durable faults (e.g. rejected proxy credentials).
@@ -190,6 +202,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
+		firstTokenAttempt.stopBeforeStreaming(resp)
 		// 透传模式默认保持原样代理；但 429/529 属于网关必须兜底的
 		// 上游容量类错误，应先触发多账号 failover 以维持基础 SLA。
 		if shouldFailoverOpenAIPassthroughResponse(resp.StatusCode) {
@@ -205,8 +218,10 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	responseID := ""
 	imageCount := 0
 	var imageOutputSizes []string
-	if reqStream {
-		result, err := s.handleStreamingResponsePassthrough(ctx, resp, c, account, startTime, reqModel, upstreamPassthroughModel)
+	if upstreamStream {
+		firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolSSE)
+		result, streamErr := s.handleStreamingResponsePassthrough(ctx, resp, c, account, startTime, reqModel, upstreamPassthroughModel)
+		err := firstTokenAttempt.finish(streamErr)
 		if err != nil {
 			return nil, err
 		}
@@ -216,11 +231,14 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		imageCount = result.imageCount
 		imageOutputSizes = result.imageOutputSizes
 	} else {
-		result, err := s.handleNonStreamingResponsePassthrough(ctx, resp, c, reqModel, upstreamPassthroughModel)
+		firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolOpenAICompact)
+		result, responseErr := s.handleNonStreamingResponsePassthrough(ctx, resp, c, reqModel, upstreamPassthroughModel)
+		err := firstTokenAttempt.finish(responseErr)
 		if err != nil {
 			return nil, err
 		}
 		usage = result.usage
+		firstTokenMs = firstTokenAttempt.observedFirstTokenMs()
 		responseID = strings.TrimSpace(result.responseID)
 		imageCount = result.imageCount
 		imageOutputSizes = result.imageOutputSizes
@@ -246,7 +264,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		UpstreamModel:   upstreamPassthroughModel,
 		ServiceTier:     serviceTier,
 		ReasoningEffort: reasoningEffort,
-		Stream:          reqStream,
+		Stream:          clientStream,
 		OpenAIWSMode:    false,
 		Duration:        time.Since(startTime),
 		FirstTokenMs:    firstTokenMs,
@@ -463,9 +481,10 @@ func (s *OpenAIGatewayService) handleFailoverErrorResponsePassthrough(
 		UpstreamResponseBody: upstreamDetail,
 	})
 	return &UpstreamFailoverError{
-		StatusCode:      resp.StatusCode,
-		ResponseBody:    body,
-		ResponseHeaders: resp.Header.Clone(),
+		StatusCode:             resp.StatusCode,
+		ResponseBody:           body,
+		ResponseHeaders:        resp.Header.Clone(),
+		RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 	}
 }
 
@@ -821,8 +840,9 @@ func (s *OpenAIGatewayService) newOpenAIStreamFailoverError(
 		},
 	})
 	return &UpstreamFailoverError{
-		StatusCode:   http.StatusBadGateway,
-		ResponseBody: body,
+		StatusCode:             http.StatusBadGateway,
+		ResponseBody:           body,
+		RetryableOnSameAccount: account != nil && account.IsPoolMode() && account.IsPoolModeRetryableStatus(http.StatusBadGateway),
 	}
 }
 
@@ -988,6 +1008,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 						// 命中透传规则也要记录 ops 上游错误事件（对齐 CC/Messages 与
 						// antigravity 先例），否则透传命中的 failed 在监控中不可见。
 						s.recordOpenAIStreamUpstreamError(c, account, true, upstreamRequestID, "http_error", dataBytes, failedMessage)
+						MarkOpsStreamError(c, errType, errMsg, status)
 						MarkResponseCommitted(c)
 						c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 						c.JSON(status, gin.H{
@@ -1003,6 +1024,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 							s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, dataBytes, failedMessage)
 					}
 				}
+				MarkOpsStreamError(c, "upstream_error", failedMessage, http.StatusBadGateway)
 				forceFlushFailedEvent = true
 				sawFailedEvent = true
 			}

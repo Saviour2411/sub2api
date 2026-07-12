@@ -142,24 +142,28 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 
 	// 执行带重试的请求
 	result, err := s.antigravityRetryLoop(antigravityRetryLoopParams{
-		ctx:             ctx,
-		prefix:          prefix,
-		account:         account,
-		proxyURL:        proxyURL,
-		accessToken:     accessToken,
-		action:          upstreamAction,
-		body:            wrappedBody,
-		c:               c,
-		httpUpstream:    s.httpUpstream,
-		settingService:  s.settingService,
-		accountRepo:     s.accountRepo,
-		handleError:     s.handleUpstreamError,
-		requestedModel:  originalModel,
-		isStickySession: isStickySession, // ForwardGemini 由上层判断粘性会话
-		groupID:         forwardOpts.groupID,
-		sessionHash:     forwardOpts.sessionHash,
+		ctx:              ctx,
+		prefix:           prefix,
+		account:          account,
+		proxyURL:         proxyURL,
+		accessToken:      accessToken,
+		action:           upstreamAction,
+		body:             wrappedBody,
+		c:                c,
+		httpUpstream:     s.httpUpstream,
+		settingService:   s.settingService,
+		accountRepo:      s.accountRepo,
+		handleError:      s.handleUpstreamError,
+		requestedModel:   originalModel,
+		firstTokenStream: stream,
+		isStickySession:  isStickySession, // ForwardGemini 由上层判断粘性会话
+		groupID:          forwardOpts.groupID,
+		sessionHash:      forwardOpts.sessionHash,
 	})
 	if err != nil {
+		if isFirstTokenTimeoutFailover(err) {
+			return nil, err
+		}
 		// 检查是否是账号切换信号，转换为 UpstreamFailoverError 让 Handler 切换账号
 		if switchErr, ok := IsAntigravityAccountSwitchError(err); ok {
 			return nil, &UpstreamFailoverError{
@@ -353,7 +357,7 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 				Message:            upstreamMsg,
 				Detail:             upstreamDetail,
 			})
-			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: unwrappedForOps, RetryableOnSameAccount: true}
+			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: unwrappedForOps, RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode)}
 		}
 
 		if s.shouldFailoverUpstreamError(resp.StatusCode) {
@@ -367,7 +371,7 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 				Message:            upstreamMsg,
 				Detail:             upstreamDetail,
 			})
-			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: unwrappedForOps}
+			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: unwrappedForOps, RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode)}
 		}
 		if contentType == "" {
 			contentType = "application/json"
@@ -400,7 +404,9 @@ handleSuccess:
 
 	if stream {
 		// 客户端要求流式，直接透传
-		streamRes, err := s.handleGeminiStreamingResponse(c, resp, startTime)
+		result.firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolSSE)
+		streamRes, streamErr := s.handleGeminiStreamingResponse(c, resp, account, startTime)
+		err := result.firstTokenAttempt.finish(streamErr)
 		if err != nil {
 			logger.LegacyPrintf("service.antigravity_gateway", "%s status=stream_error error=%v", prefix, err)
 			return nil, err
@@ -410,7 +416,7 @@ handleSuccess:
 		clientDisconnect = streamRes.clientDisconnect
 	} else {
 		// 客户端要求非流式，收集流式响应后返回
-		streamRes, err := s.handleGeminiStreamToNonStreaming(c, resp, startTime)
+		streamRes, err := s.handleGeminiStreamToNonStreaming(c, resp, account, startTime)
 		if err != nil {
 			logger.LegacyPrintf("service.antigravity_gateway", "%s status=stream_collect_error error=%v", prefix, err)
 			return nil, err

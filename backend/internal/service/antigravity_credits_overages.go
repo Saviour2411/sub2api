@@ -164,8 +164,10 @@ func shouldMarkCreditsExhausted(resp *http.Response, respBody []byte, reqErr err
 }
 
 type creditsOveragesRetryResult struct {
-	handled bool
-	resp    *http.Response
+	handled           bool
+	resp              *http.Response
+	err               error
+	firstTokenAttempt *firstTokenAttempt
 }
 
 // attemptCreditsOveragesRetry 在确认免费配额耗尽后，尝试注入 AI Credits 继续请求。
@@ -185,19 +187,31 @@ func (s *AntigravityGatewayService) attemptCreditsOveragesRetry(
 	logger.LegacyPrintf("service.antigravity_gateway", "%s status=429 credit_overages_retry model=%s account=%d (injecting enabledCreditTypes)",
 		p.prefix, modelKey, p.account.ID)
 
-	creditsReq, err := antigravity.NewAPIRequestWithURL(p.ctx, baseURL, p.action, p.accessToken, creditsBody)
+	firstTokenAttempt := newFirstTokenAttempt(p.ctx, p.c, s.rateLimitService, p.account, p.requestedModel, p.firstTokenStream)
+	creditsReq, err := antigravity.NewAPIRequestWithURL(firstTokenAttempt.upstreamContext(p.ctx), baseURL, p.action, p.accessToken, creditsBody)
 	if err != nil {
+		firstTokenAttempt.stopBeforeStreaming()
 		logger.LegacyPrintf("service.antigravity_gateway", "%s credit_overages_failed model=%s account=%d build_request_err=%v",
 			p.prefix, modelKey, p.account.ID, err)
 		return &creditsOveragesRetryResult{handled: true}
 	}
+	creditsReq = firstTokenAttempt.bindRequest(creditsReq)
 
 	creditsResp, err := p.httpUpstream.Do(creditsReq, p.proxyURL, p.account.ID, p.account.Concurrency)
+	if err != nil {
+		attemptErr := firstTokenAttempt.finishRequestError(err)
+		if isFirstTokenTimeoutFailover(attemptErr) {
+			return &creditsOveragesRetryResult{handled: true, err: attemptErr}
+		}
+	}
+	if creditsResp != nil && creditsResp.StatusCode >= 400 {
+		firstTokenAttempt.stopBeforeStreaming(creditsResp)
+	}
 	if err == nil && creditsResp != nil && creditsResp.StatusCode < 400 {
 		s.clearCreditsExhausted(p.ctx, p.account)
 		logger.LegacyPrintf("service.antigravity_gateway", "%s status=%d credit_overages_success model=%s account=%d",
 			p.prefix, creditsResp.StatusCode, modelKey, p.account.ID)
-		return &creditsOveragesRetryResult{handled: true, resp: creditsResp}
+		return &creditsOveragesRetryResult{handled: true, resp: creditsResp, firstTokenAttempt: firstTokenAttempt}
 	}
 
 	s.handleCreditsRetryFailure(p.ctx, p.prefix, modelKey, p.account, creditsResp, err)

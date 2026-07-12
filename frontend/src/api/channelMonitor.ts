@@ -35,8 +35,21 @@ export interface UserMonitorView {
   timeline: MonitorTimelinePoint[]
 }
 
+export interface ImageGroupSuccessRateItem {
+  group_id: number
+  group_name: string
+  success_rate: number
+  last_success_at: string | null
+}
+
+export interface ImageGroupSuccessRates {
+  visible: boolean
+  items: ImageGroupSuccessRateItem[]
+}
+
 export interface UserMonitorListResponse {
   items: UserMonitorView[]
+  image_group_success_rates: ImageGroupSuccessRates
 }
 
 export interface UserMonitorModelDetail {

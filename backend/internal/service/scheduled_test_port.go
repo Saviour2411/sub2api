@@ -49,6 +49,7 @@ type ScheduledTestLatestFailure struct {
 // ScheduledTestPlanRepository defines the data access interface for test plans.
 type ScheduledTestPlanRepository interface {
 	Create(ctx context.Context, plan *ScheduledTestPlan) (*ScheduledTestPlan, error)
+	EnsureAutoManaged(ctx context.Context, accountID int64, enabled bool, nextRunAt *time.Time) (*ScheduledTestPlan, error)
 	GetByID(ctx context.Context, id int64) (*ScheduledTestPlan, error)
 	ListByAccountID(ctx context.Context, accountID int64) ([]*ScheduledTestPlan, error)
 	ListDue(ctx context.Context, now time.Time) ([]*ScheduledTestPlan, error)
@@ -58,6 +59,7 @@ type ScheduledTestPlanRepository interface {
 	UpdateAfterRun(ctx context.Context, id int64, lastRunAt time.Time, nextRunAt time.Time) error
 	EnableAutoManaged(ctx context.Context, id int64, nextRunAt time.Time) error
 	DisableAutoManaged(ctx context.Context, id int64, lastRunAt *time.Time) error
+	RescheduleEnabledAutoManaged(ctx context.Context, backoffSteps []time.Duration, now time.Time) error
 }
 
 // ScheduledTestResultRepository defines the data access interface for test results.

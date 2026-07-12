@@ -1,15 +1,19 @@
 package admin
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/Wei-Shaw/sub2api/internal/service"
+)
 
 func TestApplyOpenAIAPIKeyPoolModeDefaults(t *testing.T) {
-	creds := applyOpenAIAPIKeyPoolModeDefaults("openai", "apikey", map[string]any{"api_key": "sk-test"})
+	creds := service.ApplyGatewayPoolModeDefaults("apikey", map[string]any{"api_key": "sk-test"}, service.DefaultGatewaySettings())
 
 	if creds["pool_mode"] != true {
 		t.Fatalf("pool_mode = %#v, want true", creds["pool_mode"])
 	}
-	if creds["pool_mode_retry_count"] != 3 {
-		t.Fatalf("pool_mode_retry_count = %#v, want 3", creds["pool_mode_retry_count"])
+	if creds["pool_mode_retry_count"] != 1 {
+		t.Fatalf("pool_mode_retry_count = %#v, want 1", creds["pool_mode_retry_count"])
 	}
 	codes, ok := creds["pool_mode_retry_status_codes"].([]int)
 	if !ok {
@@ -27,7 +31,7 @@ func TestApplyOpenAIAPIKeyPoolModeDefaults(t *testing.T) {
 }
 
 func TestApplyOpenAIAPIKeyPoolModeDefaults_ExplicitFalseNotOverridden(t *testing.T) {
-	creds := applyOpenAIAPIKeyPoolModeDefaults("openai", "apikey", map[string]any{"pool_mode": false})
+	creds := service.ApplyGatewayPoolModeDefaults("apikey", map[string]any{"pool_mode": false}, service.DefaultGatewaySettings())
 
 	if creds["pool_mode"] != false {
 		t.Fatalf("pool_mode = %#v, want false", creds["pool_mode"])

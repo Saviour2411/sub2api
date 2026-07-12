@@ -617,6 +617,9 @@ func NewAdminService(
 	runtimeBlocker AccountRuntimeBlocker,
 	defaultScheduledTestPlanRepo ScheduledTestPlanRepository,
 ) AdminService {
+	if settingService != nil {
+		settingService.SetScheduledTestPlanRepository(defaultScheduledTestPlanRepo)
+	}
 	return &adminServiceImpl{
 		userRepo:                     userRepo,
 		groupRepo:                    groupRepo,

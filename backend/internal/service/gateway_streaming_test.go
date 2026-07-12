@@ -238,7 +238,15 @@ func TestHandleStreamingResponse_StreamReadErrorBeforeOutput_TriggersFailover(t 
 		Body:       &streamReadCloser{err: io.ErrUnexpectedEOF},
 	}
 
-	result, err := svc.handleStreamingResponse(context.Background(), resp, c, &Account{ID: 1}, time.Now(), "model", "model", false)
+	account := &Account{
+		ID:   1,
+		Type: AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"pool_mode":                    true,
+			"pool_mode_retry_status_codes": []any{http.StatusBadGateway},
+		},
+	}
+	result, err := svc.handleStreamingResponse(context.Background(), resp, c, account, time.Now(), "model", "model", false)
 
 	require.Error(t, err)
 	require.Nil(t, result, "失败移交场景下不应返回 streamingResult")

@@ -17,6 +17,8 @@ type scheduledTestPlanRepoStub struct {
 	activationCandidates []*ScheduledTestPlan
 	enabled              []scheduledPlanEnableCall
 	disabled             []scheduledPlanDisableCall
+	rescheduledSteps     []time.Duration
+	rescheduledAt        time.Time
 }
 
 type scheduledTestResultRepoStub struct {
@@ -42,6 +44,24 @@ func (r *scheduledTestPlanRepoStub) Create(ctx context.Context, plan *ScheduledT
 		r.createCh <- &cp
 	}
 	return &cp, nil
+}
+
+func (r *scheduledTestPlanRepoStub) EnsureAutoManaged(_ context.Context, accountID int64, enabled bool, nextRunAt *time.Time) (*ScheduledTestPlan, error) {
+	plan := &ScheduledTestPlan{
+		ID:             100,
+		AccountID:      accountID,
+		CronExpression: "*/5 * * * *",
+		Enabled:        enabled,
+		MaxResults:     20,
+		AutoRecover:    true,
+		AutoManaged:    true,
+		NextRunAt:      nextRunAt,
+	}
+	r.createdPlan = plan
+	if r.createCh != nil {
+		r.createCh <- plan
+	}
+	return plan, nil
 }
 
 func (r *scheduledTestPlanRepoStub) GetByID(ctx context.Context, id int64) (*ScheduledTestPlan, error) {
@@ -79,6 +99,12 @@ func (r *scheduledTestPlanRepoStub) EnableAutoManaged(ctx context.Context, id in
 
 func (r *scheduledTestPlanRepoStub) DisableAutoManaged(ctx context.Context, id int64, lastRunAt *time.Time) error {
 	r.disabled = append(r.disabled, scheduledPlanDisableCall{id: id, lastRunAt: lastRunAt})
+	return nil
+}
+
+func (r *scheduledTestPlanRepoStub) RescheduleEnabledAutoManaged(_ context.Context, steps []time.Duration, now time.Time) error {
+	r.rescheduledSteps = append([]time.Duration(nil), steps...)
+	r.rescheduledAt = now
 	return nil
 }
 
@@ -189,6 +215,34 @@ func TestScheduledTestRunner_NextAutoManagedRetryUsesConsecutiveFailures(t *test
 	nextRun := runner.nextAutoManagedRetry(context.Background(), &ScheduledTestPlan{ID: 1, AutoManaged: true}, now)
 
 	require.Equal(t, now.Add(10*time.Minute), nextRun)
+}
+
+func TestScheduledTestRunner_NextAutoManagedRetryUsesGatewayConfiguration(t *testing.T) {
+	now := time.Now()
+	settingRepo := &customFeatureSettingsRepoStub{values: map[string]string{
+		SettingKeyGatewayAutoManagedProbeBackoffMinutes: `[7,11]`,
+	}}
+	runner := &ScheduledTestRunnerService{
+		scheduledSvc: NewScheduledTestService(nil, &scheduledTestResultRepoStub{results: []*ScheduledTestResult{
+			{Status: "failed"},
+			{Status: "failed"},
+		}}),
+		settingService: NewSettingService(settingRepo, nil),
+	}
+
+	nextRun := runner.nextAutoManagedRetry(context.Background(), &ScheduledTestPlan{ID: 1, AutoManaged: true}, now)
+	require.Equal(t, now.Add(11*time.Minute), nextRun)
+}
+
+func TestScheduledTestRunner_EnsureAutoManagedProbeEnablesImmediately(t *testing.T) {
+	repo := &scheduledTestPlanRepoStub{}
+	runner := &ScheduledTestRunnerService{planRepo: repo}
+
+	require.NoError(t, runner.EnsureAutoManagedProbe(context.Background(), 42))
+	require.NotNil(t, repo.createdPlan)
+	require.Equal(t, int64(42), repo.createdPlan.AccountID)
+	require.True(t, repo.createdPlan.Enabled)
+	require.NotNil(t, repo.createdPlan.NextRunAt)
 }
 
 func TestScheduledTestRunner_NextAutoManagedRetryFallsBackToFiveMinutes(t *testing.T) {

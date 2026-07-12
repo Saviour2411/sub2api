@@ -125,17 +125,24 @@ func (s *GatewayService) ForwardAsResponses(
 	}
 
 	// 10. Build upstream request
+	firstTokenAttempt := newFirstTokenAttempt(ctx, c, s.rateLimitService, account, mappedModel, clientStream)
 	upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, reqStream)
 	upstreamReq, _, err := s.buildUpstreamRequest(upstreamCtx, c, account, anthropicBody, token, tokenType, mappedModel, reqStream, shouldMimicClaudeCode)
 	releaseUpstreamCtx()
 	if err != nil {
+		firstTokenAttempt.stopBeforeStreaming()
 		return nil, fmt.Errorf("build upstream request: %w", err)
 	}
+	upstreamReq = firstTokenAttempt.bindRequest(upstreamReq)
 
 	// 11. Send request
 	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
 	StopPreResponseKeepaliveBeforeResponseFromContext(ctx)
 	if err != nil {
+		attemptErr := firstTokenAttempt.finishRequestError(err)
+		if isFirstTokenTimeoutFailover(attemptErr) {
+			return nil, attemptErr
+		}
 		if resp != nil && resp.Body != nil {
 			_ = resp.Body.Close()
 		}
@@ -156,6 +163,7 @@ func (s *GatewayService) ForwardAsResponses(
 
 	// 12. Handle error response with failover
 	if resp.StatusCode >= 400 {
+		firstTokenAttempt.stopBeforeStreaming(resp)
 		respBody, _ := s.readUpstreamErrorBody(resp)
 		_ = resp.Body.Close()
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
@@ -177,8 +185,9 @@ func (s *GatewayService) ForwardAsResponses(
 				s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, mappedModel)
 			}
 			return nil, &UpstreamFailoverError{
-				StatusCode:   resp.StatusCode,
-				ResponseBody: respBody,
+				StatusCode:             resp.StatusCode,
+				ResponseBody:           respBody,
+				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 			}
 		}
 
@@ -191,7 +200,9 @@ func (s *GatewayService) ForwardAsResponses(
 	var result *ForwardResult
 	var handleErr error
 	if clientStream {
+		firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolSSE)
 		result, handleErr = s.handleResponsesStreamingResponse(resp, c, originalModel, mappedModel, reasoningEffort, startTime)
+		handleErr = firstTokenAttempt.finish(handleErr)
 	} else {
 		result, handleErr = s.handleResponsesBufferedStreamingResponse(resp, c, originalModel, mappedModel, reasoningEffort, startTime)
 	}

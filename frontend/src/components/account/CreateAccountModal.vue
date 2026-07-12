@@ -1321,7 +1321,7 @@
             </div>
             <button
               type="button"
-              @click="poolModeEnabled = !poolModeEnabled"
+              @click="togglePoolMode"
               :class="[
                 'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
                 poolModeEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
@@ -1345,6 +1345,7 @@
             <label class="input-label">{{ t('admin.accounts.poolModeRetryCount') }}</label>
             <input
               v-model.number="poolModeRetryCount"
+              @input="poolModeSettingsTouched = true"
               type="number"
               min="0"
               :max="MAX_POOL_MODE_RETRY_COUNT"
@@ -1354,7 +1355,7 @@
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
               {{
                 t('admin.accounts.poolModeRetryCountHint', {
-                  default: DEFAULT_POOL_MODE_RETRY_COUNT,
+                  default: gatewayPoolDefaults.retryCount,
                   max: MAX_POOL_MODE_RETRY_COUNT
                 })
               }}
@@ -1364,12 +1365,13 @@
             <label class="input-label">{{ t('admin.accounts.poolModeRetryStatusCodes') }}</label>
             <input
               v-model="poolModeRetryStatusCodesInput"
+              @input="poolModeSettingsTouched = true"
               type="text"
               class="input"
-              :placeholder="DEFAULT_POOL_MODE_RETRY_STATUS_CODES.join(', ')"
+              :placeholder="gatewayPoolDefaults.retryStatusCodes.join(', ')"
             />
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.poolModeRetryStatusCodesHint', { default: DEFAULT_POOL_MODE_RETRY_STATUS_CODES.join(', ') }) }}
+              {{ t('admin.accounts.poolModeRetryStatusCodesHint', { default: gatewayPoolDefaults.retryStatusCodes.join(', ') }) }}
             </p>
           </div>
         </div>
@@ -1799,7 +1801,7 @@
             </div>
             <button
               type="button"
-              @click="poolModeEnabled = !poolModeEnabled"
+              @click="togglePoolMode"
               :class="[
                 'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
                 poolModeEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
@@ -1823,6 +1825,7 @@
             <label class="input-label">{{ t('admin.accounts.poolModeRetryCount') }}</label>
             <input
               v-model.number="poolModeRetryCount"
+              @input="poolModeSettingsTouched = true"
               type="number"
               min="0"
               :max="MAX_POOL_MODE_RETRY_COUNT"
@@ -1832,7 +1835,7 @@
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
               {{
                 t('admin.accounts.poolModeRetryCountHint', {
-                  default: DEFAULT_POOL_MODE_RETRY_COUNT,
+                  default: gatewayPoolDefaults.retryCount,
                   max: MAX_POOL_MODE_RETRY_COUNT
                 })
               }}
@@ -1842,12 +1845,13 @@
             <label class="input-label">{{ t('admin.accounts.poolModeRetryStatusCodes') }}</label>
             <input
               v-model="poolModeRetryStatusCodesInput"
+              @input="poolModeSettingsTouched = true"
               type="text"
               class="input"
-              :placeholder="DEFAULT_POOL_MODE_RETRY_STATUS_CODES.join(', ')"
+              :placeholder="gatewayPoolDefaults.retryStatusCodes.join(', ')"
             />
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.poolModeRetryStatusCodesHint', { default: DEFAULT_POOL_MODE_RETRY_STATUS_CODES.join(', ') }) }}
+              {{ t('admin.accounts.poolModeRetryStatusCodesHint', { default: gatewayPoolDefaults.retryStatusCodes.join(', ') }) }}
             </p>
           </div>
         </div>
@@ -3472,6 +3476,7 @@ import {
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
 import type { SyncUpstreamModelsPreviewRequest } from '@/api/admin/accounts'
+import customFeaturesAPI from '@/api/admin/customFeatures'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import {
   useAccountOAuth,
@@ -3533,6 +3538,13 @@ import {
   resolveOpenAIWSModeConcurrencyHintKey,
   type OpenAIWSMode
 } from '@/utils/openaiWsMode'
+import {
+  DEFAULT_POOL_MODE_RETRY_COUNT,
+  DEFAULT_POOL_MODE_RETRY_STATUS_CODES,
+  MAX_POOL_MODE_RETRY_COUNT,
+  normalizeGatewayPoolDefaults,
+  writePoolModeCredentials
+} from '@/components/account/poolModeDefaults'
 import OAuthAuthorizationFlow from './OAuthAuthorizationFlow.vue'
 
 // Type for exposed OAuthAuthorizationFlow component
@@ -3667,30 +3679,46 @@ const modelMappings = ref<ModelMapping[]>([])
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
-const DEFAULT_POOL_MODE_RETRY_COUNT = 3
-const MAX_POOL_MODE_RETRY_COUNT = 10
-const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
-const DEFAULT_OPENAI_APIKEY_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429, 502, 503, 504]
+const gatewayPoolDefaults = reactive({
+  retryCount: DEFAULT_POOL_MODE_RETRY_COUNT,
+  retryStatusCodes: [...DEFAULT_POOL_MODE_RETRY_STATUS_CODES]
+})
 const poolModeEnabled = ref(false)
 const poolModeRetryCount = ref(DEFAULT_POOL_MODE_RETRY_COUNT)
 const poolModeRetryStatusCodesInput = ref('')
+const poolModeSettingsTouched = ref(false)
 
-function parsePoolModeRetryStatusCodes(input: string): number[] {
-  if (!input || !input.trim()) return []
-  const seen = new Set<number>()
-  const out: number[] = []
-  for (const token of input.split(/[,\s]+/)) {
-    const trimmed = token.trim()
-    if (!trimmed) continue
-    const n = Number(trimmed)
-    if (!Number.isFinite(n) || !Number.isInteger(n)) continue
-    if (n < 100 || n > 599) continue
-    if (seen.has(n)) continue
-    seen.add(n)
-    out.push(n)
-  }
-  return out.sort((a, b) => a - b)
+function applyGatewayPoolDefaults(enabled: boolean) {
+  poolModeEnabled.value = enabled
+  poolModeRetryCount.value = gatewayPoolDefaults.retryCount
+  poolModeRetryStatusCodesInput.value = gatewayPoolDefaults.retryStatusCodes.join(', ')
 }
+
+function togglePoolMode() {
+  poolModeEnabled.value = !poolModeEnabled.value
+  poolModeSettingsTouched.value = true
+}
+
+function isPoolModeAccountCategory(
+  platform: AccountPlatform,
+  category: 'oauth-based' | 'apikey' | 'bedrock' | 'service_account'
+): boolean {
+  return category === 'apikey' || (platform === 'anthropic' && category === 'bedrock')
+}
+
+async function loadGatewayPoolDefaults() {
+  try {
+    const settings = await customFeaturesAPI.getSettings()
+    Object.assign(gatewayPoolDefaults, normalizeGatewayPoolDefaults(settings.gateway))
+
+    if (isPoolModeAccountCategory(form.platform, accountCategory.value) && !poolModeSettingsTouched.value) {
+      applyGatewayPoolDefaults(true)
+    }
+  } catch {
+    // 网关配置读取失败时继续使用前端默认值，不阻塞账号创建。
+  }
+}
+
 const customErrorCodesEnabled = ref(false)
 const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
@@ -4112,6 +4140,7 @@ watch(
   () => props.show,
   (newVal) => {
     if (newVal) {
+      void loadGatewayPoolDefaults()
       // Load TLS fingerprint profiles
       adminAPI.tlsFingerprintProfiles.list()
         .then(profiles => { tlsFingerprintProfiles.value = profiles.map(p => ({ id: p.id, name: p.name })) })
@@ -4165,22 +4194,17 @@ watch(
   [() => form.platform, accountCategory],
   ([platform, category], oldValue) => {
     const [oldPlatform, oldCategory] = oldValue || []
-    const openAIDefaultCodes = DEFAULT_OPENAI_APIKEY_POOL_MODE_RETRY_STATUS_CODES.join(', ')
-    if (platform === 'openai' && category === 'apikey') {
-      poolModeEnabled.value = true
-      poolModeRetryCount.value = DEFAULT_POOL_MODE_RETRY_COUNT
-      poolModeRetryStatusCodesInput.value = openAIDefaultCodes
-      return
-    }
-    if (
-      oldPlatform === 'openai' &&
-      oldCategory === 'apikey' &&
-      poolModeEnabled.value &&
-      poolModeRetryStatusCodesInput.value === openAIDefaultCodes
-    ) {
-      poolModeEnabled.value = false
-      poolModeRetryCount.value = DEFAULT_POOL_MODE_RETRY_COUNT
-      poolModeRetryStatusCodesInput.value = ''
+    const currentUsesPoolMode = isPoolModeAccountCategory(platform, category)
+    const previousUsedPoolMode = oldPlatform && oldCategory
+      ? isPoolModeAccountCategory(oldPlatform, oldCategory)
+      : false
+
+    if (currentUsesPoolMode && !previousUsedPoolMode) {
+      poolModeSettingsTouched.value = false
+      applyGatewayPoolDefaults(true)
+    } else if (!currentUsesPoolMode && previousUsedPoolMode) {
+      poolModeSettingsTouched.value = false
+      applyGatewayPoolDefaults(false)
     }
   },
   { immediate: true }
@@ -4648,9 +4672,8 @@ const resetForm = () => {
   fetchAntigravityDefaultMappings().then(mappings => {
     antigravityModelMappings.value = [...mappings]
   })
-  poolModeEnabled.value = false
-  poolModeRetryCount.value = DEFAULT_POOL_MODE_RETRY_COUNT
-  poolModeRetryStatusCodesInput.value = ''
+  poolModeSettingsTouched.value = false
+  applyGatewayPoolDefaults(false)
   customErrorCodesEnabled.value = false
   selectedErrorCodes.value = []
   customErrorCodeInput.value = null
@@ -4846,18 +4869,13 @@ const handleMixedChannelCancel = () => {
   clearMixedChannelDialog()
 }
 
-const normalizePoolModeRetryCount = (value: number) => {
-  if (!Number.isFinite(value)) {
-    return DEFAULT_POOL_MODE_RETRY_COUNT
-  }
-  const normalized = Math.trunc(value)
-  if (normalized < 0) {
-    return 0
-  }
-  if (normalized > MAX_POOL_MODE_RETRY_COUNT) {
-    return MAX_POOL_MODE_RETRY_COUNT
-  }
-  return normalized
+const applyPoolModeCredentials = (
+  credentials: Record<string, unknown>,
+  enabled: boolean,
+  retryCount = poolModeRetryCount.value,
+  retryStatusCodesInput = poolModeRetryStatusCodesInput.value
+) => {
+  writePoolModeCredentials(credentials, enabled, retryCount, retryStatusCodesInput)
 }
 
 const applyVertexServiceAccountJson = (value: string) => {
@@ -4969,15 +4987,7 @@ const handleSubmit = async () => {
       credentials.model_mapping = modelMapping
     }
 
-    // Pool mode
-    if (poolModeEnabled.value) {
-      credentials.pool_mode = true
-      credentials.pool_mode_retry_count = normalizePoolModeRetryCount(poolModeRetryCount.value)
-      const parsedRetryStatusCodes = parsePoolModeRetryStatusCodes(poolModeRetryStatusCodesInput.value)
-      if (parsedRetryStatusCodes.length > 0) {
-        credentials.pool_mode_retry_status_codes = parsedRetryStatusCodes
-      }
-    }
+    applyPoolModeCredentials(credentials, poolModeEnabled.value)
 
     applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
 
@@ -5015,6 +5025,13 @@ const handleSubmit = async () => {
     if (antigravityModelMapping) {
       credentials.model_mapping = antigravityModelMapping
     }
+
+    applyPoolModeCredentials(
+      credentials,
+      true,
+      gatewayPoolDefaults.retryCount,
+      gatewayPoolDefaults.retryStatusCodes.join(', ')
+    )
 
     applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
 
@@ -5079,15 +5096,7 @@ const handleSubmit = async () => {
     }
   }
 
-  // Add pool mode if enabled
-  if (poolModeEnabled.value) {
-    credentials.pool_mode = true
-    credentials.pool_mode_retry_count = normalizePoolModeRetryCount(poolModeRetryCount.value)
-    const parsedRetryStatusCodes = parsePoolModeRetryStatusCodes(poolModeRetryStatusCodesInput.value)
-    if (parsedRetryStatusCodes.length > 0) {
-      credentials.pool_mode_retry_status_codes = parsedRetryStatusCodes
-    }
-  }
+  applyPoolModeCredentials(credentials, poolModeEnabled.value)
 
   // Add custom error codes if enabled
   if (customErrorCodesEnabled.value) {

@@ -568,6 +568,7 @@ type UpstreamFailoverError struct {
 	SemanticError          bool        // 2xx 语义错误命中，应触发账号切换
 	SemanticErrorRuleName  string
 	SemanticErrorMessage   string
+	FirstTokenTimeout      bool // 首 Token 超时；禁止同账号重试并保持 504 语义
 }
 
 func (e *UpstreamFailoverError) Error() string {

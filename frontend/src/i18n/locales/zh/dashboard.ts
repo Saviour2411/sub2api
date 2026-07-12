@@ -456,6 +456,12 @@ export default {
       availability30d: '30 天可用率',
       avgLatency7d: '7 天平均延迟 (ms)'
     },
+    imageSuccessRate: {
+      groupLabel: 'Image 分组',
+      successRate: '请求成功率',
+      lastSuccess: '最后成功时间',
+      noSuccessfulRequest: '暂无成功请求'
+    },
     empty: {
       title: '暂无可显示的渠道',
       description: '管理员尚未配置可监控的渠道。'

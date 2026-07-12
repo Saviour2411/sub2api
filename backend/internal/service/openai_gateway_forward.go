@@ -45,12 +45,18 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 	originalBody := body
 	requestView := newOpenAIRequestView(body)
-	reqModel, reqStream, promptCacheKey := requestView.Model, requestView.Stream, requestView.PromptCacheKey
+	reqModel, bodyStream, promptCacheKey := requestView.Model, requestView.Stream, requestView.PromptCacheKey
+	compactRequest := isOpenAIResponsesCompactPath(c)
+	upstreamStream := bodyStream && !compactRequest
+	clientStream := bodyStream
+	if compactRequest {
+		clientStream = openAICompactClientWantsStream(c)
+	}
 	originalModel := reqModel
 
 	if account.Platform == PlatformGrok {
 		_ = promptCacheKey
-		return s.forwardGrokResponses(ctx, c, account, body, originalModel, reqStream, startTime)
+		return s.forwardGrokResponses(ctx, c, account, body, originalModel, upstreamStream, startTime)
 	}
 
 	if account.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(account.Extra) {
@@ -67,8 +73,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 	wsDecision := s.getOpenAIWSProtocolResolver().Resolve(account)
 	clientTransport := GetOpenAIClientTransport(c)
-	// 仅允许 WS 入站请求走 WS 上游，避免出现 HTTP -> WS 协议混用。
-	wsDecision = resolveOpenAIWSDecisionByClientTransport(wsDecision, clientTransport)
+	// 流式 HTTP Responses 可按账号配置走 WSv2 上游；非流式 HTTP 保持 HTTP。
+	wsDecision = resolveOpenAIWSDecisionByClientTransport(wsDecision, clientTransport, upstreamStream)
 	if c != nil {
 		c.Set("openai_ws_transport_decision", string(wsDecision.Transport))
 		c.Set("openai_ws_transport_reason", wsDecision.Reason)
@@ -81,7 +87,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			normalizeOpenAIWSLogValue(string(wsDecision.Transport)),
 			normalizeOpenAIWSLogValue(wsDecision.Reason),
 			reqModel,
-			reqStream,
+			upstreamStream,
 		)
 	}
 	// 当前仅支持 WSv2；WSv1 命中时直接返回错误，避免出现“配置可开但行为不确定”。
@@ -115,7 +121,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		reasoningEffort := extractOpenAIReasoningEffortFromBody(body, mappedModel)
 		// 国产模型默认 effort 补充：也要用 mappedModel 判定是否是 passback-required 上游。
 		reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, mappedModel)
-		return s.forwardOpenAIPassthrough(ctx, c, account, originalBody, reqModel, reasoningEffort, reqStream, startTime)
+		return s.forwardOpenAIPassthrough(ctx, c, account, originalBody, reqModel, reasoningEffort, upstreamStream, clientStream, startTime)
 	}
 
 	bodyModified := false
@@ -193,6 +199,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalFeatureGate)
 		c.JSON(http.StatusForbidden, gin.H{"error": gin.H{"type": "permission_error", "message": ImageGenerationPermissionMessage()}})
 		return nil, errors.New("image generation disabled for group")
+	}
+	if imageIntent && c != nil {
+		c.Set("first_token_timeout_excluded", true)
 	}
 
 	instructions := gjson.GetBytes(body, "instructions")
@@ -479,7 +488,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			account.ID,
 			account.Type,
 			upstreamModel,
-			reqStream,
+			upstreamStream,
 			hasPreviousResponseID,
 		)
 		maxAttempts := openAIWSReconnectRetryLimit + 1
@@ -557,21 +566,32 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	wsRetryLoop:
 		for attempt := 1; attempt <= maxAttempts; attempt++ {
 			wsAttempts = attempt
+			firstTokenAttempt := newFirstTokenAttempt(ctx, c, s.rateLimitService, account, upstreamModel, clientStream)
+			if firstTokenAttempt != nil {
+				firstTokenAttempt.wrapWriter(c)
+			}
 			wsResult, wsErr = s.forwardOpenAIWSV2(
-				ctx,
+				firstTokenAttempt.upstreamContext(ctx),
 				c,
 				account,
 				wsReqBody,
 				token,
 				wsDecision,
 				isCodexCLI,
-				reqStream,
+				upstreamStream,
 				originalModel,
 				upstreamModel,
 				startTime,
 				attempt,
 				wsLastFailureReason,
+				firstTokenAttempt,
 			)
+			wsErr = firstTokenAttempt.finish(wsErr)
+			var firstTokenFailoverErr *UpstreamFailoverError
+			if errors.As(wsErr, &firstTokenFailoverErr) {
+				wsResult = nil
+				break
+			}
 			if wsErr == nil {
 				break
 			}
@@ -663,7 +683,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				"forward_succeeded account_id=%d request_id=%s stream=%v has_first_token_ms=%v first_token_ms=%d ws_attempts=%d",
 				account.ID,
 				requestID,
-				reqStream,
+				clientStream,
 				hasFirstTokenMs,
 				firstTokenMs,
 				wsAttempts,
@@ -679,19 +699,26 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 			return wsResult, nil
 		}
+		var firstTokenFailoverErr *UpstreamFailoverError
+		if errors.As(wsErr, &firstTokenFailoverErr) {
+			return nil, wsErr
+		}
 		s.writeOpenAIWSFallbackErrorResponse(c, account, wsErr)
 		return nil, wsErr
 	}
 
 	httpInvalidEncryptedContentRetryTried := false
 	for {
+		firstTokenAttempt := newFirstTokenAttempt(ctx, c, s.rateLimitService, account, upstreamModel, clientStream)
 		// Build upstream request
 		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
-		upstreamReq, err := s.buildUpstreamRequest(upstreamCtx, c, account, body, token, reqStream, promptCacheKey, isCodexCLI)
+		upstreamReq, err := s.buildUpstreamRequest(upstreamCtx, c, account, body, token, upstreamStream, promptCacheKey, isCodexCLI)
 		releaseUpstreamCtx()
 		if err != nil {
+			firstTokenAttempt.stopBeforeStreaming()
 			return nil, err
 		}
+		upstreamReq = firstTokenAttempt.bindRequest(upstreamReq)
 
 		// Get proxy URL
 		proxyURL := ""
@@ -704,6 +731,11 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		if err != nil {
+			attemptErr := firstTokenAttempt.finishRequestError(err)
+			var timeoutErr *UpstreamFailoverError
+			if errors.As(attemptErr, &timeoutErr) && timeoutErr.FirstTokenTimeout {
+				return nil, attemptErr
+			}
 			// Transport-level failure (proxy/DNS/TCP/TLS — no HTTP response). Convert to
 			// a failover so the handler switches to a healthy account, and temporarily
 			// unschedule the account on durable faults (e.g. rejected proxy credentials).
@@ -712,6 +744,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 		// Handle error response
 		if resp.StatusCode >= 400 {
+			firstTokenAttempt.stopBeforeStreaming(resp)
 			respBody := s.readUpstreamErrorBody(resp)
 			_ = resp.Body.Close()
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
@@ -759,7 +792,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				return nil, &UpstreamFailoverError{
 					StatusCode:             resp.StatusCode,
 					ResponseBody:           respBody,
-					RetryableOnSameAccount: account.IsPoolMode() && (account.IsPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
+					RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 				}
 			}
 			return s.handleErrorResponse(ctx, resp, c, account, body, billingModel)
@@ -780,8 +813,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		responseID := ""
 		imageCount := 0
 		var imageOutputSizes []string
-		if reqStream {
-			streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, upstreamModel)
+		if upstreamStream {
+			firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolSSE)
+			streamResult, streamErr := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, upstreamModel)
+			err := firstTokenAttempt.finish(streamErr)
 			if err != nil {
 				return nil, err
 			}
@@ -791,11 +826,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			imageCount = streamResult.imageCount
 			imageOutputSizes = streamResult.imageOutputSizes
 		} else {
-			nonStreamResult, err := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel)
+			firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolOpenAICompact)
+			nonStreamResult, responseErr := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel)
+			err := firstTokenAttempt.finish(responseErr)
 			if err != nil {
 				return nil, err
 			}
 			usage = nonStreamResult.usage
+			firstTokenMs = firstTokenAttempt.observedFirstTokenMs()
 			responseID = strings.TrimSpace(nonStreamResult.responseID)
 			imageCount = nonStreamResult.imageCount
 			imageOutputSizes = nonStreamResult.imageOutputSizes
@@ -823,7 +861,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			UpstreamModel:   upstreamModel,
 			ServiceTier:     serviceTier,
 			ReasoningEffort: reasoningEffort,
-			Stream:          reqStream,
+			Stream:          clientStream,
 			OpenAIWSMode:    false,
 			Duration:        time.Since(startTime),
 			FirstTokenMs:    firstTokenMs,

@@ -259,6 +259,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	}
 
 	// 6. Build upstream request
+	firstTokenAttempt := newFirstTokenAttempt(ctx, c, s.rateLimitService, account, upstreamModel, clientStream)
 	if account.Type == AccountTypeOAuth && account.Platform != PlatformGrok {
 		// Messages 兼容桥即使 body 未带 todo-guard/prompt_cache_key 标记（如映射到非
 		// gpt-5/codex 模型），也必须让 buildUpstreamRequest 走 bridge 分支：不带
@@ -275,8 +276,10 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	}
 	releaseUpstreamCtx()
 	if err != nil {
+		firstTokenAttempt.stopBeforeStreaming()
 		return nil, fmt.Errorf("build upstream request: %w", err)
 	}
+	upstreamReq = firstTokenAttempt.bindRequest(upstreamReq)
 
 	// Override session_id with a deterministic UUID derived from the isolated
 	// session key, ensuring different API keys produce different upstream sessions.
@@ -310,12 +313,17 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 	StopPreResponseKeepaliveBeforeResponseFromContext(ctx)
 	if err != nil {
+		attemptErr := firstTokenAttempt.finishRequestError(err)
+		if isFirstTokenTimeoutFailover(attemptErr) {
+			return nil, attemptErr
+		}
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	// 8. Handle error response with failover
 	if resp.StatusCode >= 400 {
+		firstTokenAttempt.stopBeforeStreaming(resp)
 		respBody, upstreamMsg := s.readOpenAIUpstreamError(resp)
 		if account.Platform == PlatformGrok {
 			s.updateGrokUsageSnapshot(ctx, account.ID, xai.ParseQuotaHeaders(resp.Header, resp.StatusCode))
@@ -353,7 +361,9 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	var result *OpenAIForwardResult
 	var handleErr error
 	if clientStream {
+		firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolSSE)
 		result, handleErr = s.handleAnthropicStreamingResponse(resp, c, account, originalModel, billingModel, upstreamModel, startTime)
+		handleErr = firstTokenAttempt.finish(handleErr)
 	} else {
 		// Client wants JSON: buffer the streaming response and assemble a JSON reply.
 		result, handleErr = s.handleAnthropicBufferedStreamingResponse(resp, c, account, originalModel, billingModel, upstreamModel, startTime)
@@ -811,6 +821,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 						if clientMsg == "" {
 							clientMsg = "Request blocked by upstream cyber-security policy"
 						}
+						MarkOpsStreamError(c, "invalid_request_error", clientMsg, http.StatusBadRequest)
 						if _, err := fmt.Fprint(c.Writer, buildAnthropicStreamErrorSSE("invalid_request_error", clientMsg)); err == nil {
 							c.Writer.Flush()
 						}
@@ -836,6 +847,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 					errStatus, errType, errMsg = status, et, em
 					MarkResponseCommitted(c)
 				}
+				MarkOpsStreamError(c, errType, errMsg, errStatus)
 				if !clientDisconnected {
 					if !clientOutputStarted {
 						writeAnthropicError(c, errStatus, errType, errMsg)

@@ -11,5 +11,7 @@ func registerCustomFeatureRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		customFeatures.GET("", h.Admin.CustomFeature.GetSettings)
 		customFeatures.PUT("/model-marketplace", h.Admin.CustomFeature.UpdateModelMarketplace)
 		customFeatures.PUT("/daily-checkin", h.Admin.CustomFeature.UpdateDailyCheckin)
+		customFeatures.PUT("/gateway", h.Admin.CustomFeature.UpdateGateway)
+		customFeatures.POST("/gateway/image-group-success-rates/reset", h.Admin.CustomFeature.ResetImageGroupSuccessRates)
 	}
 }

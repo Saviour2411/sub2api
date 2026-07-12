@@ -23,27 +23,29 @@ import (
 
 // antigravityRetryLoopParams 重试循环的参数
 type antigravityRetryLoopParams struct {
-	ctx             context.Context
-	prefix          string
-	account         *Account
-	proxyURL        string
-	accessToken     string
-	action          string
-	body            []byte
-	c               *gin.Context
-	httpUpstream    HTTPUpstream
-	settingService  *SettingService
-	accountRepo     AccountRepository // 用于智能重试的模型级别限流
-	handleError     func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult
-	requestedModel  string // 用于限流检查的原始请求模型
-	isStickySession bool   // 是否为粘性会话（用于账号切换时的缓存计费判断）
-	groupID         int64  // 用于模型级限流时清除粘性会话
-	sessionHash     string // 用于模型级限流时清除粘性会话
+	ctx              context.Context
+	prefix           string
+	account          *Account
+	proxyURL         string
+	accessToken      string
+	action           string
+	body             []byte
+	c                *gin.Context
+	httpUpstream     HTTPUpstream
+	settingService   *SettingService
+	accountRepo      AccountRepository // 用于智能重试的模型级别限流
+	handleError      func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult
+	requestedModel   string // 用于限流检查的原始请求模型
+	isStickySession  bool   // 是否为粘性会话（用于账号切换时的缓存计费判断）
+	groupID          int64  // 用于模型级限流时清除粘性会话
+	sessionHash      string // 用于模型级限流时清除粘性会话
+	firstTokenStream bool   // 客户端为 HTTP SSE 文本流时启用首 Token 超时
 }
 
 // antigravityRetryLoopResult 重试循环的结果
 type antigravityRetryLoopResult struct {
-	resp *http.Response
+	resp              *http.Response
+	firstTokenAttempt *firstTokenAttempt
 }
 
 // resolveAntigravityForwardBaseURL 解析转发用 base URL。
@@ -81,10 +83,11 @@ const (
 
 // smartRetryResult 智能重试的结果
 type smartRetryResult struct {
-	action      smartRetryAction
-	resp        *http.Response
-	err         error
-	switchError *AntigravityAccountSwitchError // 模型限流时返回账号切换信号
+	action            smartRetryAction
+	resp              *http.Response
+	err               error
+	firstTokenAttempt *firstTokenAttempt
+	switchError       *AntigravityAccountSwitchError // 模型限流时返回账号切换信号
 }
 
 // handleSmartRetry 处理 OAuth 账号的智能重试逻辑
@@ -111,10 +114,14 @@ func (s *AntigravityGatewayService) handleSmartRetry(p antigravityRetryLoopParam
 		p.account.IsOveragesEnabled() &&
 		!p.account.isCreditsExhausted() {
 		result := s.attemptCreditsOveragesRetry(p, baseURL, modelName, waitDuration, resp.StatusCode, respBody)
+		if result.err != nil {
+			return &smartRetryResult{action: smartRetryActionBreakWithResp, err: result.err}
+		}
 		if result.handled && result.resp != nil {
 			return &smartRetryResult{
-				action: smartRetryActionBreakWithResp,
-				resp:   result.resp,
+				action:            smartRetryActionBreakWithResp,
+				resp:              result.resp,
+				firstTokenAttempt: result.firstTokenAttempt,
 			}
 		}
 	}
@@ -198,8 +205,10 @@ func (s *AntigravityGatewayService) handleSmartRetry(p antigravityRetryLoopParam
 			}
 
 			// 智能重试：创建新请求
-			retryReq, err := antigravity.NewAPIRequestWithURL(p.ctx, baseURL, p.action, p.accessToken, p.body)
+			firstTokenAttempt := newFirstTokenAttempt(p.ctx, p.c, s.rateLimitService, p.account, p.requestedModel, p.firstTokenStream)
+			retryReq, err := antigravity.NewAPIRequestWithURL(firstTokenAttempt.upstreamContext(p.ctx), baseURL, p.action, p.accessToken, p.body)
 			if err != nil {
+				firstTokenAttempt.stopBeforeStreaming()
 				logger.LegacyPrintf("service.antigravity_gateway", "%s status=smart_retry_request_build_failed error=%v", p.prefix, err)
 				p.handleError(p.ctx, p.prefix, p.account, resp.StatusCode, resp.Header, respBody, p.requestedModel, p.groupID, p.sessionHash, p.isStickySession)
 				return &smartRetryResult{
@@ -211,8 +220,18 @@ func (s *AntigravityGatewayService) handleSmartRetry(p antigravityRetryLoopParam
 					},
 				}
 			}
+			retryReq = firstTokenAttempt.bindRequest(retryReq)
 
 			retryResp, retryErr := p.httpUpstream.Do(retryReq, p.proxyURL, p.account.ID, p.account.Concurrency)
+			if retryErr != nil {
+				attemptErr := firstTokenAttempt.finishRequestError(retryErr)
+				if isFirstTokenTimeoutFailover(attemptErr) {
+					return &smartRetryResult{action: smartRetryActionBreakWithResp, err: attemptErr}
+				}
+			}
+			if retryResp != nil && retryResp.StatusCode >= 400 {
+				firstTokenAttempt.stopBeforeStreaming(retryResp)
+			}
 			if retryErr == nil && retryResp != nil && retryResp.StatusCode != http.StatusTooManyRequests && retryResp.StatusCode != http.StatusServiceUnavailable {
 				log.Printf("%s status=%d smart_retry_success attempt=%d/%d", p.prefix, retryResp.StatusCode, attempt, maxAttempts)
 				// 重试成功，清除 MODEL_CAPACITY_EXHAUSTED cooldown
@@ -221,7 +240,7 @@ func (s *AntigravityGatewayService) handleSmartRetry(p antigravityRetryLoopParam
 					delete(modelCapacityExhaustedUntil, modelName)
 					modelCapacityExhaustedMu.Unlock()
 				}
-				return &smartRetryResult{action: smartRetryActionBreakWithResp, resp: retryResp}
+				return &smartRetryResult{action: smartRetryActionBreakWithResp, resp: retryResp, firstTokenAttempt: firstTokenAttempt}
 			}
 
 			// 网络错误时，继续重试
@@ -381,13 +400,25 @@ func (s *AntigravityGatewayService) handleSingleAccountRetryInPlace(
 		totalWaited += waitDuration
 
 		// 创建新请求
-		retryReq, err := antigravity.NewAPIRequestWithURL(p.ctx, baseURL, p.action, p.accessToken, p.body)
+		firstTokenAttempt := newFirstTokenAttempt(p.ctx, p.c, s.rateLimitService, p.account, p.requestedModel, p.firstTokenStream)
+		retryReq, err := antigravity.NewAPIRequestWithURL(firstTokenAttempt.upstreamContext(p.ctx), baseURL, p.action, p.accessToken, p.body)
 		if err != nil {
+			firstTokenAttempt.stopBeforeStreaming()
 			logger.LegacyPrintf("service.antigravity_gateway", "%s single_account_503_retry: request_build_failed error=%v", p.prefix, err)
 			break
 		}
+		retryReq = firstTokenAttempt.bindRequest(retryReq)
 
 		retryResp, retryErr := p.httpUpstream.Do(retryReq, p.proxyURL, p.account.ID, p.account.Concurrency)
+		if retryErr != nil {
+			attemptErr := firstTokenAttempt.finishRequestError(retryErr)
+			if isFirstTokenTimeoutFailover(attemptErr) {
+				return &smartRetryResult{action: smartRetryActionBreakWithResp, err: attemptErr}
+			}
+		}
+		if retryResp != nil && retryResp.StatusCode >= 400 {
+			firstTokenAttempt.stopBeforeStreaming(retryResp)
+		}
 		if retryErr == nil && retryResp != nil && retryResp.StatusCode != http.StatusTooManyRequests && retryResp.StatusCode != http.StatusServiceUnavailable {
 			logger.LegacyPrintf("service.antigravity_gateway", "%s status=%d single_account_503_retry_success attempt=%d/%d total_waited=%v",
 				p.prefix, retryResp.StatusCode, attempt, antigravitySingleAccountSmartRetryMaxAttempts, totalWaited)
@@ -395,7 +426,7 @@ func (s *AntigravityGatewayService) handleSingleAccountRetryInPlace(
 			if lastRetryResp != nil {
 				_ = lastRetryResp.Body.Close()
 			}
-			return &smartRetryResult{action: smartRetryActionBreakWithResp, resp: retryResp}
+			return &smartRetryResult{action: smartRetryActionBreakWithResp, resp: retryResp, firstTokenAttempt: firstTokenAttempt}
 		}
 
 		// 网络错误时继续重试
@@ -495,6 +526,7 @@ func (s *AntigravityGatewayService) antigravityRetryLoop(p antigravityRetryLoopP
 	availableURLs := []string{baseURL}
 
 	var resp *http.Response
+	var firstTokenAttempt *firstTokenAttempt
 	var usedBaseURL string
 	logBody := p.settingService != nil && p.settingService.cfg != nil && p.settingService.cfg.Gateway.LogUpstreamErrorBody
 	maxBytes := 2048
@@ -513,6 +545,7 @@ urlFallbackLoop:
 		usedBaseURL = baseURL
 		allAttemptsInternal500 := true // 追踪本轮所有 attempt 是否全部命中 INTERNAL 500
 		for attempt := 1; attempt <= antigravityMaxRetries; attempt++ {
+			firstTokenAttempt = newFirstTokenAttempt(p.ctx, p.c, s.rateLimitService, p.account, p.requestedModel, p.firstTokenStream)
 			select {
 			case <-p.ctx.Done():
 				logger.LegacyPrintf("service.antigravity_gateway", "%s status=context_canceled error=%v", p.prefix, p.ctx.Err())
@@ -520,8 +553,9 @@ urlFallbackLoop:
 			default:
 			}
 
-			upstreamReq, err := antigravity.NewAPIRequestWithURL(p.ctx, baseURL, p.action, p.accessToken, p.body)
+			upstreamReq, err := antigravity.NewAPIRequestWithURL(firstTokenAttempt.upstreamContext(p.ctx), baseURL, p.action, p.accessToken, p.body)
 			if err != nil {
+				firstTokenAttempt.stopBeforeStreaming()
 				return nil, err
 			}
 
@@ -530,6 +564,10 @@ urlFallbackLoop:
 				err = errors.New("upstream returned nil response")
 			}
 			if err != nil {
+				attemptErr := firstTokenAttempt.finishRequestError(err)
+				if isFirstTokenTimeoutFailover(attemptErr) {
+					return nil, attemptErr
+				}
 				safeErr := sanitizeUpstreamErrorMessage(err.Error())
 				appendOpsUpstreamError(p.c, OpsUpstreamErrorEvent{
 					Platform:           p.account.Platform,
@@ -555,6 +593,9 @@ urlFallbackLoop:
 				logger.LegacyPrintf("service.antigravity_gateway", "%s status=request_failed retries_exhausted error=%v", p.prefix, err)
 				setOpsUpstreamError(p.c, 0, safeErr, "")
 				return nil, fmt.Errorf("upstream request failed after retries: %w", err)
+			}
+			if resp.StatusCode >= 400 {
+				firstTokenAttempt.stopBeforeStreaming(resp)
 			}
 
 			// 统一处理错误响应
@@ -600,6 +641,9 @@ urlFallbackLoop:
 							return nil, smartResult.switchError
 						}
 						resp = smartResult.resp
+						if smartResult.firstTokenAttempt != nil {
+							firstTokenAttempt = smartResult.firstTokenAttempt
+						}
 						break urlFallbackLoop
 					}
 					// smartRetryActionContinue: 继续默认重试逻辑
@@ -695,7 +739,7 @@ urlFallbackLoop:
 		s.resetInternal500Counter(p.ctx, p.prefix, p.account.ID)
 	}
 
-	return &antigravityRetryLoopResult{resp: resp}, nil
+	return &antigravityRetryLoopResult{resp: resp, firstTokenAttempt: firstTokenAttempt}, nil
 }
 
 // shouldRetryAntigravityError 判断是否应该重试

@@ -2,10 +2,19 @@ package service
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"go.uber.org/zap"
 )
+
+type firstTokenTimeoutStatePersister interface {
+	PersistFirstTokenTimeoutState(ctx context.Context, accountID int64, marker map[string]any, nextRunAt time.Time) error
+}
 
 const (
 	AccountFailureSchedulingStrategyDefault              = "default"
@@ -15,6 +24,9 @@ const (
 	accountFailureStrategyUnscheduledAtKey               = "at"
 	accountFailureStrategyUnscheduledStatusCodeKey       = "status_code"
 	accountFailureStrategyUnscheduledReasonKey           = "reason"
+	accountFailureStrategyUnscheduledSourceKey           = "source"
+	accountFailureStrategyUnscheduledModelKey            = "model"
+	accountFailureStrategyUnscheduledTimeoutSecondsKey   = "timeout_seconds"
 )
 
 func (a *Account) FailureSchedulingStrategy() string {
@@ -27,6 +39,98 @@ func (a *Account) FailureSchedulingStrategy() string {
 		return strategy
 	}
 	return AccountFailureSchedulingStrategyDefault
+}
+
+// HandleFirstTokenTimeout 将账号持久停调度，直到 auto_managed 测活成功后恢复。
+// 该策略不依赖账号原有 failure_scheduling_strategy，是首 Token 超时的强制保护。
+func (s *RateLimitService) HandleFirstTokenTimeout(ctx context.Context, account *Account, model string, timeoutSeconds int) error {
+	if s == nil || s.accountRepo == nil || account == nil || account.ID <= 0 {
+		return nil
+	}
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = defaultFirstTokenTimeoutSeconds
+	}
+	now := time.Now().UTC()
+	model = strings.TrimSpace(model)
+	reason := fmt.Sprintf(
+		"source=first_token_timeout model=%s timeout_seconds=%d status_code=%d at=%s",
+		model,
+		timeoutSeconds,
+		http.StatusGatewayTimeout,
+		now.Format(time.RFC3339),
+	)
+	marker := BuildFailureStrategyUnscheduledMarker(http.StatusGatewayTimeout, reason, now)
+	marker[accountFailureStrategyUnscheduledSourceKey] = "first_token_timeout"
+	marker[accountFailureStrategyUnscheduledModelKey] = model
+	marker[accountFailureStrategyUnscheduledTimeoutSecondsKey] = timeoutSeconds
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	var persistErr error
+	if persister, ok := s.accountRepo.(firstTokenTimeoutStatePersister); ok {
+		opCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		persistErr = persister.PersistFirstTokenTimeoutState(opCtx, account.ID, marker, now)
+		cancel()
+	} else {
+		persistErr = s.persistFirstTokenTimeoutStateCompat(ctx, account.ID, marker)
+	}
+	if persistErr != nil {
+		logger.FromContext(ctx).With(
+			zap.String("component", "service.first_token_timeout"),
+			zap.Int64("account_id", account.ID),
+			zap.Error(persistErr),
+		).Error("首 Token 超时状态原子持久化失败，账号保持原调度状态")
+		return persistErr
+	}
+
+	if account.Extra == nil {
+		account.Extra = map[string]any{}
+	}
+	account.Extra[accountFailureStrategyUnscheduledKey] = marker
+	account.Schedulable = false
+	// OpenAI 高速调度缓存需要同步阻断；测活成功路径会调用 ClearAccountSchedulingBlock。
+	s.notifyAccountSchedulingBlocked(account, now.AddDate(100, 0, 0), "first_token_timeout")
+	return nil
+}
+
+// persistFirstTokenTimeoutStateCompat 只用于不具备事务扩展的测试桩。
+// 任一步失败都会短路，并尽力撤销此前写入，生产仓储不会进入此路径。
+func (s *RateLimitService) persistFirstTokenTimeoutStateCompat(ctx context.Context, accountID int64, marker map[string]any) error {
+	if s.autoManagedProbe == nil {
+		return errors.New("auto managed probe scheduler is not configured")
+	}
+	run := func(fn func(context.Context) error) error {
+		opCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		return fn(opCtx)
+	}
+	if err := run(func(opCtx context.Context) error {
+		return s.accountRepo.UpdateExtra(opCtx, accountID, map[string]any{accountFailureStrategyUnscheduledKey: marker})
+	}); err != nil {
+		return fmt.Errorf("写入不可调度标记: %w", err)
+	}
+	if err := run(func(opCtx context.Context) error {
+		return s.accountRepo.SetSchedulable(opCtx, accountID, false)
+	}); err != nil {
+		rollbackErr := run(func(opCtx context.Context) error {
+			return s.accountRepo.UpdateExtra(opCtx, accountID, map[string]any{accountFailureStrategyUnscheduledKey: nil})
+		})
+		return errors.Join(fmt.Errorf("设置账号不可调度: %w", err), rollbackErr)
+	}
+	if err := run(func(opCtx context.Context) error {
+		return s.autoManagedProbe.EnsureAutoManagedProbe(opCtx, accountID)
+	}); err != nil {
+		restoreErr := run(func(opCtx context.Context) error {
+			return s.accountRepo.SetSchedulable(opCtx, accountID, true)
+		})
+		clearMarkerErr := run(func(opCtx context.Context) error {
+			return s.accountRepo.UpdateExtra(opCtx, accountID, map[string]any{accountFailureStrategyUnscheduledKey: nil})
+		})
+		return errors.Join(fmt.Errorf("补建自动测活计划: %w", err), restoreErr, clearMarkerErr)
+	}
+	return nil
 }
 
 func (a *Account) ShouldDisableSchedulingOnUpstreamError() bool {

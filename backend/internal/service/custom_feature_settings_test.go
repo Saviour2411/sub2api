@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
@@ -233,4 +234,174 @@ func TestDailyCheckinService_Config_使用独立配置读取(t *testing.T) {
 	require.Equal(t, 9, cfg.UnpaidFullDays)
 	require.Equal(t, 3000, cfg.UnpaidDecayRules[0].FactorBps)
 	require.True(t, cfg.LinuxDoExemptEnabled)
+}
+
+func TestSettingService_GetGatewaySettings_UsesDefaultsAndStoredValues(t *testing.T) {
+	serviceWithDefaults := NewSettingService(&customFeatureSettingsRepoStub{}, &config.Config{})
+	defaults, err := serviceWithDefaults.GetGatewaySettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 1, defaults.DefaultPoolModeRetryCount)
+	require.Equal(t, []int{401, 403, 429, 502, 503, 504}, defaults.DefaultPoolModeRetryStatusCodes)
+	require.Equal(t, []int{5, 10, 15, 30, 60}, defaults.AutoManagedProbeBackoffMinutes)
+	require.Equal(t, 60, defaults.FirstTokenTimeoutSeconds)
+	require.True(t, defaults.ImageGroupSuccessRateVisible)
+
+	repo := &customFeatureSettingsRepoStub{values: map[string]string{
+		SettingKeyGatewayDefaultPoolModeRetryCount:       "4",
+		SettingKeyGatewayDefaultPoolModeRetryStatusCodes: `[504,429,429]`,
+		SettingKeyGatewayAutoManagedProbeBackoffMinutes:  `[2,8,8,30]`,
+		SettingKeyGatewayFirstTokenTimeoutSeconds:        "0",
+		SettingKeyGatewayImageGroupSuccessRateVisible:    "false",
+	}}
+	svc := NewSettingService(repo, &config.Config{})
+	settings, err := svc.GetGatewaySettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 4, settings.DefaultPoolModeRetryCount)
+	require.Equal(t, []int{429, 504}, settings.DefaultPoolModeRetryStatusCodes)
+	require.Equal(t, []int{2, 8, 8, 30}, settings.AutoManagedProbeBackoffMinutes)
+	require.Zero(t, settings.FirstTokenTimeoutSeconds)
+	require.False(t, settings.ImageGroupSuccessRateVisible)
+}
+
+func TestSettingService_UpdateGatewaySettings_NormalizesCachesAndReschedules(t *testing.T) {
+	repo := &customFeatureSettingsRepoStub{}
+	planRepo := &scheduledTestPlanRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+	svc.SetScheduledTestPlanRepository(planRepo)
+
+	updated, err := svc.UpdateGatewaySettings(context.Background(), GatewaySettings{
+		DefaultPoolModeRetryCount:       2,
+		DefaultPoolModeRetryStatusCodes: []int{503, 429, 503},
+		AutoManagedProbeBackoffMinutes:  []int{1, 3, 10},
+		FirstTokenTimeoutSeconds:        25,
+		ImageGroupSuccessRateVisible:    false,
+	})
+	require.NoError(t, err)
+	require.Equal(t, []int{429, 503}, updated.DefaultPoolModeRetryStatusCodes)
+	require.Equal(t, "2", repo.updates[SettingKeyGatewayDefaultPoolModeRetryCount])
+	require.Equal(t, `[429,503]`, repo.updates[SettingKeyGatewayDefaultPoolModeRetryStatusCodes])
+	require.Equal(t, `[1,3,10]`, repo.updates[SettingKeyGatewayAutoManagedProbeBackoffMinutes])
+	require.Equal(t, []time.Duration{time.Minute, 3 * time.Minute, 10 * time.Minute}, planRepo.rescheduledSteps)
+	require.False(t, planRepo.rescheduledAt.IsZero())
+
+	runtime := svc.GetGatewayRuntime(context.Background())
+	require.Equal(t, 25, runtime.FirstTokenTimeoutSeconds)
+	require.False(t, runtime.ImageGroupSuccessRateVisible)
+
+	updated.DefaultPoolModeRetryStatusCodes[0] = 500
+	require.Equal(t, []int{429, 503}, svc.GetGatewayRuntime(context.Background()).DefaultPoolModeRetryStatusCodes)
+}
+
+func TestSettingService_UpdateGatewaySettings_AcceptsEmptyRetryStatusCodes(t *testing.T) {
+	repo := &customFeatureSettingsRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+	updated, err := svc.UpdateGatewaySettings(context.Background(), GatewaySettings{
+		DefaultPoolModeRetryCount:       0,
+		DefaultPoolModeRetryStatusCodes: []int{},
+		AutoManagedProbeBackoffMinutes:  []int{5},
+		FirstTokenTimeoutSeconds:        0,
+		ImageGroupSuccessRateVisible:    true,
+	})
+	require.NoError(t, err)
+	require.Empty(t, updated.DefaultPoolModeRetryStatusCodes)
+	require.NotNil(t, updated.DefaultPoolModeRetryStatusCodes)
+	require.Equal(t, `[]`, repo.updates[SettingKeyGatewayDefaultPoolModeRetryStatusCodes])
+}
+
+func TestSettingService_UpdateGatewaySettings_RejectsInvalidValues(t *testing.T) {
+	valid := GatewaySettings{
+		DefaultPoolModeRetryCount:       1,
+		DefaultPoolModeRetryStatusCodes: []int{429},
+		AutoManagedProbeBackoffMinutes:  []int{5, 10},
+		FirstTokenTimeoutSeconds:        60,
+		ImageGroupSuccessRateVisible:    true,
+	}
+	tests := []struct {
+		name   string
+		mutate func(*GatewaySettings)
+	}{
+		{name: "retry count", mutate: func(v *GatewaySettings) { v.DefaultPoolModeRetryCount = 11 }},
+		{name: "status code", mutate: func(v *GatewaySettings) { v.DefaultPoolModeRetryStatusCodes = []int{99} }},
+		{name: "empty backoff", mutate: func(v *GatewaySettings) { v.AutoManagedProbeBackoffMinutes = nil }},
+		{name: "decreasing backoff", mutate: func(v *GatewaySettings) { v.AutoManagedProbeBackoffMinutes = []int{10, 5} }},
+		{name: "backoff range", mutate: func(v *GatewaySettings) { v.AutoManagedProbeBackoffMinutes = []int{1441} }},
+		{name: "timeout", mutate: func(v *GatewaySettings) { v.FirstTokenTimeoutSeconds = 601 }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := cloneGatewaySettings(valid)
+			tt.mutate(&input)
+			repo := &customFeatureSettingsRepoStub{}
+			_, err := NewSettingService(repo, &config.Config{}).UpdateGatewaySettings(context.Background(), input)
+			require.ErrorIs(t, err, ErrGatewaySettingsInvalid)
+			require.Empty(t, repo.updates)
+		})
+	}
+}
+
+func TestApplyGatewayPoolModeDefaults_CoversAPIKeyAndBedrock(t *testing.T) {
+	settings := GatewaySettings{
+		DefaultPoolModeRetryCount:       2,
+		DefaultPoolModeRetryStatusCodes: []int{429, 503},
+	}
+	for _, accountType := range []string{AccountTypeAPIKey, AccountTypeBedrock} {
+		credentials := ApplyGatewayPoolModeDefaults(accountType, map[string]any{}, settings)
+		require.Equal(t, true, credentials["pool_mode"])
+		require.Equal(t, 2, credentials["pool_mode_retry_count"])
+		require.Equal(t, []int{429, 503}, credentials["pool_mode_retry_status_codes"])
+	}
+
+	explicitFalse := map[string]any{"pool_mode": false}
+	require.Equal(t, explicitFalse, ApplyGatewayPoolModeDefaults(AccountTypeAPIKey, explicitFalse, settings))
+	require.NotContains(t, explicitFalse, "pool_mode_retry_count")
+
+	explicitValues := map[string]any{
+		"pool_mode":                    true,
+		"pool_mode_retry_count":        7,
+		"pool_mode_retry_status_codes": []int{502},
+	}
+	result := ApplyGatewayPoolModeDefaults(AccountTypeBedrock, explicitValues, settings)
+	require.Equal(t, 7, result["pool_mode_retry_count"])
+	require.Equal(t, []int{502}, result["pool_mode_retry_status_codes"])
+
+	oauth := map[string]any{}
+	require.Equal(t, oauth, ApplyGatewayPoolModeDefaults(AccountTypeOAuth, oauth, settings))
+	require.Empty(t, oauth)
+}
+
+func TestAdminService_CreateAccount_AppliesGatewayPoolDefaults(t *testing.T) {
+	settingRepo := &customFeatureSettingsRepoStub{values: map[string]string{
+		SettingKeyGatewayDefaultPoolModeRetryCount:       "2",
+		SettingKeyGatewayDefaultPoolModeRetryStatusCodes: `[429,504]`,
+	}}
+	accountRepo := &mockAccountRepoForGemini{}
+	svc := &adminServiceImpl{
+		accountRepo:    accountRepo,
+		settingService: NewSettingService(settingRepo, &config.Config{}),
+	}
+
+	created, err := svc.CreateAccount(context.Background(), &CreateAccountInput{
+		Name:                 "bedrock",
+		Platform:             PlatformAnthropic,
+		Type:                 AccountTypeBedrock,
+		Credentials:          map[string]any{"access_key_id": "test"},
+		SkipDefaultGroupBind: true,
+	})
+	require.NoError(t, err)
+	require.Same(t, accountRepo.createdAccount, created)
+	require.Equal(t, true, created.Credentials["pool_mode"])
+	require.Equal(t, 2, created.Credentials["pool_mode_retry_count"])
+	require.Equal(t, []int{429, 504}, created.Credentials["pool_mode_retry_status_codes"])
+
+	accountRepo.createdAccount = nil
+	created, err = svc.CreateAccount(context.Background(), &CreateAccountInput{
+		Name:                 "explicit false",
+		Platform:             PlatformOpenAI,
+		Type:                 AccountTypeAPIKey,
+		Credentials:          map[string]any{"pool_mode": false},
+		SkipDefaultGroupBind: true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, false, created.Credentials["pool_mode"])
+	require.NotContains(t, created.Credentials, "pool_mode_retry_count")
 }

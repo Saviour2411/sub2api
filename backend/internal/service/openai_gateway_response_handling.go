@@ -264,6 +264,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 						// 命中透传规则也要记录 ops 上游错误事件（对齐 CC/Messages 与
 						// antigravity 先例），否则透传命中的 failed 在监控中不可见。
 						s.recordOpenAIStreamUpstreamError(c, account, false, upstreamRequestID, "http_error", dataBytes, failedMessage)
+						MarkOpsStreamError(c, errType, errMsg, status)
 						MarkResponseCommitted(c)
 						c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 						c.JSON(status, gin.H{
@@ -281,6 +282,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 						return
 					}
 				}
+				MarkOpsStreamError(c, "upstream_error", failedMessage, http.StatusBadGateway)
 				forceFlushFailedEvent = true
 				sawFailedEvent = true
 			}

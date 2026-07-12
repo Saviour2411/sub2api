@@ -452,8 +452,16 @@ func ProvideScheduledTestRunnerService(
 	rateLimitSvc *RateLimitService,
 	accountRepo AccountRepository,
 	cfg *config.Config,
+	settingService *SettingService,
 ) *ScheduledTestRunnerService {
 	svc := NewScheduledTestRunnerService(planRepo, scheduledSvc, accountTestSvc, rateLimitSvc, accountRepo, cfg)
+	svc.SetSettingService(settingService)
+	if settingService != nil {
+		settingService.SetScheduledTestPlanRepository(planRepo)
+	}
+	if rateLimitSvc != nil {
+		rateLimitSvc.SetAutoManagedProbeScheduler(svc)
+	}
 	svc.Start()
 	return svc
 }
@@ -602,6 +610,7 @@ var ProviderSet = wire.NewSet(
 	NewAdminService,
 	NewGatewayService,
 	NewOpenAIGatewayService,
+	NewImageGroupSuccessRateService,
 	ProvideBatchImageModelPricingResolver,
 	NewBatchImagePublicService,
 	NewBatchImageDownloadService,

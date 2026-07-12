@@ -16,6 +16,7 @@
       :countdown-seconds="countdown"
       :loading="loading"
       :detail-cache="detailCache"
+      :image-group-success-rates="imageGroupSuccessRates"
       @card-click="openDetail"
     />
 
@@ -38,6 +39,7 @@ import {
   status as fetchChannelMonitorDetail,
   type UserMonitorView,
   type UserMonitorDetail,
+  type ImageGroupSuccessRates,
 } from '@/api/channelMonitor'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import MonitorHero, {
@@ -54,6 +56,7 @@ const appStore = useAppStore()
 
 // ── State ──
 const items = ref<UserMonitorView[]>([])
+const imageGroupSuccessRates = ref<ImageGroupSuccessRates>({ visible: false, items: [] })
 const loading = ref(false)
 const currentWindow = ref<MonitorWindow>('7d')
 const detailCache = reactive<Record<number, UserMonitorDetail>>({})
@@ -95,6 +98,10 @@ async function reload(silent = false) {
     const res = await listChannelMonitorViews({ signal: ctrl.signal })
     if (ctrl.signal.aborted || abortController !== ctrl) return
     items.value = res.items || []
+    imageGroupSuccessRates.value = {
+      visible: res.image_group_success_rates?.visible === true,
+      items: res.image_group_success_rates?.items || [],
+    }
   } catch (err: unknown) {
     const e = err as { name?: string; code?: string }
     if (e?.name === 'AbortError' || e?.code === 'ERR_CANCELED') return

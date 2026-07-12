@@ -18,13 +18,16 @@ export interface OpsRequestDetailsPreset {
 
 interface Props {
   modelValue: boolean
+  closeOnEscape?: boolean
   timeRange: string
   preset: OpsRequestDetailsPreset
   platform?: string
   groupId?: number | null
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  closeOnEscape: true,
+})
 const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void
   (e: 'openErrorDetail', errorId: number): void
@@ -138,7 +141,6 @@ async function handleCopyRequestId(requestId: string) {
 
 function openErrorDetail(errorId: number | null | undefined) {
   if (!errorId) return
-  close()
   emit('openErrorDetail', errorId)
 }
 
@@ -149,7 +151,13 @@ const kindBadgeClass = (kind: string) => {
 </script>
 
 <template>
-  <BaseDialog :show="modelValue" :title="props.preset.title || t('admin.ops.requestDetails.title')" width="full" @close="close">
+  <BaseDialog
+    :show="modelValue"
+    :title="props.preset.title || t('admin.ops.requestDetails.title')"
+    width="full"
+    :close-on-escape="closeOnEscape"
+    @close="close"
+  >
     <template #default>
       <div class="flex h-full min-h-0 flex-col">
         <div class="mb-4 flex flex-shrink-0 items-center justify-between">

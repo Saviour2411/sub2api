@@ -451,6 +451,12 @@ export default {
       availability30d: '30d Availability',
       avgLatency7d: '7d Avg Latency (ms)'
     },
+    imageSuccessRate: {
+      groupLabel: 'Image Group',
+      successRate: 'Request Success Rate',
+      lastSuccess: 'Last Success',
+      noSuccessfulRequest: 'No successful requests yet'
+    },
     empty: {
       title: 'No channels available',
       description: 'No monitored channels have been configured yet.'

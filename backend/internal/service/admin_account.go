@@ -69,6 +69,15 @@ func normalizeAccountConcurrency(platform, accountType string, concurrency int) 
 }
 
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
+	if input == nil {
+		return nil, ErrAccountNilInput
+	}
+	if s.settingService != nil {
+		input.Credentials = ApplyGatewayPoolModeDefaults(input.Type, input.Credentials, s.settingService.GetGatewayRuntime(ctx))
+	} else {
+		input.Credentials = ApplyGatewayPoolModeDefaults(input.Type, input.Credentials, DefaultGatewaySettings())
+	}
+
 	// 绑定分组
 	groupIDs := input.GroupIDs
 	// 如果没有指定分组,自动绑定对应平台的默认分组

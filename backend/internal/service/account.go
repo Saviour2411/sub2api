@@ -149,6 +149,9 @@ func (a *Account) IsSchedulable() bool {
 	if !a.IsActive() || !a.Schedulable {
 		return false
 	}
+	if a.HasFailureStrategyUnscheduledMarker() {
+		return false
+	}
 	now := time.Now()
 	if a.AutoPauseOnExpired && a.ExpiresAt != nil && !now.Before(*a.ExpiresAt) {
 		return false
@@ -1006,7 +1009,10 @@ const (
 // GetPoolModeRetryCount 返回池模式同账号重试次数。
 // 未配置或配置非法时回退为默认值 3；小于 0 按 0 处理；过大则截断到 10。
 func (a *Account) GetPoolModeRetryCount() int {
-	if a == nil || !a.IsPoolMode() || a.Credentials == nil {
+	if a == nil || !a.IsPoolMode() {
+		return 0
+	}
+	if a.Credentials == nil {
 		return defaultPoolModeRetryCount
 	}
 	raw, ok := a.Credentials["pool_mode_retry_count"]

@@ -9,6 +9,8 @@ const {
   getSettings,
   updateModelMarketplace,
   updateDailyCheckin,
+  updateGateway,
+  resetImageGroupSuccessRates,
   getGroups,
   showSuccess,
   showError,
@@ -16,6 +18,8 @@ const {
   getSettings: vi.fn(),
   updateModelMarketplace: vi.fn(),
   updateDailyCheckin: vi.fn(),
+  updateGateway: vi.fn(),
+  resetImageGroupSuccessRates: vi.fn(),
   getGroups: vi.fn(),
   showSuccess: vi.fn(),
   showError: vi.fn(),
@@ -26,6 +30,8 @@ vi.mock('@/api/admin/customFeatures', () => ({
     getSettings,
     updateModelMarketplace,
     updateDailyCheckin,
+    updateGateway,
+    resetImageGroupSuccessRates,
   },
 }))
 
@@ -70,6 +76,12 @@ const SelectStub = defineComponent({
   template: '<select :value="modelValue ?? \'\'" @change="$emit(\'update:modelValue\', Number($event.target.value) || null)"><option value=""></option><option v-for="option in options" :key="option.value" :value="option.value">{{ option.label }}</option></select>',
 })
 
+const ConfirmDialogStub = defineComponent({
+  props: { show: { type: Boolean, default: false } },
+  emits: ['confirm', 'cancel'],
+  template: '<div v-if="show" data-test="confirm-dialog"><button data-test="confirm-dialog-confirm" @click="$emit(\'confirm\')">confirm</button><button @click="$emit(\'cancel\')">cancel</button></div>',
+})
+
 function settingsFixture(): CustomFeatureSettings {
   return {
     model_marketplace: {
@@ -93,6 +105,13 @@ function settingsFixture(): CustomFeatureSettings {
       ],
       linuxdo_exempt_enabled: true,
     },
+    gateway: {
+      default_pool_mode_retry_count: 1,
+      default_pool_mode_retry_status_codes: [401, 403, 429, 502, 503, 504],
+      auto_managed_probe_backoff_minutes: [5, 10, 15, 30, 60],
+      first_token_timeout_seconds: 60,
+      image_group_success_rate_visible: true,
+    },
   }
 }
 
@@ -104,6 +123,7 @@ function mountView() {
         Icon: true,
         Toggle: ToggleStub,
         Select: SelectStub,
+        ConfirmDialog: ConfirmDialogStub,
       },
     },
   })
@@ -114,6 +134,8 @@ describe('admin CustomFeaturesView', () => {
     getSettings.mockReset()
     updateModelMarketplace.mockReset()
     updateDailyCheckin.mockReset()
+    updateGateway.mockReset()
+    resetImageGroupSuccessRates.mockReset()
     getGroups.mockReset()
     showSuccess.mockReset()
     showError.mockReset()
@@ -125,6 +147,8 @@ describe('admin CustomFeaturesView', () => {
     ])
     updateModelMarketplace.mockImplementation(async (payload) => payload)
     updateDailyCheckin.mockImplementation(async (payload) => payload)
+    updateGateway.mockImplementation(async (payload) => payload)
+    resetImageGroupSuccessRates.mockResolvedValue({ reset_at: '2026-07-12T00:00:00Z' })
   })
 
   it('loads the independent forms and switches tabs', async () => {
@@ -138,6 +162,103 @@ describe('admin CustomFeaturesView', () => {
     await wrapper.get('[data-test="custom-feature-tab-daily-checkin"]').trigger('click')
     expect(wrapper.find('[data-test="daily-checkin-form"]').exists()).toBe(true)
     expect(wrapper.findAll('[data-test^="daily-prize-"]')).toHaveLength(4)
+  })
+
+  it('loads and saves normalized gateway settings independently', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.get('[data-test="custom-feature-tab-gateway"]').trigger('click')
+    expect(wrapper.find('[data-test="gateway-form"]').exists()).toBe(true)
+    expect(wrapper.get<HTMLInputElement>('[data-test="gateway-pool-retry-count"]').element.value).toBe('1')
+
+    await wrapper.get('[data-test="gateway-pool-retry-status-codes"]').setValue('504 401, 504, 429')
+    await wrapper.get('[data-test="gateway-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(updateGateway).toHaveBeenCalledWith({
+      default_pool_mode_retry_count: 1,
+      default_pool_mode_retry_status_codes: [401, 429, 504],
+      auto_managed_probe_backoff_minutes: [5, 10, 15, 30, 60],
+      first_token_timeout_seconds: 60,
+      image_group_success_rate_visible: true,
+    })
+    expect(updateDailyCheckin).not.toHaveBeenCalled()
+    expect(showSuccess).toHaveBeenCalledWith('admin.customFeatures.gateway.saved')
+  })
+
+  it('rejects invalid gateway status codes and decreasing probe backoff', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="custom-feature-tab-gateway"]').trigger('click')
+
+    await wrapper.get('[data-test="gateway-pool-retry-status-codes"]').setValue('401, invalid')
+    await wrapper.get('[data-test="gateway-form"]').trigger('submit')
+    await flushPromises()
+    expect(updateGateway).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenLastCalledWith('admin.customFeatures.gateway.validation.retryStatusCodes')
+
+    await wrapper.get('[data-test="gateway-pool-retry-status-codes"]').setValue('')
+    const backoffInputs = wrapper.findAll<HTMLInputElement>('[data-test^="gateway-probe-backoff-"] input')
+    await backoffInputs[1].setValue('2')
+    await wrapper.get('[data-test="gateway-form"]').trigger('submit')
+    await flushPromises()
+    expect(updateGateway).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenLastCalledWith('admin.customFeatures.gateway.validation.probeBackoffOrder')
+  })
+
+  it('拒绝空数字字段且不将其视为零', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="custom-feature-tab-gateway"]').trigger('click')
+
+    await wrapper.get('[data-test="gateway-pool-retry-count"]').setValue('')
+    await wrapper.get('[data-test="gateway-form"]').trigger('submit')
+    expect(updateGateway).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenLastCalledWith('admin.customFeatures.gateway.validation.retryCount')
+
+    await wrapper.get('[data-test="gateway-pool-retry-count"]').setValue('1')
+    await wrapper.get('[data-test="gateway-first-token-timeout"]').setValue('')
+    await wrapper.get('[data-test="gateway-form"]').trigger('submit')
+    expect(updateGateway).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenLastCalledWith('admin.customFeatures.gateway.validation.firstTokenTimeout')
+  })
+
+  it('允许提交空的重试状态码列表', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="custom-feature-tab-gateway"]').trigger('click')
+
+    await wrapper.get('[data-test="gateway-pool-retry-status-codes"]').setValue('')
+    await wrapper.get('[data-test="gateway-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(updateGateway).toHaveBeenCalledWith(
+      expect.objectContaining({ default_pool_mode_retry_status_codes: [] })
+    )
+  })
+
+  it('确认后清零 Image 分组成功率且使用独立加载状态', async () => {
+    let resolveReset!: (value: { reset_at: string }) => void
+    resetImageGroupSuccessRates.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveReset = resolve })
+    )
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="custom-feature-tab-gateway"]').trigger('click')
+
+    await wrapper.get('[data-test="gateway-reset-image-success-rates"]').trigger('click')
+    expect(wrapper.find('[data-test="confirm-dialog"]').exists()).toBe(true)
+    await wrapper.get('[data-test="confirm-dialog-confirm"]').trigger('click')
+
+    expect(resetImageGroupSuccessRates).toHaveBeenCalledOnce()
+    expect(wrapper.get('[data-test="gateway-reset-image-success-rates"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-test="gateway-save"]').attributes('disabled')).toBeUndefined()
+
+    resolveReset({ reset_at: '2026-07-12T00:00:00Z' })
+    await flushPromises()
+    expect(showSuccess).toHaveBeenCalledWith('admin.customFeatures.gateway.imageSuccessRate.resetSuccess')
+    expect(wrapper.find('[data-test="confirm-dialog"]').exists()).toBe(false)
   })
 
   it('saves the model marketplace intro and selected groups independently', async () => {

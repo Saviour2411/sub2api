@@ -1488,6 +1488,8 @@ func TestOpenAIStreamingResponseFailedAfterOutputSanitizesVerboseResponseForClie
 
 	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"}, time.Now(), "model", "model")
 	require.Error(t, err)
+	_, streamFailed := GetOpsStreamError(c)
+	require.True(t, streamFailed, "已提交的 response.failed 必须标记为流内失败")
 
 	body := rec.Body.String()
 	require.Contains(t, body, "event: response.failed")
@@ -1626,6 +1628,8 @@ func TestOpenAIStreamingPreambleOnlyMissingTerminalReturnsFailover(t *testing.T)
 	require.ErrorAs(t, err, &failoverErr)
 	require.False(t, c.Writer.Written())
 	require.Empty(t, rec.Body.String())
+	_, streamFailed := GetOpsStreamError(c)
+	require.False(t, streamFailed, "切号前的中间失败不能污染最终请求结果")
 }
 
 func TestOpenAIStreamingPreambleKeepaliveUsesDownstreamIdle(t *testing.T) {
@@ -1966,6 +1970,8 @@ func TestOpenAIStreamingPassthroughResponseFailedBeforeOutputReturnsFailover(t *
 	require.Contains(t, string(failoverErr.ResponseBody), "upstream processing failed")
 	require.False(t, c.Writer.Written())
 	require.Empty(t, rec.Body.String())
+	_, streamFailed := GetOpsStreamError(c)
+	require.False(t, streamFailed, "切号前的 response.failed 不能污染最终请求结果")
 }
 
 func TestOpenAIStreamingPassthroughContextWindowResponseFailedBeforeOutputAppliesPassthroughRule(t *testing.T) {
@@ -2092,6 +2098,8 @@ func TestOpenAIStreamingPassthroughResponseFailedAfterOutputSanitizesVerboseResp
 
 	_, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"}, time.Now(), "", "")
 	require.Error(t, err)
+	_, streamFailed := GetOpsStreamError(c)
+	require.True(t, streamFailed, "已提交的透传 response.failed 必须标记为流内失败")
 
 	body := rec.Body.String()
 	require.Contains(t, body, "event: response.failed")

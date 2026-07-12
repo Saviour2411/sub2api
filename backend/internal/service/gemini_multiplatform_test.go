@@ -17,6 +17,7 @@ import (
 type mockAccountRepoForGemini struct {
 	accounts           []Account
 	accountsByID       map[int64]*Account
+	createdAccount     *Account
 	listByGroupFunc    func(ctx context.Context, groupID int64, platforms []string) ([]Account, error)
 	listByPlatformFunc func(ctx context.Context, platforms []string) ([]Account, error)
 }
@@ -62,7 +63,10 @@ func (m *mockAccountRepoForGemini) ListSchedulableByGroupIDAndPlatform(ctx conte
 }
 
 // Stub methods to implement AccountRepository interface
-func (m *mockAccountRepoForGemini) Create(ctx context.Context, account *Account) error { return nil }
+func (m *mockAccountRepoForGemini) Create(ctx context.Context, account *Account) error {
+	m.createdAccount = account
+	return nil
+}
 func (m *mockAccountRepoForGemini) GetByCRSAccountID(ctx context.Context, crsAccountID string) (*Account, error) {
 	return nil, nil
 }

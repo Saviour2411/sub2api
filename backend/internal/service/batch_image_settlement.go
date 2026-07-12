@@ -334,6 +334,7 @@ func BuildBatchImageSettlementManifestHash(job *BatchImageJob) string {
 type BatchImagePipelineProcessor struct {
 	ProviderProcessor *BatchImageProviderProcessor
 	SettlementService *BatchImageSettlementService
+	SuccessRates      *ImageGroupSuccessRateService
 	RetryDelay        time.Duration
 }
 
@@ -346,6 +347,9 @@ func (p *BatchImagePipelineProcessor) Process(ctx context.Context, batchID strin
 		return BatchImageProcessResult{}, err
 	}
 	if job.Status == BatchImageJobStatusSettling {
+		if err := p.recordSuccessRate(ctx, job); err != nil {
+			return BatchImageProcessResult{}, err
+		}
 		if p.SettlementService == nil {
 			return BatchImageProcessResult{Terminal: true}, nil
 		}
@@ -366,7 +370,38 @@ func (p *BatchImagePipelineProcessor) Process(ctx context.Context, batchID strin
 		}
 		return BatchImageProcessResult{Terminal: true}, nil
 	}
-	return p.ProviderProcessor.Process(ctx, batchID)
+	result, err := p.ProviderProcessor.Process(ctx, batchID)
+	if err != nil || !result.Terminal {
+		return result, err
+	}
+	updated, getErr := p.ProviderProcessor.Repo.GetBatchImageJobByBatchID(ctx, batchID)
+	if getErr != nil {
+		return BatchImageProcessResult{}, getErr
+	}
+	if err := p.recordSuccessRate(ctx, updated); err != nil {
+		return BatchImageProcessResult{}, err
+	}
+	return result, nil
+}
+
+func (p *BatchImagePipelineProcessor) recordSuccessRate(ctx context.Context, job *BatchImageJob) error {
+	if p == nil || p.SuccessRates == nil || job == nil || job.GroupID == nil || *job.GroupID <= 0 {
+		return nil
+	}
+	if ctx == nil || ctx.Err() != nil {
+		return nil
+	}
+	successCount, failureCount := job.SuccessCount, job.FailCount
+	if successCount+failureCount == 0 {
+		if job.Status == BatchImageJobStatusCancelled {
+			return nil
+		}
+		if job.Status != BatchImageJobStatusFailed {
+			return nil
+		}
+		failureCount = 1
+	}
+	return p.SuccessRates.RecordBatchResult(ctx, *job.GroupID, job.BatchID, successCount, failureCount)
 }
 
 func (r *BatchImageSettlementResult) String() string {

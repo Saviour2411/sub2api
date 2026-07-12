@@ -92,17 +92,22 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	}
 
 	var resp *http.Response
+	var firstTokenAttempt *firstTokenAttempt
 	retryStart := time.Now()
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
+		firstTokenAttempt = newFirstTokenAttempt(ctx, c, s.rateLimitService, account, input.RequestModel, input.RequestStream)
 		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, input.RequestStream)
 		upstreamReq, wireBody, err := s.buildUpstreamRequestAnthropicAPIKeyPassthrough(upstreamCtx, c, account, input.Body, token)
 		releaseUpstreamCtx()
 		if err != nil {
+			firstTokenAttempt.stopBeforeStreaming()
 			return nil, err
 		}
+		upstreamReq = firstTokenAttempt.bindRequest(upstreamReq)
 		if input.Parsed != nil && !bytes.Equal(wireBody, input.Body) {
 			// build 阶段会按 beta 能力清理 body，发送前同步到 ParsedRequest 当前视图。
 			if err := input.Parsed.ReplaceBody(wireBody); err != nil {
+				firstTokenAttempt.stopBeforeStreaming()
 				return nil, err
 			}
 			input.Body = input.Parsed.Body.Bytes()
@@ -110,6 +115,10 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 
 		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
 		if err != nil {
+			attemptErr := firstTokenAttempt.finishRequestError(err)
+			if isFirstTokenTimeoutFailover(attemptErr) {
+				return nil, attemptErr
+			}
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
 			}
@@ -133,6 +142,10 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 				},
 			})
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
+		}
+
+		if resp.StatusCode >= 400 {
+			firstTokenAttempt.stopBeforeStreaming(resp)
 		}
 
 		// 透传分支禁止 400 请求体降级重试（该重试会改写请求体）
@@ -263,7 +276,9 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	var firstTokenMs *int
 	var clientDisconnect bool
 	if input.RequestStream {
-		streamResult, err := s.handleStreamingResponseAnthropicAPIKeyPassthrough(ctx, resp, c, account, input.StartTime, input.RequestModel)
+		firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolSSE)
+		streamResult, streamErr := s.handleStreamingResponseAnthropicAPIKeyPassthrough(ctx, resp, c, account, input.StartTime, input.RequestModel)
+		err := firstTokenAttempt.finish(streamErr)
 		if err != nil {
 			return nil, err
 		}

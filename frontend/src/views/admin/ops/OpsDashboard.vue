@@ -113,6 +113,7 @@
 
         <OpsErrorDetailsModal
           :show="showErrorDetails"
+          :close-on-escape="!showErrorModal"
           :time-range="timeRange"
           :platform="platform"
           :group-id="groupId"
@@ -121,10 +122,16 @@
           @openErrorDetail="openError"
         />
 
-        <OpsErrorDetailModal v-model:show="showErrorModal" :error-id="selectedErrorId" :error-type="errorDetailsType" />
+        <OpsErrorDetailModal
+          :show="showErrorModal"
+          :error-id="selectedErrorId"
+          :error-type="errorDetailsType"
+          @update:show="handleErrorModalVisibility"
+        />
 
         <OpsRequestDetailsModal
           v-model="showRequestDetails"
+          :close-on-escape="!showErrorModal"
           :time-range="timeRange"
           :preset="requestDetailsPreset"
           :platform="platform"
@@ -137,7 +144,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useDebounceFn, useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -364,6 +371,7 @@ const loadingErrorDistribution = ref(false)
 
 const selectedErrorId = ref<number | null>(null)
 const showErrorModal = ref(false)
+const errorDetailOrigin = ref<'error-details' | 'request-details' | null>(null)
 
 const showErrorDetails = ref(false)
 const errorDetailsType = ref<'request' | 'upstream'>('request')
@@ -505,11 +513,30 @@ function onQueryModeChange(v: string | number | boolean | null) {
 }
 
 function openError(id: number) {
+  errorDetailOrigin.value = showRequestDetails.value
+    ? 'request-details'
+    : showErrorDetails.value
+      ? 'error-details'
+      : null
   selectedErrorId.value = id
-  // Ensure only one modal visible at a time.
-  showErrorDetails.value = false
-  showRequestDetails.value = false
   showErrorModal.value = true
+}
+
+function handleErrorModalVisibility(show: boolean) {
+  showErrorModal.value = show
+  if (show) return
+
+  const restoresParentDialog = errorDetailOrigin.value !== null
+  if (errorDetailOrigin.value === 'error-details') {
+    showErrorDetails.value = true
+  } else if (errorDetailOrigin.value === 'request-details') {
+    showRequestDetails.value = true
+  }
+  selectedErrorId.value = null
+  errorDetailOrigin.value = null
+  if (restoresParentDialog) {
+    void nextTick(() => document.body.classList.add('modal-open'))
+  }
 }
 
 function buildApiParams() {

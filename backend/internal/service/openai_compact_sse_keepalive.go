@@ -26,6 +26,7 @@ type openAICompactSSEKeepalive struct {
 	writer  gin.ResponseWriter
 	started bool
 	stopped bool
+	paused  bool
 	// bytes 是心跳已写出的注释字节数。心跳不构成语义响应，handler 的
 	// "Forward 期间是否已写响应"判定（failover 放弃换号的依据）必须扣除
 	// 这部分字节，见 OpenAICompactKeepaliveAdjustedWrittenSize。
@@ -40,11 +41,22 @@ type openAICompactSSEKeepalive struct {
 // 响应构造都会先在心跳互斥锁下停拍，未被显式拦截的写回路径（如 Forward
 // 内部的本地拒绝）也不会与心跳 goroutine 产生数据竞争或字节交错。
 func StartOpenAICompactSSEKeepalive(c *gin.Context, interval time.Duration) func() {
+	return startOpenAICompactSSEKeepalive(c, interval, false)
+}
+
+// StartOpenAICompactSSEKeepalivePaused 以暂停态创建 compact 心跳。首 Token
+// watchdog 尚未决定是否启用前，暂停态不会提交响应头；watchdog 关闭时由转发层恢复。
+func StartOpenAICompactSSEKeepalivePaused(c *gin.Context, interval time.Duration) func() {
+	return startOpenAICompactSSEKeepalive(c, interval, true)
+}
+
+func startOpenAICompactSSEKeepalive(c *gin.Context, interval time.Duration, paused bool) func() {
 	if c == nil || c.Writer == nil || interval <= 0 || !openAICompactClientWantsStream(c) {
 		return func() {}
 	}
 	k := &openAICompactSSEKeepalive{
 		writer: c.Writer,
+		paused: paused,
 		stop:   make(chan struct{}),
 	}
 	c.Set(openAICompactSSEKeepaliveKey, k)
@@ -82,6 +94,9 @@ func (k *openAICompactSSEKeepalive) beat() bool {
 	if k.stopped {
 		return false
 	}
+	if k.paused {
+		return true
+	}
 	if !k.started {
 		header := k.writer.Header()
 		header.Set("Content-Type", "text/event-stream")
@@ -99,6 +114,26 @@ func (k *openAICompactSSEKeepalive) beat() bool {
 	}
 	k.writer.Flush()
 	return true
+}
+
+// resumeOpenAICompactSSEKeepalive 在首 Token watchdog 未启用时恢复暂停的心跳。
+func resumeOpenAICompactSSEKeepalive(c *gin.Context) {
+	if c == nil {
+		return
+	}
+	value, ok := c.Get(openAICompactSSEKeepaliveKey)
+	if !ok {
+		return
+	}
+	k, ok := value.(*openAICompactSSEKeepalive)
+	if !ok || k == nil {
+		return
+	}
+	k.mu.Lock()
+	if !k.stopped {
+		k.paused = false
+	}
+	k.mu.Unlock()
 }
 
 // Stop 停止心跳；幂等，可与写回路径并发调用。

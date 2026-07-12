@@ -51,6 +51,10 @@ type accountRepository struct {
 	schedulerCache service.SchedulerCache
 }
 
+type sqlTxBeginner interface {
+	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
+}
+
 var schedulerNeutralExtraKeyPrefixes = []string{
 	"codex_primary_",
 	"codex_secondary_",
@@ -1585,6 +1589,80 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 		// 同时避免缓存局部 patch 覆盖掉并发写入的其它账号字段。
 		r.syncSchedulerAccountSnapshot(ctx, id)
 	}
+	return nil
+}
+
+// PersistFirstTokenTimeoutState 原子写入首 Token 超时停调度状态，并确保自动测活计划立即启用。
+// 账号状态和恢复入口必须同时成功，避免部分写入后账号永久不可调度。
+func (r *accountRepository) PersistFirstTokenTimeoutState(
+	ctx context.Context,
+	accountID int64,
+	marker map[string]any,
+	nextRunAt time.Time,
+) error {
+	if r == nil || accountID <= 0 {
+		return service.ErrAccountNotFound
+	}
+	beginner, ok := r.sql.(sqlTxBeginner)
+	if !ok {
+		return errors.New("account repository does not support transactions")
+	}
+	payload, err := json.Marshal(map[string]any{
+		"failure_strategy_unscheduled": marker,
+	})
+	if err != nil {
+		return err
+	}
+	if nextRunAt.IsZero() {
+		nextRunAt = time.Now()
+	}
+
+	tx, err := beginner.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	result, err := tx.ExecContext(ctx, `
+		UPDATE accounts
+		SET extra = COALESCE(extra, '{}'::jsonb) || $1::jsonb,
+			schedulable = false,
+			updated_at = NOW()
+		WHERE id = $2 AND deleted_at IS NULL
+	`, string(payload), accountID)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrAccountNotFound
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO scheduled_test_plans (
+			account_id, model_id, prompt, cron_expression, enabled, max_results,
+			auto_recover, auto_managed, next_run_at, created_at, updated_at
+		)
+		VALUES ($1, '', '', '*/5 * * * *', true, 20, true, true, $2, NOW(), NOW())
+		ON CONFLICT (account_id) WHERE auto_managed = true DO UPDATE
+		SET enabled = true,
+			auto_recover = true,
+			next_run_at = EXCLUDED.next_run_at,
+			updated_at = NOW()
+	`, accountID, nextRunAt); err != nil {
+		return err
+	}
+	if err := enqueueSchedulerOutbox(ctx, tx, service.SchedulerOutboxEventAccountChanged, &accountID, nil, nil); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	r.syncSchedulerAccountSnapshot(ctx, accountID)
 	return nil
 }
 

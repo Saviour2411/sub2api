@@ -30,8 +30,14 @@ type RateLimitService struct {
 	settingService        *SettingService
 	tokenCacheInvalidator TokenCacheInvalidator
 	runtimeBlocker        AccountRuntimeBlocker
+	autoManagedProbe      AutoManagedProbeScheduler
 	usageCacheMu          sync.RWMutex
 	usageCache            map[int64]*geminiUsageCacheEntry
+}
+
+// AutoManagedProbeScheduler 在账号被首 Token 超时停调度时，确保自动测活计划立即可执行。
+type AutoManagedProbeScheduler interface {
+	EnsureAutoManagedProbe(ctx context.Context, accountID int64) error
 }
 
 type AccountRuntimeBlocker interface {
@@ -114,6 +120,13 @@ func (s *RateLimitService) SetTokenCacheInvalidator(invalidator TokenCacheInvali
 
 func (s *RateLimitService) SetAccountRuntimeBlocker(blocker AccountRuntimeBlocker) {
 	s.runtimeBlocker = blocker
+}
+
+func (s *RateLimitService) SetAutoManagedProbeScheduler(scheduler AutoManagedProbeScheduler) {
+	if s == nil {
+		return
+	}
+	s.autoManagedProbe = scheduler
 }
 
 func (s *RateLimitService) IsOpenAIAdvancedSchedulerStickyWeightedEnabled(ctx context.Context) bool {

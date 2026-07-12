@@ -148,6 +148,197 @@
       </form>
 
       <form
+        v-else-if="activeTab === 'gateway'"
+        data-test="gateway-form"
+        class="card overflow-hidden"
+        @submit.prevent="saveGateway"
+      >
+        <div class="border-b border-gray-100 px-5 py-5 dark:border-dark-700 sm:px-6">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+            {{ t('admin.customFeatures.gateway.title') }}
+          </h2>
+          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            {{ t('admin.customFeatures.gateway.description') }}
+          </p>
+        </div>
+
+        <div class="space-y-8 px-5 py-6 sm:px-6">
+          <section aria-labelledby="gateway-pool-title">
+            <h3 id="gateway-pool-title" class="font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.customFeatures.gateway.poolDefaults.title') }}
+            </h3>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.customFeatures.gateway.poolDefaults.description') }}
+            </p>
+            <div class="mt-4 grid gap-5 md:grid-cols-2">
+              <div>
+                <label class="input-label" for="gateway-pool-retry-count">
+                  {{ t('admin.customFeatures.gateway.poolDefaults.retryCount') }}
+                </label>
+                <input
+                  id="gateway-pool-retry-count"
+                  v-model.number="gateway.default_pool_mode_retry_count"
+                  data-test="gateway-pool-retry-count"
+                  type="number"
+                  min="0"
+                  max="10"
+                  step="1"
+                  class="input"
+                />
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.customFeatures.gateway.poolDefaults.retryCountHint') }}
+                </p>
+              </div>
+              <div>
+                <label class="input-label" for="gateway-pool-retry-status-codes">
+                  {{ t('admin.customFeatures.gateway.poolDefaults.retryStatusCodes') }}
+                </label>
+                <input
+                  id="gateway-pool-retry-status-codes"
+                  v-model="gatewayRetryStatusCodesInput"
+                  data-test="gateway-pool-retry-status-codes"
+                  type="text"
+                  class="input"
+                  placeholder="401, 403, 429, 502, 503, 504"
+                />
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.customFeatures.gateway.poolDefaults.retryStatusCodesHint') }}
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section class="border-t border-gray-100 pt-8 dark:border-dark-700" aria-labelledby="gateway-probe-title">
+            <h3 id="gateway-probe-title" class="font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.customFeatures.gateway.probeBackoff.title') }}
+            </h3>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.customFeatures.gateway.probeBackoff.description') }}
+            </p>
+            <div class="mt-4 max-w-xl space-y-3">
+              <div
+                v-for="(_minutes, index) in gateway.auto_managed_probe_backoff_minutes"
+                :key="index"
+                :data-test="`gateway-probe-backoff-${index}`"
+                class="flex items-end gap-2"
+              >
+                <div class="min-w-0 flex-1">
+                  <label class="input-label" :for="`gateway-probe-backoff-${index}`">
+                    {{ t('admin.customFeatures.gateway.probeBackoff.attempt', { count: index + 1 }) }}
+                  </label>
+                  <div class="relative">
+                    <input
+                      :id="`gateway-probe-backoff-${index}`"
+                      v-model.number="gateway.auto_managed_probe_backoff_minutes[index]"
+                      type="number"
+                      min="1"
+                      max="1440"
+                      step="1"
+                      class="input pr-16"
+                    />
+                    <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-gray-500 dark:text-gray-400">
+                      {{ t('admin.customFeatures.gateway.minutes') }}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  class="btn btn-secondary inline-flex h-10 w-10 items-center justify-center px-0"
+                  :disabled="gateway.auto_managed_probe_backoff_minutes.length <= 1"
+                  :title="t('admin.customFeatures.gateway.probeBackoff.remove')"
+                  @click="removeProbeBackoff(index)"
+                >
+                  <Icon name="trash" size="sm" />
+                </button>
+              </div>
+              <button
+                type="button"
+                data-test="gateway-add-probe-backoff"
+                class="btn btn-secondary inline-flex items-center gap-2"
+                :disabled="gateway.auto_managed_probe_backoff_minutes.length >= 10"
+                @click="addProbeBackoff"
+              >
+                <Icon name="plus" size="sm" />
+                {{ t('admin.customFeatures.gateway.probeBackoff.add') }}
+              </button>
+            </div>
+          </section>
+
+          <section class="border-t border-gray-100 pt-8 dark:border-dark-700" aria-labelledby="gateway-timeout-title">
+            <h3 id="gateway-timeout-title" class="font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.customFeatures.gateway.firstTokenTimeout.title') }}
+            </h3>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.customFeatures.gateway.firstTokenTimeout.description') }}
+            </p>
+            <div class="mt-4 max-w-xs">
+              <label class="input-label" for="gateway-first-token-timeout">
+                {{ t('admin.customFeatures.gateway.firstTokenTimeout.seconds') }}
+              </label>
+              <input
+                id="gateway-first-token-timeout"
+                v-model.number="gateway.first_token_timeout_seconds"
+                data-test="gateway-first-token-timeout"
+                type="number"
+                min="0"
+                max="600"
+                step="1"
+                class="input"
+              />
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.customFeatures.gateway.firstTokenTimeout.hint') }}
+              </p>
+            </div>
+          </section>
+
+          <section class="border-t border-gray-100 pt-8 dark:border-dark-700" aria-labelledby="gateway-image-rate-title">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 id="gateway-image-rate-title" class="font-semibold text-gray-900 dark:text-white">
+                  {{ t('admin.customFeatures.gateway.imageSuccessRate.title') }}
+                </h3>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.customFeatures.gateway.imageSuccessRate.description') }}
+                </p>
+              </div>
+              <div class="flex flex-shrink-0 items-center gap-3">
+                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.customFeatures.gateway.imageSuccessRate.visible') }}
+                </span>
+                <Toggle v-model="gateway.image_group_success_rate_visible" data-test="gateway-image-success-rate-visible" />
+              </div>
+            </div>
+            <div class="mt-4">
+              <button
+                type="button"
+                data-test="gateway-reset-image-success-rates"
+                class="btn btn-secondary inline-flex items-center gap-2 text-red-600 hover:text-red-700 dark:text-red-400"
+                :disabled="resettingImageSuccessRates"
+                @click="showResetImageSuccessRatesConfirm = true"
+              >
+                <span v-if="resettingImageSuccessRates" class="h-4 w-4 animate-spin rounded-full border-b-2 border-current"></span>
+                <Icon v-else name="refresh" size="sm" />
+                {{ t('admin.customFeatures.gateway.imageSuccessRate.reset') }}
+              </button>
+            </div>
+          </section>
+        </div>
+
+        <div class="flex justify-end border-t border-gray-100 px-5 py-4 dark:border-dark-700 sm:px-6">
+          <button
+            type="submit"
+            data-test="gateway-save"
+            class="btn btn-primary inline-flex items-center gap-2"
+            :disabled="savingGateway"
+          >
+            <span v-if="savingGateway" class="h-4 w-4 animate-spin rounded-full border-b-2 border-white"></span>
+            <Icon v-else name="check" size="sm" />
+            {{ t('admin.customFeatures.save') }}
+          </button>
+        </div>
+      </form>
+
+      <form
         v-else
         data-test="daily-checkin-form"
         class="card overflow-hidden"
@@ -384,6 +575,16 @@
           </button>
         </div>
       </form>
+
+      <ConfirmDialog
+        :show="showResetImageSuccessRatesConfirm"
+        :title="t('admin.customFeatures.gateway.imageSuccessRate.resetTitle')"
+        :message="t('admin.customFeatures.gateway.imageSuccessRate.resetMessage')"
+        :confirm-text="resettingImageSuccessRates ? t('admin.customFeatures.gateway.imageSuccessRate.resetting') : t('admin.customFeatures.gateway.imageSuccessRate.resetConfirm')"
+        :danger="true"
+        @confirm="resetImageSuccessRates"
+        @cancel="showResetImageSuccessRatesConfirm = false"
+      />
     </div>
   </AppLayout>
 </template>
@@ -392,6 +593,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import Select from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
@@ -399,19 +601,21 @@ import groupsAPI from '@/api/admin/groups'
 import customFeaturesAPI, {
   type DailyCheckinPrizeConfig,
   type DailyCheckinSettings,
+  type GatewaySettings,
   type ModelMarketplaceSettings
 } from '@/api/admin/customFeatures'
 import type { AdminGroup } from '@/types'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 
-type CustomFeatureTab = 'model-marketplace' | 'daily-checkin'
+type CustomFeatureTab = 'model-marketplace' | 'gateway' | 'daily-checkin'
 
 const { t } = useI18n()
 const appStore = useAppStore()
 
-const tabs: Array<{ key: CustomFeatureTab; labelKey: string; icon: 'cube' | 'gift' }> = [
+const tabs: Array<{ key: CustomFeatureTab; labelKey: string; icon: 'cube' | 'cog' | 'gift' }> = [
   { key: 'model-marketplace', labelKey: 'admin.customFeatures.tabs.modelMarketplace', icon: 'cube' },
+  { key: 'gateway', labelKey: 'admin.customFeatures.tabs.gateway', icon: 'cog' },
   { key: 'daily-checkin', labelKey: 'admin.customFeatures.tabs.dailyCheckin', icon: 'gift' }
 ]
 
@@ -419,7 +623,10 @@ const activeTab = ref<CustomFeatureTab>('model-marketplace')
 const loading = ref(true)
 const loadFailed = ref(false)
 const savingMarketplace = ref(false)
+const savingGateway = ref(false)
 const savingDailyCheckin = ref(false)
+const resettingImageSuccessRates = ref(false)
+const showResetImageSuccessRatesConfirm = ref(false)
 const activeGroups = ref<AdminGroup[]>([])
 
 const modelMarketplace = reactive<ModelMarketplaceSettings>({
@@ -439,6 +646,15 @@ const dailyCheckin = reactive<DailyCheckinSettings>({
   ],
   linuxdo_exempt_enabled: false
 })
+
+const gateway = reactive<GatewaySettings>({
+  default_pool_mode_retry_count: 1,
+  default_pool_mode_retry_status_codes: [401, 403, 429, 502, 503, 504],
+  auto_managed_probe_backoff_minutes: [5, 10, 15, 30, 60],
+  first_token_timeout_seconds: 60,
+  image_group_success_rate_visible: true
+})
+const gatewayRetryStatusCodesInput = ref(gateway.default_pool_mode_retry_status_codes.join(', '))
 
 const subscriptionGroupOptions = computed(() =>
   activeGroups.value
@@ -468,6 +684,26 @@ function cloneDailyCheckin(settings: DailyCheckinSettings): DailyCheckinSettings
   }
 }
 
+function cloneGateway(settings?: Partial<GatewaySettings>): GatewaySettings {
+  return {
+    default_pool_mode_retry_count: settings?.default_pool_mode_retry_count ?? 1,
+    default_pool_mode_retry_status_codes: [
+      ...(settings?.default_pool_mode_retry_status_codes ?? [401, 403, 429, 502, 503, 504])
+    ],
+    auto_managed_probe_backoff_minutes: [
+      ...(settings?.auto_managed_probe_backoff_minutes ?? [5, 10, 15, 30, 60])
+    ],
+    first_token_timeout_seconds: settings?.first_token_timeout_seconds ?? 60,
+    image_group_success_rate_visible: settings?.image_group_success_rate_visible ?? true
+  }
+}
+
+function assignGateway(settings?: Partial<GatewaySettings>) {
+  const next = cloneGateway(settings)
+  Object.assign(gateway, next)
+  gatewayRetryStatusCodesInput.value = next.default_pool_mode_retry_status_codes.join(', ')
+}
+
 async function loadSettings() {
   loading.value = true
   loadFailed.value = false
@@ -481,12 +717,129 @@ async function loadSettings() {
       group_ids: [...(settings.model_marketplace.group_ids || [])]
     })
     Object.assign(dailyCheckin, cloneDailyCheckin(settings.daily_checkin))
+    assignGateway(settings.gateway)
     activeGroups.value = (groups || []).filter((group) => group.status === 'active')
   } catch (error) {
     loadFailed.value = true
     appStore.showError(extractApiErrorMessage(error, t('admin.customFeatures.loadFailed')))
   } finally {
     loading.value = false
+  }
+}
+
+function addProbeBackoff() {
+  if (gateway.auto_managed_probe_backoff_minutes.length >= 10) return
+  const last = gateway.auto_managed_probe_backoff_minutes[
+    gateway.auto_managed_probe_backoff_minutes.length - 1
+  ] ?? 5
+  gateway.auto_managed_probe_backoff_minutes.push(last)
+}
+
+function removeProbeBackoff(index: number) {
+  if (gateway.auto_managed_probe_backoff_minutes.length <= 1) return
+  gateway.auto_managed_probe_backoff_minutes.splice(index, 1)
+}
+
+function parseGatewayRetryStatusCodes(): number[] | null {
+  const input = gatewayRetryStatusCodesInput.value.trim()
+  if (!input) return []
+  const tokens = input.split(/[,\s]+/).filter(Boolean)
+  if (tokens.length === 0) return null
+
+  const statusCodes: number[] = []
+  for (const token of tokens) {
+    if (!/^\d+$/.test(token)) return null
+    const statusCode = Number(token)
+    if (!Number.isInteger(statusCode) || statusCode < 100 || statusCode > 599) return null
+    statusCodes.push(statusCode)
+  }
+  return [...new Set(statusCodes)].sort((left, right) => left - right)
+}
+
+function validateGateway(): { error: string | null; retryStatusCodes: number[] } {
+  const retryCount = gateway.default_pool_mode_retry_count
+  if (!Number.isInteger(retryCount) || retryCount < 0 || retryCount > 10) {
+    return {
+      error: t('admin.customFeatures.gateway.validation.retryCount'),
+      retryStatusCodes: []
+    }
+  }
+
+  const retryStatusCodes = parseGatewayRetryStatusCodes()
+  if (retryStatusCodes === null) {
+    return {
+      error: t('admin.customFeatures.gateway.validation.retryStatusCodes'),
+      retryStatusCodes: []
+    }
+  }
+
+  const backoff = gateway.auto_managed_probe_backoff_minutes
+  if (
+    backoff.length < 1 ||
+    backoff.length > 10 ||
+    backoff.some((minutes) => !Number.isInteger(minutes) || minutes < 1 || minutes > 1440)
+  ) {
+    return {
+      error: t('admin.customFeatures.gateway.validation.probeBackoffRange'),
+      retryStatusCodes
+    }
+  }
+  if (backoff.some((minutes, index) => index > 0 && minutes < backoff[index - 1])) {
+    return {
+      error: t('admin.customFeatures.gateway.validation.probeBackoffOrder'),
+      retryStatusCodes
+    }
+  }
+
+  const timeoutSeconds = gateway.first_token_timeout_seconds
+  if (!Number.isInteger(timeoutSeconds) || timeoutSeconds < 0 || timeoutSeconds > 600) {
+    return {
+      error: t('admin.customFeatures.gateway.validation.firstTokenTimeout'),
+      retryStatusCodes
+    }
+  }
+
+  return { error: null, retryStatusCodes }
+}
+
+async function saveGateway() {
+  const validation = validateGateway()
+  if (validation.error) {
+    appStore.showError(validation.error)
+    return
+  }
+
+  savingGateway.value = true
+  try {
+    const saved = await customFeaturesAPI.updateGateway({
+      default_pool_mode_retry_count: Number(gateway.default_pool_mode_retry_count),
+      default_pool_mode_retry_status_codes: validation.retryStatusCodes,
+      auto_managed_probe_backoff_minutes: gateway.auto_managed_probe_backoff_minutes.map(Number),
+      first_token_timeout_seconds: Number(gateway.first_token_timeout_seconds),
+      image_group_success_rate_visible: gateway.image_group_success_rate_visible
+    })
+    assignGateway(saved)
+    appStore.showSuccess(t('admin.customFeatures.gateway.saved'))
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.customFeatures.saveFailed')))
+  } finally {
+    savingGateway.value = false
+  }
+}
+
+async function resetImageSuccessRates() {
+  if (resettingImageSuccessRates.value) return
+  resettingImageSuccessRates.value = true
+  try {
+    await customFeaturesAPI.resetImageGroupSuccessRates()
+    showResetImageSuccessRatesConfirm.value = false
+    appStore.showSuccess(t('admin.customFeatures.gateway.imageSuccessRate.resetSuccess'))
+  } catch (error) {
+    appStore.showError(
+      extractApiErrorMessage(error, t('admin.customFeatures.gateway.imageSuccessRate.resetFailed'))
+    )
+  } finally {
+    resettingImageSuccessRates.value = false
   }
 }
 

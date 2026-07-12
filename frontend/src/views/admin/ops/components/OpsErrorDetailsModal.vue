@@ -8,13 +8,16 @@ import { opsAPI, type OpsErrorLog } from '@/api/admin/ops'
 
 interface Props {
   show: boolean
+  closeOnEscape?: boolean
   timeRange: string
   platform?: string
   groupId?: number | null
   errorType: 'request' | 'upstream'
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  closeOnEscape: true,
+})
 const emit = defineEmits<{
   (e: 'update:show', value: boolean): void
   (e: 'openErrorDetail', errorId: number): void
@@ -199,7 +202,7 @@ watch(
 </script>
 
 <template>
-  <BaseDialog :show="show" :title="modalTitle" width="full" @close="close">
+  <BaseDialog :show="show" :title="modalTitle" width="full" :close-on-escape="closeOnEscape" @close="close">
     <div class="flex h-full min-h-0 flex-col">
       <!-- Filters -->
       <div class="mb-4 flex-shrink-0 border-b border-gray-200 pb-4 dark:border-dark-700">

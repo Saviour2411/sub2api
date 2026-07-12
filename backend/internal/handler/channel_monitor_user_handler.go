@@ -13,8 +13,9 @@ import (
 
 // ChannelMonitorUserHandler 渠道监控用户只读 handler。
 type ChannelMonitorUserHandler struct {
-	monitorService *service.ChannelMonitorService
-	settingService *service.SettingService
+	monitorService     *service.ChannelMonitorService
+	settingService     *service.SettingService
+	successRateService *service.ImageGroupSuccessRateService
 }
 
 // NewChannelMonitorUserHandler 创建 handler。
@@ -22,10 +23,12 @@ type ChannelMonitorUserHandler struct {
 func NewChannelMonitorUserHandler(
 	monitorService *service.ChannelMonitorService,
 	settingService *service.SettingService,
+	successRateService *service.ImageGroupSuccessRateService,
 ) *ChannelMonitorUserHandler {
 	return &ChannelMonitorUserHandler{
-		monitorService: monitorService,
-		settingService: settingService,
+		monitorService:     monitorService,
+		settingService:     settingService,
+		successRateService: successRateService,
 	}
 }
 
@@ -140,8 +143,16 @@ func userMonitorDetailToResponse(d *service.UserMonitorDetail) *channelMonitorUs
 
 // List GET /api/v1/channel-monitors
 func (h *ChannelMonitorUserHandler) List(c *gin.Context) {
+	successRates, err := h.imageGroupSuccessRates(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 	if !h.featureEnabled(c) {
-		response.Success(c, gin.H{"items": []channelMonitorUserListItem{}})
+		response.Success(c, gin.H{
+			"items":                     []channelMonitorUserListItem{},
+			"image_group_success_rates": successRates,
+		})
 		return
 	}
 	views, err := h.monitorService.ListUserView(c.Request.Context())
@@ -153,7 +164,10 @@ func (h *ChannelMonitorUserHandler) List(c *gin.Context) {
 	for _, v := range views {
 		items = append(items, userMonitorViewToItem(v))
 	}
-	response.Success(c, gin.H{"items": items})
+	response.Success(c, gin.H{
+		"items":                     items,
+		"image_group_success_rates": successRates,
+	})
 }
 
 // GetStatus GET /api/v1/channel-monitors/:id/status

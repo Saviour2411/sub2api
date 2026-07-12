@@ -277,6 +277,13 @@ const (
 	SettingKeyDailyCheckinUnpaidDecayRules     = "daily_checkin_unpaid_decay_rules"
 	SettingKeyDailyCheckinLinuxDoExemptEnabled = "daily_checkin_linuxdo_exempt_enabled"
 
+	// 二开功能 - 网关配置。
+	SettingKeyGatewayDefaultPoolModeRetryCount       = "gateway_default_pool_mode_retry_count"
+	SettingKeyGatewayDefaultPoolModeRetryStatusCodes = "gateway_default_pool_mode_retry_status_codes"
+	SettingKeyGatewayAutoManagedProbeBackoffMinutes  = "gateway_auto_managed_probe_backoff_minutes"
+	SettingKeyGatewayFirstTokenTimeoutSeconds        = "gateway_first_token_timeout_seconds"
+	SettingKeyGatewayImageGroupSuccessRateVisible    = "gateway_image_group_success_rate_visible"
+
 	// 第三方认证来源默认授予配置
 	SettingKeyAuthSourceDefaultEmailBalance             = "auth_source_default_email_balance"
 	SettingKeyAuthSourceDefaultEmailConcurrency         = "auth_source_default_email_concurrency"

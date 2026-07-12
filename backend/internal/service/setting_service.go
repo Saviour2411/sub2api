@@ -70,6 +70,12 @@ type SettingService struct {
 	// instance owns its own cache, no shared package-level state.
 	openAIQuotaAutoPauseSettingsCache atomic.Value // *cachedOpenAIQuotaAutoPauseSettings
 	openAIQuotaAutoPauseSettingsSF    singleflight.Group
+
+	gatewaySettingsCache atomic.Value // *cachedGatewaySettings
+	gatewaySettingsSF    singleflight.Group
+
+	// 由管理服务注入，用于网关退避配置保存后重排自动测活计划。
+	scheduledTestPlanRepo ScheduledTestPlanRepository
 }
 
 // DefaultPlatformQuotaSetting 单 platform 三档限额（nil = 沿用上层；0 = 显式禁用；>0 = 上限）

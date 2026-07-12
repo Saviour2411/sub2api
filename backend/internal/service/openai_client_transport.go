@@ -63,8 +63,14 @@ func normalizeOpenAIClientTransport(transport OpenAIClientTransport) OpenAIClien
 func resolveOpenAIWSDecisionByClientTransport(
 	decision OpenAIWSProtocolDecision,
 	clientTransport OpenAIClientTransport,
+	allowHTTPStreamingWS ...bool,
 ) OpenAIWSProtocolDecision {
 	if clientTransport == OpenAIClientTransportHTTP {
+		// HTTP SSE 入站允许复用账号配置的 WSv2 上游；非流式 HTTP 仍固定走 HTTP，
+		// 客户端 WebSocket 则保持原有决策，不受首 Token 守卫影响。
+		if len(allowHTTPStreamingWS) > 0 && allowHTTPStreamingWS[0] && decision.Transport == OpenAIUpstreamTransportResponsesWebsocketV2 {
+			return decision
+		}
 		return openAIWSHTTPDecision("client_protocol_http")
 	}
 	return decision

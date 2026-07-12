@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
@@ -20,6 +23,25 @@ var (
 		"DAILY_CHECKIN_DECAY_INVALID",
 		"daily check-in decay settings are invalid",
 	)
+	ErrGatewaySettingsInvalid = infraerrors.BadRequest(
+		"GATEWAY_SETTINGS_INVALID",
+		"网关配置无效",
+	)
+)
+
+const (
+	DefaultGatewayPoolModeRetryCount   = 1
+	DefaultGatewayFirstTokenTimeout    = 60
+	MaxGatewayPoolModeRetryCount       = 10
+	MaxGatewayFirstTokenTimeoutSeconds = 600
+	gatewaySettingsCacheTTL            = 60 * time.Second
+	gatewaySettingsErrorCacheTTL       = 5 * time.Second
+	gatewaySettingsDBTimeout           = 5 * time.Second
+)
+
+var (
+	defaultGatewayPoolModeRetryStatusCodes = []int{401, 403, 429, 502, 503, 504}
+	defaultGatewayProbeBackoffMinutes      = []int{5, 10, 15, 30, 60}
 )
 
 // ModelMarketplaceSettings 是模型广场的独立管理配置。
@@ -44,10 +66,33 @@ type DailyCheckinSettings struct {
 	LegacyMax    float64 `json:"-"`
 }
 
+// GatewaySettings 是二开功能中的网关运行配置。
+type GatewaySettings struct {
+	DefaultPoolModeRetryCount       int   `json:"default_pool_mode_retry_count"`
+	DefaultPoolModeRetryStatusCodes []int `json:"default_pool_mode_retry_status_codes"`
+	AutoManagedProbeBackoffMinutes  []int `json:"auto_managed_probe_backoff_minutes"`
+	FirstTokenTimeoutSeconds        int   `json:"first_token_timeout_seconds"`
+	ImageGroupSuccessRateVisible    bool  `json:"image_group_success_rate_visible"`
+}
+
+type cachedGatewaySettings struct {
+	settings  GatewaySettings
+	expiresAt int64
+}
+
 // CustomFeatureSettings 聚合二开功能的独立管理配置。
 type CustomFeatureSettings struct {
 	ModelMarketplace ModelMarketplaceSettings `json:"model_marketplace"`
 	DailyCheckin     DailyCheckinSettings     `json:"daily_checkin"`
+	Gateway          GatewaySettings          `json:"gateway"`
+}
+
+var gatewaySettingKeys = []string{
+	SettingKeyGatewayDefaultPoolModeRetryCount,
+	SettingKeyGatewayDefaultPoolModeRetryStatusCodes,
+	SettingKeyGatewayAutoManagedProbeBackoffMinutes,
+	SettingKeyGatewayFirstTokenTimeoutSeconds,
+	SettingKeyGatewayImageGroupSuccessRateVisible,
 }
 
 var customFeatureSettingKeys = []string{
@@ -63,6 +108,11 @@ var customFeatureSettingKeys = []string{
 	SettingKeyDailyCheckinUnpaidFullDays,
 	SettingKeyDailyCheckinUnpaidDecayRules,
 	SettingKeyDailyCheckinLinuxDoExemptEnabled,
+	SettingKeyGatewayDefaultPoolModeRetryCount,
+	SettingKeyGatewayDefaultPoolModeRetryStatusCodes,
+	SettingKeyGatewayAutoManagedProbeBackoffMinutes,
+	SettingKeyGatewayFirstTokenTimeoutSeconds,
+	SettingKeyGatewayImageGroupSuccessRateVisible,
 }
 
 // GetCustomFeatureSettings 读取模型广场和每日签到配置。
@@ -98,11 +148,252 @@ func (s *SettingService) GetCustomFeatureSettings(ctx context.Context) (*CustomF
 		LegacyMin:            minAmount,
 		LegacyMax:            maxAmount,
 	}
+	gateway := parseGatewaySettings(values)
+	s.storeGatewaySettingsCache(gateway, gatewaySettingsCacheTTL)
 
 	return &CustomFeatureSettings{
 		ModelMarketplace: marketplace,
 		DailyCheckin:     daily,
+		Gateway:          gateway,
 	}, nil
+}
+
+// DefaultGatewaySettings 返回未持久化配置时使用的默认值。
+func DefaultGatewaySettings() GatewaySettings {
+	return GatewaySettings{
+		DefaultPoolModeRetryCount:       DefaultGatewayPoolModeRetryCount,
+		DefaultPoolModeRetryStatusCodes: append([]int(nil), defaultGatewayPoolModeRetryStatusCodes...),
+		AutoManagedProbeBackoffMinutes:  append([]int(nil), defaultGatewayProbeBackoffMinutes...),
+		FirstTokenTimeoutSeconds:        DefaultGatewayFirstTokenTimeout,
+		ImageGroupSuccessRateVisible:    true,
+	}
+}
+
+// GetGatewaySettings 读取持久化网关配置并应用安全默认值。
+func (s *SettingService) GetGatewaySettings(ctx context.Context) (*GatewaySettings, error) {
+	if s == nil || s.settingRepo == nil {
+		settings := DefaultGatewaySettings()
+		return &settings, nil
+	}
+	values, err := s.settingRepo.GetMultiple(ctx, gatewaySettingKeys)
+	if err != nil {
+		return nil, fmt.Errorf("读取网关配置: %w", err)
+	}
+	settings := parseGatewaySettings(values)
+	s.storeGatewaySettingsCache(settings, gatewaySettingsCacheTTL)
+	return &settings, nil
+}
+
+// GetGatewayRuntime 为网关热路径提供带进程内缓存的配置快照。
+func (s *SettingService) GetGatewayRuntime(ctx context.Context) GatewaySettings {
+	if s == nil {
+		return DefaultGatewaySettings()
+	}
+	if cached, ok := s.gatewaySettingsCache.Load().(*cachedGatewaySettings); ok && cached != nil && time.Now().UnixNano() < cached.expiresAt {
+		return cloneGatewaySettings(cached.settings)
+	}
+
+	result, _, _ := s.gatewaySettingsSF.Do("gateway_settings", func() (any, error) {
+		if cached, ok := s.gatewaySettingsCache.Load().(*cachedGatewaySettings); ok && cached != nil && time.Now().UnixNano() < cached.expiresAt {
+			return cloneGatewaySettings(cached.settings), nil
+		}
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), gatewaySettingsDBTimeout)
+		defer cancel()
+		settings, err := s.GetGatewaySettings(dbCtx)
+		if err != nil {
+			slog.Warn("读取网关运行配置失败，使用缓存或默认值", "error", err)
+			fallback := DefaultGatewaySettings()
+			if cached, ok := s.gatewaySettingsCache.Load().(*cachedGatewaySettings); ok && cached != nil {
+				fallback = cloneGatewaySettings(cached.settings)
+			}
+			s.storeGatewaySettingsCache(fallback, gatewaySettingsErrorCacheTTL)
+			return fallback, nil
+		}
+		return cloneGatewaySettings(*settings), nil
+	})
+	if settings, ok := result.(GatewaySettings); ok {
+		return cloneGatewaySettings(settings)
+	}
+	return DefaultGatewaySettings()
+}
+
+// UpdateGatewaySettings 校验、规范化并保存网关配置。
+func (s *SettingService) UpdateGatewaySettings(ctx context.Context, input GatewaySettings) (*GatewaySettings, error) {
+	if err := validateGatewaySettings(&input); err != nil {
+		return nil, err
+	}
+	statusCodesJSON, err := json.Marshal(input.DefaultPoolModeRetryStatusCodes)
+	if err != nil {
+		return nil, fmt.Errorf("序列化默认重试状态码: %w", err)
+	}
+	backoffJSON, err := json.Marshal(input.AutoManagedProbeBackoffMinutes)
+	if err != nil {
+		return nil, fmt.Errorf("序列化自动测活退避配置: %w", err)
+	}
+	updates := map[string]string{
+		SettingKeyGatewayDefaultPoolModeRetryCount:       strconv.Itoa(input.DefaultPoolModeRetryCount),
+		SettingKeyGatewayDefaultPoolModeRetryStatusCodes: string(statusCodesJSON),
+		SettingKeyGatewayAutoManagedProbeBackoffMinutes:  string(backoffJSON),
+		SettingKeyGatewayFirstTokenTimeoutSeconds:        strconv.Itoa(input.FirstTokenTimeoutSeconds),
+		SettingKeyGatewayImageGroupSuccessRateVisible:    strconv.FormatBool(input.ImageGroupSuccessRateVisible),
+	}
+	if err := s.settingRepo.SetMultiple(ctx, updates); err != nil {
+		return nil, fmt.Errorf("更新网关配置: %w", err)
+	}
+	s.storeGatewaySettingsCache(input, gatewaySettingsCacheTTL)
+	if s.scheduledTestPlanRepo != nil {
+		if err := s.scheduledTestPlanRepo.RescheduleEnabledAutoManaged(ctx, input.AutoManagedProbeBackoffDurations(), time.Now()); err != nil {
+			return nil, fmt.Errorf("重排自动测活计划: %w", err)
+		}
+	}
+	s.notifyCustomFeatureSettingsUpdated()
+	result := cloneGatewaySettings(input)
+	return &result, nil
+}
+
+// SetScheduledTestPlanRepository 注入自动测活计划仓储。
+func (s *SettingService) SetScheduledTestPlanRepository(repo ScheduledTestPlanRepository) {
+	if s != nil {
+		s.scheduledTestPlanRepo = repo
+	}
+}
+
+// AutoManagedProbeBackoffDurations 返回可直接用于调度器的退避时长。
+func (s GatewaySettings) AutoManagedProbeBackoffDurations() []time.Duration {
+	minutes := s.AutoManagedProbeBackoffMinutes
+	if len(minutes) == 0 {
+		minutes = defaultGatewayProbeBackoffMinutes
+	}
+	result := make([]time.Duration, len(minutes))
+	for i, minute := range minutes {
+		result[i] = time.Duration(minute) * time.Minute
+	}
+	return result
+}
+
+// ApplyGatewayPoolModeDefaults 仅为新建的 apikey/bedrock 账号补齐池模式默认值。
+func ApplyGatewayPoolModeDefaults(accountType string, credentials map[string]any, settings GatewaySettings) map[string]any {
+	accountType = strings.ToLower(strings.TrimSpace(accountType))
+	if accountType != AccountTypeAPIKey && accountType != AccountTypeBedrock {
+		return credentials
+	}
+	if credentials == nil {
+		credentials = make(map[string]any)
+	}
+	if poolMode, ok := credentials["pool_mode"].(bool); ok && !poolMode {
+		return credentials
+	}
+	if _, ok := credentials["pool_mode"]; !ok {
+		credentials["pool_mode"] = true
+	}
+	if _, ok := credentials["pool_mode_retry_count"]; !ok {
+		credentials["pool_mode_retry_count"] = settings.DefaultPoolModeRetryCount
+	}
+	if _, ok := credentials["pool_mode_retry_status_codes"]; !ok {
+		credentials["pool_mode_retry_status_codes"] = append([]int(nil), settings.DefaultPoolModeRetryStatusCodes...)
+	}
+	return credentials
+}
+
+func parseGatewaySettings(values map[string]string) GatewaySettings {
+	settings := DefaultGatewaySettings()
+	if value, err := strconv.Atoi(strings.TrimSpace(values[SettingKeyGatewayDefaultPoolModeRetryCount])); err == nil && value >= 0 && value <= MaxGatewayPoolModeRetryCount {
+		settings.DefaultPoolModeRetryCount = value
+	}
+	if raw, ok := values[SettingKeyGatewayDefaultPoolModeRetryStatusCodes]; ok && strings.TrimSpace(raw) != "" {
+		var codes []int
+		if err := json.Unmarshal([]byte(raw), &codes); err == nil && validateRetryStatusCodes(codes) == nil {
+			settings.DefaultPoolModeRetryStatusCodes = normalizeRetryStatusCodes(codes)
+		}
+	}
+	if raw, ok := values[SettingKeyGatewayAutoManagedProbeBackoffMinutes]; ok && strings.TrimSpace(raw) != "" {
+		var minutes []int
+		if err := json.Unmarshal([]byte(raw), &minutes); err == nil && validateProbeBackoffMinutes(minutes) == nil {
+			settings.AutoManagedProbeBackoffMinutes = append([]int(nil), minutes...)
+		}
+	}
+	if value, err := strconv.Atoi(strings.TrimSpace(values[SettingKeyGatewayFirstTokenTimeoutSeconds])); err == nil && value >= 0 && value <= MaxGatewayFirstTokenTimeoutSeconds {
+		settings.FirstTokenTimeoutSeconds = value
+	}
+	if raw, ok := values[SettingKeyGatewayImageGroupSuccessRateVisible]; ok {
+		settings.ImageGroupSuccessRateVisible = !isFalseSettingValue(raw)
+	}
+	return settings
+}
+
+func validateGatewaySettings(settings *GatewaySettings) error {
+	if settings == nil || settings.DefaultPoolModeRetryCount < 0 || settings.DefaultPoolModeRetryCount > MaxGatewayPoolModeRetryCount {
+		return ErrGatewaySettingsInvalid.WithMetadata(map[string]string{"field": "default_pool_mode_retry_count"})
+	}
+	if settings.FirstTokenTimeoutSeconds < 0 || settings.FirstTokenTimeoutSeconds > MaxGatewayFirstTokenTimeoutSeconds {
+		return ErrGatewaySettingsInvalid.WithMetadata(map[string]string{"field": "first_token_timeout_seconds"})
+	}
+	if err := validateRetryStatusCodes(settings.DefaultPoolModeRetryStatusCodes); err != nil {
+		return ErrGatewaySettingsInvalid.WithMetadata(map[string]string{"field": "default_pool_mode_retry_status_codes"})
+	}
+	if err := validateProbeBackoffMinutes(settings.AutoManagedProbeBackoffMinutes); err != nil {
+		return ErrGatewaySettingsInvalid.WithMetadata(map[string]string{"field": "auto_managed_probe_backoff_minutes"})
+	}
+	settings.DefaultPoolModeRetryStatusCodes = normalizeRetryStatusCodes(settings.DefaultPoolModeRetryStatusCodes)
+	settings.AutoManagedProbeBackoffMinutes = append([]int(nil), settings.AutoManagedProbeBackoffMinutes...)
+	return nil
+}
+
+func validateRetryStatusCodes(codes []int) error {
+	for _, code := range codes {
+		if code < 100 || code > 599 {
+			return errors.New("invalid HTTP status code")
+		}
+	}
+	return nil
+}
+
+func validateProbeBackoffMinutes(minutes []int) error {
+	if len(minutes) < 1 || len(minutes) > 10 {
+		return errors.New("invalid backoff step count")
+	}
+	for i, minute := range minutes {
+		if minute < 1 || minute > 1440 || (i > 0 && minute < minutes[i-1]) {
+			return errors.New("invalid backoff minutes")
+		}
+	}
+	return nil
+}
+
+func normalizeRetryStatusCodes(codes []int) []int {
+	if len(codes) == 0 {
+		return []int{}
+	}
+	result := append([]int(nil), codes...)
+	sort.Ints(result)
+	write := 0
+	for _, code := range result {
+		if write > 0 && result[write-1] == code {
+			continue
+		}
+		result[write] = code
+		write++
+	}
+	return result[:write]
+}
+
+func cloneGatewaySettings(settings GatewaySettings) GatewaySettings {
+	settings.DefaultPoolModeRetryStatusCodes = append([]int{}, settings.DefaultPoolModeRetryStatusCodes...)
+	settings.AutoManagedProbeBackoffMinutes = append([]int(nil), settings.AutoManagedProbeBackoffMinutes...)
+	return settings
+}
+
+func (s *SettingService) storeGatewaySettingsCache(settings GatewaySettings, ttl time.Duration) {
+	if s == nil {
+		return
+	}
+	s.gatewaySettingsCache.Store(&cachedGatewaySettings{
+		settings:  cloneGatewaySettings(settings),
+		expiresAt: time.Now().Add(ttl).UnixNano(),
+	})
 }
 
 // GetDailyCheckinSettings 读取签到运行时配置，确保与管理接口使用同一解析逻辑。

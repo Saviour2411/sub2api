@@ -415,7 +415,7 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 		}
 	}
 	if shouldDisable {
-		return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: body}
+		return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: body, RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode)}
 	}
 
 	MarkResponseCommitted(c)
@@ -1000,7 +1000,7 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 					return nil, &UpstreamFailoverError{
 						StatusCode:             http.StatusBadGateway,
 						ResponseBody:           body,
-						RetryableOnSameAccount: true,
+						RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(http.StatusBadGateway),
 					}
 				}
 				sendErrorEvent("stream_read_error", disconnectMsg)

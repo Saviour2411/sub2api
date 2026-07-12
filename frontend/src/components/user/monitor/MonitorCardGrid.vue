@@ -1,7 +1,7 @@
 <template>
   <div>
     <div
-      v-if="loading && items.length === 0"
+      v-if="loading && !hasVisibleItems"
       class="grid gap-5 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
     >
       <div
@@ -26,7 +26,7 @@
     </div>
 
     <EmptyState
-      v-else-if="items.length === 0"
+      v-else-if="!hasVisibleItems"
       :title="t('channelStatus.empty.title')"
       :description="t('channelStatus.empty.description')"
     />
@@ -44,15 +44,26 @@
         :countdown-seconds="countdownSeconds"
         @click="emit('cardClick', item)"
       />
+      <ImageGroupSuccessRateCard
+        v-for="item in visibleImageSuccessRateItems"
+        :key="`image-success-rate-${item.group_id}`"
+        :item="item"
+      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { UserMonitorView, UserMonitorDetail } from '@/api/channelMonitor'
+import type {
+  UserMonitorView,
+  UserMonitorDetail,
+  ImageGroupSuccessRates,
+} from '@/api/channelMonitor'
 import EmptyState from '@/components/common/EmptyState.vue'
 import MonitorCard from './MonitorCard.vue'
+import ImageGroupSuccessRateCard from './ImageGroupSuccessRateCard.vue'
 
 const props = defineProps<{
   items: UserMonitorView[]
@@ -60,6 +71,7 @@ const props = defineProps<{
   countdownSeconds: number
   loading: boolean
   detailCache: Record<number, UserMonitorDetail>
+  imageGroupSuccessRates: ImageGroupSuccessRates
 }>()
 
 const emit = defineEmits<{
@@ -67,6 +79,13 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+
+const visibleImageSuccessRateItems = computed(() =>
+  props.imageGroupSuccessRates.visible ? props.imageGroupSuccessRates.items : []
+)
+const hasVisibleItems = computed(
+  () => props.items.length > 0 || visibleImageSuccessRateItems.value.length > 0
+)
 
 function resolveAvailability(item: UserMonitorView): number | null {
   if (props.window === '7d') {

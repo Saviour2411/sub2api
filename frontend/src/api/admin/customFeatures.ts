@@ -38,9 +38,22 @@ export interface DailyCheckinSettings {
   linuxdo_exempt_enabled: boolean
 }
 
+export interface GatewaySettings {
+  default_pool_mode_retry_count: number
+  default_pool_mode_retry_status_codes: number[]
+  auto_managed_probe_backoff_minutes: number[]
+  first_token_timeout_seconds: number
+  image_group_success_rate_visible: boolean
+}
+
+export interface ImageGroupSuccessRatesResetResult {
+  reset_at: string
+}
+
 export interface CustomFeatureSettings {
   model_marketplace: ModelMarketplaceSettings
   daily_checkin: DailyCheckinSettings
+  gateway: GatewaySettings
 }
 
 export async function getSettings(): Promise<CustomFeatureSettings> {
@@ -68,8 +81,25 @@ export async function updateDailyCheckin(
   return data
 }
 
+export async function updateGateway(settings: GatewaySettings): Promise<GatewaySettings> {
+  const { data } = await apiClient.put<GatewaySettings>(
+    '/admin/custom-features/gateway',
+    settings
+  )
+  return data
+}
+
+export async function resetImageGroupSuccessRates(): Promise<ImageGroupSuccessRatesResetResult> {
+  const { data } = await apiClient.post<ImageGroupSuccessRatesResetResult>(
+    '/admin/custom-features/gateway/image-group-success-rates/reset'
+  )
+  return data
+}
+
 export default {
   getSettings,
   updateModelMarketplace,
-  updateDailyCheckin
+  updateDailyCheckin,
+  updateGateway,
+  resetImageGroupSuccessRates
 }

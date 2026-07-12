@@ -30,6 +30,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	startTime time.Time,
 	attempt int,
 	lastFailureReason string,
+	firstTokenAttempt *firstTokenAttempt,
 ) (*OpenAIForwardResult, error) {
 	if s == nil || account == nil {
 		return nil, wrapOpenAIWSFallback("invalid_state", errors.New("service or account is nil"))
@@ -472,6 +473,13 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		if isTerminalEvent {
 			terminalEventCount++
 		}
+		if firstTokenAttempt != nil {
+			if isMeaningfulFirstTokenJSON(message) {
+				firstTokenAttempt.markReceived()
+			} else if isTerminalEvent {
+				firstTokenAttempt.markDecidedWithoutToken()
+			}
+		}
 		if firstTokenMs == nil && isTokenEvent {
 			ms := int(time.Since(startTime).Milliseconds())
 			firstTokenMs = &ms
@@ -568,6 +576,9 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			lease.MarkBroken()
 			if !wroteDownstream && canFallback {
 				return nil, wrapOpenAIWSFallback(fallbackReason, errors.New(errMsg))
+			}
+			if firstTokenAttempt != nil {
+				firstTokenAttempt.markDecidedWithoutToken()
 			}
 			statusCode := openAIWSErrorHTTPStatusFromRaw(errCodeRaw, errTypeRaw)
 			setOpsUpstreamError(c, statusCode, errMsg, "")

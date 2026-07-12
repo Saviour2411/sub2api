@@ -241,12 +241,15 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	}
 
 	// 6. Build upstream request
+	firstTokenAttempt := newFirstTokenAttempt(ctx, c, s.rateLimitService, account, upstreamModel, clientStream)
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	upstreamReq, err := s.buildUpstreamRequest(upstreamCtx, c, account, responsesBody, token, true, promptCacheKey, false)
 	releaseUpstreamCtx()
 	if err != nil {
+		firstTokenAttempt.stopBeforeStreaming()
 		return nil, fmt.Errorf("build upstream request: %w", err)
 	}
+	upstreamReq = firstTokenAttempt.bindRequest(upstreamReq)
 
 	if promptCacheKey != "" {
 		apiKeyID := getAPIKeyIDFromContext(c)
@@ -260,12 +263,17 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	}
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
+		attemptErr := firstTokenAttempt.finishRequestError(err)
+		if isFirstTokenTimeoutFailover(attemptErr) {
+			return nil, attemptErr
+		}
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	// 8. Handle error response with failover
 	if resp.StatusCode >= 400 {
+		firstTokenAttempt.stopBeforeStreaming(resp)
 		respBody, upstreamMsg := s.readOpenAIUpstreamError(resp)
 		if account.Type == AccountTypeAPIKey &&
 			openai_compat.ResolveResponsesSupport(account.Extra) == openai_compat.ResponsesSupportUnknown &&
@@ -287,7 +295,9 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	var result *OpenAIForwardResult
 	var handleErr error
 	if clientStream {
+		firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolSSE)
 		result, handleErr = s.handleChatStreamingResponse(resp, c, account, originalModel, billingModel, upstreamModel, startTime, len(body))
+		handleErr = firstTokenAttempt.finish(handleErr)
 	} else {
 		result, handleErr = s.handleChatBufferedStreamingResponse(resp, c, account, originalModel, billingModel, upstreamModel, startTime)
 	}
@@ -576,6 +586,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 					if clientMsg == "" {
 						clientMsg = "Request blocked by upstream cyber-security policy"
 					}
+					MarkOpsStreamError(c, "invalid_request_error", clientMsg, http.StatusBadRequest)
 					if _, err := fmt.Fprint(c.Writer, buildChatStreamErrorSSE(code, clientMsg)); err == nil {
 						_, _ = fmt.Fprint(c.Writer, "data: [DONE]\n\n")
 						if fl, ok := c.Writer.(http.Flusher); ok {
@@ -605,6 +616,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				defaultStatus, defaultErrType, defaultMsg = status, errType, errMsg
 				MarkResponseCommitted(c)
 			}
+			MarkOpsStreamError(c, defaultErrType, defaultMsg, defaultStatus)
 			errorPayload, _ := json.Marshal(gin.H{
 				"error": gin.H{
 					"type":    defaultErrType,

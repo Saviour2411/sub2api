@@ -451,7 +451,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						h.handleFailoverExhausted(c, failoverErr, service.PlatformGemini, true)
 						return
 					}
-					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, failoverErr)
+					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, failoverErr, account.GetPoolModeRetryCount())
 					switch action {
 					case FailoverContinue:
 						continue
@@ -884,7 +884,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						h.handleFailoverExhausted(c, failoverErr, account.Platform, true)
 						return
 					}
-					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, failoverErr)
+					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, failoverErr, account.GetPoolModeRetryCount())
 					switch action {
 					case FailoverContinue:
 						continue
@@ -1576,6 +1576,7 @@ func (h *GatewayHandler) handleConcurrencyError(c *gin.Context, err error, slotT
 }
 
 func (h *GatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, platform string, streamStarted bool) {
+	streamStarted = normalizeFirstTokenTimeoutStreamState(c, failoverErr, streamStarted)
 	statusCode := failoverErr.StatusCode
 	responseBody := failoverErr.ResponseBody
 	if service.IsOpenAISilentRefusalErrorBody(responseBody) {
@@ -1617,6 +1618,15 @@ func (h *GatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *se
 	h.handleStreamingAwareError(c, status, errType, errMsg, streamStarted)
 }
 
+func normalizeFirstTokenTimeoutStreamState(c *gin.Context, failoverErr *service.UpstreamFailoverError, streamStarted bool) bool {
+	if failoverErr == nil || !failoverErr.FirstTokenTimeout {
+		return streamStarted
+	}
+	// 首 Token 守卫会丢弃该账号的全部前导数据。只有真实 writer 已提交时，
+	// 才能按流内错误处理；“心跳曾启动”本身不能把最终 504 降级成 200/502。
+	return c != nil && c.Writer != nil && c.Writer.Written()
+}
+
 // handleFailoverExhaustedSimple 简化版本，用于没有响应体的情况
 func (h *GatewayHandler) handleFailoverExhaustedSimple(c *gin.Context, statusCode int, streamStarted bool) {
 	status, errType, errMsg := h.mapUpstreamError(statusCode)
@@ -1634,7 +1644,9 @@ func (h *GatewayHandler) mapUpstreamError(statusCode int) (int, string, string) 
 		return http.StatusTooManyRequests, "rate_limit_error", "Upstream rate limit exceeded, please retry later"
 	case 529:
 		return http.StatusServiceUnavailable, "overloaded_error", "Upstream service overloaded, please retry later"
-	case 500, 502, 503, 504:
+	case 504:
+		return http.StatusGatewayTimeout, "upstream_timeout", "Upstream response timed out"
+	case 500, 502, 503:
 		return http.StatusBadGateway, "upstream_error", "Upstream service temporarily unavailable"
 	default:
 		return http.StatusBadGateway, "upstream_error", "Upstream request failed"

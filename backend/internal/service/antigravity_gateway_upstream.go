@@ -40,6 +40,7 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 		return nil, fmt.Errorf("missing model")
 	}
 	originalModel := claudeReq.Model
+	firstTokenAttempt := newFirstTokenAttempt(ctx, c, s.rateLimitService, account, originalModel, claudeReq.Stream)
 
 	// 构建上游请求 URL
 	upstreamURL := baseURL + "/v1/messages"
@@ -55,8 +56,10 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 	// 创建请求
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, upstreamURL, bytes.NewReader(body))
 	if err != nil {
+		firstTokenAttempt.stopBeforeStreaming()
 		return nil, fmt.Errorf("create upstream request: %w", err)
 	}
+	req = firstTokenAttempt.bindRequest(req)
 
 	// 设置请求头
 	req.Header.Set("Content-Type", "application/json")
@@ -80,6 +83,10 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 	// 发送请求
 	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
+		attemptErr := firstTokenAttempt.finishRequestError(err)
+		if isFirstTokenTimeoutFailover(attemptErr) {
+			return nil, attemptErr
+		}
 		logger.LegacyPrintf("service.antigravity_gateway", "%s upstream request failed: %v", prefix, err)
 		return nil, fmt.Errorf("upstream request failed: %w", err)
 	}
@@ -87,6 +94,7 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 
 	// 处理错误响应
 	if resp.StatusCode >= 400 {
+		firstTokenAttempt.stopBeforeStreaming(resp)
 		respBody := s.readUpstreamErrorBody(resp)
 
 		// 429 错误时标记账号限流
@@ -117,7 +125,11 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 		c.Header("X-Accel-Buffering", "no")
 		c.Status(http.StatusOK)
 
+		firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolSSE)
 		streamRes := s.streamUpstreamResponse(c, resp, startTime)
+		if streamErr := firstTokenAttempt.finish(nil); streamErr != nil {
+			return nil, streamErr
+		}
 		usage = streamRes.usage
 		firstTokenMs = streamRes.firstTokenMs
 		clientDisconnect = streamRes.clientDisconnect

@@ -1145,7 +1145,7 @@ func TestHandleGeminiStreamingResponse_NormalComplete(t *testing.T) {
 		fmt.Fprintln(pw, "")
 	}()
 
-	result, err := svc.handleGeminiStreamingResponse(c, resp, time.Now())
+	result, err := svc.handleGeminiStreamingResponse(c, resp, &Account{}, time.Now())
 	_ = pr.Close()
 
 	require.NoError(t, err)
@@ -1190,7 +1190,7 @@ func TestHandleClaudeStreamingResponse_NormalComplete(t *testing.T) {
 		fmt.Fprintln(pw, "")
 	}()
 
-	result, err := svc.handleClaudeStreamingResponse(c, resp, time.Now(), "claude-sonnet-4-5")
+	result, err := svc.handleClaudeStreamingResponse(c, resp, &Account{}, time.Now(), "claude-sonnet-4-5")
 	_ = pr.Close()
 
 	require.NoError(t, err)
@@ -1233,7 +1233,7 @@ func TestHandleGeminiStreamingResponse_ThoughtsTokenCount(t *testing.T) {
 		fmt.Fprintln(pw, "")
 	}()
 
-	result, err := svc.handleGeminiStreamingResponse(c, resp, time.Now())
+	result, err := svc.handleGeminiStreamingResponse(c, resp, &Account{}, time.Now())
 	_ = pr.Close()
 
 	require.NoError(t, err)
@@ -1267,7 +1267,7 @@ func TestHandleClaudeStreamingResponse_ThoughtsTokenCount(t *testing.T) {
 		fmt.Fprintln(pw, "")
 	}()
 
-	result, err := svc.handleClaudeStreamingResponse(c, resp, time.Now(), "gemini-2.5-pro")
+	result, err := svc.handleClaudeStreamingResponse(c, resp, &Account{}, time.Now(), "gemini-2.5-pro")
 	_ = pr.Close()
 
 	require.NoError(t, err)
@@ -1414,7 +1414,7 @@ func TestHandleGeminiStreamingResponse_ClientDisconnect(t *testing.T) {
 		fmt.Fprintln(pw, "")
 	}()
 
-	result, err := svc.handleGeminiStreamingResponse(c, resp, time.Now())
+	result, err := svc.handleGeminiStreamingResponse(c, resp, &Account{}, time.Now())
 	_ = pr.Close()
 
 	require.NoError(t, err)
@@ -1439,7 +1439,7 @@ func TestHandleGeminiStreamingResponse_ContextCanceled(t *testing.T) {
 
 	resp := &http.Response{StatusCode: http.StatusOK, Body: cancelReadCloser{}, Header: http.Header{}}
 
-	result, err := svc.handleGeminiStreamingResponse(c, resp, time.Now())
+	result, err := svc.handleGeminiStreamingResponse(c, resp, &Account{}, time.Now())
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -1470,7 +1470,7 @@ func TestHandleClaudeStreamingResponse_ClientDisconnect(t *testing.T) {
 		fmt.Fprintln(pw, "")
 	}()
 
-	result, err := svc.handleClaudeStreamingResponse(c, resp, time.Now(), "claude-sonnet-4-5")
+	result, err := svc.handleClaudeStreamingResponse(c, resp, &Account{}, time.Now(), "claude-sonnet-4-5")
 	_ = pr.Close()
 
 	require.NoError(t, err)
@@ -1486,36 +1486,57 @@ func TestHandleClaudeStreamingResponse_EmptyStream(t *testing.T) {
 		Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize},
 	})
 
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+	tests := []struct {
+		name      string
+		account   *Account
+		retryable bool
+	}{
+		{name: "未开启池模式", account: &Account{}, retryable: false},
+		{
+			name: "池模式包含502",
+			account: &Account{
+				Type: AccountTypeAPIKey,
+				Credentials: map[string]any{
+					"pool_mode":                    true,
+					"pool_mode_retry_status_codes": []any{http.StatusBadGateway},
+				},
+			},
+			retryable: true,
+		},
+	}
 
-	pr, pw := io.Pipe()
-	resp := &http.Response{StatusCode: http.StatusOK, Body: pr, Header: http.Header{}}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
 
-	go func() {
-		defer func() { _ = pw.Close() }()
-		// 所有行均为无法 JSON 解析的内容，ProcessLine 全部返回 nil
-		fmt.Fprintln(pw, "data: not-valid-json")
-		fmt.Fprintln(pw, "")
-		fmt.Fprintln(pw, "data: also-invalid")
-		fmt.Fprintln(pw, "")
-	}()
+			pr, pw := io.Pipe()
+			resp := &http.Response{StatusCode: http.StatusOK, Body: pr, Header: http.Header{}}
+			go func() {
+				defer func() { _ = pw.Close() }()
+				// 所有行均为无法 JSON 解析的内容，ProcessLine 全部返回 nil。
+				_, _ = fmt.Fprintln(pw, "data: not-valid-json")
+				_, _ = fmt.Fprintln(pw)
+				_, _ = fmt.Fprintln(pw, "data: also-invalid")
+				_, _ = fmt.Fprintln(pw)
+			}()
 
-	_, err := svc.handleClaudeStreamingResponse(c, resp, time.Now(), "claude-sonnet-4-5")
-	_ = pr.Close()
+			_, err := svc.handleClaudeStreamingResponse(c, resp, tt.account, time.Now(), "claude-sonnet-4-5")
+			_ = pr.Close()
 
-	// 应当返回 UpstreamFailoverError 而非 nil，以便上层触发 failover
-	require.Error(t, err)
-	var failoverErr *UpstreamFailoverError
-	require.ErrorAs(t, err, &failoverErr)
-	require.True(t, failoverErr.RetryableOnSameAccount)
+			// 空流始终触发 failover，同账号重试资格由当前账号配置决定。
+			var failoverErr *UpstreamFailoverError
+			require.ErrorAs(t, err, &failoverErr)
+			require.Equal(t, tt.retryable, failoverErr.RetryableOnSameAccount)
 
-	// 客户端不应收到任何 SSE 事件（既无 message_start 也无 message_stop）
-	body := rec.Body.String()
-	require.NotContains(t, body, "event: message_start")
-	require.NotContains(t, body, "event: message_stop")
-	require.NotContains(t, body, "event: message_delta")
+			// 客户端不应收到任何 SSE 事件（既无 message_start 也无 message_stop）。
+			body := rec.Body.String()
+			require.NotContains(t, body, "event: message_start")
+			require.NotContains(t, body, "event: message_stop")
+			require.NotContains(t, body, "event: message_delta")
+		})
+	}
 }
 
 // TestHandleClaudeStreamingResponse_ContextCanceled
@@ -1534,7 +1555,7 @@ func TestHandleClaudeStreamingResponse_ContextCanceled(t *testing.T) {
 
 	resp := &http.Response{StatusCode: http.StatusOK, Body: cancelReadCloser{}, Header: http.Header{}}
 
-	result, err := svc.handleClaudeStreamingResponse(c, resp, time.Now(), "claude-sonnet-4-5")
+	result, err := svc.handleClaudeStreamingResponse(c, resp, &Account{}, time.Now(), "claude-sonnet-4-5")
 
 	require.NoError(t, err)
 	require.NotNil(t, result)

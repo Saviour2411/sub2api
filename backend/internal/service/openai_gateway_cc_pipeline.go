@@ -113,7 +113,7 @@ func (s *OpenAIGatewayService) failoverOpenAIUpstreamHTTPError(
 	return &UpstreamFailoverError{
 		StatusCode:             resp.StatusCode,
 		ResponseBody:           respBody,
-		RetryableOnSameAccount: account.IsPoolMode() && (account.IsPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
+		RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 	}
 }
 
@@ -157,15 +157,19 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 	targetURL string,
 	body []byte,
 	stream bool,
+	model string,
 	bearerToken string,
 	userAgent string,
-) (*http.Response, error) {
+) (*http.Response, *firstTokenAttempt, error) {
+	firstTokenAttempt := newFirstTokenAttempt(ctx, c, s.rateLimitService, account, model, stream)
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	upstreamReq, err := http.NewRequestWithContext(upstreamCtx, http.MethodPost, targetURL, bytes.NewReader(body))
 	releaseUpstreamCtx()
 	if err != nil {
-		return nil, fmt.Errorf("build upstream request: %w", err)
+		firstTokenAttempt.stopBeforeStreaming()
+		return nil, nil, fmt.Errorf("build upstream request: %w", err)
 	}
+	upstreamReq = firstTokenAttempt.bindRequest(upstreamReq)
 	upstreamReq = upstreamReq.WithContext(WithHTTPUpstreamProfile(upstreamReq.Context(), HTTPUpstreamProfileOpenAI))
 	upstreamReq.Header.Set("Content-Type", "application/json")
 	upstreamReq.Header.Set("Authorization", "Bearer "+bearerToken)
@@ -197,9 +201,16 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 	}
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
-		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
+		attemptErr := firstTokenAttempt.finishRequestError(err)
+		if isFirstTokenTimeoutFailover(attemptErr) {
+			return nil, nil, attemptErr
+		}
+		return nil, nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 	}
-	return resp, nil
+	if resp.StatusCode >= 400 {
+		firstTokenAttempt.stopBeforeStreaming(resp)
+	}
+	return resp, firstTokenAttempt, nil
 }
 
 // ccStreamScanState 是 scanCCStream 返回的读取状态快照。

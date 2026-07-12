@@ -28,6 +28,32 @@ func (r *scheduledTestPlanRepository) Create(ctx context.Context, plan *service.
 	return scanPlan(row)
 }
 
+func (r *scheduledTestPlanRepository) EnsureAutoManaged(ctx context.Context, accountID int64, enabled bool, nextRunAt *time.Time) (*service.ScheduledTestPlan, error) {
+	row := r.db.QueryRowContext(ctx, `
+		INSERT INTO scheduled_test_plans (
+			account_id, model_id, prompt, cron_expression, enabled, max_results,
+			auto_recover, auto_managed, next_run_at, created_at, updated_at
+		)
+		VALUES ($1, '', '', '*/5 * * * *', $2, 20, true, true, $3, NOW(), NOW())
+		ON CONFLICT (account_id) WHERE auto_managed = true DO UPDATE
+		SET enabled = scheduled_test_plans.enabled OR EXCLUDED.enabled,
+			auto_recover = true,
+			next_run_at = CASE
+				WHEN EXCLUDED.enabled THEN
+					CASE
+						WHEN scheduled_test_plans.next_run_at IS NULL THEN EXCLUDED.next_run_at
+						WHEN EXCLUDED.next_run_at IS NULL THEN scheduled_test_plans.next_run_at
+						ELSE LEAST(scheduled_test_plans.next_run_at, EXCLUDED.next_run_at)
+					END
+				ELSE scheduled_test_plans.next_run_at
+			END,
+			updated_at = NOW()
+		RETURNING id, account_id, model_id, prompt, cron_expression, enabled, max_results,
+			auto_recover, auto_managed, last_run_at, next_run_at, created_at, updated_at
+	`, accountID, enabled, nextRunAt)
+	return scanPlan(row)
+}
+
 func (r *scheduledTestPlanRepository) GetByID(ctx context.Context, id int64) (*service.ScheduledTestPlan, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id, account_id, model_id, prompt, cron_expression, enabled, max_results, auto_recover, auto_managed, last_run_at, next_run_at, created_at, updated_at
@@ -132,6 +158,102 @@ func (r *scheduledTestPlanRepository) DisableAutoManaged(ctx context.Context, id
 		WHERE id = $1 AND auto_managed = true
 	`, id, lastRunAt)
 	return err
+}
+
+func (r *scheduledTestPlanRepository) RescheduleEnabledAutoManaged(ctx context.Context, backoffSteps []time.Duration, now time.Time) error {
+	if len(backoffSteps) == 0 {
+		return nil
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	rows, err := tx.QueryContext(ctx, `
+		SELECT p.id, p.last_run_at, p.next_run_at,
+			COALESCE((
+				SELECT COUNT(*)
+				FROM scheduled_test_results r
+				WHERE r.plan_id = p.id
+				  AND r.status = 'failed'
+				  AND r.id > COALESCE((
+					SELECT MAX(stop.id)
+					FROM scheduled_test_results stop
+					WHERE stop.plan_id = p.id AND stop.status <> 'failed'
+				  ), 0)
+			), 0) AS consecutive_failures
+		FROM scheduled_test_plans p
+		WHERE p.auto_managed = true AND p.enabled = true
+		ORDER BY p.id
+	`)
+	if err != nil {
+		return err
+	}
+	type planState struct {
+		id                  int64
+		lastRunAt           sql.NullTime
+		existingNextRunAt   sql.NullTime
+		consecutiveFailures int
+	}
+	states := make([]planState, 0)
+	for rows.Next() {
+		var state planState
+		if err := rows.Scan(&state.id, &state.lastRunAt, &state.existingNextRunAt, &state.consecutiveFailures); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		states = append(states, state)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+
+	for _, state := range states {
+		if state.consecutiveFailures <= 0 {
+			nextRunAt := now
+			if state.existingNextRunAt.Valid && state.existingNextRunAt.Time.After(now) {
+				nextRunAt = state.existingNextRunAt.Time
+			}
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE scheduled_test_plans
+				SET next_run_at = $2, updated_at = NOW()
+				WHERE id = $1 AND auto_managed = true AND enabled = true
+			`, state.id, nextRunAt); err != nil {
+				return err
+			}
+			continue
+		}
+
+		index := state.consecutiveFailures - 1
+		if index >= len(backoffSteps) {
+			index = len(backoffSteps) - 1
+		}
+		base := now
+		if state.lastRunAt.Valid {
+			base = state.lastRunAt.Time
+		}
+		nextRunAt := base.Add(backoffSteps[index])
+		if (state.existingNextRunAt.Valid && !state.existingNextRunAt.Time.After(now)) || !nextRunAt.After(now) {
+			nextRunAt = now
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE scheduled_test_plans
+			SET next_run_at = $2, updated_at = NOW()
+			WHERE id = $1 AND auto_managed = true AND enabled = true
+		`, state.id, nextRunAt); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // --- Result Repository ---
