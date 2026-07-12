@@ -83,15 +83,15 @@ INSERT INTO image_group_success_rate_stats (
     generation, group_id, request_count, failure_count, last_success_at, created_at, updated_at
 )
 SELECT
-    CASE WHEN $1 > 0 THEN $1 ELSE state.generation END,
+    CASE WHEN $1::BIGINT > 0 THEN $1::BIGINT ELSE state.generation END,
     groups.id,
-    $3 + $4,
-    $4,
-    $5,
-    $6,
-    $6
+    ($3::BIGINT + $4::BIGINT),
+    $4::BIGINT,
+    $5::TIMESTAMPTZ,
+    $6::TIMESTAMPTZ,
+    $6::TIMESTAMPTZ
 FROM image_group_success_rate_state AS state
-JOIN groups AS groups ON groups.id = $2
+JOIN groups AS groups ON groups.id = $2::BIGINT
 WHERE state.id = 1
   AND groups.status = 'active'
   AND groups.deleted_at IS NULL
