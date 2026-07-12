@@ -109,7 +109,7 @@ func TestOpenAIGatewayForwardBodySignalCompactStopsWatchdogOnMeaningfulDelta(t *
 		do: func(req *http.Request) (*http.Response, error) {
 			reader, writer := io.Pipe()
 			go func() {
-				defer writer.Close()
+				defer func() { _ = writer.Close() }()
 				select {
 				case <-req.Context().Done():
 					_ = writer.CloseWithError(req.Context().Err())

@@ -99,7 +99,7 @@ func (s *ImageGroupSuccessRateService) List(ctx context.Context) ([]ImageGroupSu
 
 func (s *ImageGroupSuccessRateService) Reset(ctx context.Context) (time.Time, error) {
 	if s == nil || s.repo == nil {
-		return time.Time{}, fmt.Errorf("Image 分组成功率服务未配置")
+		return time.Time{}, fmt.Errorf("image 分组成功率服务未配置")
 	}
 	resetAt, err := s.repo.Reset(ctx)
 	if err != nil {

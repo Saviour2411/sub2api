@@ -260,9 +260,10 @@ func (a *firstTokenAttempt) wrapWriter(c *gin.Context) {
 	a.bufferedWriter = newFirstTokenBufferedResponseWriter(c.Writer, a)
 	// 已主动停止的兼容重试不再受首 Token 计时约束，但仍使用同一包装，
 	// 以保证 finish 可以统一恢复 gin writer，且不会无限缓存后续长流。
-	if state == firstTokenAttemptClientCanceled {
+	switch state {
+	case firstTokenAttemptClientCanceled:
 		a.bufferedWriter.DropBufferedWrites()
-	} else if state == firstTokenAttemptStopped || state == firstTokenAttemptReceived || state == firstTokenAttemptDecidedWithoutToken {
+	case firstTokenAttemptStopped, firstTokenAttemptReceived, firstTokenAttemptDecidedWithoutToken:
 		a.bufferedWriter.EnablePassthrough()
 	}
 	c.Writer = a.bufferedWriter
@@ -504,7 +505,7 @@ func (a *firstTokenAttempt) preludeOverflowFailoverError() *UpstreamFailoverErro
 func (a *firstTokenAttempt) recordTimeoutSideEffects() {
 	a.sideEffectOnce.Do(func() {
 		if a.rateLimit != nil {
-			a.rateLimit.HandleFirstTokenTimeout(a.requestCtx, a.account, a.model, a.timeoutSeconds)
+			_ = a.rateLimit.HandleFirstTokenTimeout(a.requestCtx, a.account, a.model, a.timeoutSeconds)
 		}
 		if a.ginCtx != nil && a.account != nil {
 			message := fmt.Sprintf("first token timeout after %d seconds", a.timeoutSeconds)
@@ -1075,10 +1076,10 @@ func (w *firstTokenBufferedResponseWriter) DropBufferedWrites() {
 }
 
 func (w *firstTokenBufferedResponseWriter) restoreHeaderLocked() {
-	if w.ResponseWriter == nil || w.ResponseWriter.Header() == nil {
+	if w.ResponseWriter == nil || w.Header() == nil {
 		return
 	}
-	header := w.ResponseWriter.Header()
+	header := w.Header()
 	for key := range header {
 		delete(header, key)
 	}

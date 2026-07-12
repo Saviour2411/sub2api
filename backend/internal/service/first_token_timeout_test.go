@@ -395,7 +395,7 @@ func TestHandleFirstTokenTimeoutPersistsMarkerAndStartsProbe(t *testing.T) {
 	svc := &RateLimitService{accountRepo: repo, autoManagedProbe: probe}
 	account := &Account{ID: 42, Platform: PlatformOpenAI, Schedulable: true, Extra: map[string]any{}}
 
-	svc.HandleFirstTokenTimeout(context.Background(), account, "gpt-test", 17)
+	require.NoError(t, svc.HandleFirstTokenTimeout(context.Background(), account, "gpt-test", 17))
 
 	require.False(t, account.Schedulable)
 	require.Equal(t, int64(42), repo.schedulableID)
@@ -408,7 +408,9 @@ func TestHandleFirstTokenTimeoutPersistsMarkerAndStartsProbe(t *testing.T) {
 	require.Equal(t, "gpt-test", marker[accountFailureStrategyUnscheduledModelKey])
 	require.Equal(t, 17, marker[accountFailureStrategyUnscheduledTimeoutSecondsKey])
 	require.Equal(t, http.StatusGatewayTimeout, marker[accountFailureStrategyUnscheduledStatusCodeKey])
-	require.True(t, strings.Contains(marker[accountFailureStrategyUnscheduledReasonKey].(string), "source=first_token_timeout"))
+	reason, ok := marker[accountFailureStrategyUnscheduledReasonKey].(string)
+	require.True(t, ok)
+	require.Contains(t, reason, "source=first_token_timeout")
 }
 
 func TestHandleFirstTokenTimeoutAtomicFailureKeepsAccountSchedulable(t *testing.T) {
