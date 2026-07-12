@@ -574,6 +574,11 @@ func openAIWSErrorHTTPStatusFromRaw(codeRaw, errTypeRaw string) int {
 	case strings.Contains(errType, "invalid_request"),
 		strings.Contains(code, "invalid_request"),
 		strings.Contains(code, "bad_request"),
+		strings.Contains(code, "cyber_policy"),
+		strings.Contains(code, "content_policy"),
+		strings.Contains(code, "safety_policy"),
+		strings.Contains(code, "moderation_blocked"),
+		strings.Contains(code, "policy_violation"),
 		code == "invalid_encrypted_content",
 		code == "previous_response_not_found":
 		return http.StatusBadRequest

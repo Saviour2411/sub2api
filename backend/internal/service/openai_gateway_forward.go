@@ -812,6 +812,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		var firstTokenMs *int
 		responseID := ""
 		imageCount := 0
+		clientDisconnect := false
 		var imageOutputSizes []string
 		if upstreamStream {
 			firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolSSE)
@@ -825,6 +826,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			responseID = strings.TrimSpace(streamResult.responseID)
 			imageCount = streamResult.imageCount
 			imageOutputSizes = streamResult.imageOutputSizes
+			clientDisconnect = streamResult.clientDisconnect
 		} else {
 			firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolOpenAICompact)
 			nonStreamResult, responseErr := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel)
@@ -853,18 +855,19 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 
 		forwardResult := &OpenAIForwardResult{
-			RequestID:       resp.Header.Get("x-request-id"),
-			ResponseID:      responseID,
-			Usage:           *usage,
-			Model:           originalModel,
-			BillingModel:    billingModel,
-			UpstreamModel:   upstreamModel,
-			ServiceTier:     serviceTier,
-			ReasoningEffort: reasoningEffort,
-			Stream:          clientStream,
-			OpenAIWSMode:    false,
-			Duration:        time.Since(startTime),
-			FirstTokenMs:    firstTokenMs,
+			RequestID:        resp.Header.Get("x-request-id"),
+			ResponseID:       responseID,
+			Usage:            *usage,
+			Model:            originalModel,
+			BillingModel:     billingModel,
+			UpstreamModel:    upstreamModel,
+			ServiceTier:      serviceTier,
+			ReasoningEffort:  reasoningEffort,
+			Stream:           clientStream,
+			OpenAIWSMode:     false,
+			Duration:         time.Since(startTime),
+			FirstTokenMs:     firstTokenMs,
+			ClientDisconnect: clientDisconnect,
 		}
 		if imageCount > 0 {
 			forwardResult.ImageCount = imageCount

@@ -347,7 +347,19 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 			return nil, foErr
 		}
 		// Non-failover error: return Anthropic-formatted error to client
-		return s.handleAnthropicErrorResponse(resp, c, account, billingModel)
+		result, outcomeErr := s.handleAnthropicErrorResponse(resp, c, account, billingModel)
+		if outcomeErr == nil {
+			return result, nil
+		}
+		var typedOutcomeErr *UpstreamOutcomeError
+		if errors.As(outcomeErr, &typedOutcomeErr) {
+			return result, outcomeErr
+		}
+		var failoverErr *UpstreamFailoverError
+		if errors.As(outcomeErr, &failoverErr) {
+			return result, outcomeErr
+		}
+		return result, NewUpstreamOutcomeError(resp.StatusCode, respBody, outcomeErr)
 	}
 
 	if account.Type == AccountTypeOAuth && promptCacheKey != "" {
@@ -371,11 +383,13 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 
 	// cyber_policy：标记已设、error 已按 Anthropic 格式发给客户端。丢弃 result、返回哨兵，
 	// 使 handler 落入 tokens=0 免费用量行（对齐 /v1/responses），不计费、不 failover。
-	if GetOpsCyberPolicy(c) != nil {
+	if cyberMark := GetOpsCyberPolicy(c); cyberMark != nil {
 		if handleErr == nil {
 			handleErr = errOpenAICyberPolicyForwarded
 		}
-		return nil, handleErr
+		outcomeErr := NewUpstreamOutcomeError(http.StatusBadRequest, []byte(cyberMark.Body), handleErr)
+		outcomeErr.ClientDisconnect = result != nil && result.ClientDisconnect
+		return nil, outcomeErr
 	}
 
 	// Propagate ServiceTier and ReasoningEffort to result for billing
@@ -479,6 +493,7 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 			return nil, fmt.Errorf("openai cyber_policy: %s", msg)
 		}
 		message := openAICompatFailedResponseMessage(finalResponse)
+		outcomeStatus := openAIStreamFailedEventSemanticStatus(payload, message)
 		if openAIStreamFailedEventShouldFailover(payload, message) {
 			return nil, s.newOpenAIStreamFailoverError(c, account, false, requestID, payload, message)
 		}
@@ -493,10 +508,18 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 			}
 			MarkResponseCommitted(c)
 			writeAnthropicError(c, status, errType, errMsg)
-			return nil, fmt.Errorf("upstream response failed (passthrough): %s", errMsg)
+			return nil, NewUpstreamOutcomeError(
+				outcomeStatus,
+				payload,
+				fmt.Errorf("upstream response failed (passthrough): %s", errMsg),
+			)
 		}
 		writeAnthropicError(c, http.StatusBadGateway, "api_error", message)
-		return nil, fmt.Errorf("upstream response failed: %s", message)
+		return nil, NewUpstreamOutcomeError(
+			outcomeStatus,
+			payload,
+			fmt.Errorf("upstream response failed: %s", message),
+		)
 	}
 
 	// When the terminal event has an empty output array, reconstruct from
@@ -736,6 +759,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	var firstTokenMs *int
 	firstChunk := true
 	clientDisconnected := false
+	terminalHandled := false
 	clientOutputStarted := false
 	var streamFailoverErr error
 	var streamNonFailoverErr error
@@ -815,6 +839,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 						UpstreamInTok:  usage.InputTokens,
 						UpstreamOutTok: usage.OutputTokens,
 					})
+					terminalHandled = true
 					if !clientDisconnected {
 						writeStreamHeaders()
 						clientMsg := msg
@@ -824,8 +849,9 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 						MarkOpsStreamError(c, "invalid_request_error", clientMsg, http.StatusBadRequest)
 						if _, err := fmt.Fprint(c.Writer, buildAnthropicStreamErrorSSE("invalid_request_error", clientMsg)); err == nil {
 							c.Writer.Flush()
+						} else {
+							clientDisconnected = true
 						}
-						clientDisconnected = true
 					}
 					return true
 				}
@@ -856,10 +882,18 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 						writeStreamHeaders()
 						if _, err := fmt.Fprint(c.Writer, buildAnthropicStreamErrorSSE(errType, errMsg)); err == nil {
 							c.Writer.Flush()
+						} else {
+							clientDisconnected = true
 						}
 					}
 				}
-				streamNonFailoverErr = fmt.Errorf("upstream response failed: %s", errMsg)
+				outcomeErr := NewUpstreamOutcomeError(
+					openAIStreamFailedEventSemanticStatus(payloadBytes, message),
+					payloadBytes,
+					fmt.Errorf("upstream response failed: %s", errMsg),
+				)
+				outcomeErr.ClientDisconnect = clientDisconnected
+				streamNonFailoverErr = outcomeErr
 				return true
 			}
 		}
@@ -900,6 +934,9 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 		}
 		if streamNonFailoverErr != nil {
 			return resultWithUsage(), streamNonFailoverErr
+		}
+		if terminalHandled {
+			return resultWithUsage(), nil
 		}
 		if finalEvents := apicompat.FinalizeResponsesAnthropicStream(state); len(finalEvents) > 0 && !clientDisconnected {
 			for _, evt := range finalEvents {

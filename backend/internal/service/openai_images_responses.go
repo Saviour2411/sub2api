@@ -1135,6 +1135,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 	responseFormat string,
 	streamPrefix string,
 	fallbackModel string,
+	parsed *OpenAIImagesRequest,
 ) (OpenAIUsage, int, []string, *int, error) {
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	c.Header("Content-Type", "text/event-stream")
@@ -1162,6 +1163,11 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 	streamMeta := openAIResponsesImageResult{Model: strings.TrimSpace(fallbackModel)}
 	var createdAt int64
 	clientDisconnected := false
+	defer func() {
+		if parsed != nil {
+			parsed.clientDisconnected = clientDisconnected
+		}
+	}()
 	lastDownstreamWriteAt := time.Now()
 	var sseData openAISSEDataAccumulator
 	var processDataErr error
@@ -1536,18 +1542,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 	if err != nil {
-		safeErr := sanitizeUpstreamErrorMessage(err.Error())
-		setOpsUpstreamError(c, 0, safeErr, "")
-		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-			Platform:           account.Platform,
-			AccountID:          account.ID,
-			AccountName:        account.Name,
-			UpstreamStatusCode: 0,
-			UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
-			Kind:               "request_error",
-			Message:            safeErr,
-		})
-		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
+		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 	}
 	if resp.StatusCode >= 400 {
 		respBody := s.readUpstreamErrorBody(resp)
@@ -1585,26 +1580,28 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 	)
 	writerSizeBeforeResponse := c.Writer.Size()
 	if parsed.Stream {
-		usage, imageCount, imageOutputSizes, firstTokenMs, err = s.handleOpenAIImagesOAuthStreamingResponse(resp, c, startTime, parsed.ResponseFormat, openAIImagesStreamPrefix(parsed), requestModel)
+		usage, imageCount, imageOutputSizes, firstTokenMs, err = s.handleOpenAIImagesOAuthStreamingResponse(resp, c, startTime, parsed.ResponseFormat, openAIImagesStreamPrefix(parsed), requestModel, parsed)
 		if err != nil {
-			if imageCount > 0 {
-				return &OpenAIForwardResult{
-					RequestID:        resp.Header.Get("x-request-id"),
-					Usage:            usage,
-					Model:            requestModel,
-					UpstreamModel:    requestModel,
-					Stream:           parsed.Stream,
-					ResponseHeaders:  resp.Header.Clone(),
-					Duration:         time.Since(startTime),
-					FirstTokenMs:     firstTokenMs,
-					ImageCount:       imageCount,
-					ImageDelivered:   imageCount > 0,
-					ImageSize:        parsed.SizeTier,
-					ImageInputSize:   parsed.Size,
-					ImageOutputSizes: imageOutputSizes,
-				}, err
+			failureResult := &OpenAIForwardResult{
+				RequestID:        resp.Header.Get("x-request-id"),
+				Usage:            usage,
+				Model:            requestModel,
+				UpstreamModel:    requestModel,
+				Stream:           parsed.Stream,
+				ResponseHeaders:  resp.Header.Clone(),
+				Duration:         time.Since(startTime),
+				FirstTokenMs:     firstTokenMs,
+				ClientDisconnect: parsed.clientDisconnected,
+				ImageSize:        parsed.SizeTier,
+				ImageInputSize:   parsed.Size,
 			}
-			return nil, s.handleOpenAIImagesOAuthResponseError(
+			if imageCount > 0 {
+				failureResult.ImageCount = imageCount
+				failureResult.ImageDelivered = true
+				failureResult.ImageOutputSizes = imageOutputSizes
+				return failureResult, err
+			}
+			handledErr := s.handleOpenAIImagesOAuthResponseError(
 				upstreamCtx,
 				c,
 				account,
@@ -1614,6 +1611,10 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 				writerSizeBeforeResponse,
 				err,
 			)
+			if parsed.clientDisconnected {
+				return failureResult, handledErr
+			}
+			return nil, handledErr
 		}
 	} else {
 		usage, imageCount, imageOutputSizes, err = s.handleOpenAIImagesOAuthNonStreamingResponse(resp, c, account, parsed.ResponseFormat, requestModel)
@@ -1642,6 +1643,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		ResponseHeaders:  resp.Header.Clone(),
 		Duration:         time.Since(startTime),
 		FirstTokenMs:     firstTokenMs,
+		ClientDisconnect: parsed.clientDisconnected,
 		ImageCount:       imageCount,
 		ImageDelivered:   imageCount > 0 && c.Writer.Size() != writerSizeBeforeResponse,
 		ImageSize:        parsed.SizeTier,

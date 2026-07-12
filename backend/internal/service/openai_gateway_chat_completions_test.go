@@ -132,6 +132,10 @@ func TestForwardAsChatCompletions_UnknownModelDoesNotUseDefaultMappedModel(t *te
 	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "gpt-5.4")
 	require.Error(t, err)
 	require.Nil(t, result)
+	var outcomeErr *UpstreamOutcomeError
+	require.ErrorAs(t, err, &outcomeErr)
+	require.Equal(t, http.StatusBadRequest, outcomeErr.StatusCode)
+	require.JSONEq(t, `{"error":{"type":"invalid_request_error","message":"model not found"}}`, string(outcomeErr.ResponseBody))
 	require.Equal(t, "gpt6", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.NotEqual(t, "gpt-5.4", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.Equal(t, http.StatusBadRequest, rec.Code)
@@ -264,6 +268,7 @@ func TestForwardAsChatCompletions_ClientDisconnectDrainsUpstreamUsage(t *testing
 	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "gpt-5.1")
 	require.NoError(t, err)
 	require.NotNil(t, result)
+	require.True(t, result.ClientDisconnect)
 	require.Equal(t, 11, result.Usage.InputTokens)
 	require.Equal(t, 5, result.Usage.OutputTokens)
 	require.Equal(t, 4, result.Usage.CacheReadInputTokens)
@@ -307,6 +312,10 @@ func TestForwardAsChatCompletions_BufferedContextWindowResponseFailedReturnsErro
 	require.Nil(t, result)
 	var failoverErr *UpstreamFailoverError
 	require.False(t, errors.As(err, &failoverErr))
+	var outcomeErr *UpstreamOutcomeError
+	require.ErrorAs(t, err, &outcomeErr)
+	require.Equal(t, http.StatusBadRequest, outcomeErr.StatusCode)
+	require.Contains(t, string(outcomeErr.ResponseBody), `"type":"response.failed"`)
 	require.True(t, c.Writer.Written())
 	require.Equal(t, http.StatusBadGateway, rec.Code)
 	require.Contains(t, rec.Body.String(), "input exceeds the context window")
@@ -352,6 +361,11 @@ func TestForwardAsChatCompletions_StreamContextWindowResponseFailedReturnsErrorW
 	require.NotNil(t, result)
 	var failoverErr *UpstreamFailoverError
 	require.False(t, errors.As(err, &failoverErr))
+	var outcomeErr *UpstreamOutcomeError
+	require.ErrorAs(t, err, &outcomeErr)
+	require.Equal(t, http.StatusBadRequest, outcomeErr.StatusCode)
+	require.False(t, outcomeErr.ClientDisconnect)
+	require.Contains(t, string(outcomeErr.ResponseBody), `"type":"response.failed"`)
 	require.True(t, c.Writer.Written())
 	require.Equal(t, http.StatusBadGateway, rec.Code)
 	require.Contains(t, rec.Header().Get("Content-Type"), "application/json")
@@ -397,11 +411,16 @@ func TestForwardAsChatCompletions_StreamCyberPolicyNoFailover(t *testing.T) {
 	_, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "gpt-5.5")
 	var failoverErr *UpstreamFailoverError
 	require.False(t, errors.As(err, &failoverErr), "cyber must NOT trigger failover")
+	var outcomeErr *UpstreamOutcomeError
+	require.ErrorAs(t, err, &outcomeErr)
+	require.Equal(t, http.StatusBadRequest, outcomeErr.StatusCode)
+	require.False(t, outcomeErr.ClientDisconnect)
 	require.NotNil(t, GetOpsCyberPolicy(c), "cyber mark must be set")
 	respBody := rec.Body.String()
 	require.Contains(t, respBody, `"error"`)
 	require.Contains(t, respBody, `"cyber_policy"`)
 	require.Contains(t, respBody, "data: [DONE]")
+	require.Equal(t, 1, strings.Count(respBody, "data: [DONE]"))
 }
 
 func TestForwardAsChatCompletions_StreamCyberPolicyNoFailover_DuplicateMerged(t *testing.T) {

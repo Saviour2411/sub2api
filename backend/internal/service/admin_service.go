@@ -589,6 +589,7 @@ type adminServiceImpl struct {
 	privacyClientFactory         PrivacyClientFactory
 	runtimeBlocker               AccountRuntimeBlocker
 	defaultScheduledTestPlanRepo ScheduledTestPlanRepository
+	accountFailureStreakCache    AccountFailureStreakCache
 }
 
 type userGroupRateBatchReader interface {
@@ -616,6 +617,7 @@ func NewAdminService(
 	privacyClientFactory PrivacyClientFactory,
 	runtimeBlocker AccountRuntimeBlocker,
 	defaultScheduledTestPlanRepo ScheduledTestPlanRepository,
+	accountFailureStreakCache AccountFailureStreakCache,
 ) AdminService {
 	if settingService != nil {
 		settingService.SetScheduledTestPlanRepository(defaultScheduledTestPlanRepo)
@@ -640,5 +642,6 @@ func NewAdminService(
 		privacyClientFactory:         privacyClientFactory,
 		runtimeBlocker:               runtimeBlocker,
 		defaultScheduledTestPlanRepo: defaultScheduledTestPlanRepo,
+		accountFailureStreakCache:    accountFailureStreakCache,
 	}
 }

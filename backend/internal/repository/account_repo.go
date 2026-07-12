@@ -1592,26 +1592,26 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 	return nil
 }
 
-// PersistFirstTokenTimeoutState 原子写入首 Token 超时停调度状态，并确保自动测活计划立即启用。
-// 账号状态和恢复入口必须同时成功，避免部分写入后账号永久不可调度。
-func (r *accountRepository) PersistFirstTokenTimeoutState(
+// PersistFailureSchedulingState 原子写入失败事故并确保自动测活计划立即启用。
+// 已存在非空事故时不覆盖，由原事故对应的测活结果决定是否恢复。
+func (r *accountRepository) PersistFailureSchedulingState(
 	ctx context.Context,
 	accountID int64,
 	marker map[string]any,
 	nextRunAt time.Time,
-) error {
+) (bool, error) {
 	if r == nil || accountID <= 0 {
-		return service.ErrAccountNotFound
+		return false, service.ErrAccountNotFound
 	}
 	beginner, ok := r.sql.(sqlTxBeginner)
 	if !ok {
-		return errors.New("account repository does not support transactions")
+		return false, errors.New("账号仓储不支持事务")
 	}
 	payload, err := json.Marshal(map[string]any{
 		"failure_strategy_unscheduled": marker,
 	})
 	if err != nil {
-		return err
+		return false, err
 	}
 	if nextRunAt.IsZero() {
 		nextRunAt = time.Now()
@@ -1619,7 +1619,7 @@ func (r *accountRepository) PersistFirstTokenTimeoutState(
 
 	tx, err := beginner.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -1628,17 +1628,24 @@ func (r *accountRepository) PersistFirstTokenTimeoutState(
 		SET extra = COALESCE(extra, '{}'::jsonb) || $1::jsonb,
 			schedulable = false,
 			updated_at = NOW()
-		WHERE id = $2 AND deleted_at IS NULL
+		WHERE id = $2
+			AND deleted_at IS NULL
+			AND (
+				NOT (COALESCE(extra, '{}'::jsonb) ? 'failure_strategy_unscheduled')
+				OR extra->'failure_strategy_unscheduled' IS NULL
+				OR extra->'failure_strategy_unscheduled' = 'null'::jsonb
+				OR extra->'failure_strategy_unscheduled' = '{}'::jsonb
+			)
 	`, string(payload), accountID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	affected, err := result.RowsAffected()
 	if err != nil {
-		return err
+		return false, err
 	}
 	if affected == 0 {
-		return service.ErrAccountNotFound
+		return false, nil
 	}
 
 	if _, err := tx.ExecContext(ctx, `
@@ -1653,17 +1660,145 @@ func (r *accountRepository) PersistFirstTokenTimeoutState(
 			next_run_at = EXCLUDED.next_run_at,
 			updated_at = NOW()
 	`, accountID, nextRunAt); err != nil {
-		return err
+		return false, err
 	}
 	if err := enqueueSchedulerOutbox(ctx, tx, service.SchedulerOutboxEventAccountChanged, &accountID, nil, nil); err != nil {
-		return err
+		return false, err
 	}
 	if err := tx.Commit(); err != nil {
-		return err
+		return false, err
 	}
 
 	r.syncSchedulerAccountSnapshot(ctx, accountID)
-	return nil
+	return true, nil
+}
+
+// PersistFirstTokenTimeoutState 保留旧扩展点兼容，新的调用应使用 PersistFailureSchedulingState。
+func (r *accountRepository) PersistFirstTokenTimeoutState(
+	ctx context.Context,
+	accountID int64,
+	marker map[string]any,
+	nextRunAt time.Time,
+) error {
+	_, err := r.PersistFailureSchedulingState(ctx, accountID, marker, nextRunAt)
+	return err
+}
+
+// RecoverFailureSchedulingState 仅恢复匹配事故 ID 的账号，旧测活结果不能清除新事故。
+func (r *accountRepository) RecoverFailureSchedulingState(ctx context.Context, accountID int64, incidentID string) (bool, error) {
+	if r == nil || accountID <= 0 || strings.TrimSpace(incidentID) == "" {
+		return false, nil
+	}
+	beginner, ok := r.sql.(sqlTxBeginner)
+	if !ok {
+		return false, errors.New("账号仓储不支持事务")
+	}
+
+	tx, err := beginner.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	result, err := tx.ExecContext(ctx, `
+		UPDATE accounts
+		SET extra = COALESCE(extra, '{}'::jsonb) - 'failure_strategy_unscheduled',
+			schedulable = true,
+			updated_at = NOW()
+		WHERE id = $1
+			AND deleted_at IS NULL
+			AND extra->'failure_strategy_unscheduled'->>'incident_id' = $2
+	`, accountID, strings.TrimSpace(incidentID))
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if affected == 0 {
+		return false, nil
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE scheduled_test_plans
+		SET enabled = false,
+			last_run_at = NOW(),
+			next_run_at = NULL,
+			updated_at = NOW()
+		WHERE account_id = $1 AND auto_managed = true
+	`, accountID); err != nil {
+		return false, err
+	}
+	if err := enqueueSchedulerOutbox(ctx, tx, service.SchedulerOutboxEventAccountChanged, &accountID, nil, nil); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+
+	r.syncSchedulerAccountSnapshot(ctx, accountID)
+	return true, nil
+}
+
+// ClearFailureSchedulingState 供管理员明确重置状态时原子清除捕获的事故并停用自动测活计划。
+// incidentID 为空时仅匹配同样不带 ID 的旧 marker，不能清除并发创建的新式事故。
+func (r *accountRepository) ClearFailureSchedulingState(ctx context.Context, accountID int64, incidentID string) (bool, error) {
+	if r == nil || accountID <= 0 {
+		return false, service.ErrAccountNotFound
+	}
+	beginner, ok := r.sql.(sqlTxBeginner)
+	if !ok {
+		return false, errors.New("账号仓储不支持事务")
+	}
+
+	tx, err := beginner.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	result, err := tx.ExecContext(ctx, `
+		UPDATE accounts
+		SET extra = COALESCE(extra, '{}'::jsonb) - 'failure_strategy_unscheduled',
+			schedulable = true,
+			updated_at = NOW()
+		WHERE id = $1
+			AND deleted_at IS NULL
+			AND extra ? 'failure_strategy_unscheduled'
+			AND extra->'failure_strategy_unscheduled' IS NOT NULL
+			AND extra->'failure_strategy_unscheduled' <> 'null'::jsonb
+			AND extra->'failure_strategy_unscheduled' <> '{}'::jsonb
+			AND COALESCE(extra->'failure_strategy_unscheduled'->>'incident_id', '') = $2
+	`, accountID, strings.TrimSpace(incidentID))
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if affected == 0 {
+		return false, nil
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE scheduled_test_plans
+		SET enabled = false,
+			next_run_at = NULL,
+			updated_at = NOW()
+		WHERE account_id = $1 AND auto_managed = true
+	`, accountID); err != nil {
+		return false, err
+	}
+	if err := enqueueSchedulerOutbox(ctx, tx, service.SchedulerOutboxEventAccountChanged, &accountID, nil, nil); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+
+	r.syncSchedulerAccountSnapshot(ctx, accountID)
+	return true, nil
 }
 
 func shouldEnqueueSchedulerOutboxForExtraUpdates(updates map[string]any) bool {

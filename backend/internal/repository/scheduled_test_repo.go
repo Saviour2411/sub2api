@@ -160,6 +160,73 @@ func (r *scheduledTestPlanRepository) DisableAutoManaged(ctx context.Context, id
 	return err
 }
 
+// DisableAutoManagedIfAccountHealthy 在账号行锁保护下确认没有新的恢复状态后再停用计划。
+// 与失败事故事务按账号串行，避免旧测活结果覆盖并发事故刚启用的自动计划。
+func (r *scheduledTestPlanRepository) DisableAutoManagedIfAccountHealthy(
+	ctx context.Context,
+	id int64,
+	accountID int64,
+	lastRunAt *time.Time,
+	now time.Time,
+) (bool, error) {
+	if now.IsZero() {
+		now = time.Now()
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var healthy bool
+	err = tx.QueryRowContext(ctx, `
+		SELECT NOT (
+			COALESCE(status = 'error', false)
+			OR (
+				COALESCE(extra, '{}'::jsonb) ? 'failure_strategy_unscheduled'
+				AND extra->'failure_strategy_unscheduled' IS NOT NULL
+				AND extra->'failure_strategy_unscheduled' <> 'null'::jsonb
+				AND extra->'failure_strategy_unscheduled' <> '{}'::jsonb
+			)
+			OR COALESCE(rate_limit_reset_at > $2, false)
+			OR COALESCE(overload_until > $2, false)
+			OR COALESCE(temp_unschedulable_until > $2, false)
+		)
+		FROM accounts
+		WHERE id = $1 AND deleted_at IS NULL
+		FOR UPDATE
+	`, accountID, now).Scan(&healthy)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+	if !healthy {
+		return false, nil
+	}
+
+	result, err := tx.ExecContext(ctx, `
+		UPDATE scheduled_test_plans
+		SET enabled = false,
+			last_run_at = COALESCE($3, last_run_at),
+			next_run_at = NULL,
+			updated_at = NOW()
+		WHERE id = $1 AND account_id = $2 AND auto_managed = true
+	`, id, accountID, lastRunAt)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return affected > 0, nil
+}
+
 func (r *scheduledTestPlanRepository) RescheduleEnabledAutoManaged(ctx context.Context, backoffSteps []time.Duration, now time.Time) error {
 	if len(backoffSteps) == 0 {
 		return nil

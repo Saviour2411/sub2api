@@ -159,4 +159,148 @@ describe('AccountStatusIndicator', () => {
     // AICredits 积分耗尽状态应显示
     expect(wrapper.text()).toContain('admin.accounts.status.creditsExhausted')
   })
+
+  it('活动账号带持久停调度 marker 时显示不可调度和结构化原因', () => {
+    const wrapper = mount(AccountStatusIndicator, {
+      props: {
+        account: makeAccount({
+          schedulable: false,
+          extra: {
+            failure_strategy_unscheduled: {
+              source: 'first_token_timeout',
+              reason: 'first token timeout after 25 seconds',
+              status_code: 504,
+              consecutive_count: 3,
+              threshold: 3,
+              model: 'gpt-5.6-terra',
+              at: '2026-07-12T08:30:00Z',
+              incident_id: 'incident-1',
+              timeout_seconds: 25
+            }
+          }
+        })
+      },
+      global: {
+        stubs: {
+          Icon: true
+        }
+      }
+    })
+
+    expect(wrapper.text()).toContain('admin.accounts.status.unschedulable')
+    expect(wrapper.text()).not.toContain('admin.accounts.status.paused')
+    expect(wrapper.get('[data-test="account-unschedulable-reason-value"]').text()).toBe(
+      'first token timeout after 25 seconds'
+    )
+    expect(wrapper.get('[data-test="account-unschedulable-status-code"]').text()).toBe('504')
+    expect(wrapper.get('[data-test="account-unschedulable-consecutive-count"]').text()).toBe('3')
+    expect(wrapper.get('[data-test="account-unschedulable-threshold"]').text()).toBe('3')
+    expect(wrapper.get('[data-test="account-unschedulable-model"]').text()).toBe('gpt-5.6-terra')
+    expect(wrapper.get('[data-test="account-unschedulable-timeout-seconds"]').text()).toBe('25')
+    expect(wrapper.get('[data-test="account-unschedulable-occurred-at"]').text()).toContain('2026')
+  })
+
+  it('持久事故主状态优先于残留的临时限流状态', () => {
+    const wrapper = mount(AccountStatusIndicator, {
+      props: {
+        account: makeAccount({
+          schedulable: false,
+          rate_limit_reset_at: new Date(Date.now() + 60_000).toISOString(),
+          temp_unschedulable_until: new Date(Date.now() + 60_000).toISOString(),
+          extra: {
+            failure_strategy_unscheduled: {
+              source: 'upstream_error',
+              reason: '连续上游错误'
+            }
+          }
+        })
+      },
+      global: {
+        stubs: {
+          Icon: true
+        }
+      }
+    })
+
+    expect(wrapper.get('.badge').text()).toBe('admin.accounts.status.unschedulable')
+    expect(wrapper.find('button.badge').exists()).toBe(false)
+  })
+
+  it('旧 marker 使用原始 reason 作为不可调度原因', () => {
+    const wrapper = mount(AccountStatusIndicator, {
+      props: {
+        account: makeAccount({
+          schedulable: false,
+          extra: {
+            failure_strategy_unscheduled: {
+              reason: 'legacy upstream failure',
+              status_code: 503,
+              at: '2026-07-12T08:30:00Z'
+            }
+          }
+        })
+      },
+      global: {
+        stubs: {
+          Icon: true
+        }
+      }
+    })
+
+    expect(wrapper.get('[data-test="account-unschedulable-reason-value"]').text()).toBe(
+      'legacy upstream failure'
+    )
+    expect(wrapper.get('[data-test="account-unschedulable-status-code"]').text()).toBe('503')
+  })
+
+  it('marker 字段异常时保留原始 reason 并忽略无效详情', () => {
+    const wrapper = mount(AccountStatusIndicator, {
+      props: {
+        account: makeAccount({
+          schedulable: false,
+          extra: {
+            failure_strategy_unscheduled: {
+              source: ['unexpected'],
+              reason: 'legacy raw reason',
+              status_code: '503',
+              consecutive_count: Number.NaN,
+              at: 'invalid-date'
+            }
+          } as Account['extra']
+        })
+      },
+      global: {
+        stubs: {
+          Icon: true
+        }
+      }
+    })
+
+    expect(wrapper.get('.badge').text()).toBe('admin.accounts.status.unschedulable')
+    expect(wrapper.get('[data-test="account-unschedulable-reason-value"]').text()).toBe(
+      'legacy raw reason'
+    )
+    expect(wrapper.find('[data-test="account-unschedulable-status-code"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="account-unschedulable-consecutive-count"]').exists()).toBe(
+      false
+    )
+    expect(wrapper.find('[data-test="account-unschedulable-occurred-at"]').exists()).toBe(false)
+  })
+
+  it('管理员手动暂停且没有 marker 时仍显示暂停且不显示原因问号', () => {
+    const wrapper = mount(AccountStatusIndicator, {
+      props: {
+        account: makeAccount({ schedulable: false, extra: {} })
+      },
+      global: {
+        stubs: {
+          Icon: true
+        }
+      }
+    })
+
+    expect(wrapper.text()).toContain('admin.accounts.status.paused')
+    expect(wrapper.text()).not.toContain('admin.accounts.status.unschedulable')
+    expect(wrapper.find('[data-test="account-unschedulable-reason"]').exists()).toBe(false)
+  })
 })

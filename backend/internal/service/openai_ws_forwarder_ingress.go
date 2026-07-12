@@ -915,17 +915,18 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				}
 				imageCount := imageCounter.Count()
 				result := &OpenAIForwardResult{
-					RequestID:       responseID,
-					Usage:           usage,
-					Model:           originalModel,
-					UpstreamModel:   mappedModel,
-					ServiceTier:     extractOpenAIServiceTierFromBody(payload),
-					ReasoningEffort: ApplyThinkingEnabledFallback(extractOpenAIReasoningEffortFromBody(payload, mappedModel, originalModel), payload, mappedModel),
-					Stream:          reqStream,
-					OpenAIWSMode:    true,
-					ResponseHeaders: lease.HandshakeHeaders(),
-					Duration:        time.Since(turnStart),
-					FirstTokenMs:    firstTokenMs,
+					RequestID:        responseID,
+					Usage:            usage,
+					Model:            originalModel,
+					UpstreamModel:    mappedModel,
+					ServiceTier:      extractOpenAIServiceTierFromBody(payload),
+					ReasoningEffort:  ApplyThinkingEnabledFallback(extractOpenAIReasoningEffortFromBody(payload, mappedModel, originalModel), payload, mappedModel),
+					Stream:           reqStream,
+					OpenAIWSMode:     true,
+					ResponseHeaders:  lease.HandshakeHeaders(),
+					Duration:         time.Since(turnStart),
+					FirstTokenMs:     firstTokenMs,
+					ClientDisconnect: clientDisconnected,
 				}
 				if replayInput := replayCollector.Items(); len(replayInput) > 0 {
 					result.wsReplayInput = replayInput
@@ -937,6 +938,15 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					result.ImageInputSize = imageInputSize
 					result.ImageOutputSizes = imageCounter.Sizes()
 					result.BillingModel = imageBillingModel
+				}
+				if eventType == "response.failed" {
+					message := extractOpenAISSEErrorMessage(upstreamMessage)
+					result.UpstreamOutcome = NewUpstreamOutcomeError(
+						openAIStreamFailedEventSemanticStatus(upstreamMessage, message),
+						upstreamMessage,
+						fmt.Errorf("upstream response failed: %s", message),
+					)
+					result.UpstreamOutcome.ClientDisconnect = clientDisconnected
 				}
 				return result, nil
 			}

@@ -20,19 +20,20 @@ import (
 
 // RateLimitService 处理限流和过载状态管理
 type RateLimitService struct {
-	accountRepo           AccountRepository
-	usageRepo             UsageLogRepository
-	cfg                   *config.Config
-	geminiQuotaService    *GeminiQuotaService
-	tempUnschedCache      TempUnschedCache
-	timeoutCounterCache   TimeoutCounterCache
-	openAI403CounterCache OpenAI403CounterCache
-	settingService        *SettingService
-	tokenCacheInvalidator TokenCacheInvalidator
-	runtimeBlocker        AccountRuntimeBlocker
-	autoManagedProbe      AutoManagedProbeScheduler
-	usageCacheMu          sync.RWMutex
-	usageCache            map[int64]*geminiUsageCacheEntry
+	accountRepo               AccountRepository
+	usageRepo                 UsageLogRepository
+	cfg                       *config.Config
+	geminiQuotaService        *GeminiQuotaService
+	tempUnschedCache          TempUnschedCache
+	timeoutCounterCache       TimeoutCounterCache
+	openAI403CounterCache     OpenAI403CounterCache
+	accountFailureStreakCache AccountFailureStreakCache
+	settingService            *SettingService
+	tokenCacheInvalidator     TokenCacheInvalidator
+	runtimeBlocker            AccountRuntimeBlocker
+	autoManagedProbe          AutoManagedProbeScheduler
+	usageCacheMu              sync.RWMutex
+	usageCache                map[int64]*geminiUsageCacheEntry
 }
 
 // AutoManagedProbeScheduler 在账号被首 Token 超时停调度时，确保自动测活计划立即可执行。
@@ -106,6 +107,11 @@ func (s *RateLimitService) SetTimeoutCounterCache(cache TimeoutCounterCache) {
 // SetOpenAI403CounterCache 设置 OpenAI 403 连续失败计数器（可选依赖）
 func (s *RateLimitService) SetOpenAI403CounterCache(cache OpenAI403CounterCache) {
 	s.openAI403CounterCache = cache
+}
+
+// SetAccountFailureStreakCache 设置账号连续失败缓存（可选依赖）。
+func (s *RateLimitService) SetAccountFailureStreakCache(cache AccountFailureStreakCache) {
+	s.accountFailureStreakCache = cache
 }
 
 // SetSettingService 设置系统设置服务（可选依赖）

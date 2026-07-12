@@ -88,6 +88,7 @@ type OpenAIImagesRequest struct {
 	MaskUpload         *OpenAIImagesUpload
 	Body               []byte
 	bodyHash           string
+	clientDisconnected bool
 }
 
 func (r *OpenAIImagesRequest) ModerationBody() []byte {
@@ -616,18 +617,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 	if err != nil {
-		safeErr := sanitizeUpstreamErrorMessage(err.Error())
-		setOpsUpstreamError(c, 0, safeErr, "")
-		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-			Platform:           account.Platform,
-			AccountID:          account.ID,
-			AccountName:        account.Name,
-			UpstreamStatusCode: 0,
-			UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
-			Kind:               "request_error",
-			Message:            safeErr,
-		})
-		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
+		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 	}
 	if resp.StatusCode >= 400 {
 		respBody := s.readUpstreamErrorBody(resp)
@@ -664,22 +654,26 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	if parsed.Stream && isEventStreamResponse(resp.Header) {
 		streamUsage, streamCount, streamSizes, ttft, streamDelivered, err := s.handleOpenAIImagesStreamingResponse(upstreamCtx, resp, c, startTime, account, parsed)
 		if err != nil {
+			failureResult := &OpenAIForwardResult{
+				RequestID:        resp.Header.Get("x-request-id"),
+				Usage:            streamUsage,
+				Model:            requestModel,
+				UpstreamModel:    upstreamModel,
+				Stream:           parsed.Stream,
+				ResponseHeaders:  resp.Header.Clone(),
+				Duration:         time.Since(startTime),
+				FirstTokenMs:     ttft,
+				ClientDisconnect: parsed.clientDisconnected,
+				ImageSize:        parsed.SizeTier,
+				ImageInputSize:   parsed.Size,
+			}
 			if streamCount > 0 && streamDelivered {
-				return &OpenAIForwardResult{
-					RequestID:        resp.Header.Get("x-request-id"),
-					Usage:            streamUsage,
-					Model:            requestModel,
-					UpstreamModel:    upstreamModel,
-					Stream:           parsed.Stream,
-					ResponseHeaders:  resp.Header.Clone(),
-					Duration:         time.Since(startTime),
-					FirstTokenMs:     ttft,
-					ImageCount:       streamCount,
-					ImageDelivered:   true,
-					ImageSize:        parsed.SizeTier,
-					ImageInputSize:   parsed.Size,
-					ImageOutputSizes: streamSizes,
-				}, err
+				failureResult.ImageCount = streamCount
+				failureResult.ImageDelivered = true
+				failureResult.ImageOutputSizes = streamSizes
+			}
+			if parsed.clientDisconnected {
+				return failureResult, err
 			}
 			return nil, err
 		}
@@ -697,6 +691,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			ResponseHeaders:  resp.Header.Clone(),
 			Duration:         time.Since(startTime),
 			FirstTokenMs:     firstTokenMs,
+			ClientDisconnect: parsed.clientDisconnected,
 			ImageCount:       imageCount,
 			ImageDelivered:   imageDelivered,
 			ImageSize:        parsed.SizeTier,
@@ -722,6 +717,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			ResponseHeaders:  resp.Header.Clone(),
 			Duration:         time.Since(startTime),
 			FirstTokenMs:     firstTokenMs,
+			ClientDisconnect: parsed.clientDisconnected,
 			ImageCount:       imageCount,
 			ImageDelivered:   imageDelivered,
 			ImageSize:        parsed.SizeTier,
@@ -913,7 +909,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 		return OpenAIUsage{}, 0, nil, nil, false, fmt.Errorf("streaming is not supported by response writer")
 	}
 	if shouldNormalizeOpenAIImagesResponse(parsed) {
-		return s.handleOpenAIImagesStreamingURLResponse(ctx, resp, c, startTime, account)
+		return s.handleOpenAIImagesStreamingURLResponse(ctx, resp, c, startTime, account, parsed)
 	}
 
 	usage := OpenAIUsage{}
@@ -921,6 +917,12 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 	deliveredCounter := newOpenAIImageOutputCounter()
 	var firstTokenMs *int
 	clientDisconnected := false
+	markClientDisconnected := func() {
+		clientDisconnected = true
+		if parsed != nil {
+			parsed.clientDisconnected = true
+		}
+	}
 	lastDownstreamWriteAt := time.Now()
 	var fallbackBody bytes.Buffer
 	fallbackBytes := int64(0)
@@ -952,7 +954,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 		trimmedLine := strings.TrimRight(string(line), "\r\n")
 		if !clientDisconnected {
 			if _, writeErr := c.Writer.Write(line); writeErr != nil {
-				clientDisconnected = true
+				markClientDisconnected()
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images stream client disconnected, continue draining upstream for billing")
 			} else {
 				if data, ok := extractOpenAISSEDataLine(trimmedLine); ok {
@@ -1097,7 +1099,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 				continue
 			}
 			if _, writeErr := io.WriteString(c.Writer, ":\n\n"); writeErr != nil {
-				clientDisconnected = true
+				markClientDisconnected()
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images stream client disconnected during keepalive, continue draining upstream for billing")
 				continue
 			}
@@ -1334,6 +1336,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingURLResponse(
 	c *gin.Context,
 	startTime time.Time,
 	account *Account,
+	parsed *OpenAIImagesRequest,
 ) (OpenAIUsage, int, []string, *int, bool, error) {
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
@@ -1345,6 +1348,12 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingURLResponse(
 	deliveredCounter := newOpenAIImageOutputCounter()
 	var firstTokenMs *int
 	clientDisconnected := false
+	markClientDisconnected := func() {
+		clientDisconnected = true
+		if parsed != nil {
+			parsed.clientDisconnected = true
+		}
+	}
 	lastDownstreamWriteAt := time.Now()
 	var sseEvent openAIImagesSSEEventBuffer
 	seenSSEData := false
@@ -1369,13 +1378,13 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingURLResponse(
 		if !clientDisconnected {
 			if strings.TrimSpace(eventName) != "" {
 				if _, err := fmt.Fprintf(c.Writer, "event: %s\n", eventName); err != nil {
-					clientDisconnected = true
+					markClientDisconnected()
 					logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images stream client disconnected, continue draining upstream for billing")
 				}
 			}
 			if !clientDisconnected {
 				if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", data); err != nil {
-					clientDisconnected = true
+					markClientDisconnected()
 					logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images stream client disconnected, continue draining upstream for billing")
 				} else {
 					deliveredCounter.AddSSEData(data)
@@ -1413,12 +1422,12 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingURLResponse(
 			if !clientDisconnected {
 				if strings.TrimSpace(eventName) != "" {
 					if _, err := fmt.Fprintf(c.Writer, "event: %s\n", eventName); err != nil {
-						clientDisconnected = true
+						markClientDisconnected()
 						return nil
 					}
 				}
 				if _, err := io.WriteString(c.Writer, "data: [DONE]\n\n"); err != nil {
-					clientDisconnected = true
+					markClientDisconnected()
 					return nil
 				}
 				flusher.Flush()
@@ -1446,7 +1455,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingURLResponse(
 			}
 			if !clientDisconnected {
 				if _, writeErr := c.Writer.Write(rewritten); writeErr != nil {
-					clientDisconnected = true
+					markClientDisconnected()
 					logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images stream client disconnected, continue draining upstream for billing")
 				} else {
 					deliveredCounter.AddJSONResponse(rewritten)
@@ -1574,7 +1583,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingURLResponse(
 				continue
 			}
 			if _, writeErr := io.WriteString(c.Writer, ":\n\n"); writeErr != nil {
-				clientDisconnected = true
+				markClientDisconnected()
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images sanitized stream client disconnected during keepalive, continue draining upstream for billing")
 				continue
 			}

@@ -278,11 +278,16 @@ const (
 	SettingKeyDailyCheckinLinuxDoExemptEnabled = "daily_checkin_linuxdo_exempt_enabled"
 
 	// 二开功能 - 网关配置。
-	SettingKeyGatewayDefaultPoolModeRetryCount       = "gateway_default_pool_mode_retry_count"
-	SettingKeyGatewayDefaultPoolModeRetryStatusCodes = "gateway_default_pool_mode_retry_status_codes"
-	SettingKeyGatewayAutoManagedProbeBackoffMinutes  = "gateway_auto_managed_probe_backoff_minutes"
-	SettingKeyGatewayFirstTokenTimeoutSeconds        = "gateway_first_token_timeout_seconds"
-	SettingKeyGatewayImageGroupSuccessRateVisible    = "gateway_image_group_success_rate_visible"
+	SettingKeyGatewayDefaultPoolModeRetryCount             = "gateway_default_pool_mode_retry_count"
+	SettingKeyGatewayDefaultPoolModeRetryStatusCodes       = "gateway_default_pool_mode_retry_status_codes"
+	SettingKeyGatewayAutoManagedProbeBackoffMinutes        = "gateway_auto_managed_probe_backoff_minutes"
+	SettingKeyGatewayFirstTokenTimeoutSeconds              = "gateway_first_token_timeout_seconds"
+	SettingKeyGatewayFirstTokenTimeoutConsecutiveThreshold = "gateway_first_token_timeout_consecutive_threshold"
+	SettingKeyGatewayUpstreamErrorStatusCodes              = "gateway_upstream_error_status_codes"
+	SettingKeyGatewayUpstreamErrorConsecutiveThreshold     = "gateway_upstream_error_consecutive_threshold"
+	SettingKeyGatewayImageGroupSuccessRateVisible          = "gateway_image_group_success_rate_visible"
+	SettingKeyGatewayFailurePolicyRevision                 = "gateway_failure_policy_revision"
+	SettingKeyGatewayFailurePolicyFingerprint              = "gateway_failure_policy_fingerprint"
 
 	// 第三方认证来源默认授予配置
 	SettingKeyAuthSourceDefaultEmailBalance             = "auth_source_default_email_balance"

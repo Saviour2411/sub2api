@@ -29,7 +29,7 @@ type scheduledAccountTester interface {
 
 type scheduledAccountRecovery interface {
 	HandleStrictFailureScheduling(ctx context.Context, account *Account, statusCode int, reason string) bool
-	RecoverAccountAfterSuccessfulTest(ctx context.Context, accountID int64) (*SuccessfulTestRecoveryResult, error)
+	RecoverAccountAfterSuccessfulTestIncident(ctx context.Context, accountID int64, incidentID string, recoveryStartedAt ...time.Time) (*SuccessfulTestRecoveryResult, error)
 }
 
 // ScheduledTestRunnerService periodically scans due test plans and executes them.
@@ -163,6 +163,8 @@ func (s *ScheduledTestRunnerService) runScheduled() {
 }
 
 func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *ScheduledTestPlan) {
+	recoveryStartedAt := time.Now().UTC()
+	incidentID, recoverySnapshotOK := s.captureRecoveryIncident(ctx, plan)
 	result, err := s.accountTestSvc.RunTestBackground(ctx, plan.AccountID, plan.ModelID, plan.Prompt)
 	if err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d RunTestBackground error: %v", plan.ID, err)
@@ -184,10 +186,17 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 			return
 		}
 	} else if result.Status == "success" && plan.AutoRecover {
-		s.tryRecoverAccount(ctx, plan.AccountID, plan.ID)
+		if recoverySnapshotOK {
+			s.tryRecoverAccount(ctx, plan.AccountID, plan.ID, incidentID, recoveryStartedAt)
+		}
 	}
 
 	if result.Status == "success" && plan.AutoManaged {
+		if plan.AutoRecover && recoverySnapshotOK && incidentID != "" {
+			// 带事故 ID 的恢复事务已原子停用计划；CAS 未命中或恢复失败时
+			// 必须保留计划，不能让旧测活结果随后停用并发新事故的计划。
+			return
+		}
 		finishedAt := time.Now()
 		if s.disableAutoManagedAfterSuccess(ctx, plan, finishedAt) {
 			return
@@ -203,6 +212,22 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 	if err := s.planRepo.UpdateAfterRun(ctx, plan.ID, time.Now(), nextRun); err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d UpdateAfterRun error: %v", plan.ID, err)
 	}
+}
+
+func (s *ScheduledTestRunnerService) captureRecoveryIncident(ctx context.Context, plan *ScheduledTestPlan) (string, bool) {
+	if plan == nil || (!plan.AutoManaged && !plan.AutoRecover) {
+		return "", true
+	}
+	if s == nil || s.accountRepo == nil {
+		return "", false
+	}
+	account, err := s.accountRepo.GetByID(ctx, plan.AccountID)
+	if err != nil {
+		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d 捕获恢复事故失败: %v", plan.ID, err)
+		return "", false
+	}
+	incidentID, _ := account.FailureStrategyUnscheduledIncident()
+	return incidentID, true
 }
 
 func (s *ScheduledTestRunnerService) activateAutoManagedPlans(ctx context.Context, now time.Time) {
@@ -238,6 +263,25 @@ func (s *ScheduledTestRunnerService) activateAutoManagedPlans(ctx context.Contex
 func (s *ScheduledTestRunnerService) disableAutoManagedAfterSuccess(ctx context.Context, plan *ScheduledTestPlan, finishedAt time.Time) bool {
 	if s == nil || s.planRepo == nil || s.accountRepo == nil || plan == nil || !plan.AutoManaged {
 		return false
+	}
+	if disabler, ok := s.planRepo.(interface {
+		DisableAutoManagedIfAccountHealthy(context.Context, int64, int64, *time.Time, time.Time) (bool, error)
+	}); ok {
+		disabled, err := disabler.DisableAutoManagedIfAccountHealthy(
+			ctx,
+			plan.ID,
+			plan.AccountID,
+			&finishedAt,
+			time.Now(),
+		)
+		if err != nil {
+			logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d 条件停用自动测活计划失败: %v", plan.ID, err)
+			return false
+		}
+		if disabled {
+			logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d 账号恢复成功后已停用自动测活计划", plan.ID)
+		}
+		return disabled
 	}
 	account, err := s.accountRepo.GetByID(ctx, plan.AccountID)
 	if err != nil {
@@ -369,12 +413,18 @@ func scheduledTestFailureStatusCode(errorMessage string) int {
 }
 
 // tryRecoverAccount attempts to recover an account from recoverable runtime state.
-func (s *ScheduledTestRunnerService) tryRecoverAccount(ctx context.Context, accountID int64, planID int64) {
+func (s *ScheduledTestRunnerService) tryRecoverAccount(
+	ctx context.Context,
+	accountID int64,
+	planID int64,
+	incidentID string,
+	recoveryStartedAt time.Time,
+) {
 	if s.rateLimitSvc == nil {
 		return
 	}
 
-	recovery, err := s.rateLimitSvc.RecoverAccountAfterSuccessfulTest(ctx, accountID)
+	recovery, err := s.rateLimitSvc.RecoverAccountAfterSuccessfulTestIncident(ctx, accountID, incidentID, recoveryStartedAt)
 	if err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d auto-recover failed: %v", planID, err)
 		return

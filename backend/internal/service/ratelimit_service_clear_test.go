@@ -35,6 +35,29 @@ type rateLimitClearRepoStub struct {
 	setSchedulableCtxErr      error
 }
 
+type strictFailureStateRepoStub struct {
+	*rateLimitClearRepoStub
+	created           bool
+	persistErr        error
+	persistCalls      int
+	persistedMarker   map[string]any
+	concurrentAccount *Account
+}
+
+func (r *strictFailureStateRepoStub) PersistFailureSchedulingState(
+	_ context.Context,
+	_ int64,
+	marker map[string]any,
+	_ time.Time,
+) (bool, error) {
+	r.persistCalls++
+	r.persistedMarker = marker
+	if r.concurrentAccount != nil {
+		r.getByIDAccount = r.concurrentAccount
+	}
+	return r.created, r.persistErr
+}
+
 func (r *rateLimitClearRepoStub) GetByID(ctx context.Context, id int64) (*Account, error) {
 	if r.getByIDCtxErr != nil {
 		if err := ctx.Err(); err != nil {
@@ -282,6 +305,91 @@ func TestRateLimitService_HandleStrictFailureScheduling_ReadsFreshStrategyAfterC
 	require.Equal(t, []bool{false}, repo.setSchedulableCalls)
 	require.Len(t, repo.updateExtraCalls, 1)
 	require.True(t, account.ShouldDisableSchedulingOnUpstreamError())
+}
+
+func TestRateLimitService_HandleStrictFailureScheduling_DoesNotOverwriteExistingIncident(t *testing.T) {
+	existingMarker := map[string]any{
+		accountFailureStrategyUnscheduledSourceKey:     "first_token_timeout",
+		accountFailureStrategyUnscheduledIncidentIDKey: "incident-existing",
+		accountFailureStrategyUnscheduledReasonKey:     "original reason",
+	}
+	repo := &rateLimitClearRepoStub{getByIDAccount: &Account{
+		ID:          8,
+		Schedulable: false,
+		Extra: map[string]any{
+			accountFailureSchedulingStrategyKey:  AccountFailureSchedulingStrategyDisableUntilTestPass,
+			accountFailureStrategyUnscheduledKey: existingMarker,
+		},
+	}}
+	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	account := &Account{ID: 8, Schedulable: true}
+
+	disabled := svc.HandleStrictFailureScheduling(context.Background(), account, http.StatusBadGateway, "new reason")
+
+	require.True(t, disabled)
+	require.False(t, account.Schedulable)
+	require.Equal(t, existingMarker, failureStrategyUnscheduledMarker(account))
+	require.Empty(t, repo.setSchedulableCalls)
+	require.Empty(t, repo.updateExtraCalls)
+}
+
+func TestRateLimitService_HandleStrictFailureScheduling_PersistsStructuredIncident(t *testing.T) {
+	baseRepo := &rateLimitClearRepoStub{}
+	repo := &strictFailureStateRepoStub{rateLimitClearRepoStub: baseRepo, created: true}
+	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	account := &Account{
+		ID:          8,
+		Schedulable: true,
+		Extra: map[string]any{
+			accountFailureSchedulingStrategyKey: AccountFailureSchedulingStrategyDisableUntilTestPass,
+		},
+	}
+
+	disabled := svc.HandleStrictFailureScheduling(context.Background(), account, http.StatusBadGateway, "strict failure")
+
+	require.True(t, disabled)
+	require.Equal(t, 1, repo.persistCalls)
+	require.Equal(t, accountFailureStrategyUnscheduledStrictSource, repo.persistedMarker[accountFailureStrategyUnscheduledSourceKey])
+	require.NotEmpty(t, repo.persistedMarker[accountFailureStrategyUnscheduledIncidentIDKey])
+	require.Equal(t, "strict failure", repo.persistedMarker[accountFailureStrategyUnscheduledReasonKey])
+	require.False(t, account.Schedulable)
+	require.Equal(t, repo.persistedMarker, failureStrategyUnscheduledMarker(account))
+}
+
+func TestRateLimitService_HandleStrictFailureScheduling_ConditionalMissPreservesConcurrentIncident(t *testing.T) {
+	existingMarker := map[string]any{
+		accountFailureStrategyUnscheduledSourceKey:     "first_token_timeout",
+		accountFailureStrategyUnscheduledIncidentIDKey: "incident-concurrent",
+		accountFailureStrategyUnscheduledReasonKey:     "concurrent reason",
+	}
+	baseRepo := &rateLimitClearRepoStub{getByIDAccount: &Account{
+		ID: 8,
+		Extra: map[string]any{
+			accountFailureSchedulingStrategyKey: AccountFailureSchedulingStrategyDisableUntilTestPass,
+		},
+	}}
+	repo := &strictFailureStateRepoStub{
+		rateLimitClearRepoStub: baseRepo,
+		created:                false,
+		concurrentAccount: &Account{
+			ID:          8,
+			Schedulable: false,
+			Extra: map[string]any{
+				accountFailureSchedulingStrategyKey:  AccountFailureSchedulingStrategyDisableUntilTestPass,
+				accountFailureStrategyUnscheduledKey: existingMarker,
+			},
+		},
+	}
+	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	account := &Account{ID: 8, Schedulable: true}
+
+	disabled := svc.HandleStrictFailureScheduling(context.Background(), account, http.StatusBadGateway, "late reason")
+
+	require.True(t, disabled)
+	require.Equal(t, 1, repo.persistCalls)
+	require.Equal(t, existingMarker, failureStrategyUnscheduledMarker(account))
+	require.False(t, account.Schedulable)
+	require.NotEqual(t, repo.persistedMarker[accountFailureStrategyUnscheduledIncidentIDKey], existingMarker[accountFailureStrategyUnscheduledIncidentIDKey])
 }
 
 func TestRateLimitService_RecoverAccountAfterSuccessfulTest_ClearsErrorAndRateLimitRelatedState(t *testing.T) {

@@ -160,6 +160,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 
 	// 3. Account selection + failover loop
 	fs := NewFailoverState(h.maxAccountSwitches, false)
+	defer fs.FinalizePendingOutcomes(requestCtx, h.gatewayService)
 
 	for {
 		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(requestCtx, apiKey.GroupID, sessionHash, reqModel, fs.FailedAccountIDs, "", int64(0))
@@ -176,7 +177,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 				h.responsesErrorResponse(c, cls.Status, cls.ErrType, message)
 				return
 			}
-			action := fs.HandleSelectionExhausted(requestCtx)
+			action := fs.HandleSelectionExhausted(requestCtx, h.gatewayService)
 			switch action {
 			case FailoverContinue:
 				continue
@@ -237,10 +238,12 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		}
 
 		if err != nil {
+			fs.RecordOutcomeError(requestCtx, h.gatewayService, account.ID, err, result != nil && result.ClientDisconnect)
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
 				// Can't failover if streaming content already sent
 				if c.Writer.Size() != writerSizeBeforeForward {
+					fs.RecordTerminalFailureOutcome(requestCtx, h.gatewayService, account.ID, failoverErr)
 					h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed", true)
 					return
 				}
@@ -267,6 +270,9 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 				zap.Error(err),
 			)
 			return
+		}
+		if result != nil && !result.ClientDisconnect {
+			fs.RecordSuccessOutcome(c.Request.Context(), h.gatewayService, account.ID)
 		}
 
 		// 6. Record usage

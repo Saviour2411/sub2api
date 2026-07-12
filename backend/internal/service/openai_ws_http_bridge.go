@@ -121,29 +121,6 @@ func (c *openAIWSToolCallReplayCollector) addItem(item gjson.Result) {
 	c.items = append(c.items, json.RawMessage(raw))
 }
 
-func buildOpenAIWSHTTPBridgeErrorEvent(statusCode int, message string) []byte {
-	message = strings.TrimSpace(message)
-	if message == "" {
-		message = http.StatusText(statusCode)
-	}
-	if message == "" {
-		message = "upstream request failed"
-	}
-	event := map[string]any{
-		"type":   "error",
-		"status": statusCode,
-		"error": map[string]any{
-			"type":    "upstream_error",
-			"message": message,
-		},
-	}
-	body, err := json.Marshal(event)
-	if err != nil {
-		return []byte(`{"type":"error","error":{"type":"upstream_error","message":"upstream request failed"}}`)
-	}
-	return body
-}
-
 func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	ctx context.Context,
 	c *gin.Context,
@@ -215,19 +192,24 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
 		safeErr := sanitizeUpstreamErrorMessage(err.Error())
-		_ = writeClientMessage(buildOpenAIWSHTTPBridgeErrorEvent(http.StatusBadGateway, "Upstream request failed"))
-		return nil, fmt.Errorf("upstream http bridge request failed: %s", safeErr)
+		return nil, &UpstreamFailoverError{
+			StatusCode:             http.StatusBadGateway,
+			ResponseBody:           []byte(safeErr),
+			RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(http.StatusBadGateway),
+		}
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, openAIWSHTTPBridgeErrorBodyLimitBytes))
-		upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
-		if upstreamMsg == "" {
-			upstreamMsg = http.StatusText(resp.StatusCode)
+		// 此时尚未向客户端提交任何事件，可以安全交由 handler 切换账号。
+		// 一旦进入下方 SSE 转发循环并写出事件，流内错误则不能再切号。
+		return nil, &UpstreamFailoverError{
+			StatusCode:             resp.StatusCode,
+			ResponseBody:           respBody,
+			ResponseHeaders:        cloneHeader(resp.Header),
+			RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 		}
-		_ = writeClientMessage(buildOpenAIWSHTTPBridgeErrorEvent(resp.StatusCode, upstreamMsg))
-		return nil, fmt.Errorf("upstream http bridge error: status=%d message=%s", resp.StatusCode, upstreamMsg)
 	}
 
 	responseID := ""
@@ -258,17 +240,18 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	resultWithUsage := func() *OpenAIForwardResult {
 		imageCount := imageCounter.Count()
 		result := &OpenAIForwardResult{
-			RequestID:       responseID,
-			Usage:           usage,
-			Model:           originalModel,
-			UpstreamModel:   mappedModel,
-			ServiceTier:     extractOpenAIServiceTierFromBody(body),
-			ReasoningEffort: ApplyThinkingEnabledFallback(extractOpenAIReasoningEffortFromBody(body, mappedModel, originalModel), body, mappedModel),
-			Stream:          reqStream,
-			OpenAIWSMode:    true,
-			ResponseHeaders: cloneHeader(resp.Header),
-			Duration:        time.Since(turnStart),
-			FirstTokenMs:    firstTokenMs,
+			RequestID:        responseID,
+			Usage:            usage,
+			Model:            originalModel,
+			UpstreamModel:    mappedModel,
+			ServiceTier:      extractOpenAIServiceTierFromBody(body),
+			ReasoningEffort:  ApplyThinkingEnabledFallback(extractOpenAIReasoningEffortFromBody(body, mappedModel, originalModel), body, mappedModel),
+			Stream:           reqStream,
+			OpenAIWSMode:     true,
+			ResponseHeaders:  cloneHeader(resp.Header),
+			Duration:         time.Since(turnStart),
+			FirstTokenMs:     firstTokenMs,
+			ClientDisconnect: clientDisconnected,
 		}
 		if replayInput := replayCollector.Items(); len(replayInput) > 0 {
 			result.wsReplayInput = replayInput
@@ -374,7 +357,13 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			if errMessage == "" {
 				errMessage = "upstream error event"
 			}
-			return resultWithUsage(), errors.New(errMessage)
+			outcomeErr := NewUpstreamOutcomeError(
+				openAIWSErrorHTTPStatusFromRaw(errCodeRaw, errTypeRaw),
+				upstreamMessage,
+				errors.New(errMessage),
+			)
+			outcomeErr.ClientDisconnect = clientDisconnected
+			return resultWithUsage(), outcomeErr
 		}
 		if isOpenAIWSTerminalEvent(eventType) {
 			terminalEventCount++
@@ -397,7 +386,17 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 				firstTokenMsValue,
 				clientDisconnected,
 			)
-			return resultWithUsage(), nil
+			result := resultWithUsage()
+			if eventType == "response.failed" {
+				message := extractOpenAISSEErrorMessage(upstreamMessage)
+				result.UpstreamOutcome = NewUpstreamOutcomeError(
+					openAIStreamFailedEventSemanticStatus(upstreamMessage, message),
+					upstreamMessage,
+					fmt.Errorf("upstream response failed: %s", message),
+				)
+				result.UpstreamOutcome.ClientDisconnect = clientDisconnected
+			}
+			return result, nil
 		}
 	}
 	if err := scanner.Err(); err != nil {

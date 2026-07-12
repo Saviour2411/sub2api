@@ -56,3 +56,57 @@ func TestRescheduleEnabledAutoManagedUsesFailureStepFromLastRun(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+func TestDisableAutoManagedIfAccountHealthyUsesAccountLock(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	now := time.Date(2026, 7, 12, 10, 0, 0, 0, time.UTC)
+	finishedAt := now.Add(-time.Second)
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT NOT").
+		WithArgs(int64(42), now).
+		WillReturnRows(sqlmock.NewRows([]string{"healthy"}).AddRow(true))
+	mock.ExpectExec("UPDATE scheduled_test_plans").
+		WithArgs(int64(7), int64(42), finishedAt).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	repo := &scheduledTestPlanRepository{db: db}
+	disabled, err := repo.DisableAutoManagedIfAccountHealthy(
+		context.Background(),
+		7,
+		42,
+		&finishedAt,
+		now,
+	)
+	require.NoError(t, err)
+	require.True(t, disabled)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestDisableAutoManagedIfAccountHealthyKeepsPlanForNewIncident(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	now := time.Date(2026, 7, 12, 10, 0, 0, 0, time.UTC)
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT NOT").
+		WithArgs(int64(42), now).
+		WillReturnRows(sqlmock.NewRows([]string{"healthy"}).AddRow(false))
+	mock.ExpectRollback()
+
+	repo := &scheduledTestPlanRepository{db: db}
+	disabled, err := repo.DisableAutoManagedIfAccountHealthy(
+		context.Background(),
+		7,
+		42,
+		nil,
+		now,
+	)
+	require.NoError(t, err)
+	require.False(t, disabled)
+	require.NoError(t, mock.ExpectationsWereMet())
+}

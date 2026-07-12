@@ -60,7 +60,12 @@ func (h *CustomFeatureHandler) UpdateDailyCheckin(c *gin.Context) {
 
 // UpdateGateway 更新网关配置。
 func (h *CustomFeatureHandler) UpdateGateway(c *gin.Context) {
-	var req service.GatewaySettings
+	current, err := h.settingService.GetGatewaySettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	req := *current
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "请求格式无效")
 		return

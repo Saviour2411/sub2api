@@ -279,6 +279,9 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 	requestedModel ...string,
 ) (*OpenAIForwardResult, error) {
 	body := s.readUpstreamErrorBody(resp)
+	outcomeError := func(err error) error {
+		return NewUpstreamOutcomeError(resp.StatusCode, body, err)
+	}
 
 	// cyber_policy 硬阻断：透传上游原始错误体给客户端（不重包成通用 502），不冷却账号。
 	// 当前请求恒透传（需求1）；标记供 handler 事后写风控/邮件。400 cyber 不可 failover
@@ -298,9 +301,9 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		}
 		c.Data(resp.StatusCode, contentType, body)
 		if cyberMsg == "" {
-			return nil, fmt.Errorf("openai cyber_policy: %d", resp.StatusCode)
+			return nil, outcomeError(fmt.Errorf("openai cyber_policy: %d", resp.StatusCode))
 		}
-		return nil, fmt.Errorf("openai cyber_policy: %s", cyberMsg)
+		return nil, outcomeError(fmt.Errorf("openai cyber_policy: %s", cyberMsg))
 	}
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
@@ -347,9 +350,9 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 			upstreamMsg = errMsg
 		}
 		if upstreamMsg == "" {
-			return nil, fmt.Errorf("upstream error: %d (passthrough rule matched)", resp.StatusCode)
+			return nil, outcomeError(fmt.Errorf("upstream error: %d (passthrough rule matched)", resp.StatusCode))
 		}
-		return nil, fmt.Errorf("upstream error: %d (passthrough rule matched) message=%s", resp.StatusCode, upstreamMsg)
+		return nil, outcomeError(fmt.Errorf("upstream error: %d (passthrough rule matched) message=%s", resp.StatusCode, upstreamMsg))
 	}
 
 	if s.rateLimitService != nil && s.rateLimitService.HandleStrictFailureScheduling(ctx, account, resp.StatusCode, "upstream error") {
@@ -390,9 +393,9 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 			},
 		})
 		if upstreamMsg == "" {
-			return nil, fmt.Errorf("upstream error: %d (not in custom error codes)", resp.StatusCode)
+			return nil, outcomeError(fmt.Errorf("upstream error: %d (not in custom error codes)", resp.StatusCode))
 		}
-		return nil, fmt.Errorf("upstream error: %d (not in custom error codes) message=%s", resp.StatusCode, upstreamMsg)
+		return nil, outcomeError(fmt.Errorf("upstream error: %d (not in custom error codes) message=%s", resp.StatusCode, upstreamMsg))
 	}
 
 	// Handle upstream error (mark account status)
@@ -466,9 +469,9 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 	})
 
 	if upstreamMsg == "" {
-		return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
+		return nil, outcomeError(fmt.Errorf("upstream error: %d", resp.StatusCode))
 	}
-	return nil, fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, upstreamMsg)
+	return nil, outcomeError(fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, upstreamMsg))
 }
 
 // compatErrorWriter is the signature for format-specific error writers used by
@@ -488,6 +491,9 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 	requestedModel ...string,
 ) (*OpenAIForwardResult, error) {
 	body := s.readUpstreamErrorBody(resp)
+	outcomeError := func(err error) error {
+		return NewUpstreamOutcomeError(resp.StatusCode, body, err)
+	}
 
 	// cyber_policy：兼容路径（Chat Completions / Anthropic）以各自格式回写错误，
 	// 不原样透传 responses 格式的 cyber body（否则对下游格式不合法）。cyber 是上游网络
@@ -507,9 +513,9 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 		}
 		writeError(c, resp.StatusCode, "invalid_request_error", clientMsg)
 		if cyberMsg == "" {
-			return nil, fmt.Errorf("openai cyber_policy: %d", resp.StatusCode)
+			return nil, outcomeError(fmt.Errorf("openai cyber_policy: %d", resp.StatusCode))
 		}
-		return nil, fmt.Errorf("openai cyber_policy: %s", cyberMsg)
+		return nil, outcomeError(fmt.Errorf("openai cyber_policy: %s", cyberMsg))
 	}
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
@@ -539,9 +545,9 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 			upstreamMsg = errMsg
 		}
 		if upstreamMsg == "" {
-			return nil, fmt.Errorf("upstream error: %d (passthrough rule matched)", resp.StatusCode)
+			return nil, outcomeError(fmt.Errorf("upstream error: %d (passthrough rule matched)", resp.StatusCode))
 		}
-		return nil, fmt.Errorf("upstream error: %d (passthrough rule matched) message=%s", resp.StatusCode, upstreamMsg)
+		return nil, outcomeError(fmt.Errorf("upstream error: %d (passthrough rule matched) message=%s", resp.StatusCode, upstreamMsg))
 	}
 
 	// Check custom error codes — if the account does not handle this status,
@@ -560,9 +566,9 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 		MarkResponseCommitted(c)
 		writeError(c, http.StatusInternalServerError, "api_error", "Upstream gateway error")
 		if upstreamMsg == "" {
-			return nil, fmt.Errorf("upstream error: %d (not in custom error codes)", resp.StatusCode)
+			return nil, outcomeError(fmt.Errorf("upstream error: %d (not in custom error codes)", resp.StatusCode))
 		}
-		return nil, fmt.Errorf("upstream error: %d (not in custom error codes) message=%s", resp.StatusCode, upstreamMsg)
+		return nil, outcomeError(fmt.Errorf("upstream error: %d (not in custom error codes) message=%s", resp.StatusCode, upstreamMsg))
 	}
 
 	// Track rate limits and decide whether to trigger secondary failover.
@@ -611,5 +617,5 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 	}
 
 	writeError(c, resp.StatusCode, errType, upstreamMsg)
-	return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
+	return nil, outcomeError(fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg))
 }

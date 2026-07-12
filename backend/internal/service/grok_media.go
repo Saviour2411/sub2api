@@ -564,6 +564,9 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 	requestedModel string,
 ) (*OpenAIForwardResult, error) {
 	body := s.readUpstreamErrorBody(resp)
+	outcomeError := func(err error) error {
+		return NewUpstreamOutcomeError(resp.StatusCode, body, err)
+	}
 	upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(body)))
 	if upstreamMsg == "" {
 		upstreamMsg = fmt.Sprintf("xAI upstream returned status %d", resp.StatusCode)
@@ -590,7 +593,7 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 	); matched {
 		MarkResponseCommitted(c)
 		writeGrokMediaErrorResponse(c, status, errType, errMsg)
-		return nil, fmt.Errorf("upstream error: %d (passthrough rule matched) message=%s", resp.StatusCode, upstreamMsg)
+		return nil, outcomeError(fmt.Errorf("upstream error: %d (passthrough rule matched) message=%s", resp.StatusCode, upstreamMsg))
 	}
 
 	if !account.ShouldHandleErrorCode(resp.StatusCode) {
@@ -606,7 +609,7 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 		})
 		MarkResponseCommitted(c)
 		writeGrokMediaErrorResponse(c, http.StatusInternalServerError, "upstream_error", "Upstream gateway error")
-		return nil, fmt.Errorf("upstream error: %d (not in custom error codes) message=%s", resp.StatusCode, upstreamMsg)
+		return nil, outcomeError(fmt.Errorf("upstream error: %d (not in custom error codes) message=%s", resp.StatusCode, upstreamMsg))
 	}
 
 	s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
@@ -634,7 +637,7 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 
 	MarkResponseCommitted(c)
 	writeGrokMediaErrorResponse(c, resp.StatusCode, grokMediaErrorType(resp.StatusCode), upstreamMsg)
-	return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
+	return nil, outcomeError(fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg))
 }
 
 func grokMediaErrorType(statusCode int) string {

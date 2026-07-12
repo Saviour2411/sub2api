@@ -134,6 +134,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	switchCount := 0
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
+	outcomeTracker := newOpenAIUpstreamOutcomeTracker()
 	var lastFailoverErr *service.UpstreamFailoverError
 
 	for {
@@ -224,16 +225,18 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, int64(*result.FirstTokenMs))
 		}
 		if err != nil {
-			if result != nil && result.ImageCount > 0 {
+			if canAcceptOpenAIPartialImageResult(result, err) {
 				reqLog.Warn("openai_chat_completions.forward_partial_error_with_image_result",
 					zap.Int64("account_id", account.ID),
 					zap.Int("image_count", result.ImageCount),
 					zap.Error(err),
 				)
 			} else {
+				outcomeTracker.recordOutcomeError(c.Request.Context(), h.gatewayService, account.ID, err, result != nil && result.ClientDisconnect)
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
 					if c.Writer.Size() != writerSizeBeforeForward {
+						outcomeTracker.recordFailure(c.Request.Context(), h.gatewayService, account.ID, failoverErr)
 						h.handleFailoverExhausted(c, failoverErr, true)
 						return
 					}
@@ -257,6 +260,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 							continue
 						}
 					}
+					outcomeTracker.recordFailure(c.Request.Context(), h.gatewayService, account.ID, failoverErr)
 					h.gatewayService.RecordOpenAIAccountSwitch()
 					failedAccountIDs[account.ID] = struct{}{}
 					lastFailoverErr = failoverErr
@@ -292,6 +296,12 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				return
 			}
 		}
+		outcomeTracker.recordSuccess(
+			c.Request.Context(),
+			h.gatewayService,
+			account.ID,
+			result != nil && result.ClientDisconnect,
+		)
 		if result != nil {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, result.FirstTokenMs)
 		} else {

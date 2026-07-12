@@ -918,6 +918,19 @@ export interface TempUnschedulableStatus {
   state?: TempUnschedulableState
 }
 
+export interface FailureStrategyUnscheduledMarker {
+  source?: string | null
+  reason?: string | null
+  status_code?: number | null
+  consecutive_count?: number | null
+  threshold?: number | null
+  at?: string | null
+  incident_id?: string | null
+  model?: string | null
+  timeout_seconds?: number | null
+  [key: string]: unknown
+}
+
 export interface Account {
   id: number
   name: string
@@ -934,6 +947,7 @@ export interface Account {
   extra?: (CodexUsageSnapshot & OpenAICompactState & {
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
+    failure_strategy_unscheduled?: FailureStrategyUnscheduledMarker | null
   } & Record<string, unknown>)
   proxy_id: number | null
   proxy_fallback_origin_id?: number | null

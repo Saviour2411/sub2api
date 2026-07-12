@@ -293,6 +293,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 	if platform == service.PlatformGemini {
 		fs := NewFailoverState(h.maxAccountSwitchesGemini, hasBoundSession)
+		defer fs.FinalizePendingOutcomes(c.Request.Context(), h.gatewayService)
 
 		// 单账号分组提前设置 SingleAccountRetry 标记，让 Service 层首次 503 就不设模型限流标记。
 		// 避免单账号分组收到 503 (MODEL_CAPACITY_EXHAUSTED) 时设 29s 限流，导致后续请求连续快速失败。
@@ -323,7 +324,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					h.handleStreamingAwareError(c, cls.Status, cls.ErrType, message, streamStarted)
 					return
 				}
-				action := fs.HandleSelectionExhausted(c.Request.Context())
+				action := fs.HandleSelectionExhausted(c.Request.Context(), h.gatewayService)
 				switch action {
 				case FailoverContinue:
 					ctx := service.WithSingleAccountRetry(c.Request.Context(), true, h.metadataBridgeEnabled())
@@ -444,10 +445,12 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				accountReleaseFunc()
 			}
 			if err != nil {
+				fs.RecordOutcomeError(c.Request.Context(), h.gatewayService, account.ID, err, result != nil && result.ClientDisconnect)
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
 					// 流式内容已写入客户端，无法撤销，禁止 failover 以防止流拼接腐化
 					if c.Writer.Size() != writerSizeBeforeForward {
+						fs.RecordTerminalFailureOutcome(c.Request.Context(), h.gatewayService, account.ID, failoverErr)
 						h.handleFailoverExhausted(c, failoverErr, service.PlatformGemini, true)
 						return
 					}
@@ -487,6 +490,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 				reqLog.Error("gateway.forward_failed", forwardFailedFields...)
 				return
+			}
+			if result != nil && !result.ClientDisconnect {
+				fs.RecordSuccessOutcome(c.Request.Context(), h.gatewayService, account.ID)
 			}
 
 			// RPM 计数递增（Forward 成功后）
@@ -571,6 +577,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 	for {
 		fs := NewFailoverState(h.maxAccountSwitches, hasBoundSession)
+		defer fs.FinalizePendingOutcomes(c.Request.Context(), h.gatewayService)
 		retryWithFallback := false
 
 		for {
@@ -609,7 +616,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					h.handleStreamingAwareError(c, cls.Status, cls.ErrType, message, streamStarted)
 					return
 				}
-				action := fs.HandleSelectionExhausted(c.Request.Context())
+				action := fs.HandleSelectionExhausted(c.Request.Context(), h.gatewayService)
 				switch action {
 				case FailoverContinue:
 					ctx := service.WithSingleAccountRetry(c.Request.Context(), true, h.metadataBridgeEnabled())
@@ -820,6 +827,20 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 				var promptTooLongErr *service.PromptTooLongError
 				if errors.As(err, &promptTooLongErr) {
+					promptStatusCode := promptTooLongErr.StatusCode
+					if promptStatusCode < 100 || promptStatusCode > 599 {
+						promptStatusCode = http.StatusBadRequest
+					}
+					// PromptTooLong 是该账号已经形成的明确非超时结果。它不参与
+					// 切号，但必须清零此前的首 Token 和普通上游错误连续计数。
+					h.gatewayService.RecordUpstreamFailureOutcome(
+						c.Request.Context(),
+						account.ID,
+						&service.UpstreamFailoverError{
+							StatusCode:   promptStatusCode,
+							ResponseBody: promptTooLongErr.Body,
+						},
+					)
 					reqLog.Warn("gateway.prompt_too_long_from_antigravity",
 						zap.Any("current_group_id", currentAPIKey.GroupID),
 						zap.Any("fallback_group_id", fallbackGroupID),
@@ -877,10 +898,12 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					_ = h.antigravityGatewayService.WriteMappedClaudeError(c, account, promptTooLongErr.StatusCode, promptTooLongErr.RequestID, promptTooLongErr.Body)
 					return
 				}
+				fs.RecordOutcomeError(c.Request.Context(), h.gatewayService, account.ID, err, result != nil && result.ClientDisconnect)
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
 					// 流式内容已写入客户端，无法撤销，禁止 failover 以防止流拼接腐化
 					if c.Writer.Size() != writerSizeBeforeForward {
+						fs.RecordTerminalFailureOutcome(c.Request.Context(), h.gatewayService, account.ID, failoverErr)
 						h.handleFailoverExhausted(c, failoverErr, account.Platform, true)
 						return
 					}
@@ -920,6 +943,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 				reqLog.Error("gateway.forward_failed", forwardFailedFields...)
 				return
+			}
+			if result != nil && !result.ClientDisconnect {
+				fs.RecordSuccessOutcome(c.Request.Context(), h.gatewayService, account.ID)
 			}
 
 			// RPM 计数递增（Forward 成功后）

@@ -30,17 +30,22 @@ var (
 )
 
 const (
-	DefaultGatewayPoolModeRetryCount   = 1
-	DefaultGatewayFirstTokenTimeout    = 60
-	MaxGatewayPoolModeRetryCount       = 10
-	MaxGatewayFirstTokenTimeoutSeconds = 600
-	gatewaySettingsCacheTTL            = 60 * time.Second
-	gatewaySettingsErrorCacheTTL       = 5 * time.Second
-	gatewaySettingsDBTimeout           = 5 * time.Second
+	DefaultGatewayPoolModeRetryCount                    = 1
+	DefaultGatewayFirstTokenTimeout                     = 60
+	DefaultGatewayFirstTokenTimeoutConsecutiveThreshold = 3
+	DefaultGatewayUpstreamErrorConsecutiveThreshold     = 10
+	DefaultGatewayFailurePolicyRevision                 = int64(1)
+	MaxGatewayPoolModeRetryCount                        = 10
+	MaxGatewayFirstTokenTimeoutSeconds                  = 600
+	MaxGatewayFailureConsecutiveThreshold               = 100
+	gatewaySettingsCacheTTL                             = 60 * time.Second
+	gatewaySettingsErrorCacheTTL                        = 5 * time.Second
+	gatewaySettingsDBTimeout                            = 5 * time.Second
 )
 
 var (
 	defaultGatewayPoolModeRetryStatusCodes = []int{401, 403, 429, 502, 503, 504}
+	defaultGatewayUpstreamErrorStatusCodes = []int{502, 503, 504}
 	defaultGatewayProbeBackoffMinutes      = []int{5, 10, 15, 30, 60}
 )
 
@@ -68,11 +73,27 @@ type DailyCheckinSettings struct {
 
 // GatewaySettings 是二开功能中的网关运行配置。
 type GatewaySettings struct {
-	DefaultPoolModeRetryCount       int   `json:"default_pool_mode_retry_count"`
-	DefaultPoolModeRetryStatusCodes []int `json:"default_pool_mode_retry_status_codes"`
-	AutoManagedProbeBackoffMinutes  []int `json:"auto_managed_probe_backoff_minutes"`
-	FirstTokenTimeoutSeconds        int   `json:"first_token_timeout_seconds"`
-	ImageGroupSuccessRateVisible    bool  `json:"image_group_success_rate_visible"`
+	DefaultPoolModeRetryCount             int   `json:"default_pool_mode_retry_count"`
+	DefaultPoolModeRetryStatusCodes       []int `json:"default_pool_mode_retry_status_codes"`
+	AutoManagedProbeBackoffMinutes        []int `json:"auto_managed_probe_backoff_minutes"`
+	FirstTokenTimeoutSeconds              int   `json:"first_token_timeout_seconds"`
+	FirstTokenTimeoutConsecutiveThreshold int   `json:"first_token_timeout_consecutive_threshold"`
+	UpstreamErrorStatusCodes              []int `json:"upstream_error_status_codes"`
+	UpstreamErrorConsecutiveThreshold     int   `json:"upstream_error_consecutive_threshold"`
+	ImageGroupSuccessRateVisible          bool  `json:"image_group_success_rate_visible"`
+	FailurePolicyRevision                 int64 `json:"-"`
+}
+
+type gatewaySettingsRevisionWriter interface {
+	SetMultipleWithMonotonicRevision(
+		ctx context.Context,
+		settings map[string]string,
+		revisionKey string,
+		fingerprintKey string,
+		initialRevision int64,
+		currentFingerprintFallback string,
+		desiredFingerprint string,
+	) (int64, error)
 }
 
 type cachedGatewaySettings struct {
@@ -92,7 +113,11 @@ var gatewaySettingKeys = []string{
 	SettingKeyGatewayDefaultPoolModeRetryStatusCodes,
 	SettingKeyGatewayAutoManagedProbeBackoffMinutes,
 	SettingKeyGatewayFirstTokenTimeoutSeconds,
+	SettingKeyGatewayFirstTokenTimeoutConsecutiveThreshold,
+	SettingKeyGatewayUpstreamErrorStatusCodes,
+	SettingKeyGatewayUpstreamErrorConsecutiveThreshold,
 	SettingKeyGatewayImageGroupSuccessRateVisible,
+	SettingKeyGatewayFailurePolicyRevision,
 }
 
 var customFeatureSettingKeys = []string{
@@ -112,7 +137,11 @@ var customFeatureSettingKeys = []string{
 	SettingKeyGatewayDefaultPoolModeRetryStatusCodes,
 	SettingKeyGatewayAutoManagedProbeBackoffMinutes,
 	SettingKeyGatewayFirstTokenTimeoutSeconds,
+	SettingKeyGatewayFirstTokenTimeoutConsecutiveThreshold,
+	SettingKeyGatewayUpstreamErrorStatusCodes,
+	SettingKeyGatewayUpstreamErrorConsecutiveThreshold,
 	SettingKeyGatewayImageGroupSuccessRateVisible,
+	SettingKeyGatewayFailurePolicyRevision,
 }
 
 // GetCustomFeatureSettings 读取模型广场和每日签到配置。
@@ -161,11 +190,15 @@ func (s *SettingService) GetCustomFeatureSettings(ctx context.Context) (*CustomF
 // DefaultGatewaySettings 返回未持久化配置时使用的默认值。
 func DefaultGatewaySettings() GatewaySettings {
 	return GatewaySettings{
-		DefaultPoolModeRetryCount:       DefaultGatewayPoolModeRetryCount,
-		DefaultPoolModeRetryStatusCodes: append([]int(nil), defaultGatewayPoolModeRetryStatusCodes...),
-		AutoManagedProbeBackoffMinutes:  append([]int(nil), defaultGatewayProbeBackoffMinutes...),
-		FirstTokenTimeoutSeconds:        DefaultGatewayFirstTokenTimeout,
-		ImageGroupSuccessRateVisible:    true,
+		DefaultPoolModeRetryCount:             DefaultGatewayPoolModeRetryCount,
+		DefaultPoolModeRetryStatusCodes:       append([]int(nil), defaultGatewayPoolModeRetryStatusCodes...),
+		AutoManagedProbeBackoffMinutes:        append([]int(nil), defaultGatewayProbeBackoffMinutes...),
+		FirstTokenTimeoutSeconds:              DefaultGatewayFirstTokenTimeout,
+		FirstTokenTimeoutConsecutiveThreshold: DefaultGatewayFirstTokenTimeoutConsecutiveThreshold,
+		UpstreamErrorStatusCodes:              append([]int(nil), defaultGatewayUpstreamErrorStatusCodes...),
+		UpstreamErrorConsecutiveThreshold:     DefaultGatewayUpstreamErrorConsecutiveThreshold,
+		ImageGroupSuccessRateVisible:          true,
+		FailurePolicyRevision:                 DefaultGatewayFailurePolicyRevision,
 	}
 }
 
@@ -225,6 +258,12 @@ func (s *SettingService) UpdateGatewaySettings(ctx context.Context, input Gatewa
 	if err := validateGatewaySettings(&input); err != nil {
 		return nil, err
 	}
+	current, err := s.GetGatewaySettings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	currentFingerprint := BuildGatewayFailurePolicyFingerprint(*current)
+	desiredFingerprint := BuildGatewayFailurePolicyFingerprint(input)
 	statusCodesJSON, err := json.Marshal(input.DefaultPoolModeRetryStatusCodes)
 	if err != nil {
 		return nil, fmt.Errorf("序列化默认重试状态码: %w", err)
@@ -233,16 +272,53 @@ func (s *SettingService) UpdateGatewaySettings(ctx context.Context, input Gatewa
 	if err != nil {
 		return nil, fmt.Errorf("序列化自动测活退避配置: %w", err)
 	}
-	updates := map[string]string{
-		SettingKeyGatewayDefaultPoolModeRetryCount:       strconv.Itoa(input.DefaultPoolModeRetryCount),
-		SettingKeyGatewayDefaultPoolModeRetryStatusCodes: string(statusCodesJSON),
-		SettingKeyGatewayAutoManagedProbeBackoffMinutes:  string(backoffJSON),
-		SettingKeyGatewayFirstTokenTimeoutSeconds:        strconv.Itoa(input.FirstTokenTimeoutSeconds),
-		SettingKeyGatewayImageGroupSuccessRateVisible:    strconv.FormatBool(input.ImageGroupSuccessRateVisible),
+	upstreamErrorStatusCodesJSON, err := json.Marshal(input.UpstreamErrorStatusCodes)
+	if err != nil {
+		return nil, fmt.Errorf("序列化上游错误状态码: %w", err)
 	}
-	if err := s.settingRepo.SetMultiple(ctx, updates); err != nil {
+	updates := map[string]string{
+		SettingKeyGatewayDefaultPoolModeRetryCount:             strconv.Itoa(input.DefaultPoolModeRetryCount),
+		SettingKeyGatewayDefaultPoolModeRetryStatusCodes:       string(statusCodesJSON),
+		SettingKeyGatewayAutoManagedProbeBackoffMinutes:        string(backoffJSON),
+		SettingKeyGatewayFirstTokenTimeoutSeconds:              strconv.Itoa(input.FirstTokenTimeoutSeconds),
+		SettingKeyGatewayFirstTokenTimeoutConsecutiveThreshold: strconv.Itoa(input.FirstTokenTimeoutConsecutiveThreshold),
+		SettingKeyGatewayUpstreamErrorStatusCodes:              string(upstreamErrorStatusCodesJSON),
+		SettingKeyGatewayUpstreamErrorConsecutiveThreshold:     strconv.Itoa(input.UpstreamErrorConsecutiveThreshold),
+		SettingKeyGatewayImageGroupSuccessRateVisible:          strconv.FormatBool(input.ImageGroupSuccessRateVisible),
+	}
+	var revision int64
+	if writer, ok := s.settingRepo.(gatewaySettingsRevisionWriter); ok {
+		revision, err = writer.SetMultipleWithMonotonicRevision(
+			ctx,
+			updates,
+			SettingKeyGatewayFailurePolicyRevision,
+			SettingKeyGatewayFailurePolicyFingerprint,
+			DefaultGatewayFailurePolicyRevision,
+			currentFingerprint,
+			desiredFingerprint,
+		)
+	} else {
+		revision = current.FailurePolicyRevision
+		if revision <= 0 {
+			revision = DefaultGatewayFailurePolicyRevision
+		}
+		if currentFingerprint != desiredFingerprint {
+			if revision == int64(^uint64(0)>>1) {
+				err = fmt.Errorf("网关失败策略代次已耗尽")
+			} else {
+				revision++
+			}
+		}
+		if err == nil {
+			updates[SettingKeyGatewayFailurePolicyRevision] = strconv.FormatInt(revision, 10)
+			updates[SettingKeyGatewayFailurePolicyFingerprint] = desiredFingerprint
+			err = s.settingRepo.SetMultiple(ctx, updates)
+		}
+	}
+	if err != nil {
 		return nil, fmt.Errorf("更新网关配置: %w", err)
 	}
+	input.FailurePolicyRevision = revision
 	s.storeGatewaySettingsCache(input, gatewaySettingsCacheTTL)
 	if s.scheduledTestPlanRepo != nil {
 		if err := s.scheduledTestPlanRepo.RescheduleEnabledAutoManaged(ctx, input.AutoManagedProbeBackoffDurations(), time.Now()); err != nil {
@@ -318,8 +394,23 @@ func parseGatewaySettings(values map[string]string) GatewaySettings {
 	if value, err := strconv.Atoi(strings.TrimSpace(values[SettingKeyGatewayFirstTokenTimeoutSeconds])); err == nil && value >= 0 && value <= MaxGatewayFirstTokenTimeoutSeconds {
 		settings.FirstTokenTimeoutSeconds = value
 	}
+	if value, err := strconv.Atoi(strings.TrimSpace(values[SettingKeyGatewayFirstTokenTimeoutConsecutiveThreshold])); err == nil && value >= 1 && value <= MaxGatewayFailureConsecutiveThreshold {
+		settings.FirstTokenTimeoutConsecutiveThreshold = value
+	}
+	if raw, ok := values[SettingKeyGatewayUpstreamErrorStatusCodes]; ok && strings.TrimSpace(raw) != "" {
+		var codes []int
+		if err := json.Unmarshal([]byte(raw), &codes); err == nil && validateRetryStatusCodes(codes) == nil {
+			settings.UpstreamErrorStatusCodes = normalizeRetryStatusCodes(codes)
+		}
+	}
+	if value, err := strconv.Atoi(strings.TrimSpace(values[SettingKeyGatewayUpstreamErrorConsecutiveThreshold])); err == nil && value >= 1 && value <= MaxGatewayFailureConsecutiveThreshold {
+		settings.UpstreamErrorConsecutiveThreshold = value
+	}
 	if raw, ok := values[SettingKeyGatewayImageGroupSuccessRateVisible]; ok {
 		settings.ImageGroupSuccessRateVisible = !isFalseSettingValue(raw)
+	}
+	if value, err := strconv.ParseInt(strings.TrimSpace(values[SettingKeyGatewayFailurePolicyRevision]), 10, 64); err == nil && value >= DefaultGatewayFailurePolicyRevision {
+		settings.FailurePolicyRevision = value
 	}
 	return settings
 }
@@ -331,6 +422,15 @@ func validateGatewaySettings(settings *GatewaySettings) error {
 	if settings.FirstTokenTimeoutSeconds < 0 || settings.FirstTokenTimeoutSeconds > MaxGatewayFirstTokenTimeoutSeconds {
 		return ErrGatewaySettingsInvalid.WithMetadata(map[string]string{"field": "first_token_timeout_seconds"})
 	}
+	if settings.FirstTokenTimeoutConsecutiveThreshold < 1 || settings.FirstTokenTimeoutConsecutiveThreshold > MaxGatewayFailureConsecutiveThreshold {
+		return ErrGatewaySettingsInvalid.WithMetadata(map[string]string{"field": "first_token_timeout_consecutive_threshold"})
+	}
+	if err := validateRetryStatusCodes(settings.UpstreamErrorStatusCodes); err != nil {
+		return ErrGatewaySettingsInvalid.WithMetadata(map[string]string{"field": "upstream_error_status_codes"})
+	}
+	if settings.UpstreamErrorConsecutiveThreshold < 1 || settings.UpstreamErrorConsecutiveThreshold > MaxGatewayFailureConsecutiveThreshold {
+		return ErrGatewaySettingsInvalid.WithMetadata(map[string]string{"field": "upstream_error_consecutive_threshold"})
+	}
 	if err := validateRetryStatusCodes(settings.DefaultPoolModeRetryStatusCodes); err != nil {
 		return ErrGatewaySettingsInvalid.WithMetadata(map[string]string{"field": "default_pool_mode_retry_status_codes"})
 	}
@@ -338,6 +438,7 @@ func validateGatewaySettings(settings *GatewaySettings) error {
 		return ErrGatewaySettingsInvalid.WithMetadata(map[string]string{"field": "auto_managed_probe_backoff_minutes"})
 	}
 	settings.DefaultPoolModeRetryStatusCodes = normalizeRetryStatusCodes(settings.DefaultPoolModeRetryStatusCodes)
+	settings.UpstreamErrorStatusCodes = normalizeRetryStatusCodes(settings.UpstreamErrorStatusCodes)
 	settings.AutoManagedProbeBackoffMinutes = append([]int(nil), settings.AutoManagedProbeBackoffMinutes...)
 	return nil
 }
@@ -382,6 +483,7 @@ func normalizeRetryStatusCodes(codes []int) []int {
 
 func cloneGatewaySettings(settings GatewaySettings) GatewaySettings {
 	settings.DefaultPoolModeRetryStatusCodes = append([]int{}, settings.DefaultPoolModeRetryStatusCodes...)
+	settings.UpstreamErrorStatusCodes = append([]int{}, settings.UpstreamErrorStatusCodes...)
 	settings.AutoManagedProbeBackoffMinutes = append([]int(nil), settings.AutoManagedProbeBackoffMinutes...)
 	return settings
 }

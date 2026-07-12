@@ -27,6 +27,9 @@ func TestIsMeaningfulFirstTokenJSON(t *testing.T) {
 		{name: "OpenAI 前导事件", data: `{"type":"response.created","response":{"id":"resp_1"}}`, want: false},
 		{name: "OpenAI usage-only", data: `{"type":"response.completed","response":{"usage":{"input_tokens":1}}}`, want: false},
 		{name: "OpenAI 正文增量", data: `{"type":"response.output_text.delta","delta":"你"}`, want: true},
+		{name: "OpenAI 空白正文增量", data: `{"type":"response.output_text.delta","delta":" "}`, want: true},
+		{name: "OpenAI 换行正文增量", data: `{"type":"response.output_text.delta","delta":"\n"}`, want: true},
+		{name: "OpenAI 制表符正文增量", data: `{"type":"response.output_text.delta","delta":"\t"}`, want: true},
 		{name: "OpenAI refusal 增量", data: `{"type":"response.refusal.delta","delta":"无法处理"}`, want: true},
 		{name: "OpenAI 空 refusal 增量", data: `{"type":"response.refusal.delta","delta":""}`, want: false},
 		{name: "OpenAI 工具参数增量", data: `{"type":"response.function_call_arguments.delta","delta":"{"}`, want: true},
@@ -37,6 +40,8 @@ func TestIsMeaningfulFirstTokenJSON(t *testing.T) {
 		{name: "OpenAI 普通输出项前导", data: `{"type":"response.output_item.added","item":{"type":"message","id":"msg_1"}}`, want: false},
 		{name: "Chat Completions usage-only", data: `{"choices":[],"usage":{"prompt_tokens":1}}`, want: false},
 		{name: "Chat Completions 思考增量", data: `{"choices":[{"delta":{"reasoning_content":"思考"}}]}`, want: true},
+		{name: "Chat Completions 空白正文增量", data: `{"choices":[{"delta":{"content":" "}}]}`, want: true},
+		{name: "Chat Completions 换行正文增量", data: `{"choices":[{"delta":{"content":"\n"}}]}`, want: true},
 		{name: "Chat Completions refusal 增量", data: `{"choices":[{"delta":{"refusal":"拒绝"}}]}`, want: true},
 		{name: "Chat Completions 工具调用", data: `{"choices":[{"delta":{"tool_calls":[{"id":"call_1","function":{"name":"lookup"}}]}}]}`, want: true},
 		{name: "Chat Completions 空工具数组", data: `{"choices":[{"delta":{"tool_calls":[]}}]}`, want: false},
@@ -45,6 +50,7 @@ func TestIsMeaningfulFirstTokenJSON(t *testing.T) {
 		{name: "Chat Completions 空函数参数", data: `{"choices":[{"delta":{"function_call":{"arguments":""}}}]}`, want: false},
 		{name: "Anthropic message_start", data: `{"type":"message_start","message":{"usage":{"input_tokens":1}}}`, want: false},
 		{name: "Anthropic thinking_delta", data: `{"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"分析"}}`, want: true},
+		{name: "Anthropic 空白 text_delta", data: `{"type":"content_block_delta","delta":{"type":"text_delta","text":" "}}`, want: true},
 		{name: "Anthropic tool start", data: `{"type":"content_block_start","content_block":{"type":"tool_use","id":"toolu_1","name":"lookup","input":{}}}`, want: true},
 		{name: "Anthropic 空 tool start", data: `{"type":"content_block_start","content_block":{"type":"tool_use","input":{}}}`, want: false},
 		{name: "Anthropic tool delta", data: `{"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":"{"}}`, want: true},
@@ -137,6 +143,27 @@ func TestFirstTokenAttemptBuffersDownstreamUntilMeaningfulDelta(t *testing.T) {
 	require.NoError(t, attempt.finish(nil))
 	require.Same(t, attempt.originalWriter, c.Writer)
 	_ = writer.Close()
+}
+
+func TestFirstTokenAttemptStartsWhenUpstreamRequestIsDispatched(t *testing.T) {
+	attempt := newFirstTokenAttemptWithTimeout(
+		context.Background(),
+		nil,
+		nil,
+		&Account{ID: 1},
+		"gpt-test",
+		30*time.Millisecond,
+	)
+	req := attempt.bindRequest(httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
+
+	time.Sleep(60 * time.Millisecond)
+	require.Equal(t, firstTokenAttemptWaiting, attempt.currentState())
+
+	StartFirstTokenAttemptFromContext(req.Context())
+	require.Eventually(t, func() bool {
+		return attempt.currentState() == firstTokenAttemptTimedOut
+	}, time.Second, 5*time.Millisecond)
+	attempt.cleanup()
 }
 
 func TestFirstTokenAttemptTimeoutDiscardsPreludeAndReturns504(t *testing.T) {
@@ -382,6 +409,70 @@ type firstTokenAtomicRepoStub struct {
 	marker    map[string]any
 }
 
+type firstTokenStreakCacheStub struct {
+	state       AccountFailureStreakState
+	err         error
+	outcomes    []AccountFailureStreakOutcome
+	sources     []AccountFailureStreakSource
+	occurredAts []time.Time
+}
+
+type firstTokenRecoveryRepoStub struct {
+	AccountRepository
+	account             *Account
+	accountAfterRecover *Account
+	recoverCalled       bool
+	recoverIncidentID   string
+	recovered           bool
+	err                 error
+}
+
+type firstTokenRuntimeBlockerStub struct {
+	blockedAccounts []*Account
+	blockedReasons  []string
+	clearedIDs      []int64
+}
+
+func (r *firstTokenRecoveryRepoStub) GetByID(_ context.Context, _ int64) (*Account, error) {
+	return r.account, r.err
+}
+
+func (r *firstTokenRecoveryRepoStub) RecoverFailureSchedulingState(_ context.Context, _ int64, incidentID string) (bool, error) {
+	r.recoverCalled = true
+	r.recoverIncidentID = incidentID
+	if r.recovered && r.accountAfterRecover != nil {
+		r.account = r.accountAfterRecover
+	}
+	return r.recovered, r.err
+}
+
+func (r *firstTokenRuntimeBlockerStub) BlockAccountScheduling(account *Account, _ time.Time, reason string) {
+	r.blockedAccounts = append(r.blockedAccounts, account)
+	r.blockedReasons = append(r.blockedReasons, reason)
+}
+
+func (r *firstTokenRuntimeBlockerStub) ClearAccountSchedulingBlock(accountID int64) {
+	r.clearedIDs = append(r.clearedIDs, accountID)
+}
+
+func (s *firstTokenStreakCacheStub) ApplyOutcome(
+	_ context.Context,
+	_ int64,
+	source AccountFailureStreakSource,
+	policy AccountFailureStreakPolicy,
+	outcome AccountFailureStreakOutcome,
+	event AccountFailureStreakEvent,
+) (AccountFailureStreakState, error) {
+	s.outcomes = append(s.outcomes, outcome)
+	s.sources = append(s.sources, source)
+	s.occurredAts = append(s.occurredAts, event.OccurredAt)
+	state := s.state
+	if state.PolicyRevision == 0 {
+		state.PolicyRevision = policy.Revision
+	}
+	return state, s.err
+}
+
 func (r *firstTokenAtomicRepoStub) PersistFirstTokenTimeoutState(_ context.Context, accountID int64, marker map[string]any, _ time.Time) error {
 	r.called = true
 	r.accountID = accountID
@@ -392,7 +483,8 @@ func (r *firstTokenAtomicRepoStub) PersistFirstTokenTimeoutState(_ context.Conte
 func TestHandleFirstTokenTimeoutPersistsMarkerAndStartsProbe(t *testing.T) {
 	repo := &firstTokenAccountRepoStub{}
 	probe := &firstTokenProbeSchedulerStub{}
-	svc := &RateLimitService{accountRepo: repo, autoManagedProbe: probe}
+	streak := &firstTokenStreakCacheStub{state: AccountFailureStreakState{Count: 3, Applied: true}}
+	svc := &RateLimitService{accountRepo: repo, autoManagedProbe: probe, accountFailureStreakCache: streak}
 	account := &Account{ID: 42, Platform: PlatformOpenAI, Schedulable: true, Extra: map[string]any{}}
 
 	require.NoError(t, svc.HandleFirstTokenTimeout(context.Background(), account, "gpt-test", 17))
@@ -407,6 +499,9 @@ func TestHandleFirstTokenTimeoutPersistsMarkerAndStartsProbe(t *testing.T) {
 	require.Equal(t, "first_token_timeout", marker[accountFailureStrategyUnscheduledSourceKey])
 	require.Equal(t, "gpt-test", marker[accountFailureStrategyUnscheduledModelKey])
 	require.Equal(t, 17, marker[accountFailureStrategyUnscheduledTimeoutSecondsKey])
+	require.Equal(t, int64(3), marker[accountFailureStrategyUnscheduledConsecutiveCountKey])
+	require.Equal(t, 3, marker[accountFailureStrategyUnscheduledThresholdKey])
+	require.NotEmpty(t, marker[accountFailureStrategyUnscheduledIncidentIDKey])
 	require.Equal(t, http.StatusGatewayTimeout, marker[accountFailureStrategyUnscheduledStatusCodeKey])
 	reason, ok := marker[accountFailureStrategyUnscheduledReasonKey].(string)
 	require.True(t, ok)
@@ -416,7 +511,12 @@ func TestHandleFirstTokenTimeoutPersistsMarkerAndStartsProbe(t *testing.T) {
 func TestHandleFirstTokenTimeoutAtomicFailureKeepsAccountSchedulable(t *testing.T) {
 	persistErr := errors.New("transaction failed")
 	repo := &firstTokenAtomicRepoStub{err: persistErr}
-	svc := &RateLimitService{accountRepo: repo}
+	svc := &RateLimitService{
+		accountRepo: repo,
+		accountFailureStreakCache: &firstTokenStreakCacheStub{
+			state: AccountFailureStreakState{Count: 3, Applied: true},
+		},
+	}
 	account := &Account{ID: 42, Platform: PlatformOpenAI, Schedulable: true, Extra: map[string]any{}}
 
 	err := svc.HandleFirstTokenTimeout(context.Background(), account, "gpt-test", 17)
@@ -430,7 +530,12 @@ func TestHandleFirstTokenTimeoutAtomicFailureKeepsAccountSchedulable(t *testing.
 
 func TestHandleFirstTokenTimeoutAtomicSuccessMutatesMemoryAfterCommit(t *testing.T) {
 	repo := &firstTokenAtomicRepoStub{}
-	svc := &RateLimitService{accountRepo: repo}
+	svc := &RateLimitService{
+		accountRepo: repo,
+		accountFailureStreakCache: &firstTokenStreakCacheStub{
+			state: AccountFailureStreakState{Count: 3, Applied: true},
+		},
+	}
 	account := &Account{ID: 42, Platform: PlatformOpenAI, Schedulable: true, Extra: map[string]any{}}
 
 	err := svc.HandleFirstTokenTimeout(context.Background(), account, "gpt-test", 17)
@@ -439,6 +544,211 @@ func TestHandleFirstTokenTimeoutAtomicSuccessMutatesMemoryAfterCommit(t *testing
 	require.True(t, repo.called)
 	require.False(t, account.Schedulable)
 	require.True(t, account.HasFailureStrategyUnscheduledMarker())
+}
+
+func TestHandleFirstTokenTimeoutBeforeThresholdKeepsAccountSchedulable(t *testing.T) {
+	repo := &firstTokenAtomicRepoStub{}
+	streak := &firstTokenStreakCacheStub{state: AccountFailureStreakState{Count: 2, Applied: true}}
+	svc := &RateLimitService{accountRepo: repo, accountFailureStreakCache: streak}
+	account := &Account{ID: 42, Schedulable: true, Extra: map[string]any{}}
+
+	require.NoError(t, svc.HandleFirstTokenTimeout(context.Background(), account, "gpt-test", 60))
+	require.False(t, repo.called)
+	require.True(t, account.Schedulable)
+	require.False(t, account.HasFailureStrategyUnscheduledMarker())
+}
+
+func TestHandleFirstTokenTimeoutOutcomeIgnoresStalePolicy(t *testing.T) {
+	current := DefaultGatewaySettings()
+	current.FirstTokenTimeoutSeconds = 30
+	current.FailurePolicyRevision = 2
+	settingService := &SettingService{}
+	settingService.storeGatewaySettingsCache(current, time.Hour)
+	streak := &firstTokenStreakCacheStub{state: AccountFailureStreakState{Count: 3, Applied: true}}
+	svc := &RateLimitService{
+		accountRepo:               &firstTokenAccountRepoStub{},
+		accountFailureStreakCache: streak,
+		settingService:            settingService,
+	}
+	account := &Account{ID: 42, Schedulable: true, Extra: map[string]any{}}
+	old := current
+	old.FirstTokenTimeoutSeconds = 25
+	old.FailurePolicyRevision = 1
+
+	err := svc.handleFirstTokenTimeoutOutcome(
+		context.Background(),
+		account,
+		"gpt-test",
+		25,
+		BuildAccountFailureStreakPolicy(AccountFailureStreakSourceFirstTokenTimeout, old),
+		old.FirstTokenTimeoutConsecutiveThreshold,
+		NewAccountFailureStreakEvent(time.Now().Add(-time.Second)),
+		true,
+	)
+
+	require.NoError(t, err)
+	require.Empty(t, streak.outcomes)
+	require.True(t, account.Schedulable)
+	require.False(t, account.HasFailureStrategyUnscheduledMarker())
+}
+
+func TestFirstTokenAttemptDefersOutcomeUntilAccountFinalResult(t *testing.T) {
+	streak := &firstTokenStreakCacheStub{}
+	svc := &RateLimitService{accountFailureStreakCache: streak}
+	attempt := &firstTokenAttempt{
+		account:        &Account{ID: 42},
+		rateLimit:      svc,
+		requestCtx:     context.Background(),
+		timeoutSeconds: 60,
+	}
+	attempt.state.Store(int32(firstTokenAttemptReceived))
+	require.NoError(t, attempt.finish(nil))
+	require.Empty(t, streak.outcomes)
+
+	svc.RecordUpstreamSuccessOutcome(context.Background(), 42)
+	require.Equal(t, []AccountFailureStreakOutcome{
+		AccountFailureStreakOutcomeReset,
+		AccountFailureStreakOutcomeReset,
+	}, streak.outcomes)
+
+	canceled := &firstTokenAttempt{
+		account:        &Account{ID: 42},
+		rateLimit:      svc,
+		requestCtx:     context.Background(),
+		timeoutSeconds: 60,
+	}
+	canceled.state.Store(int32(firstTokenAttemptClientCanceled))
+	require.ErrorIs(t, canceled.finish(context.Canceled), context.Canceled)
+	require.Len(t, streak.outcomes, 2)
+}
+
+func TestRecoverAccountAfterSuccessfulTestIncidentRejectsStaleProbe(t *testing.T) {
+	repo := &firstTokenRecoveryRepoStub{account: &Account{
+		ID:          42,
+		Schedulable: false,
+		Extra: map[string]any{
+			accountFailureStrategyUnscheduledKey: map[string]any{
+				accountFailureStrategyUnscheduledSourceKey:     "first_token_timeout",
+				accountFailureStrategyUnscheduledIncidentIDKey: "incident-new",
+			},
+		},
+	}}
+	streak := &firstTokenStreakCacheStub{}
+	svc := &RateLimitService{accountRepo: repo, accountFailureStreakCache: streak}
+
+	result, err := svc.RecoverAccountAfterSuccessfulTestIncident(context.Background(), 42, "incident-old")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, result.ClearedRateLimit)
+	require.False(t, repo.recoverCalled)
+	require.Empty(t, streak.outcomes)
+}
+
+func TestRecoverAccountAfterSuccessfulTestIncidentClearsMatchingStreak(t *testing.T) {
+	repo := &firstTokenRecoveryRepoStub{
+		recovered: true,
+		account: &Account{
+			ID:          42,
+			Schedulable: false,
+			Extra: map[string]any{
+				accountFailureStrategyUnscheduledKey: map[string]any{
+					accountFailureStrategyUnscheduledSourceKey:         "first_token_timeout",
+					accountFailureStrategyUnscheduledIncidentIDKey:     "incident-current",
+					accountFailureStrategyUnscheduledTimeoutSecondsKey: float64(60),
+				},
+			},
+		},
+	}
+	streak := &firstTokenStreakCacheStub{}
+	svc := &RateLimitService{accountRepo: repo, accountFailureStreakCache: streak}
+
+	result, err := svc.RecoverAccountAfterSuccessfulTestIncident(context.Background(), 42, "incident-current")
+	require.NoError(t, err)
+	require.True(t, result.ClearedRateLimit)
+	require.True(t, repo.recoverCalled)
+	require.Equal(t, "incident-current", repo.recoverIncidentID)
+	require.Equal(t, []AccountFailureStreakOutcome{
+		AccountFailureStreakOutcomeReset,
+		AccountFailureStreakOutcomeReset,
+	}, streak.outcomes)
+}
+
+func TestRecoverAccountAfterSuccessfulTestIncidentClearsStrictFailureStreaks(t *testing.T) {
+	repo := &firstTokenRecoveryRepoStub{
+		recovered: true,
+		account: &Account{
+			ID:          42,
+			Schedulable: false,
+			Extra: map[string]any{
+				accountFailureStrategyUnscheduledKey: map[string]any{
+					accountFailureStrategyUnscheduledSourceKey:     accountFailureStrategyUnscheduledStrictSource,
+					accountFailureStrategyUnscheduledIncidentIDKey: "incident-strict",
+				},
+			},
+		},
+	}
+	streak := &firstTokenStreakCacheStub{}
+	svc := &RateLimitService{accountRepo: repo, accountFailureStreakCache: streak}
+
+	result, err := svc.RecoverAccountAfterSuccessfulTestIncident(context.Background(), 42, "incident-strict")
+
+	require.NoError(t, err)
+	require.True(t, result.ClearedRateLimit)
+	require.Equal(t, []AccountFailureStreakOutcome{
+		AccountFailureStreakOutcomeReset,
+		AccountFailureStreakOutcomeReset,
+	}, streak.outcomes)
+}
+
+func TestRecoverAccountAfterSuccessfulTestIncidentPreservesConcurrentIncident(t *testing.T) {
+	oldAccount := &Account{
+		ID:          42,
+		Platform:    PlatformOpenAI,
+		Schedulable: false,
+		Extra: map[string]any{
+			accountFailureStrategyUnscheduledKey: map[string]any{
+				accountFailureStrategyUnscheduledSourceKey:     "first_token_timeout",
+				accountFailureStrategyUnscheduledIncidentIDKey: "incident-old",
+			},
+		},
+	}
+	newAccount := &Account{
+		ID:          42,
+		Platform:    PlatformOpenAI,
+		Schedulable: false,
+		Extra: map[string]any{
+			accountFailureStrategyUnscheduledKey: map[string]any{
+				accountFailureStrategyUnscheduledSourceKey:     "upstream_error",
+				accountFailureStrategyUnscheduledIncidentIDKey: "incident-new",
+			},
+		},
+	}
+	repo := &firstTokenRecoveryRepoStub{
+		account:             oldAccount,
+		accountAfterRecover: newAccount,
+		recovered:           true,
+	}
+	streak := &firstTokenStreakCacheStub{}
+	blocker := &firstTokenRuntimeBlockerStub{}
+	svc := &RateLimitService{accountRepo: repo, accountFailureStreakCache: streak}
+	svc.SetAccountRuntimeBlocker(blocker)
+	probeStartedAt := time.Date(2026, 7, 12, 9, 30, 0, 123000000, time.UTC)
+
+	result, err := svc.RecoverAccountAfterSuccessfulTestIncident(
+		context.Background(),
+		42,
+		"incident-old",
+		probeStartedAt,
+	)
+
+	require.NoError(t, err)
+	require.True(t, result.ClearedRateLimit)
+	require.Equal(t, []int64{42}, blocker.clearedIDs)
+	require.Equal(t, []*Account{newAccount}, blocker.blockedAccounts)
+	require.Equal(t, []string{"upstream_error"}, blocker.blockedReasons)
+	require.Len(t, streak.occurredAts, 2)
+	require.Equal(t, probeStartedAt, streak.occurredAts[0])
+	require.Equal(t, probeStartedAt, streak.occurredAts[1])
 }
 
 func TestFirstTokenTimeoutErrorIsNotSameAccountRetryable(t *testing.T) {

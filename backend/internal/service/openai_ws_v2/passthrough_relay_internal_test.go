@@ -357,16 +357,17 @@ func TestEmitTurnCompleteCoverage(t *testing.T) {
 		eventType:  "response.output_text.delta",
 		responseID: "resp_ignored",
 		usage:      Usage{InputTokens: 1},
-	})
+	}, false)
 	require.Equal(t, 0, called)
 
 	// 缺少 response_id 时不应触发。
 	emitTurnComplete(func(turn RelayTurnResult) {
 		called++
 	}, &relayState{requestModel: "gpt-5"}, observedUpstreamEvent{
+		complete:  true,
 		terminal:  true,
 		eventType: "response.completed",
-	})
+	}, false)
 	require.Equal(t, 0, called)
 
 	// terminal 且 response_id 存在，应该触发；state=nil 时 model 为空串。
@@ -375,11 +376,12 @@ func TestEmitTurnCompleteCoverage(t *testing.T) {
 		called++
 		got = turn
 	}, nil, observedUpstreamEvent{
+		complete:   true,
 		terminal:   true,
 		eventType:  "response.completed",
 		responseID: "resp_emit",
 		usage:      Usage{InputTokens: 2, OutputTokens: 3},
-	})
+	}, false)
 	require.Equal(t, 1, called)
 	require.Equal(t, "resp_emit", got.RequestID)
 	require.Equal(t, "response.completed", got.TerminalEventType)

@@ -164,6 +164,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	requestCtx := c.Request.Context()
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
+	outcomeTracker := newOpenAIUpstreamOutcomeTracker()
 	var lastFailoverErr *service.UpstreamFailoverError
 	switchCount := 0
 	maxAccountSwitches := h.maxAccountSwitches
@@ -254,10 +255,12 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		service.SetOpsLatencyMs(c, service.OpsResponseLatencyMsKey, responseLatencyMs)
 
 		if err != nil {
+			outcomeTracker.recordOutcomeError(requestCtx, h.gatewayService, account.ID, err, result != nil && result.ClientDisconnect)
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
 				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
 				if c.Writer.Size() != writerSizeBeforeForward {
+					outcomeTracker.recordFailure(requestCtx, h.gatewayService, account.ID, failoverErr)
 					h.handleFailoverExhausted(c, failoverErr, true)
 					return
 				}
@@ -279,6 +282,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 						continue
 					}
 				}
+				outcomeTracker.recordFailure(requestCtx, h.gatewayService, account.ID, failoverErr)
 				h.gatewayService.RecordOpenAIAccountSwitch()
 				failedAccountIDs[account.ID] = struct{}{}
 				lastFailoverErr = failoverErr
@@ -306,6 +310,12 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			return
 		}
 
+		outcomeTracker.recordSuccess(
+			requestCtx,
+			h.gatewayService,
+			account.ID,
+			result != nil && result.ClientDisconnect,
+		)
 		h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, nil)
 		if endpoint == service.GrokMediaEndpointVideosGenerations && strings.TrimSpace(result.ResponseID) != "" {
 			if err := h.gatewayService.BindGrokMediaVideoRequestAccount(requestCtx, apiKey.GroupID, result.ResponseID, account.ID); err != nil {

@@ -271,23 +271,88 @@
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
               {{ t('admin.customFeatures.gateway.firstTokenTimeout.description') }}
             </p>
-            <div class="mt-4 max-w-xs">
-              <label class="input-label" for="gateway-first-token-timeout">
-                {{ t('admin.customFeatures.gateway.firstTokenTimeout.seconds') }}
-              </label>
-              <input
-                id="gateway-first-token-timeout"
-                v-model.number="gateway.first_token_timeout_seconds"
-                data-test="gateway-first-token-timeout"
-                type="number"
-                min="0"
-                max="600"
-                step="1"
-                class="input"
-              />
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.customFeatures.gateway.firstTokenTimeout.hint') }}
-              </p>
+            <div class="mt-4 grid gap-5 md:grid-cols-2">
+              <div>
+                <label class="input-label" for="gateway-first-token-timeout">
+                  {{ t('admin.customFeatures.gateway.firstTokenTimeout.seconds') }}
+                </label>
+                <input
+                  id="gateway-first-token-timeout"
+                  v-model.number="gateway.first_token_timeout_seconds"
+                  data-test="gateway-first-token-timeout"
+                  type="number"
+                  min="0"
+                  max="600"
+                  step="1"
+                  class="input"
+                />
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.customFeatures.gateway.firstTokenTimeout.hint') }}
+                </p>
+              </div>
+              <div>
+                <label class="input-label" for="gateway-first-token-consecutive-threshold">
+                  {{ t('admin.customFeatures.gateway.firstTokenTimeout.consecutiveThreshold') }}
+                </label>
+                <input
+                  id="gateway-first-token-consecutive-threshold"
+                  v-model.number="gateway.first_token_timeout_consecutive_threshold"
+                  data-test="gateway-first-token-consecutive-threshold"
+                  type="number"
+                  min="1"
+                  max="100"
+                  step="1"
+                  class="input"
+                />
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.customFeatures.gateway.firstTokenTimeout.consecutiveThresholdHint') }}
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section class="border-t border-gray-100 pt-8 dark:border-dark-700" aria-labelledby="gateway-upstream-error-title">
+            <h3 id="gateway-upstream-error-title" class="font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.customFeatures.gateway.upstreamError.title') }}
+            </h3>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.customFeatures.gateway.upstreamError.description') }}
+            </p>
+            <div class="mt-4 grid gap-5 md:grid-cols-2">
+              <div>
+                <label class="input-label" for="gateway-upstream-error-consecutive-threshold">
+                  {{ t('admin.customFeatures.gateway.upstreamError.consecutiveThreshold') }}
+                </label>
+                <input
+                  id="gateway-upstream-error-consecutive-threshold"
+                  v-model.number="gateway.upstream_error_consecutive_threshold"
+                  data-test="gateway-upstream-error-consecutive-threshold"
+                  type="number"
+                  min="1"
+                  max="100"
+                  step="1"
+                  class="input"
+                />
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.customFeatures.gateway.upstreamError.consecutiveThresholdHint') }}
+                </p>
+              </div>
+              <div>
+                <label class="input-label" for="gateway-upstream-error-status-codes">
+                  {{ t('admin.customFeatures.gateway.upstreamError.statusCodes') }}
+                </label>
+                <input
+                  id="gateway-upstream-error-status-codes"
+                  v-model="gatewayUpstreamErrorStatusCodesInput"
+                  data-test="gateway-upstream-error-status-codes"
+                  type="text"
+                  class="input"
+                  placeholder="502, 503, 504"
+                />
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.customFeatures.gateway.upstreamError.statusCodesHint') }}
+                </p>
+              </div>
             </div>
           </section>
 
@@ -652,9 +717,13 @@ const gateway = reactive<GatewaySettings>({
   default_pool_mode_retry_status_codes: [401, 403, 429, 502, 503, 504],
   auto_managed_probe_backoff_minutes: [5, 10, 15, 30, 60],
   first_token_timeout_seconds: 60,
+  first_token_timeout_consecutive_threshold: 3,
+  upstream_error_status_codes: [502, 503, 504],
+  upstream_error_consecutive_threshold: 10,
   image_group_success_rate_visible: true
 })
 const gatewayRetryStatusCodesInput = ref(gateway.default_pool_mode_retry_status_codes.join(', '))
+const gatewayUpstreamErrorStatusCodesInput = ref(gateway.upstream_error_status_codes.join(', '))
 
 const subscriptionGroupOptions = computed(() =>
   activeGroups.value
@@ -694,6 +763,10 @@ function cloneGateway(settings?: Partial<GatewaySettings>): GatewaySettings {
       ...(settings?.auto_managed_probe_backoff_minutes ?? [5, 10, 15, 30, 60])
     ],
     first_token_timeout_seconds: settings?.first_token_timeout_seconds ?? 60,
+    first_token_timeout_consecutive_threshold:
+      settings?.first_token_timeout_consecutive_threshold ?? 3,
+    upstream_error_status_codes: [...(settings?.upstream_error_status_codes ?? [502, 503, 504])],
+    upstream_error_consecutive_threshold: settings?.upstream_error_consecutive_threshold ?? 10,
     image_group_success_rate_visible: settings?.image_group_success_rate_visible ?? true
   }
 }
@@ -702,6 +775,7 @@ function assignGateway(settings?: Partial<GatewaySettings>) {
   const next = cloneGateway(settings)
   Object.assign(gateway, next)
   gatewayRetryStatusCodesInput.value = next.default_pool_mode_retry_status_codes.join(', ')
+  gatewayUpstreamErrorStatusCodesInput.value = next.upstream_error_status_codes.join(', ')
 }
 
 async function loadSettings() {
@@ -740,10 +814,10 @@ function removeProbeBackoff(index: number) {
   gateway.auto_managed_probe_backoff_minutes.splice(index, 1)
 }
 
-function parseGatewayRetryStatusCodes(): number[] | null {
-  const input = gatewayRetryStatusCodesInput.value.trim()
-  if (!input) return []
-  const tokens = input.split(/[,\s]+/).filter(Boolean)
+function parseGatewayStatusCodes(input: string): number[] | null {
+  const normalizedInput = input.trim()
+  if (!normalizedInput) return []
+  const tokens = normalizedInput.split(/[,\s]+/).filter(Boolean)
   if (tokens.length === 0) return null
 
   const statusCodes: number[] = []
@@ -756,21 +830,29 @@ function parseGatewayRetryStatusCodes(): number[] | null {
   return [...new Set(statusCodes)].sort((left, right) => left - right)
 }
 
-function validateGateway(): { error: string | null; retryStatusCodes: number[] } {
+type GatewayValidationResult = {
+  error: string | null
+  retryStatusCodes: number[]
+  upstreamErrorStatusCodes: number[]
+}
+
+function gatewayValidationError(
+  error: string,
+  retryStatusCodes: number[] = [],
+  upstreamErrorStatusCodes: number[] = []
+): GatewayValidationResult {
+  return { error, retryStatusCodes, upstreamErrorStatusCodes }
+}
+
+function validateGateway(): GatewayValidationResult {
   const retryCount = gateway.default_pool_mode_retry_count
   if (!Number.isInteger(retryCount) || retryCount < 0 || retryCount > 10) {
-    return {
-      error: t('admin.customFeatures.gateway.validation.retryCount'),
-      retryStatusCodes: []
-    }
+    return gatewayValidationError(t('admin.customFeatures.gateway.validation.retryCount'))
   }
 
-  const retryStatusCodes = parseGatewayRetryStatusCodes()
+  const retryStatusCodes = parseGatewayStatusCodes(gatewayRetryStatusCodesInput.value)
   if (retryStatusCodes === null) {
-    return {
-      error: t('admin.customFeatures.gateway.validation.retryStatusCodes'),
-      retryStatusCodes: []
-    }
+    return gatewayValidationError(t('admin.customFeatures.gateway.validation.retryStatusCodes'))
   }
 
   const backoff = gateway.auto_managed_probe_backoff_minutes
@@ -779,27 +861,61 @@ function validateGateway(): { error: string | null; retryStatusCodes: number[] }
     backoff.length > 10 ||
     backoff.some((minutes) => !Number.isInteger(minutes) || minutes < 1 || minutes > 1440)
   ) {
-    return {
-      error: t('admin.customFeatures.gateway.validation.probeBackoffRange'),
+    return gatewayValidationError(
+      t('admin.customFeatures.gateway.validation.probeBackoffRange'),
       retryStatusCodes
-    }
+    )
   }
   if (backoff.some((minutes, index) => index > 0 && minutes < backoff[index - 1])) {
-    return {
-      error: t('admin.customFeatures.gateway.validation.probeBackoffOrder'),
+    return gatewayValidationError(
+      t('admin.customFeatures.gateway.validation.probeBackoffOrder'),
       retryStatusCodes
-    }
+    )
   }
 
   const timeoutSeconds = gateway.first_token_timeout_seconds
   if (!Number.isInteger(timeoutSeconds) || timeoutSeconds < 0 || timeoutSeconds > 600) {
-    return {
-      error: t('admin.customFeatures.gateway.validation.firstTokenTimeout'),
+    return gatewayValidationError(
+      t('admin.customFeatures.gateway.validation.firstTokenTimeout'),
       retryStatusCodes
-    }
+    )
   }
 
-  return { error: null, retryStatusCodes }
+  const firstTokenConsecutiveThreshold = gateway.first_token_timeout_consecutive_threshold
+  if (
+    !Number.isInteger(firstTokenConsecutiveThreshold) ||
+    firstTokenConsecutiveThreshold < 1 ||
+    firstTokenConsecutiveThreshold > 100
+  ) {
+    return gatewayValidationError(
+      t('admin.customFeatures.gateway.validation.firstTokenConsecutiveThreshold'),
+      retryStatusCodes
+    )
+  }
+
+  const upstreamErrorConsecutiveThreshold = gateway.upstream_error_consecutive_threshold
+  if (
+    !Number.isInteger(upstreamErrorConsecutiveThreshold) ||
+    upstreamErrorConsecutiveThreshold < 1 ||
+    upstreamErrorConsecutiveThreshold > 100
+  ) {
+    return gatewayValidationError(
+      t('admin.customFeatures.gateway.validation.upstreamErrorConsecutiveThreshold'),
+      retryStatusCodes
+    )
+  }
+
+  const upstreamErrorStatusCodes = parseGatewayStatusCodes(
+    gatewayUpstreamErrorStatusCodesInput.value
+  )
+  if (upstreamErrorStatusCodes === null) {
+    return gatewayValidationError(
+      t('admin.customFeatures.gateway.validation.upstreamErrorStatusCodes'),
+      retryStatusCodes
+    )
+  }
+
+  return { error: null, retryStatusCodes, upstreamErrorStatusCodes }
 }
 
 async function saveGateway() {
@@ -816,6 +932,11 @@ async function saveGateway() {
       default_pool_mode_retry_status_codes: validation.retryStatusCodes,
       auto_managed_probe_backoff_minutes: gateway.auto_managed_probe_backoff_minutes.map(Number),
       first_token_timeout_seconds: Number(gateway.first_token_timeout_seconds),
+      first_token_timeout_consecutive_threshold: Number(
+        gateway.first_token_timeout_consecutive_threshold
+      ),
+      upstream_error_status_codes: validation.upstreamErrorStatusCodes,
+      upstream_error_consecutive_threshold: Number(gateway.upstream_error_consecutive_threshold),
       image_group_success_rate_visible: gateway.image_group_success_rate_visible
     })
     assignGateway(saved)

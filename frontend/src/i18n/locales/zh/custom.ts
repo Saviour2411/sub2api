@@ -75,6 +75,16 @@ export default {
       },
       status: {
         lastScheduledTestFailure: '最近定时测试失败',
+        unschedulableReasonTitle: '不可调度原因',
+        unschedulableReason: '原因',
+        unschedulableFirstTokenTimeout: '连续首 Token 超时',
+        unschedulableUpstreamError: '连续上游错误',
+        unschedulableStatusCode: '状态码',
+        unschedulableConsecutiveCount: '连续次数',
+        unschedulableThreshold: '停调度阈值',
+        unschedulableModel: '模型',
+        unschedulableTimeoutSeconds: '首 Token 超时秒数',
+        unschedulableOccurredAt: '发生时间',
       },
     },
     channelMonitor: {
@@ -211,6 +221,16 @@ export default {
           description: '上游在时限内未返回有效首 Token 时停止等待、跳过当前账号池内重试并切换账号。',
           seconds: '最长等待秒数',
           hint: '允许 0 到 600 秒；设为 0 表示关闭。',
+          consecutiveThreshold: '连续超时停调度次数',
+          consecutiveThresholdHint: '允许 1 到 100 次；达到阈值后账号将不可调度，测活通过后恢复。',
+        },
+        upstreamError: {
+          title: '连续上游错误停调度',
+          description: '账号连续命中指定上游状态码并达到阈值后，将停止参与调度并启动自动测活。',
+          consecutiveThreshold: '连续错误停调度次数',
+          consecutiveThresholdHint: '允许 1 到 100 次；一次成功请求会重置该账号的连续错误计数。',
+          statusCodes: '计入连续错误的状态码',
+          statusCodesHint: '使用逗号或空格分隔，可留空；保存时会去重并按升序排列。',
         },
         imageSuccessRate: {
           title: 'Image 分组成功率',
@@ -230,6 +250,9 @@ export default {
           probeBackoffRange: '自动测活退避必须包含 1 到 10 个、范围为 1 到 1440 的整数',
           probeBackoffOrder: '自动测活退避必须按非递减顺序排列',
           firstTokenTimeout: '首 Token 超时必须是 0 到 600 之间的整数',
+          firstTokenConsecutiveThreshold: '首 Token 连续超时停调度次数必须是 1 到 100 之间的整数',
+          upstreamErrorConsecutiveThreshold: '连续上游错误停调度次数必须是 1 到 100 之间的整数',
+          upstreamErrorStatusCodes: '连续上游错误状态码必须是 100 到 599 之间的整数，并使用逗号或空格分隔',
         },
       },
       dailyCheckin: {

@@ -160,6 +160,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 	if groupPlatform == service.PlatformGemini {
 		fs = NewFailoverState(h.maxAccountSwitchesGemini, false)
 	}
+	defer fs.FinalizePendingOutcomes(c.Request.Context(), h.gatewayService)
 
 	for {
 		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, selectionSessionHash, reqModel, fs.FailedAccountIDs, "", int64(0))
@@ -176,7 +177,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				h.chatCompletionsErrorResponse(c, cls.Status, cls.ErrType, message)
 				return
 			}
-			action := fs.HandleSelectionExhausted(c.Request.Context())
+			action := fs.HandleSelectionExhausted(c.Request.Context(), h.gatewayService)
 			switch action {
 			case FailoverContinue:
 				continue
@@ -257,9 +258,11 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		}
 
 		if err != nil {
+			fs.RecordOutcomeError(c.Request.Context(), h.gatewayService, account.ID, err, result != nil && result.ClientDisconnect)
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
 				if c.Writer.Size() != writerSizeBeforeForward {
+					fs.RecordTerminalFailureOutcome(c.Request.Context(), h.gatewayService, account.ID, failoverErr)
 					h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed", true)
 					return
 				}
@@ -286,6 +289,9 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				zap.Error(err),
 			)
 			return
+		}
+		if result != nil && !result.ClientDisconnect {
+			fs.RecordSuccessOutcome(c.Request.Context(), h.gatewayService, account.ID)
 		}
 
 		// 6. Record usage

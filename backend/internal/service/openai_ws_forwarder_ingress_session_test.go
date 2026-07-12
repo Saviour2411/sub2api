@@ -4003,6 +4003,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ClientDisconnect
 	select {
 	case result := <-resultCh:
 		require.Equal(t, "resp_ingress_disconnect", result.RequestID)
+		require.True(t, result.ClientDisconnect)
 		require.Equal(t, 2, result.Usage.InputTokens)
 		require.Equal(t, 1, result.Usage.OutputTokens)
 		require.NotNil(t, result.ServiceTier)

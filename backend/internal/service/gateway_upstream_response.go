@@ -357,6 +357,9 @@ func (s *GatewayService) readUpstreamErrorBody(resp *http.Response) ([]byte, err
 
 func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, requestedModel ...string) (*ForwardResult, error) {
 	body, readErr := s.readUpstreamErrorBody(resp)
+	outcomeError := func(err error) error {
+		return NewUpstreamOutcomeError(resp.StatusCode, body, err)
+	}
 	if readErr != nil {
 		// 读取失败时 body 可能被截断，错误分类会基于不完整数据；记录日志以便排查，
 		// 避免静默吞掉导致误判。
@@ -455,9 +458,9 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 			summary = errMsg
 		}
 		if summary == "" {
-			return nil, fmt.Errorf("upstream error: %d (passthrough rule matched)", resp.StatusCode)
+			return nil, outcomeError(fmt.Errorf("upstream error: %d (passthrough rule matched)", resp.StatusCode))
 		}
-		return nil, fmt.Errorf("upstream error: %d (passthrough rule matched) message=%s", resp.StatusCode, summary)
+		return nil, outcomeError(fmt.Errorf("upstream error: %d (passthrough rule matched) message=%s", resp.StatusCode, summary))
 	}
 
 	// 根据状态码返回适当的自定义错误响应（不透传上游详细信息）
@@ -472,9 +475,9 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 			summary = truncateForLog(body, 512)
 		}
 		if summary == "" {
-			return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
+			return nil, outcomeError(fmt.Errorf("upstream error: %d", resp.StatusCode))
 		}
-		return nil, fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, summary)
+		return nil, outcomeError(fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, summary))
 	case 401:
 		statusCode = http.StatusBadGateway
 		errType = "upstream_error"
@@ -511,9 +514,9 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 	})
 
 	if upstreamMsg == "" {
-		return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
+		return nil, outcomeError(fmt.Errorf("upstream error: %d", resp.StatusCode))
 	}
-	return nil, fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, upstreamMsg)
+	return nil, outcomeError(fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, upstreamMsg))
 }
 
 func (s *GatewayService) handleRetryExhaustedSideEffects(ctx context.Context, resp *http.Response, account *Account) {
@@ -546,6 +549,9 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 	MarkResponseCommitted(c)
 	// Capture upstream error body before side-effects consume the stream.
 	respBody, _ := s.readUpstreamErrorBody(resp)
+	outcomeError := func(err error) error {
+		return NewUpstreamOutcomeError(resp.StatusCode, respBody, err)
+	}
 	_ = resp.Body.Close()
 	resp.Body = io.NopCloser(bytes.NewReader(respBody))
 
@@ -618,9 +624,9 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 			summary = errMsg
 		}
 		if summary == "" {
-			return nil, fmt.Errorf("upstream error: %d (retries exhausted, passthrough rule matched)", resp.StatusCode)
+			return nil, outcomeError(fmt.Errorf("upstream error: %d (retries exhausted, passthrough rule matched)", resp.StatusCode))
 		}
-		return nil, fmt.Errorf("upstream error: %d (retries exhausted, passthrough rule matched) message=%s", resp.StatusCode, summary)
+		return nil, outcomeError(fmt.Errorf("upstream error: %d (retries exhausted, passthrough rule matched) message=%s", resp.StatusCode, summary))
 	}
 
 	// 返回统一的重试耗尽错误响应
@@ -633,9 +639,9 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 	})
 
 	if upstreamMsg == "" {
-		return nil, fmt.Errorf("upstream error: %d (retries exhausted)", resp.StatusCode)
+		return nil, outcomeError(fmt.Errorf("upstream error: %d (retries exhausted)", resp.StatusCode))
 	}
-	return nil, fmt.Errorf("upstream error: %d (retries exhausted) message=%s", resp.StatusCode, upstreamMsg)
+	return nil, outcomeError(fmt.Errorf("upstream error: %d (retries exhausted) message=%s", resp.StatusCode, upstreamMsg))
 }
 
 // streamingResult 流式响应结果

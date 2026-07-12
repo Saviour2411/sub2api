@@ -26,6 +26,18 @@ type scheduledTestResultRepoStub struct {
 	err     error
 }
 
+type scheduledAccountTesterStub struct {
+	result *ScheduledTestResult
+	err    error
+}
+
+type scheduledAccountRecoveryStub struct {
+	incidentIDs       []string
+	recoveryStartedAt []time.Time
+	result            *SuccessfulTestRecoveryResult
+	err               error
+}
+
 type scheduledPlanEnableCall struct {
 	id        int64
 	nextRunAt time.Time
@@ -34,6 +46,27 @@ type scheduledPlanEnableCall struct {
 type scheduledPlanDisableCall struct {
 	id        int64
 	lastRunAt *time.Time
+}
+
+func (s *scheduledAccountTesterStub) RunTestBackground(_ context.Context, _ int64, _ string, _ ...string) (*ScheduledTestResult, error) {
+	return s.result, s.err
+}
+
+func (s *scheduledAccountRecoveryStub) HandleStrictFailureScheduling(_ context.Context, _ *Account, _ int, _ string) bool {
+	return false
+}
+
+func (s *scheduledAccountRecoveryStub) RecoverAccountAfterSuccessfulTestIncident(
+	_ context.Context,
+	_ int64,
+	incidentID string,
+	recoveryStartedAt ...time.Time,
+) (*SuccessfulTestRecoveryResult, error) {
+	s.incidentIDs = append(s.incidentIDs, incidentID)
+	if len(recoveryStartedAt) > 0 {
+		s.recoveryStartedAt = append(s.recoveryStartedAt, recoveryStartedAt[0])
+	}
+	return s.result, s.err
 }
 
 func (r *scheduledTestPlanRepoStub) Create(ctx context.Context, plan *ScheduledTestPlan) (*ScheduledTestPlan, error) {
@@ -243,6 +276,93 @@ func TestScheduledTestRunner_EnsureAutoManagedProbeEnablesImmediately(t *testing
 	require.Equal(t, int64(42), repo.createdPlan.AccountID)
 	require.True(t, repo.createdPlan.Enabled)
 	require.NotNil(t, repo.createdPlan.NextRunAt)
+}
+
+func TestScheduledTestRunner_CapturesIncidentBeforeAutoManagedProbe(t *testing.T) {
+	accountRepo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{
+		42: {
+			ID: 42,
+			Extra: map[string]any{
+				accountFailureStrategyUnscheduledKey: map[string]any{
+					accountFailureStrategyUnscheduledSourceKey:     "first_token_timeout",
+					accountFailureStrategyUnscheduledIncidentIDKey: "incident-before-probe",
+				},
+			},
+		},
+	}}
+	runner := &ScheduledTestRunnerService{accountRepo: accountRepo}
+
+	incidentID, ok := runner.captureRecoveryIncident(context.Background(), &ScheduledTestPlan{
+		ID:          7,
+		AccountID:   42,
+		AutoManaged: true,
+	})
+	require.True(t, ok)
+	require.Equal(t, "incident-before-probe", incidentID)
+}
+
+func TestScheduledTestRunner_CapturesIncidentBeforeManualAutoRecoverProbe(t *testing.T) {
+	accountRepo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{
+		42: {
+			ID: 42,
+			Extra: map[string]any{
+				accountFailureStrategyUnscheduledKey: map[string]any{
+					accountFailureStrategyUnscheduledSourceKey:     "upstream_error",
+					accountFailureStrategyUnscheduledIncidentIDKey: "manual-incident",
+				},
+			},
+		},
+	}}
+	runner := &ScheduledTestRunnerService{accountRepo: accountRepo}
+
+	incidentID, ok := runner.captureRecoveryIncident(context.Background(), &ScheduledTestPlan{
+		ID:          8,
+		AccountID:   42,
+		AutoRecover: true,
+		AutoManaged: false,
+	})
+
+	require.True(t, ok)
+	require.Equal(t, "manual-incident", incidentID)
+}
+
+func TestScheduledTestRunner_IncidentRecoveryDoesNotDisablePlanTwice(t *testing.T) {
+	planRepo := &scheduledTestPlanRepoStub{}
+	accountRepo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{
+		42: {
+			ID:          42,
+			Status:      StatusActive,
+			Schedulable: false,
+			Extra: map[string]any{
+				accountFailureStrategyUnscheduledKey: map[string]any{
+					accountFailureStrategyUnscheduledSourceKey:     "first_token_timeout",
+					accountFailureStrategyUnscheduledIncidentIDKey: "incident-before-probe",
+				},
+			},
+		},
+	}}
+	recovery := &scheduledAccountRecoveryStub{result: &SuccessfulTestRecoveryResult{ClearedRateLimit: true}}
+	runner := &ScheduledTestRunnerService{
+		planRepo:       planRepo,
+		scheduledSvc:   NewScheduledTestService(planRepo, &scheduledTestResultRepoStub{}),
+		accountTestSvc: &scheduledAccountTesterStub{result: &ScheduledTestResult{Status: "success"}},
+		rateLimitSvc:   recovery,
+		accountRepo:    accountRepo,
+	}
+
+	runner.runOnePlan(context.Background(), &ScheduledTestPlan{
+		ID:             7,
+		AccountID:      42,
+		CronExpression: "*/5 * * * *",
+		AutoRecover:    true,
+		AutoManaged:    true,
+		MaxResults:     20,
+	})
+
+	require.Equal(t, []string{"incident-before-probe"}, recovery.incidentIDs)
+	require.Len(t, recovery.recoveryStartedAt, 1)
+	require.False(t, recovery.recoveryStartedAt[0].IsZero())
+	require.Empty(t, planRepo.disabled)
 }
 
 func TestScheduledTestRunner_NextAutoManagedRetryFallsBackToFiveMinutes(t *testing.T) {

@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"testing"
 	"time"
 
@@ -21,6 +23,12 @@ type mockTempUnscheduler struct {
 	calls                []tempUnscheduleCall
 	strictUnscheduledIDs []int64
 	strictResult         bool
+	outcomeCalls         []tempUnscheduleCall
+	outcomeManaged       bool
+	outcomeBlocked       bool
+	outcomeEvents        []service.AccountFailureStreakEvent
+	successOutcomeIDs    []int64
+	successEvents        []service.AccountFailureStreakEvent
 }
 
 type tempUnscheduleCall struct {
@@ -35,6 +43,38 @@ func (m *mockTempUnscheduler) TempUnscheduleRetryableError(_ context.Context, ac
 func (m *mockTempUnscheduler) HandleUpstreamFailoverError(_ context.Context, accountID int64, _ *service.UpstreamFailoverError) bool {
 	m.strictUnscheduledIDs = append(m.strictUnscheduledIDs, accountID)
 	return m.strictResult
+}
+
+func (m *mockTempUnscheduler) RecordUpstreamFailureOutcome(_ context.Context, accountID int64, failoverErr *service.UpstreamFailoverError) (bool, bool) {
+	m.outcomeCalls = append(m.outcomeCalls, tempUnscheduleCall{accountID: accountID, failoverErr: failoverErr})
+	return m.outcomeManaged, m.outcomeBlocked
+}
+
+func (m *mockTempUnscheduler) RecordUpstreamFailureOutcomeAt(
+	ctx context.Context,
+	accountID int64,
+	failoverErr *service.UpstreamFailoverError,
+	event service.AccountFailureStreakEvent,
+) (bool, bool) {
+	m.outcomeEvents = append(m.outcomeEvents, event)
+	return m.RecordUpstreamFailureOutcome(ctx, accountID, failoverErr)
+}
+
+func (m *mockTempUnscheduler) RecordUpstreamSuccessOutcome(_ context.Context, accountID int64) {
+	m.successOutcomeIDs = append(m.successOutcomeIDs, accountID)
+}
+
+func (m *mockTempUnscheduler) RecordUpstreamSuccessOutcomeAt(
+	ctx context.Context,
+	accountID int64,
+	event service.AccountFailureStreakEvent,
+) {
+	m.successEvents = append(m.successEvents, event)
+	m.RecordUpstreamSuccessOutcome(ctx, accountID)
+}
+
+func (m *mockTempUnscheduler) IsUpstreamFailureOutcomeManaged(_ context.Context, _ int64, _ *service.UpstreamFailoverError) bool {
+	return m.outcomeManaged
 }
 
 // ---------------------------------------------------------------------------
@@ -62,6 +102,10 @@ func TestNewFailoverState(t *testing.T) {
 		require.Empty(t, fs.FailedAccountIDs)
 		require.NotNil(t, fs.SameAccountRetryCount)
 		require.Empty(t, fs.SameAccountRetryCount)
+		require.NotNil(t, fs.RecordedOutcomes)
+		require.Empty(t, fs.RecordedOutcomes)
+		require.NotNil(t, fs.PendingOutcomes)
+		require.Empty(t, fs.PendingOutcomes)
 		require.Nil(t, fs.LastFailoverErr)
 		require.False(t, fs.ForceCacheBilling)
 		require.True(t, fs.hasBoundSession)
@@ -295,6 +339,7 @@ func TestHandleFailoverError_SameAccountRetry(t *testing.T) {
 		require.Equal(t, 0, fs.SwitchCount, "同账号重试不应增加切换计数")
 		require.NotContains(t, fs.FailedAccountIDs, int64(100), "同账号重试不应加入失败列表")
 		require.Empty(t, mock.calls, "同账号重试期间不应调用 TempUnschedule")
+		require.Empty(t, mock.outcomeCalls, "同账号重试期间不应累计连续错误")
 		// 验证等待了 sameAccountRetryDelay (500ms)
 		require.GreaterOrEqual(t, elapsed, 400*time.Millisecond)
 		require.Less(t, elapsed, 2*time.Second)
@@ -334,6 +379,11 @@ func TestHandleFailoverError_SameAccountRetry(t *testing.T) {
 		require.Len(t, mock.calls, 1)
 		require.Equal(t, int64(100), mock.calls[0].accountID)
 		require.Equal(t, err, mock.calls[0].failoverErr)
+		require.Empty(t, mock.outcomeCalls, "账号仍可能在本次请求中被重新选中，切号时不得提前结算")
+
+		fs.FinalizePendingOutcomes(context.Background(), mock)
+		require.Len(t, mock.outcomeCalls, 1)
+		require.Equal(t, int64(100), mock.outcomeCalls[0].accountID)
 	})
 
 	t.Run("不同账号独立跟踪重试次数", func(t *testing.T) {
@@ -396,9 +446,127 @@ func TestHandleFailoverError_StrictFailureSchedulingSkipsSameAccountRetry(t *tes
 	require.Equal(t, FailoverContinue, action)
 	require.Equal(t, []int64{42}, mock.strictUnscheduledIDs)
 	require.Empty(t, mock.calls)
+	require.Empty(t, mock.outcomeCalls)
 	require.Zero(t, fs.SameAccountRetryCount[42])
 	require.Contains(t, fs.FailedAccountIDs, int64(42))
 	require.Equal(t, 1, fs.SwitchCount)
+}
+
+func TestHandleFailoverError_ConsecutivePolicySuppressesLegacyTempUnschedule(t *testing.T) {
+	mock := &mockTempUnscheduler{outcomeManaged: true}
+	fs := NewFailoverState(3, false)
+	err := newTestFailoverErr(502, true, false)
+
+	action := fs.HandleFailoverError(context.Background(), mock, 42, "openai", err, 0)
+
+	require.Equal(t, FailoverContinue, action)
+	require.Empty(t, mock.outcomeCalls)
+	require.Empty(t, mock.calls)
+	require.Contains(t, fs.FailedAccountIDs, int64(42))
+
+	fs.FinalizePendingOutcomes(context.Background(), mock)
+	require.Len(t, mock.outcomeCalls, 1)
+}
+
+func TestHandleFailoverError_ConsecutivePolicyBlocksAtThreshold(t *testing.T) {
+	mock := &mockTempUnscheduler{outcomeManaged: true, outcomeBlocked: true}
+	fs := NewFailoverState(3, false)
+	err := newTestFailoverErr(502, true, false)
+
+	action := fs.HandleFailoverError(context.Background(), mock, 42, "openai", err, 0)
+
+	require.Equal(t, FailoverContinue, action)
+	require.Empty(t, mock.outcomeCalls)
+	require.Empty(t, mock.calls)
+	require.Contains(t, fs.FailedAccountIDs, int64(42))
+
+	fs.FinalizePendingOutcomes(context.Background(), mock)
+	require.Len(t, mock.outcomeCalls, 1)
+}
+
+func TestHandleFailoverError_DefersSingleAccount503UntilFinalOutcome(t *testing.T) {
+	mock := &mockTempUnscheduler{outcomeManaged: true}
+	fs := NewFailoverState(3, false)
+	err := newTestFailoverErr(503, false, false)
+
+	require.Equal(t, FailoverContinue, fs.HandleFailoverError(context.Background(), mock, 42, "openai", err, 0))
+	fs.FailedAccountIDs = make(map[int64]struct{})
+	require.Equal(t, FailoverContinue, fs.HandleFailoverError(context.Background(), mock, 42, "openai", err, 0))
+	require.Empty(t, mock.outcomeCalls)
+
+	fs.RecordSuccessOutcome(context.Background(), mock, 42)
+	require.Empty(t, mock.outcomeCalls)
+	require.Equal(t, []int64{42}, mock.successOutcomeIDs)
+}
+
+func TestHandleFailoverError_DefersPendingOutcomesAcrossAccountsUntilRequestFinal(t *testing.T) {
+	mock := &mockTempUnscheduler{outcomeManaged: true}
+	fs := NewFailoverState(3, false)
+
+	require.Equal(t, FailoverContinue, fs.HandleFailoverError(context.Background(), mock, 42, "openai", newTestFailoverErr(503, false, false), 0))
+	require.Empty(t, mock.outcomeCalls)
+	require.Equal(t, FailoverContinue, fs.HandleFailoverError(context.Background(), mock, 43, "openai", newTestFailoverErr(502, false, false), 0))
+	require.Empty(t, mock.outcomeCalls)
+
+	fs.FinalizePendingOutcomes(context.Background(), mock)
+	require.Len(t, mock.outcomeCalls, 2)
+	results := make(map[int64]int, len(mock.outcomeCalls))
+	for _, call := range mock.outcomeCalls {
+		results[call.accountID] = call.failoverErr.StatusCode
+	}
+	require.Equal(t, map[int64]int{42: 503, 43: 502}, results)
+}
+
+func TestHandleFailoverError_ReselectedAccountUsesLastOutcomeOnce(t *testing.T) {
+	mock := &mockTempUnscheduler{outcomeManaged: true}
+	fs := NewFailoverState(5, false)
+
+	require.Equal(t, FailoverContinue, fs.HandleFailoverError(context.Background(), mock, 42, "openai", newTestFailoverErr(503, false, false), 0))
+	require.Equal(t, FailoverContinue, fs.HandleFailoverError(context.Background(), mock, 43, "openai", newTestFailoverErr(503, false, false), 0))
+	fs.FailedAccountIDs = make(map[int64]struct{})
+	require.Equal(t, FailoverContinue, fs.HandleFailoverError(context.Background(), mock, 42, "openai", newTestFailoverErr(500, false, false), 0))
+
+	fs.FinalizePendingOutcomes(context.Background(), mock)
+	require.Len(t, mock.outcomeCalls, 2)
+	results := make(map[int64]int, len(mock.outcomeCalls))
+	for _, call := range mock.outcomeCalls {
+		results[call.accountID] = call.failoverErr.StatusCode
+	}
+	require.Equal(t, map[int64]int{42: 500, 43: 503}, results)
+}
+
+func TestFailoverStatePendingOutcomePreservesFormationEvent(t *testing.T) {
+	mock := &mockTempUnscheduler{outcomeManaged: true}
+	fs := NewFailoverState(3, false)
+	require.Equal(t, FailoverContinue, fs.HandleFailoverError(
+		context.Background(),
+		mock,
+		42,
+		"openai",
+		newTestFailoverErr(503, false, false),
+		0,
+	))
+	formed := fs.PendingOutcomes[42].snapshot.Event
+	require.False(t, formed.OccurredAt.IsZero())
+	require.NotEmpty(t, formed.ID)
+
+	time.Sleep(2 * time.Millisecond)
+	fs.FinalizePendingOutcomes(context.Background(), mock)
+
+	require.Equal(t, []service.AccountFailureStreakEvent{formed}, mock.outcomeEvents)
+}
+
+func TestFailoverStateFinalizePendingOutcomes_ClientCanceledDoesNotRecord(t *testing.T) {
+	mock := &mockTempUnscheduler{outcomeManaged: true}
+	fs := NewFailoverState(3, false)
+	require.Equal(t, FailoverContinue, fs.HandleFailoverError(context.Background(), mock, 42, "openai", newTestFailoverErr(503, false, false), 0))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	fs.FinalizePendingOutcomes(ctx, mock)
+
+	require.Empty(t, mock.outcomeCalls)
+	require.Contains(t, fs.PendingOutcomes, int64(42))
 }
 
 // ---------------------------------------------------------------------------
@@ -452,8 +620,10 @@ func TestHandleFailoverError_ContextCanceled(t *testing.T) {
 
 		require.Equal(t, FailoverCanceled, action)
 		require.Less(t, elapsed, 100*time.Millisecond, "应立即返回")
-		// 重试计数仍应递增
-		require.Equal(t, 1, fs.SameAccountRetryCount[100])
+		require.Zero(t, fs.SameAccountRetryCount[100])
+		require.Empty(t, mock.calls)
+		require.Empty(t, mock.strictUnscheduledIDs)
+		require.Empty(t, mock.outcomeCalls)
 	})
 
 	t.Run("Antigravity延迟期间context取消", func(t *testing.T) {
@@ -699,7 +869,7 @@ func TestHandleSelectionExhausted(t *testing.T) {
 		fs := NewFailoverState(3, false)
 		// LastFailoverErr 为 nil
 
-		action := fs.HandleSelectionExhausted(context.Background())
+		action := fs.HandleSelectionExhausted(context.Background(), nil)
 		require.Equal(t, FailoverExhausted, action)
 	})
 
@@ -707,7 +877,7 @@ func TestHandleSelectionExhausted(t *testing.T) {
 		fs := NewFailoverState(3, false)
 		fs.LastFailoverErr = newTestFailoverErr(500, false, false)
 
-		action := fs.HandleSelectionExhausted(context.Background())
+		action := fs.HandleSelectionExhausted(context.Background(), nil)
 		require.Equal(t, FailoverExhausted, action)
 	})
 
@@ -718,7 +888,7 @@ func TestHandleSelectionExhausted(t *testing.T) {
 		fs.SwitchCount = 1
 
 		start := time.Now()
-		action := fs.HandleSelectionExhausted(context.Background())
+		action := fs.HandleSelectionExhausted(context.Background(), nil)
 		elapsed := time.Since(start)
 
 		require.Equal(t, FailoverContinue, action)
@@ -733,7 +903,7 @@ func TestHandleSelectionExhausted(t *testing.T) {
 		fs.SwitchCount = 3 // > MaxSwitches(2)
 
 		start := time.Now()
-		action := fs.HandleSelectionExhausted(context.Background())
+		action := fs.HandleSelectionExhausted(context.Background(), nil)
 		elapsed := time.Since(start)
 
 		require.Equal(t, FailoverExhausted, action)
@@ -748,7 +918,7 @@ func TestHandleSelectionExhausted(t *testing.T) {
 		cancel()
 
 		start := time.Now()
-		action := fs.HandleSelectionExhausted(ctx)
+		action := fs.HandleSelectionExhausted(ctx, nil)
 		elapsed := time.Since(start)
 
 		require.Equal(t, FailoverCanceled, action)
@@ -760,7 +930,71 @@ func TestHandleSelectionExhausted(t *testing.T) {
 		fs.LastFailoverErr = newTestFailoverErr(503, false, false)
 		fs.SwitchCount = 2 // == MaxSwitches，条件是 <=，仍可重试
 
-		action := fs.HandleSelectionExhausted(context.Background())
+		action := fs.HandleSelectionExhausted(context.Background(), nil)
 		require.Equal(t, FailoverContinue, action)
 	})
+}
+
+func TestFailoverStateRecordSuccessOutcome(t *testing.T) {
+	t.Run("明确成功清零并允许覆盖此前失败结算", func(t *testing.T) {
+		mock := &mockTempUnscheduler{}
+		fs := NewFailoverState(2, false)
+		fs.RecordedOutcomes[42] = failoverRecordedOutcome{managed: true}
+
+		fs.RecordSuccessOutcome(context.Background(), mock, 42)
+
+		require.Equal(t, []int64{42}, mock.successOutcomeIDs)
+		require.NotContains(t, fs.RecordedOutcomes, int64(42))
+	})
+
+	t.Run("客户端取消不清零", func(t *testing.T) {
+		mock := &mockTempUnscheduler{}
+		fs := NewFailoverState(2, false)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		fs.RecordSuccessOutcome(ctx, mock, 42)
+
+		require.Empty(t, mock.successOutcomeIDs)
+	})
+}
+
+func TestFailoverStateRecordTerminalFailureOutcome(t *testing.T) {
+	t.Run("流内最终错误只结算一次", func(t *testing.T) {
+		mock := &mockTempUnscheduler{outcomeManaged: true}
+		fs := NewFailoverState(2, false)
+		failoverErr := newTestFailoverErr(502, false, false)
+
+		fs.RecordTerminalFailureOutcome(context.Background(), mock, 42, failoverErr)
+		fs.RecordTerminalFailureOutcome(context.Background(), mock, 42, failoverErr)
+
+		require.Len(t, mock.outcomeCalls, 1)
+		require.Equal(t, int64(42), mock.outcomeCalls[0].accountID)
+	})
+
+	t.Run("客户端取消不结算", func(t *testing.T) {
+		mock := &mockTempUnscheduler{}
+		fs := NewFailoverState(2, false)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		fs.RecordTerminalFailureOutcome(ctx, mock, 42, newTestFailoverErr(503, false, false))
+
+		require.Empty(t, mock.outcomeCalls)
+	})
+}
+
+func TestFailoverStateRecordOutcomeError(t *testing.T) {
+	mock := &mockTempUnscheduler{outcomeManaged: true}
+	fs := NewFailoverState(2, false)
+	outcomeErr := service.NewUpstreamOutcomeError(http.StatusServiceUnavailable, []byte(`{"error":{"message":"busy"}}`), errors.New("busy"))
+
+	require.True(t, fs.RecordOutcomeError(context.Background(), mock, 42, outcomeErr, false))
+	require.Len(t, mock.outcomeCalls, 1)
+	require.Equal(t, http.StatusServiceUnavailable, mock.outcomeCalls[0].failoverErr.StatusCode)
+	require.Equal(t, []int64{42}, mock.strictUnscheduledIDs, "明确上游失败仍须保留账号级严格策略优先级")
+
+	require.True(t, fs.RecordOutcomeError(context.Background(), mock, 43, outcomeErr, true))
+	require.Len(t, mock.outcomeCalls, 1, "客户端断开不得结算")
+	require.False(t, fs.RecordOutcomeError(context.Background(), mock, 44, errors.New("local error"), false))
 }

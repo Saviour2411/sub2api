@@ -75,6 +75,16 @@ export default {
       },
       status: {
         lastScheduledTestFailure: 'Last scheduled test failure',
+        unschedulableReasonTitle: 'Unschedulable reason',
+        unschedulableReason: 'Reason',
+        unschedulableFirstTokenTimeout: 'Consecutive first-token timeouts',
+        unschedulableUpstreamError: 'Consecutive upstream errors',
+        unschedulableStatusCode: 'Status code',
+        unschedulableConsecutiveCount: 'Consecutive count',
+        unschedulableThreshold: 'Unschedulable threshold',
+        unschedulableModel: 'Model',
+        unschedulableTimeoutSeconds: 'First-token timeout (seconds)',
+        unschedulableOccurredAt: 'Occurred at',
       },
     },
     channelMonitor: {
@@ -211,6 +221,16 @@ export default {
           description: 'If the upstream does not produce a valid first token in time, stop waiting, skip retries on the current account and switch accounts.',
           seconds: 'Maximum Wait (seconds)',
           hint: 'Enter 0 to 600 seconds. Set to 0 to disable.',
+          consecutiveThreshold: 'Timeouts Before Unschedulable',
+          consecutiveThresholdHint: 'Enter 1 to 100. The account becomes unschedulable at the threshold and recovers after a successful probe.',
+        },
+        upstreamError: {
+          title: 'Consecutive Upstream Error Protection',
+          description: 'Stop scheduling an account and start managed probes after configured upstream statuses reach the consecutive threshold.',
+          consecutiveThreshold: 'Errors Before Unschedulable',
+          consecutiveThresholdHint: 'Enter 1 to 100. A successful request resets the account\'s consecutive error count.',
+          statusCodes: 'Statuses Counted as Consecutive Errors',
+          statusCodesHint: 'Separate values with commas or spaces, or leave empty. Values are deduplicated and sorted when saved.',
         },
         imageSuccessRate: {
           title: 'Image Group Success Rate',
@@ -230,6 +250,9 @@ export default {
           probeBackoffRange: 'Managed probe backoff requires 1 to 10 integer values from 1 to 1440',
           probeBackoffOrder: 'Managed probe backoff values must be in nondecreasing order',
           firstTokenTimeout: 'The first-token timeout must be an integer from 0 to 600',
+          firstTokenConsecutiveThreshold: 'The consecutive first-token timeout threshold must be an integer from 1 to 100',
+          upstreamErrorConsecutiveThreshold: 'The consecutive upstream error threshold must be an integer from 1 to 100',
+          upstreamErrorStatusCodes: 'Consecutive upstream error status codes must be integers from 100 to 599 separated by commas or spaces',
         },
       },
       dailyCheckin: {

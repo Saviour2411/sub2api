@@ -618,6 +618,7 @@ func (s *adminServiceImpl) RefreshAccountCredentials(ctx context.Context, id int
 }
 
 func (s *adminServiceImpl) ClearAccountError(ctx context.Context, id int64) (*Account, error) {
+	resetOccurredAt := time.Now().UTC()
 	if err := s.accountRepo.ClearError(ctx, id); err != nil {
 		return nil, err
 	}
@@ -633,10 +634,106 @@ func (s *adminServiceImpl) ClearAccountError(ctx context.Context, id int64) (*Ac
 	if err := s.accountRepo.ClearTempUnschedulable(ctx, id); err != nil {
 		return nil, err
 	}
+	account, err := s.accountRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	incidentID, _ := account.FailureStrategyUnscheduledIncident()
 	if s.runtimeBlocker != nil {
 		s.runtimeBlocker.ClearAccountSchedulingBlock(id)
 	}
-	return s.accountRepo.GetByID(ctx, id)
+	if err := s.resetAccountFailureStreaks(ctx, id, resetOccurredAt); err != nil {
+		s.restoreAdminFailureSchedulingRuntimeBlock(account)
+		return nil, err
+	}
+	if account.HasFailureStrategyUnscheduledMarker() {
+		if err := s.clearFailureSchedulingStateForAdmin(ctx, account, incidentID); err != nil {
+			if fresh, loadErr := s.accountRepo.GetByID(ctx, id); loadErr == nil {
+				s.restoreAdminFailureSchedulingRuntimeBlock(fresh)
+			}
+			return nil, err
+		}
+	}
+	updated, err := s.accountRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	// 若条件清理后并发创建了新事故，其持久化路径会重新阻断运行时缓存；
+	// 此处再复核一次，覆盖“新阻断先发生、旧重置后清缓存”的交错顺序。
+	s.restoreAdminFailureSchedulingRuntimeBlock(updated)
+	return updated, nil
+}
+
+type adminFailureSchedulingStateClearer interface {
+	ClearFailureSchedulingState(ctx context.Context, accountID int64, incidentID string) (bool, error)
+}
+
+func (s *adminServiceImpl) clearFailureSchedulingStateForAdmin(ctx context.Context, account *Account, incidentID string) error {
+	if account == nil || account.ID <= 0 {
+		return nil
+	}
+	if clearer, ok := s.accountRepo.(adminFailureSchedulingStateClearer); ok {
+		_, err := clearer.ClearFailureSchedulingState(ctx, account.ID, incidentID)
+		return err
+	}
+	// 仅供旧测试桩兼容；生产仓储使用上面的事务操作。
+	fresh, err := s.accountRepo.GetByID(ctx, account.ID)
+	if err != nil {
+		return err
+	}
+	currentIncidentID, _ := fresh.FailureStrategyUnscheduledIncident()
+	if currentIncidentID != strings.TrimSpace(incidentID) {
+		return nil
+	}
+	if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{accountFailureStrategyUnscheduledKey: nil}); err != nil {
+		return err
+	}
+	return s.accountRepo.SetSchedulable(ctx, account.ID, true)
+}
+
+func (s *adminServiceImpl) restoreAdminFailureSchedulingRuntimeBlock(account *Account) {
+	if s == nil || s.runtimeBlocker == nil || account == nil || !account.HasFailureStrategyUnscheduledMarker() {
+		return
+	}
+	_, source := account.FailureStrategyUnscheduledIncident()
+	reason := strings.TrimSpace(string(source))
+	if reason == "" {
+		reason = "failure_scheduling_incident"
+	}
+	s.runtimeBlocker.BlockAccountScheduling(account, time.Now().UTC().AddDate(100, 0, 0), reason)
+}
+
+func (s *adminServiceImpl) resetAccountFailureStreaks(ctx context.Context, accountID int64, occurredAt time.Time) error {
+	if s.accountFailureStreakCache == nil {
+		return nil
+	}
+	if occurredAt.IsZero() {
+		occurredAt = time.Now().UTC()
+	}
+	settings := DefaultGatewaySettings()
+	if s.settingService != nil {
+		settings = s.settingService.GetGatewayRuntime(ctx)
+	}
+	var resetErr error
+	for _, source := range []AccountFailureStreakSource{
+		AccountFailureStreakSourceFirstTokenTimeout,
+		AccountFailureStreakSourceUpstreamError,
+	} {
+		opCtx, cancel := failureSchedulingOperationContext(ctx)
+		_, err := s.accountFailureStreakCache.ApplyOutcome(
+			opCtx,
+			accountID,
+			source,
+			BuildAccountFailureStreakPolicy(source, settings),
+			AccountFailureStreakOutcomeReset,
+			NewAccountFailureStreakEvent(occurredAt),
+		)
+		cancel()
+		if err != nil {
+			resetErr = errors.Join(resetErr, fmt.Errorf("重置账号 %d 的 %s 连续失败次数: %w", accountID, source, err))
+		}
+	}
+	return resetErr
 }
 
 func (s *adminServiceImpl) SetAccountError(ctx context.Context, id int64, errorMsg string) error {

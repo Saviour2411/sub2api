@@ -645,16 +645,22 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 						CacheReadInputTokens:     turn.Usage.CacheReadInputTokens,
 						ImageOutputTokens:        turn.Usage.ImageOutputTokens,
 					},
-					Model:           turn.RequestModel,
-					UpstreamModel:   turn.RequestModel,
-					ServiceTier:     usageMeta.serviceTier.Load(),
-					ReasoningEffort: usageMeta.reasoningEffort.Load(),
-					Stream:          true,
-					OpenAIWSMode:    true,
-					ResponseHeaders: cloneHeader(handshakeHeaders),
-					Duration:        turn.Duration,
-					FirstTokenMs:    turn.FirstTokenMs,
+					Model:            turn.RequestModel,
+					UpstreamModel:    turn.RequestModel,
+					ServiceTier:      usageMeta.serviceTier.Load(),
+					ReasoningEffort:  usageMeta.reasoningEffort.Load(),
+					Stream:           true,
+					OpenAIWSMode:     true,
+					ResponseHeaders:  cloneHeader(handshakeHeaders),
+					Duration:         turn.Duration,
+					FirstTokenMs:     turn.FirstTokenMs,
+					ClientDisconnect: turn.ClientDisconnect,
 				}
+				turnResult.UpstreamOutcome = openAIWSTurnOutcomeError(
+					turn.TerminalEventType,
+					turn.TerminalPayload,
+					turn.ClientDisconnect,
+				)
 				if imageCount > 0 {
 					turnResult.ImageCount = imageCount
 					turnResult.ImageOutputSizes = imageOutputSizes
@@ -733,15 +739,16 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			CacheReadInputTokens:     relayResult.Usage.CacheReadInputTokens,
 			ImageOutputTokens:        relayResult.Usage.ImageOutputTokens,
 		},
-		Model:           relayResult.RequestModel,
-		UpstreamModel:   relayResult.RequestModel,
-		ServiceTier:     usageMeta.serviceTier.Load(),
-		ReasoningEffort: usageMeta.reasoningEffort.Load(),
-		Stream:          true,
-		OpenAIWSMode:    true,
-		ResponseHeaders: cloneHeader(handshakeHeaders),
-		Duration:        relayResult.Duration,
-		FirstTokenMs:    relayResult.FirstTokenMs,
+		Model:            relayResult.RequestModel,
+		UpstreamModel:    relayResult.RequestModel,
+		ServiceTier:      usageMeta.serviceTier.Load(),
+		ReasoningEffort:  usageMeta.reasoningEffort.Load(),
+		Stream:           true,
+		OpenAIWSMode:     true,
+		ResponseHeaders:  cloneHeader(handshakeHeaders),
+		Duration:         relayResult.Duration,
+		FirstTokenMs:     relayResult.FirstTokenMs,
+		ClientDisconnect: relayResult.ClientDisconnect,
 	}
 
 	turnCount := int(completedTurns.Load())
@@ -759,7 +766,11 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		)
 		// 正常路径按 terminal 事件逐 turn 已回调；仅在零 turn 场景兜底回调一次。
 		if turnCount == 0 && hooks != nil && hooks.AfterTurn != nil {
-			hooks.AfterTurn(1, result, nil)
+			if relayResult.ClientDisconnect || strings.TrimSpace(relayResult.TerminalEventType) == "" {
+				hooks.AfterTurn(1, nil, nil)
+			} else {
+				hooks.AfterTurn(1, result, nil)
+			}
 		}
 		return nil
 	}
@@ -863,6 +874,34 @@ func relayErrorText(err error) string {
 		return ""
 	}
 	return err.Error()
+}
+
+func openAIWSTurnOutcomeError(eventType string, payload []byte, clientDisconnect bool) *UpstreamOutcomeError {
+	eventType = strings.TrimSpace(eventType)
+	var outcome *UpstreamOutcomeError
+	switch eventType {
+	case "response.failed":
+		message := extractOpenAISSEErrorMessage(payload)
+		outcome = NewUpstreamOutcomeError(
+			openAIStreamFailedEventSemanticStatus(payload, message),
+			payload,
+			fmt.Errorf("upstream response failed: %s", message),
+		)
+	case "error":
+		code, errType, message := parseOpenAIWSErrorEventFields(payload)
+		if strings.TrimSpace(message) == "" {
+			message = "上游 WebSocket 错误"
+		}
+		outcome = NewUpstreamOutcomeError(
+			openAIWSErrorHTTPStatusFromRaw(code, errType),
+			payload,
+			errors.New(message),
+		)
+	default:
+		return nil
+	}
+	outcome.ClientDisconnect = clientDisconnect
+	return outcome
 }
 
 func openAIWSFirstTokenMsForLog(firstTokenMs *int) int {

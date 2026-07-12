@@ -28,6 +28,7 @@ type openaiStreamingResult struct {
 	responseID       string
 	imageCount       int
 	imageOutputSizes []string
+	clientDisconnect bool
 }
 
 type openaiNonStreamingResult struct {
@@ -122,6 +123,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	sawTerminalEvent := false
 	sawFailedEvent := false
 	failedMessage := ""
+	var failedPayload []byte
 	clientOutputStarted := false
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 	var streamEarlyErr error
@@ -161,6 +163,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			responseID:       responseID,
 			imageCount:       imageCounter.Count(),
 			imageOutputSizes: imageCounter.Sizes(),
+			clientDisconnect: clientDisconnected,
 		}
 	}
 	finalizeStream := func() (*openaiStreamingResult, error) {
@@ -178,7 +181,11 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			return resultWithUsage(), fmt.Errorf("stream usage incomplete: missing terminal event")
 		}
 		if sawFailedEvent {
-			return resultWithUsage(), fmt.Errorf("upstream response failed: %s", failedMessage)
+			return resultWithUsage(), NewUpstreamOutcomeError(
+				openAIStreamFailedEventSemanticStatus(failedPayload, failedMessage),
+				failedPayload,
+				fmt.Errorf("upstream response failed: %s", failedMessage),
+			)
 		}
 		if !clientDisconnected {
 			hadBufferedData := bufferedWriter.Buffered() > 0
@@ -201,7 +208,11 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			return resultWithUsage(), nil, true
 		}
 		if sawFailedEvent {
-			return resultWithUsage(), fmt.Errorf("upstream response failed: %s", failedMessage), true
+			return resultWithUsage(), NewUpstreamOutcomeError(
+				openAIStreamFailedEventSemanticStatus(failedPayload, failedMessage),
+				failedPayload,
+				fmt.Errorf("upstream response failed: %s", failedMessage),
+			), true
 		}
 		// 客户端断开/取消请求时，上游读取往往会返回 context canceled。
 		// /v1/responses 的 SSE 事件必须符合 OpenAI 协议；这里不注入自定义 error event，避免下游 SDK 解析失败。
@@ -244,6 +255,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			forceFlushFailedEvent := false
 			if eventType == "response.failed" {
 				failedMessage = extractOpenAISSEErrorMessage(dataBytes)
+				failedPayload = append(failedPayload[:0], dataBytes...)
 				// response.failed 自带上游已消耗的 usage（input token 通常已扣）；必须先解析
 				// 再打 cyber 标记，否则 mark 记到的是解析前的 0，导致流式 cyber 按 0 token 计费
 				// 而漏记真实用量。对齐 WS V2 / Chat 流式路径（均先解析 usage 再 Mark）。
@@ -273,7 +285,11 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 								"message": errMsg,
 							},
 						})
-						streamEarlyErr = fmt.Errorf("upstream response failed: passthrough rule matched message=%s", errMsg)
+						streamEarlyErr = NewUpstreamOutcomeError(
+							openAIStreamFailedEventSemanticStatus(dataBytes, failedMessage),
+							dataBytes,
+							fmt.Errorf("upstream response failed: passthrough rule matched message=%s", errMsg),
+						)
 						return
 					}
 					if openAIStreamFailedEventShouldFailover(dataBytes, failedMessage) {
@@ -944,7 +960,11 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 			if msg == "" {
 				msg = "Upstream compact response failed"
 			}
-			return nil, s.writeOpenAINonStreamingProtocolError(resp, c, msg)
+			return nil, NewUpstreamOutcomeError(
+				openAIStreamFailedEventSemanticStatus(terminalPayload, msg),
+				terminalPayload,
+				s.writeOpenAINonStreamingProtocolError(resp, c, msg),
+			)
 		}
 		usage = s.parseSSEUsageFromBody(bodyText)
 		if originalModel != mappedModel {

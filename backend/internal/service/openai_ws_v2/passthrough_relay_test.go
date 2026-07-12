@@ -599,6 +599,64 @@ func TestRelay_UpstreamErrorEventPassthroughRaw(t *testing.T) {
 	require.Equal(t, errorEvent, clientWrites[0].payload)
 }
 
+func TestRelay_UpstreamErrorEventCompletesExactlyOneTurn(t *testing.T) {
+	t.Parallel()
+
+	clientConn := newPassthroughTestFrameConn(nil, false)
+	errorEvent := []byte(`{"type":"error","error":{"type":"server_error","code":"server_error","message":"upstream busy"}}`)
+	upstreamConn := newPassthroughTestFrameConn([]passthroughTestFrame{
+		{msgType: coderws.MessageText, payload: errorEvent},
+		{msgType: coderws.MessageText, payload: []byte(`{"type":"response.failed","response":{"id":"resp_after_error","error":{"type":"server_error"}}}`)},
+	}, true)
+	turns := make([]RelayTurnResult, 0, 2)
+
+	_, relayExit := Relay(
+		context.Background(),
+		clientConn,
+		upstreamConn,
+		[]byte(`{"type":"response.create","model":"gpt-5","input":[]}`),
+		RelayOptions{OnTurnComplete: func(turn RelayTurnResult) { turns = append(turns, turn) }},
+	)
+
+	require.Nil(t, relayExit)
+	require.Len(t, turns, 1)
+	require.Equal(t, "error", turns[0].TerminalEventType)
+	require.Equal(t, errorEvent, turns[0].TerminalPayload)
+	require.Empty(t, turns[0].RequestID)
+	require.False(t, turns[0].ClientDisconnect)
+}
+
+func TestRelay_ClientDisconnectBeforeTerminalDoesNotProduceConnectedOutcome(t *testing.T) {
+	t.Parallel()
+
+	clientConn := newPassthroughTestFrameConn(nil, true)
+	upstreamConn := &delayedReadFrameConn{
+		base: newPassthroughTestFrameConn([]passthroughTestFrame{{
+			msgType: coderws.MessageText,
+			payload: []byte(`{"type":"response.completed","response":{"id":"resp_after_disconnect","usage":{"input_tokens":1,"output_tokens":1}}}`),
+		}}, true),
+		firstDelay: 50 * time.Millisecond,
+	}
+	turns := make([]RelayTurnResult, 0, 1)
+
+	result, relayExit := Relay(
+		context.Background(),
+		clientConn,
+		upstreamConn,
+		[]byte(`{"type":"response.create","model":"gpt-5","input":[]}`),
+		RelayOptions{
+			UpstreamDrainTimeout: time.Second,
+			OnTurnComplete:       func(turn RelayTurnResult) { turns = append(turns, turn) },
+		},
+	)
+
+	require.NotNil(t, relayExit)
+	require.Equal(t, "client_disconnected", relayExit.Stage)
+	require.True(t, result.ClientDisconnect)
+	require.Len(t, turns, 1)
+	require.True(t, turns[0].ClientDisconnect)
+}
+
 func TestRelay_PreservesFirstMessageType(t *testing.T) {
 	t.Parallel()
 

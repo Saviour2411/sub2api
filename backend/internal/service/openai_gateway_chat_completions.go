@@ -288,7 +288,19 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		if foErr := s.failoverOpenAIUpstreamHTTPError(ctx, c, account, resp, respBody, upstreamMsg, upstreamModel); foErr != nil {
 			return nil, foErr
 		}
-		return s.handleChatCompletionsErrorResponse(resp, c, account, billingModel)
+		result, outcomeErr := s.handleChatCompletionsErrorResponse(resp, c, account, billingModel)
+		if outcomeErr == nil {
+			return result, nil
+		}
+		var typedOutcomeErr *UpstreamOutcomeError
+		if errors.As(outcomeErr, &typedOutcomeErr) {
+			return result, outcomeErr
+		}
+		var failoverErr *UpstreamFailoverError
+		if errors.As(outcomeErr, &failoverErr) {
+			return result, outcomeErr
+		}
+		return result, NewUpstreamOutcomeError(resp.StatusCode, respBody, outcomeErr)
 	}
 
 	// 9. Handle normal response
@@ -304,11 +316,13 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 
 	// cyber_policy：标记已设、error 已按 Chat Completions 格式发给客户端。丢弃 result、
 	// 返回哨兵，使 handler 落入 tokens=0 免费用量行（对齐 /v1/responses），不计费、不 failover。
-	if GetOpsCyberPolicy(c) != nil {
+	if cyberMark := GetOpsCyberPolicy(c); cyberMark != nil {
 		if handleErr == nil {
 			handleErr = errOpenAICyberPolicyForwarded
 		}
-		return nil, handleErr
+		outcomeErr := NewUpstreamOutcomeError(http.StatusBadRequest, []byte(cyberMark.Body), handleErr)
+		outcomeErr.ClientDisconnect = result != nil && result.ClientDisconnect
+		return nil, outcomeErr
 	}
 
 	// Propagate ServiceTier and ReasoningEffort to result for billing
@@ -431,6 +445,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 			return nil, fmt.Errorf("openai cyber_policy: %s", msg)
 		}
 		message := openAICompatFailedResponseMessage(finalResponse)
+		outcomeStatus := openAIStreamFailedEventSemanticStatus(payload, message)
 		if openAIStreamFailedEventShouldFailover(payload, message) {
 			return nil, s.newOpenAIStreamFailoverError(c, account, false, requestID, payload, message)
 		}
@@ -445,10 +460,18 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 			}
 			MarkResponseCommitted(c)
 			writeChatCompletionsError(c, status, errType, errMsg)
-			return nil, fmt.Errorf("upstream response failed (passthrough): %s", errMsg)
+			return nil, NewUpstreamOutcomeError(
+				outcomeStatus,
+				payload,
+				fmt.Errorf("upstream response failed (passthrough): %s", errMsg),
+			)
 		}
 		writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", message)
-		return nil, fmt.Errorf("upstream response failed: %s", message)
+		return nil, NewUpstreamOutcomeError(
+			outcomeStatus,
+			payload,
+			fmt.Errorf("upstream response failed: %s", message),
+		)
 	}
 
 	// When the terminal event has an empty output array, reconstruct from
@@ -503,6 +526,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	var firstTokenMs *int
 	firstChunk := true
 	clientDisconnected := false
+	terminalHandled := false
 	clientOutputStarted := false
 	pendingSSE := make([]string, 0, 4)
 	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
@@ -527,14 +551,15 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 
 	resultWithUsage := func() *OpenAIForwardResult {
 		return &OpenAIForwardResult{
-			RequestID:     requestID,
-			Usage:         usage,
-			Model:         originalModel,
-			BillingModel:  billingModel,
-			UpstreamModel: upstreamModel,
-			Stream:        true,
-			Duration:      time.Since(startTime),
-			FirstTokenMs:  firstTokenMs,
+			RequestID:        requestID,
+			Usage:            usage,
+			Model:            originalModel,
+			BillingModel:     billingModel,
+			UpstreamModel:    upstreamModel,
+			Stream:           true,
+			Duration:         time.Since(startTime),
+			FirstTokenMs:     firstTokenMs,
+			ClientDisconnect: clientDisconnected,
 		}
 	}
 
@@ -579,6 +604,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 					UpstreamInTok:  usage.InputTokens,
 					UpstreamOutTok: usage.OutputTokens,
 				})
+				terminalHandled = true
 				if !clientDisconnected {
 					// 被 refusal 检测扣留的 pendingSSE 有意丢弃——cyber 拦截优先于部分内容下发。
 					writeStreamHeaders()
@@ -587,15 +613,15 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 						clientMsg = "Request blocked by upstream cyber-security policy"
 					}
 					MarkOpsStreamError(c, "invalid_request_error", clientMsg, http.StatusBadRequest)
-					if _, err := fmt.Fprint(c.Writer, buildChatStreamErrorSSE(code, clientMsg)); err == nil {
-						_, _ = fmt.Fprint(c.Writer, "data: [DONE]\n\n")
+					if _, err := fmt.Fprint(c.Writer, buildChatStreamErrorSSE(code, clientMsg)); err != nil {
+						clientDisconnected = true
+					} else if _, err := fmt.Fprint(c.Writer, "data: [DONE]\n\n"); err != nil {
+						clientDisconnected = true
+					} else {
 						if fl, ok := c.Writer.(http.Flusher); ok {
 							fl.Flush()
 						}
 					}
-					// 无条件置位：成功路径防 finalizeStream 重复 [DONE]；写失败意味着连接已不可写，
-					// finalizeStream 的 [DONE] 同样发不出去，统一抑制。
-					clientDisconnected = true
 				}
 				return true
 			}
@@ -637,7 +663,13 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			if !clientDisconnected {
 				c.Writer.Flush()
 			}
-			streamNonFailoverErr = fmt.Errorf("upstream response failed: %s", message)
+			outcomeErr := NewUpstreamOutcomeError(
+				openAIStreamFailedEventSemanticStatus(payloadBytes, message),
+				payloadBytes,
+				fmt.Errorf("upstream response failed: %s", message),
+			)
+			outcomeErr.ClientDisconnect = clientDisconnected
+			streamNonFailoverErr = outcomeErr
 			return true
 		}
 
@@ -698,6 +730,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		}
 		if streamNonFailoverErr != nil {
 			return resultWithUsage(), streamNonFailoverErr
+		}
+		if terminalHandled {
+			return resultWithUsage(), nil
 		}
 		if finalChunks := apicompat.FinalizeResponsesChatStream(state); len(finalChunks) > 0 && !clientDisconnected {
 			for _, chunk := range finalChunks {

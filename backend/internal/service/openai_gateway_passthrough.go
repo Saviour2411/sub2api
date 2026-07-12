@@ -217,6 +217,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	var firstTokenMs *int
 	responseID := ""
 	imageCount := 0
+	clientDisconnect := false
 	var imageOutputSizes []string
 	if upstreamStream {
 		firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolSSE)
@@ -230,6 +231,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		responseID = strings.TrimSpace(result.responseID)
 		imageCount = result.imageCount
 		imageOutputSizes = result.imageOutputSizes
+		clientDisconnect = result.clientDisconnect
 	} else {
 		firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolOpenAICompact)
 		result, responseErr := s.handleNonStreamingResponsePassthrough(ctx, resp, c, reqModel, upstreamPassthroughModel)
@@ -257,17 +259,18 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 
 	forwardResult := &OpenAIForwardResult{
-		RequestID:       resp.Header.Get("x-request-id"),
-		ResponseID:      responseID,
-		Usage:           *usage,
-		Model:           reqModel,
-		UpstreamModel:   upstreamPassthroughModel,
-		ServiceTier:     serviceTier,
-		ReasoningEffort: reasoningEffort,
-		Stream:          clientStream,
-		OpenAIWSMode:    false,
-		Duration:        time.Since(startTime),
-		FirstTokenMs:    firstTokenMs,
+		RequestID:        resp.Header.Get("x-request-id"),
+		ResponseID:       responseID,
+		Usage:            *usage,
+		Model:            reqModel,
+		UpstreamModel:    upstreamPassthroughModel,
+		ServiceTier:      serviceTier,
+		ReasoningEffort:  reasoningEffort,
+		Stream:           clientStream,
+		OpenAIWSMode:     false,
+		Duration:         time.Since(startTime),
+		FirstTokenMs:     firstTokenMs,
+		ClientDisconnect: clientDisconnect,
 	}
 	if imageCount > 0 {
 		forwardResult.ImageCount = imageCount
@@ -497,6 +500,9 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 ) error {
 	MarkResponseCommitted(c)
 	body := s.readUpstreamErrorBody(resp)
+	outcomeError := func(err error) error {
+		return NewUpstreamOutcomeError(resp.StatusCode, body, err)
+	}
 
 	// cyber_policy：透传账号本就把原始 body 回给客户端（下方 c.Data），此处仅打标记，
 	// 供 handler 事后写风控/邮件。cyber 是上游网络安全策略拦截，不冷却账号，
@@ -550,9 +556,9 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 	c.Data(resp.StatusCode, contentType, body)
 
 	if upstreamMsg == "" {
-		return fmt.Errorf("upstream error: %d", resp.StatusCode)
+		return outcomeError(fmt.Errorf("upstream error: %d", resp.StatusCode))
 	}
-	return fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, upstreamMsg)
+	return outcomeError(fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, upstreamMsg))
 }
 
 func isOpenAIPassthroughAllowedRequestHeader(lowerKey string, allowTimeoutHeaders bool) bool {
@@ -603,6 +609,7 @@ type openaiStreamingResultPassthrough struct {
 	responseID       string
 	imageCount       int
 	imageOutputSizes []string
+	clientDisconnect bool
 }
 
 type openaiNonStreamingResultPassthrough struct {
@@ -644,6 +651,9 @@ func openAIStreamFailedEventSemanticStatus(payload []byte, message string) int {
 	if isOpenAIContextWindowError(message, payload) {
 		return http.StatusBadRequest
 	}
+	if hit, _, _ := detectOpenAICyberPolicy(payload); hit {
+		return http.StatusBadRequest
+	}
 
 	code := strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "response.error.code").String()))
 	if code == "" {
@@ -656,6 +666,11 @@ func openAIStreamFailedEventSemanticStatus(payload []byte, message string) int {
 	combined := strings.TrimSpace(errType + " " + code + " " + strings.ToLower(strings.TrimSpace(message)))
 	switch {
 	case strings.Contains(errType, "invalid_request"):
+		return http.StatusBadRequest
+	case strings.Contains(combined, "content_policy") ||
+		strings.Contains(combined, "safety_policy") ||
+		strings.Contains(combined, "moderation_blocked") ||
+		strings.Contains(combined, "policy_violation"):
 		return http.StatusBadRequest
 	case strings.Contains(combined, "rate_limit"):
 		return http.StatusTooManyRequests
@@ -888,6 +903,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	sawTerminalEvent := false
 	sawFailedEvent := false
 	failedMessage := ""
+	var failedPayload []byte
 	clientOutputStarted := false
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 	keepaliveDone := make(chan struct{})
@@ -964,6 +980,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			responseID:       responseID,
 			imageCount:       imageCounter.Count(),
 			imageOutputSizes: imageCounter.Sizes(),
+			clientDisconnect: clientDisconnected,
 		}
 	}
 
@@ -989,6 +1006,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			eventType := strings.TrimSpace(gjson.Get(trimmedData, "type").String())
 			if eventType == "response.failed" {
 				failedMessage = extractOpenAISSEErrorMessage(dataBytes)
+				failedPayload = append(failedPayload[:0], dataBytes...)
 				// response.failed 自带上游已消耗的 usage（input token 通常已扣）；必须先解析
 				// 再打 cyber 标记，否则 mark 记到的是解析前的 0，导致流式 cyber 按 0 token 计费
 				// 而漏记真实用量。对齐 WS V2 / Chat 流式路径（均先解析 usage 再 Mark）。
@@ -1017,7 +1035,11 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 								"message": errMsg,
 							},
 						})
-						return resultWithUsage(), fmt.Errorf("upstream response failed: passthrough rule matched message=%s", errMsg)
+						return resultWithUsage(), NewUpstreamOutcomeError(
+							openAIStreamFailedEventSemanticStatus(dataBytes, failedMessage),
+							dataBytes,
+							fmt.Errorf("upstream response failed: passthrough rule matched message=%s", errMsg),
+						)
 					}
 					if openAIStreamFailedEventShouldFailover(dataBytes, failedMessage) {
 						return resultWithUsage(),
@@ -1073,7 +1095,11 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			return resultWithUsage(), nil
 		}
 		if sawFailedEvent {
-			return resultWithUsage(), fmt.Errorf("upstream response failed: %s", failedMessage)
+			return resultWithUsage(), NewUpstreamOutcomeError(
+				openAIStreamFailedEventSemanticStatus(failedPayload, failedMessage),
+				failedPayload,
+				fmt.Errorf("upstream response failed: %s", failedMessage),
+			)
 		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", err)
@@ -1102,7 +1128,11 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		return resultWithUsage(), fmt.Errorf("stream read error: %w", err)
 	}
 	if sawFailedEvent {
-		return resultWithUsage(), fmt.Errorf("upstream response failed: %s", failedMessage)
+		return resultWithUsage(), NewUpstreamOutcomeError(
+			openAIStreamFailedEventSemanticStatus(failedPayload, failedMessage),
+			failedPayload,
+			fmt.Errorf("upstream response failed: %s", failedMessage),
+		)
 	}
 	if !clientDisconnected && !sawDone && !sawTerminalEvent && ctx.Err() == nil {
 		logger.FromContext(ctx).With(
@@ -1210,7 +1240,11 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 			if msg == "" {
 				msg = "Upstream compact response failed"
 			}
-			return nil, s.writeOpenAINonStreamingProtocolError(resp, c, msg)
+			return nil, NewUpstreamOutcomeError(
+				openAIStreamFailedEventSemanticStatus(terminalPayload, msg),
+				terminalPayload,
+				s.writeOpenAINonStreamingProtocolError(resp, c, msg),
+			)
 		}
 		usage = s.parseSSEUsageFromBody(bodyText)
 		if originalModel != "" && mappedModel != "" && originalModel != mappedModel {

@@ -43,6 +43,9 @@ export interface GatewaySettings {
   default_pool_mode_retry_status_codes: number[]
   auto_managed_probe_backoff_minutes: number[]
   first_token_timeout_seconds: number
+  first_token_timeout_consecutive_threshold: number
+  upstream_error_status_codes: number[]
+  upstream_error_consecutive_threshold: number
   image_group_success_rate_visible: boolean
 }
 
@@ -81,7 +84,7 @@ export async function updateDailyCheckin(
   return data
 }
 
-export async function updateGateway(settings: GatewaySettings): Promise<GatewaySettings> {
+export async function updateGateway(settings: Partial<GatewaySettings>): Promise<GatewaySettings> {
   const { data } = await apiClient.put<GatewaySettings>(
     '/admin/custom-features/gateway',
     settings

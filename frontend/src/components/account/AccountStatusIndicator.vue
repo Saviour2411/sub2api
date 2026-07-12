@@ -1,13 +1,13 @@
 <template>
   <div class="flex items-center gap-2">
     <!-- Rate Limit Display (429) - Two-line layout -->
-    <div v-if="isRateLimited" class="flex flex-col items-center gap-1">
+    <div v-if="isRateLimited && !isPersistentlyUnschedulable" class="flex flex-col items-center gap-1">
       <span class="badge text-xs badge-warning">{{ t('admin.accounts.status.rateLimited') }}</span>
       <span class="text-[11px] text-gray-400 dark:text-gray-500">{{ rateLimitResumeText }}</span>
     </div>
 
     <!-- Overload Display (529) - Two-line layout -->
-    <div v-else-if="isOverloaded" class="flex flex-col items-center gap-1">
+    <div v-else-if="isOverloaded && !isPersistentlyUnschedulable" class="flex flex-col items-center gap-1">
       <span class="badge text-xs badge-danger">{{ t('admin.accounts.status.overloaded') }}</span>
       <span class="text-[11px] text-gray-400 dark:text-gray-500">{{ overloadCountdown }}</span>
     </div>
@@ -15,7 +15,7 @@
     <!-- Main Status Badge (shown when not rate limited/overloaded) -->
     <template v-else>
       <button
-        v-if="isTempUnschedulable"
+        v-if="isTempUnschedulable && !isPersistentlyUnschedulable"
         type="button"
         :class="['badge text-xs', statusClass, 'cursor-pointer']"
         :title="t('admin.accounts.status.viewTempUnschedDetails')"
@@ -51,6 +51,94 @@
           {{ account.error_message }}
         </div>
         <!-- 上方小三角 -->
+        <div
+          class="absolute bottom-full left-3 border-[6px] border-transparent border-b-gray-800 dark:border-b-gray-900"
+        ></div>
+      </div>
+    </div>
+
+    <div
+      v-if="isPersistentlyUnschedulable"
+      data-test="account-unschedulable-reason"
+      class="group/unschedulable relative"
+    >
+      <Icon
+        name="questionCircle"
+        size="sm"
+        class="cursor-help text-amber-500 transition-colors hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300"
+      />
+      <div
+        data-test="account-unschedulable-reason-tooltip"
+        class="invisible absolute left-0 top-full z-[100] mt-1.5 min-w-[260px] max-w-[380px] rounded-lg bg-gray-800 px-3 py-2 text-xs text-white opacity-0 shadow-xl transition-all duration-200 group-hover/unschedulable:visible group-hover/unschedulable:opacity-100 dark:bg-gray-900"
+      >
+        <div class="mb-2 font-medium text-amber-200">
+          {{ t('admin.accounts.status.unschedulableReasonTitle') }}
+        </div>
+        <dl class="space-y-1.5 text-gray-300">
+          <div class="grid grid-cols-[auto_minmax(0,1fr)] gap-2">
+            <dt class="text-gray-400">{{ t('admin.accounts.status.unschedulableReason') }}</dt>
+            <dd
+              data-test="account-unschedulable-reason-value"
+              class="whitespace-pre-wrap break-words text-right leading-relaxed"
+            >
+              {{ unschedulableReasonText }}
+            </dd>
+          </div>
+          <div
+            v-if="unschedulableStatusCode !== null"
+            class="grid grid-cols-[auto_minmax(0,1fr)] gap-2"
+          >
+            <dt class="text-gray-400">{{ t('admin.accounts.status.unschedulableStatusCode') }}</dt>
+            <dd data-test="account-unschedulable-status-code" class="text-right">
+              {{ unschedulableStatusCode }}
+            </dd>
+          </div>
+          <div
+            v-if="unschedulableConsecutiveCount !== null"
+            class="grid grid-cols-[auto_minmax(0,1fr)] gap-2"
+          >
+            <dt class="text-gray-400">{{ t('admin.accounts.status.unschedulableConsecutiveCount') }}</dt>
+            <dd data-test="account-unschedulable-consecutive-count" class="text-right">
+              {{ unschedulableConsecutiveCount }}
+            </dd>
+          </div>
+          <div
+            v-if="unschedulableThreshold !== null"
+            class="grid grid-cols-[auto_minmax(0,1fr)] gap-2"
+          >
+            <dt class="text-gray-400">{{ t('admin.accounts.status.unschedulableThreshold') }}</dt>
+            <dd data-test="account-unschedulable-threshold" class="text-right">
+              {{ unschedulableThreshold }}
+            </dd>
+          </div>
+          <div
+            v-if="unschedulableModel"
+            class="grid grid-cols-[auto_minmax(0,1fr)] gap-2"
+          >
+            <dt class="text-gray-400">{{ t('admin.accounts.status.unschedulableModel') }}</dt>
+            <dd data-test="account-unschedulable-model" class="break-all text-right">
+              {{ unschedulableModel }}
+            </dd>
+          </div>
+          <div
+            v-if="unschedulableTimeoutSeconds !== null"
+            class="grid grid-cols-[auto_minmax(0,1fr)] gap-2"
+          >
+            <dt class="text-gray-400">{{ t('admin.accounts.status.unschedulableTimeoutSeconds') }}</dt>
+            <dd data-test="account-unschedulable-timeout-seconds" class="text-right">
+              {{ unschedulableTimeoutSeconds }}
+            </dd>
+          </div>
+          <div
+            v-if="unschedulableOccurredAt"
+            class="grid grid-cols-[auto_minmax(0,1fr)] gap-2"
+          >
+            <dt class="text-gray-400">{{ t('admin.accounts.status.unschedulableOccurredAt') }}</dt>
+            <dd data-test="account-unschedulable-occurred-at" class="text-right">
+              {{ unschedulableOccurredAt }}
+            </dd>
+          </div>
+        </dl>
         <div
           class="absolute bottom-full left-3 border-[6px] border-transparent border-b-gray-800 dark:border-b-gray-900"
         ></div>
@@ -179,7 +267,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
-import type { Account } from '@/types'
+import type { Account, FailureStrategyUnscheduledMarker } from '@/types'
 import { formatCountdown, formatDateTime, formatCountdownWithSuffix, formatTime } from '@/utils/format'
 
 const { t } = useI18n()
@@ -310,6 +398,66 @@ const hasError = computed(() => {
   return props.account.status === 'error'
 })
 
+function nonEmptyString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+const failureStrategyMarker = computed<FailureStrategyUnscheduledMarker | null>(() => {
+  const marker = props.account.extra?.failure_strategy_unscheduled
+  if (!marker || typeof marker !== 'object' || Array.isArray(marker)) return null
+  return Object.keys(marker).length > 0 ? marker : null
+})
+
+const isPersistentlyUnschedulable = computed(() => {
+  return (
+    props.account.status === 'active' &&
+    !props.account.schedulable &&
+    failureStrategyMarker.value !== null
+  )
+})
+
+const unschedulableReasonText = computed(() => {
+  const marker = failureStrategyMarker.value
+  if (!marker) return ''
+  const reason = nonEmptyString(marker.reason)
+  if (reason) return reason
+  switch (nonEmptyString(marker.source)) {
+    case 'first_token_timeout':
+      return t('admin.accounts.status.unschedulableFirstTokenTimeout')
+    case 'upstream_error':
+      return t('admin.accounts.status.unschedulableUpstreamError')
+    default:
+      return nonEmptyString(marker.reason) || t('admin.accounts.status.unschedulable')
+  }
+})
+
+const unschedulableStatusCode = computed(() =>
+  finiteNumber(failureStrategyMarker.value?.status_code)
+)
+
+const unschedulableConsecutiveCount = computed(() =>
+  finiteNumber(failureStrategyMarker.value?.consecutive_count)
+)
+
+const unschedulableThreshold = computed(() =>
+  finiteNumber(failureStrategyMarker.value?.threshold)
+)
+
+const unschedulableModel = computed(() => nonEmptyString(failureStrategyMarker.value?.model))
+
+const unschedulableTimeoutSeconds = computed(() =>
+  finiteNumber(failureStrategyMarker.value?.timeout_seconds)
+)
+
+const unschedulableOccurredAt = computed(() => {
+  const occurredAt = nonEmptyString(failureStrategyMarker.value?.at)
+  return occurredAt ? formatDateTime(occurredAt) : ''
+})
+
 const latestScheduledTestFailureMessage = computed(() => {
   return props.account.last_scheduled_test_failure?.error_message?.trim() || ''
 })
@@ -344,6 +492,9 @@ const statusClass = computed(() => {
   if (hasError.value) {
     return 'badge-danger'
   }
+  if (isPersistentlyUnschedulable.value) {
+    return 'badge-gray'
+  }
   if (isTempUnschedulable.value) {
     return 'badge-warning'
   }
@@ -363,6 +514,9 @@ const statusClass = computed(() => {
 const statusText = computed(() => {
   if (hasError.value) {
     return t('admin.accounts.status.error')
+  }
+  if (isPersistentlyUnschedulable.value) {
+    return t('admin.accounts.status.unschedulable')
   }
   if (isTempUnschedulable.value) {
     return t('admin.accounts.status.tempUnschedulable')

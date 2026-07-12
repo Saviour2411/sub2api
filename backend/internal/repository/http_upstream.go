@@ -176,6 +176,7 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 	}
 
 	// 执行请求
+	service.StartFirstTokenAttemptFromContext(req.Context())
 	resp, err := entry.client.Do(req)
 	if err != nil {
 		s.recordOpenAIHTTP2Failure(profile, entry.protocolMode, entry.proxyKey, err)
@@ -232,6 +233,7 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 		return nil, err
 	}
 
+	service.StartFirstTokenAttemptFromContext(req.Context())
 	resp, err := entry.client.Do(req)
 	if err != nil {
 		atomic.AddInt64(&entry.inFlight, -1)

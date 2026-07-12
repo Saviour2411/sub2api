@@ -346,6 +346,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	cleanedForUnknownBinding := false
 
 	fs := NewFailoverState(h.maxAccountSwitchesGemini, hasBoundSession)
+	defer fs.FinalizePendingOutcomes(c.Request.Context(), h.gatewayService)
 
 	// 单账号分组提前设置 SingleAccountRetry 标记，让 Service 层首次 503 就不设模型限流标记。
 	// 避免单账号分组收到 503 (MODEL_CAPACITY_EXHAUSTED) 时设 29s 限流，导致后续请求连续快速失败。
@@ -369,7 +370,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 				googleError(c, cls.Status, message)
 				return
 			}
-			action := fs.HandleSelectionExhausted(c.Request.Context())
+			action := fs.HandleSelectionExhausted(c.Request.Context(), h.gatewayService)
 			switch action {
 			case FailoverContinue:
 				ctx := service.WithSingleAccountRetry(c.Request.Context(), true, h.metadataBridgeEnabled())
@@ -488,6 +489,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 			accountReleaseFunc()
 		}
 		if err != nil {
+			fs.RecordOutcomeError(c.Request.Context(), h.gatewayService, account.ID, err, result != nil && result.ClientDisconnect)
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
 				failoverAction := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, failoverErr, account.GetPoolModeRetryCount())
@@ -504,6 +506,9 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 			// ForwardNative already wrote the response
 			reqLog.Error("gemini.forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 			return
+		}
+		if result != nil && !result.ClientDisconnect {
+			fs.RecordSuccessOutcome(c.Request.Context(), h.gatewayService, account.ID)
 		}
 
 		// 捕获请求信息（用于异步记录，避免在 goroutine 中访问 gin.Context）

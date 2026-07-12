@@ -3,7 +3,7 @@ import { defineComponent } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 
 import CustomFeaturesView from '../CustomFeaturesView.vue'
-import type { CustomFeatureSettings } from '@/api/admin/customFeatures'
+import type { CustomFeatureSettings, GatewaySettings } from '@/api/admin/customFeatures'
 
 const {
   getSettings,
@@ -110,6 +110,9 @@ function settingsFixture(): CustomFeatureSettings {
       default_pool_mode_retry_status_codes: [401, 403, 429, 502, 503, 504],
       auto_managed_probe_backoff_minutes: [5, 10, 15, 30, 60],
       first_token_timeout_seconds: 60,
+      first_token_timeout_consecutive_threshold: 3,
+      upstream_error_status_codes: [502, 503, 504],
+      upstream_error_consecutive_threshold: 10,
       image_group_success_rate_visible: true,
     },
   }
@@ -171,8 +174,11 @@ describe('admin CustomFeaturesView', () => {
     await wrapper.get('[data-test="custom-feature-tab-gateway"]').trigger('click')
     expect(wrapper.find('[data-test="gateway-form"]').exists()).toBe(true)
     expect(wrapper.get<HTMLInputElement>('[data-test="gateway-pool-retry-count"]').element.value).toBe('1')
+    expect(wrapper.get<HTMLInputElement>('[data-test="gateway-first-token-consecutive-threshold"]').element.value).toBe('3')
+    expect(wrapper.get<HTMLInputElement>('[data-test="gateway-upstream-error-consecutive-threshold"]').element.value).toBe('10')
 
     await wrapper.get('[data-test="gateway-pool-retry-status-codes"]').setValue('504 401, 504, 429')
+    await wrapper.get('[data-test="gateway-upstream-error-status-codes"]').setValue('504 502, 504')
     await wrapper.get('[data-test="gateway-form"]').trigger('submit')
     await flushPromises()
 
@@ -181,10 +187,42 @@ describe('admin CustomFeaturesView', () => {
       default_pool_mode_retry_status_codes: [401, 429, 504],
       auto_managed_probe_backoff_minutes: [5, 10, 15, 30, 60],
       first_token_timeout_seconds: 60,
+      first_token_timeout_consecutive_threshold: 3,
+      upstream_error_status_codes: [502, 504],
+      upstream_error_consecutive_threshold: 10,
       image_group_success_rate_visible: true,
     })
     expect(updateDailyCheckin).not.toHaveBeenCalled()
     expect(showSuccess).toHaveBeenCalledWith('admin.customFeatures.gateway.saved')
+  })
+
+  it('旧版响应缺失新字段时使用安全默认值', async () => {
+    const legacySettings = settingsFixture()
+    const legacyGateway: Partial<GatewaySettings> = { ...legacySettings.gateway }
+    delete legacyGateway.first_token_timeout_consecutive_threshold
+    delete legacyGateway.upstream_error_status_codes
+    delete legacyGateway.upstream_error_consecutive_threshold
+    getSettings.mockResolvedValueOnce({
+      ...legacySettings,
+      gateway: legacyGateway,
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="custom-feature-tab-gateway"]').trigger('click')
+
+    expect(
+      wrapper.get<HTMLInputElement>('[data-test="gateway-first-token-consecutive-threshold"]')
+        .element.value
+    ).toBe('3')
+    expect(
+      wrapper.get<HTMLInputElement>('[data-test="gateway-upstream-error-status-codes"]').element
+        .value
+    ).toBe('502, 503, 504')
+    expect(
+      wrapper.get<HTMLInputElement>('[data-test="gateway-upstream-error-consecutive-threshold"]')
+        .element.value
+    ).toBe('10')
   })
 
   it('rejects invalid gateway status codes and decreasing probe backoff', async () => {
@@ -235,6 +273,49 @@ describe('admin CustomFeaturesView', () => {
 
     expect(updateGateway).toHaveBeenCalledWith(
       expect.objectContaining({ default_pool_mode_retry_status_codes: [] })
+    )
+  })
+
+  it('校验首 Token 与连续上游错误停调度配置', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="custom-feature-tab-gateway"]').trigger('click')
+
+    await wrapper.get('[data-test="gateway-first-token-consecutive-threshold"]').setValue('0')
+    await wrapper.get('[data-test="gateway-form"]').trigger('submit')
+    expect(updateGateway).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenLastCalledWith(
+      'admin.customFeatures.gateway.validation.firstTokenConsecutiveThreshold'
+    )
+
+    await wrapper.get('[data-test="gateway-first-token-consecutive-threshold"]').setValue('3')
+    await wrapper.get('[data-test="gateway-upstream-error-consecutive-threshold"]').setValue('101')
+    await wrapper.get('[data-test="gateway-form"]').trigger('submit')
+    expect(updateGateway).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenLastCalledWith(
+      'admin.customFeatures.gateway.validation.upstreamErrorConsecutiveThreshold'
+    )
+
+    await wrapper.get('[data-test="gateway-upstream-error-consecutive-threshold"]').setValue('10')
+    await wrapper.get('[data-test="gateway-upstream-error-status-codes"]').setValue('502, invalid')
+    await wrapper.get('[data-test="gateway-form"]').trigger('submit')
+    expect(updateGateway).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenLastCalledWith(
+      'admin.customFeatures.gateway.validation.upstreamErrorStatusCodes'
+    )
+  })
+
+  it('允许清空连续上游错误状态码并提交空数组', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="custom-feature-tab-gateway"]').trigger('click')
+
+    await wrapper.get('[data-test="gateway-upstream-error-status-codes"]').setValue('')
+    await wrapper.get('[data-test="gateway-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(updateGateway).toHaveBeenCalledWith(
+      expect.objectContaining({ upstream_error_status_codes: [] })
     )
   })
 

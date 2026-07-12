@@ -49,6 +49,19 @@ var (
 	errFirstTokenPreludeTooLarge = errors.New("upstream first token prelude exceeds buffer limit")
 )
 
+type firstTokenAttemptContextKey struct{}
+
+// StartFirstTokenAttemptFromContext 在 HTTP 客户端真正发起上游请求前启动首 Token 计时。
+func StartFirstTokenAttemptFromContext(ctx context.Context) {
+	if ctx == nil {
+		return
+	}
+	attempt, _ := ctx.Value(firstTokenAttemptContextKey{}).(*firstTokenAttempt)
+	if attempt != nil {
+		attempt.start()
+	}
+}
+
 func isFirstTokenTimeoutFailover(err error) bool {
 	var failoverErr *UpstreamFailoverError
 	return errors.As(err, &failoverErr) && failoverErr.FirstTokenTimeout
@@ -65,6 +78,10 @@ type firstTokenAttempt struct {
 	model          string
 	account        *Account
 	rateLimit      *RateLimitService
+	failurePolicy  AccountFailureStreakPolicy
+	failureLimit   int
+	checkPolicy    bool
+	timeoutEvent   AccountFailureStreakEvent
 	requestCtx     context.Context
 	ginCtx         *gin.Context
 	cancel         context.CancelFunc
@@ -72,24 +89,26 @@ type firstTokenAttempt struct {
 	clientStop     func() bool
 
 	mu             sync.Mutex
+	startOnce      sync.Once
+	closed         bool
 	bufferedWriter *firstTokenBufferedResponseWriter
 	originalWriter gin.ResponseWriter
 	sideEffectOnce sync.Once
 	closeOnce      sync.Once
 }
 
-func resolveFirstTokenTimeout(ctx context.Context, rateLimit *RateLimitService) time.Duration {
-	seconds := defaultFirstTokenTimeoutSeconds
+func resolveFirstTokenTimeoutSettings(ctx context.Context, rateLimit *RateLimitService) GatewaySettings {
+	settings := DefaultGatewaySettings()
 	if rateLimit != nil && rateLimit.settingService != nil {
-		seconds = rateLimit.settingService.GetGatewayRuntime(ctx).FirstTokenTimeoutSeconds
+		settings = rateLimit.settingService.GetGatewayRuntime(ctx)
 	}
-	if seconds <= 0 {
-		return 0
+	if settings.FirstTokenTimeoutSeconds < 0 {
+		settings.FirstTokenTimeoutSeconds = 0
 	}
-	if seconds > 600 {
-		seconds = 600
+	if settings.FirstTokenTimeoutSeconds > MaxGatewayFirstTokenTimeoutSeconds {
+		settings.FirstTokenTimeoutSeconds = MaxGatewayFirstTokenTimeoutSeconds
 	}
-	return time.Duration(seconds) * time.Second
+	return settings
 }
 
 func newFirstTokenAttempt(
@@ -107,12 +126,19 @@ func newFirstTokenAttempt(
 	if requestCtx == nil {
 		requestCtx = context.Background()
 	}
-	timeout := resolveFirstTokenTimeout(requestCtx, rateLimit)
+	settings := resolveFirstTokenTimeoutSettings(requestCtx, rateLimit)
+	timeout := time.Duration(settings.FirstTokenTimeoutSeconds) * time.Second
 	if timeout <= 0 {
 		resumeOpenAICompactSSEKeepalive(c)
 		return nil
 	}
-	return newFirstTokenAttemptWithTimeout(requestCtx, c, rateLimit, account, model, timeout)
+	attempt := newFirstTokenAttemptWithTimeout(requestCtx, c, rateLimit, account, model, timeout)
+	if attempt != nil {
+		attempt.failurePolicy = BuildAccountFailureStreakPolicy(AccountFailureStreakSourceFirstTokenTimeout, settings)
+		attempt.failureLimit = settings.FirstTokenTimeoutConsecutiveThreshold
+		attempt.checkPolicy = true
+	}
+	return attempt
 }
 
 func newFirstTokenAttemptWithTimeout(
@@ -136,7 +162,6 @@ func newFirstTokenAttemptWithTimeout(
 	attempt := &firstTokenAttempt{
 		timeout:        timeout,
 		timeoutSeconds: int((timeout + time.Second - 1) / time.Second),
-		startedAt:      time.Now(),
 		model:          strings.TrimSpace(model),
 		account:        account,
 		rateLimit:      rateLimit,
@@ -144,24 +169,86 @@ func newFirstTokenAttemptWithTimeout(
 		ginCtx:         c,
 		cancel:         cancel,
 	}
+	failureSettings := DefaultGatewaySettings()
+	failureSettings.FirstTokenTimeoutSeconds = attempt.timeoutSeconds
+	attempt.failurePolicy = BuildAccountFailureStreakPolicy(AccountFailureStreakSourceFirstTokenTimeout, failureSettings)
+	attempt.failureLimit = failureSettings.FirstTokenTimeoutConsecutiveThreshold
 	attempt.firstTokenMs.Store(-1)
 	attempt.state.Store(int32(firstTokenAttemptWaiting))
-	attempt.timer = time.AfterFunc(timeout, func() {
-		if attempt.compareAndSwapState(firstTokenAttemptWaiting, firstTokenAttemptTimedOut) {
-			cancel()
-		}
-	})
 	attempt.clientStop = context.AfterFunc(requestCtx, func() {
 		if attempt.compareAndSwapState(firstTokenAttemptWaiting, firstTokenAttemptClientCanceled) {
-			if attempt.timer != nil {
-				attempt.timer.Stop()
-			}
+			attempt.stopTimer()
 			attempt.dropWriterBuffer()
 		}
 	})
-	attempt.requestCtx = upstreamCtx
+	attempt.requestCtx = firstTokenDispatchContext{
+		Context: context.WithValue(upstreamCtx, firstTokenAttemptContextKey{}, attempt),
+		attempt: attempt,
+	}
 	attempt.wrapWriter(c)
 	return attempt
+}
+
+func (a *firstTokenAttempt) start() {
+	if a == nil {
+		return
+	}
+	a.startOnce.Do(func() {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		if a.closed || a.currentState() != firstTokenAttemptWaiting {
+			return
+		}
+		a.startedAt = time.Now()
+		a.timer = time.AfterFunc(a.timeout, func() {
+			if a.compareAndSwapState(firstTokenAttemptWaiting, firstTokenAttemptTimedOut) {
+				a.setTimeoutEvent(time.Now().UTC())
+				if a.cancel != nil {
+					a.cancel()
+				}
+			}
+		})
+	})
+}
+
+func (a *firstTokenAttempt) stopTimer() {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	timer := a.timer
+	a.mu.Unlock()
+	if timer != nil {
+		timer.Stop()
+	}
+}
+
+// firstTokenDispatchContext 让自定义 HTTPUpstream 在观察请求取消信号时也能
+// 启动计时。生产 HTTPUpstream 会在 client.Do 前显式启动，因此这里通常是幂等兜底。
+type firstTokenDispatchContext struct {
+	context.Context
+	attempt *firstTokenAttempt
+}
+
+func (c firstTokenDispatchContext) Deadline() (time.Time, bool) {
+	if c.attempt != nil {
+		c.attempt.start()
+	}
+	return c.Context.Deadline()
+}
+
+func (c firstTokenDispatchContext) Done() <-chan struct{} {
+	if c.attempt != nil {
+		c.attempt.start()
+	}
+	return c.Context.Done()
+}
+
+func (c firstTokenDispatchContext) Err() error {
+	if c.attempt != nil {
+		c.attempt.start()
+	}
+	return c.Context.Err()
 }
 
 func firstTokenTimeoutExcluded(c *gin.Context) bool {
@@ -237,6 +324,9 @@ func (a *firstTokenAttempt) wrapResponse(resp *http.Response, c *gin.Context, pr
 	if a == nil || resp == nil || resp.Body == nil {
 		return
 	}
+	// 生产路径会在 HTTPUpstream.Do 紧邻网络请求前启动；这里作为自定义
+	// HTTPUpstream 和单元测试的兜底，确保读取响应体前计时器已经启动。
+	a.start()
 	a.wrapWriter(c)
 	resp.Body = &firstTokenReadCloser{
 		upstream: resp.Body,
@@ -275,8 +365,12 @@ func (a *firstTokenAttempt) cleanup() {
 		return
 	}
 	a.closeOnce.Do(func() {
-		if a.timer != nil {
-			a.timer.Stop()
+		a.mu.Lock()
+		a.closed = true
+		timer := a.timer
+		a.mu.Unlock()
+		if timer != nil {
+			timer.Stop()
 		}
 		if a.clientStop != nil {
 			a.clientStop()
@@ -323,8 +417,8 @@ func (a *firstTokenAttempt) stopBeforeStreaming(responses ...*http.Response) {
 		return
 	}
 	stopped := a.compareAndSwapState(firstTokenAttemptWaiting, firstTokenAttemptStopped)
-	if stopped && a.timer != nil {
-		a.timer.Stop()
+	if stopped {
+		a.stopTimer()
 	}
 	if a.clientStop != nil {
 		a.clientStop()
@@ -414,9 +508,7 @@ func (a *firstTokenAttempt) markReceived() {
 		firstTokenMs = 0
 	}
 	a.firstTokenMs.Store(firstTokenMs)
-	if a.timer != nil {
-		a.timer.Stop()
-	}
+	a.stopTimer()
 	if a.clientStop != nil {
 		a.clientStop()
 	}
@@ -439,9 +531,7 @@ func (a *firstTokenAttempt) markDecidedWithoutToken() {
 	if a == nil || !a.compareAndSwapState(firstTokenAttemptWaiting, firstTokenAttemptDecidedWithoutToken) {
 		return
 	}
-	if a.timer != nil {
-		a.timer.Stop()
-	}
+	a.stopTimer()
 	if a.clientStop != nil {
 		a.clientStop()
 	}
@@ -451,9 +541,7 @@ func (a *firstTokenAttempt) markPreludeOverflow() {
 	if a == nil || !a.compareAndSwapState(firstTokenAttemptWaiting, firstTokenAttemptPreludeOverflow) {
 		return
 	}
-	if a.timer != nil {
-		a.timer.Stop()
-	}
+	a.stopTimer()
 	if a.clientStop != nil {
 		a.clientStop()
 	}
@@ -505,7 +593,16 @@ func (a *firstTokenAttempt) preludeOverflowFailoverError() *UpstreamFailoverErro
 func (a *firstTokenAttempt) recordTimeoutSideEffects() {
 	a.sideEffectOnce.Do(func() {
 		if a.rateLimit != nil {
-			_ = a.rateLimit.HandleFirstTokenTimeout(a.requestCtx, a.account, a.model, a.timeoutSeconds)
+			_ = a.rateLimit.handleFirstTokenTimeoutOutcome(
+				a.requestCtx,
+				a.account,
+				a.model,
+				a.timeoutSeconds,
+				a.failurePolicy,
+				a.failureLimit,
+				a.firstTokenTimeoutEvent(),
+				a.checkPolicy,
+			)
 		}
 		if a.ginCtx != nil && a.account != nil {
 			message := fmt.Sprintf("first token timeout after %d seconds", a.timeoutSeconds)
@@ -521,6 +618,29 @@ func (a *firstTokenAttempt) recordTimeoutSideEffects() {
 			setOpsUpstreamError(a.ginCtx, http.StatusGatewayTimeout, message, "")
 		}
 	})
+}
+
+func (a *firstTokenAttempt) setTimeoutEvent(occurredAt time.Time) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	if a.timeoutEvent.OccurredAt.IsZero() || strings.TrimSpace(a.timeoutEvent.ID) == "" {
+		a.timeoutEvent = NewAccountFailureStreakEvent(occurredAt)
+	}
+	a.mu.Unlock()
+}
+
+func (a *firstTokenAttempt) firstTokenTimeoutEvent() AccountFailureStreakEvent {
+	if a == nil {
+		return NewAccountFailureStreakEvent(time.Now().UTC())
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.timeoutEvent.OccurredAt.IsZero() || strings.TrimSpace(a.timeoutEvent.ID) == "" {
+		a.timeoutEvent = NewAccountFailureStreakEvent(time.Now().UTC())
+	}
+	return a.timeoutEvent
 }
 
 func (a *firstTokenAttempt) releaseWriter() {
@@ -768,7 +888,7 @@ func isMeaningfulFirstTokenJSON(data []byte) bool {
 	eventType := strings.ToLower(strings.TrimSpace(gjson.GetBytes(data, "type").String()))
 	switch eventType {
 	case "response.output_text.delta", "response.reasoning_summary_text.delta", "response.reasoning_text.delta", "response.refusal.delta":
-		return strings.TrimSpace(gjson.GetBytes(data, "delta").String()) != ""
+		return gjson.GetBytes(data, "delta").String() != ""
 	case "response.function_call_arguments.delta", "response.custom_tool_call_input.delta":
 		return firstTokenToolPayloadMeaningful(gjson.GetBytes(data, "delta"))
 	case "response.output_item.added", "response.output_item.done":
@@ -786,7 +906,7 @@ func isMeaningfulFirstTokenJSON(data []byte) bool {
 		deltaType := strings.ToLower(gjson.GetBytes(data, "delta.type").String())
 		switch deltaType {
 		case "text_delta", "thinking_delta":
-			return strings.TrimSpace(gjson.GetBytes(data, "delta.text").String()) != "" || strings.TrimSpace(gjson.GetBytes(data, "delta.thinking").String()) != ""
+			return gjson.GetBytes(data, "delta.text").String() != "" || gjson.GetBytes(data, "delta.thinking").String() != ""
 		case "input_json_delta":
 			return firstTokenToolPayloadMeaningful(gjson.GetBytes(data, "delta.partial_json"))
 		}
@@ -796,10 +916,10 @@ func isMeaningfulFirstTokenJSON(data []byte) bool {
 	if choices.IsArray() {
 		for _, choice := range choices.Array() {
 			delta := choice.Get("delta")
-			if strings.TrimSpace(delta.Get("content").String()) != "" ||
-				strings.TrimSpace(delta.Get("reasoning_content").String()) != "" ||
-				strings.TrimSpace(delta.Get("reasoning").String()) != "" ||
-				strings.TrimSpace(delta.Get("refusal").String()) != "" ||
+			if delta.Get("content").String() != "" ||
+				delta.Get("reasoning_content").String() != "" ||
+				delta.Get("reasoning").String() != "" ||
+				delta.Get("refusal").String() != "" ||
 				firstTokenToolCallsMeaningful(delta.Get("tool_calls")) ||
 				firstTokenFunctionCallMeaningful(delta.Get("function_call")) {
 				return true
@@ -840,7 +960,7 @@ func geminiJSONHasGeneratedPart(root gjson.Result) bool {
 			continue
 		}
 		for _, part := range parts.Array() {
-			if strings.TrimSpace(part.Get("text").String()) != "" ||
+			if part.Get("text").String() != "" ||
 				firstTokenFunctionCallMeaningful(part.Get("functionCall")) ||
 				firstTokenFunctionCallMeaningful(part.Get("function_call")) {
 				return true

@@ -102,6 +102,8 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 	}
 
 	failedAccountIDs := make(map[int64]struct{})
+	sameAccountRetryCount := make(map[int64]int)
+	outcomeTracker := newOpenAIUpstreamOutcomeTracker()
 	var lastFailoverErr *service.UpstreamFailoverError
 	switchCount := 0
 	maxAccountSwitches := h.maxAccountSwitches
@@ -185,13 +187,34 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 		service.SetOpsLatencyMs(c, service.OpsResponseLatencyMsKey, responseLatencyMs)
 
 		if err != nil {
+			outcomeTracker.recordOutcomeError(c.Request.Context(), h.gatewayService, account.ID, err, result != nil && result.ClientDisconnect)
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
 				if c.Writer.Size() != writerSizeBeforeForward {
+					outcomeTracker.recordFailure(c.Request.Context(), h.gatewayService, account.ID, failoverErr)
 					h.handleFailoverExhausted(c, failoverErr, true)
 					return
 				}
 				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
+				if failoverErr.RetryableOnSameAccount {
+					retryLimit := account.GetPoolModeRetryCount()
+					if sameAccountRetryCount[account.ID] < retryLimit {
+						sameAccountRetryCount[account.ID]++
+						reqLog.Warn("openai_embeddings.pool_mode_same_account_retry",
+							zap.Int64("account_id", account.ID),
+							zap.Int("upstream_status", failoverErr.StatusCode),
+							zap.Int("retry_limit", retryLimit),
+							zap.Int("retry_count", sameAccountRetryCount[account.ID]),
+						)
+						select {
+						case <-c.Request.Context().Done():
+							return
+						case <-time.After(sameAccountRetryDelay):
+						}
+						continue
+					}
+				}
+				outcomeTracker.recordFailure(c.Request.Context(), h.gatewayService, account.ID, failoverErr)
 				h.gatewayService.RecordOpenAIAccountSwitch()
 				failedAccountIDs[account.ID] = struct{}{}
 				lastFailoverErr = failoverErr
@@ -219,6 +242,12 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 			return
 		}
 
+		outcomeTracker.recordSuccess(
+			c.Request.Context(),
+			h.gatewayService,
+			account.ID,
+			result != nil && result.ClientDisconnect,
+		)
 		h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, nil)
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)

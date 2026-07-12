@@ -109,6 +109,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 	var usage *OpenAIUsage
 	var firstTokenMs *int
 	responseID := ""
+	clientDisconnect := false
 	if reqStream {
 		firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolSSE)
 		streamResult, streamErr := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, upstreamModel)
@@ -119,6 +120,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		usage = streamResult.usage
 		firstTokenMs = streamResult.firstTokenMs
 		responseID = strings.TrimSpace(streamResult.responseID)
+		clientDisconnect = streamResult.clientDisconnect
 	} else {
 		nonStreamResult, err := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel)
 		if err != nil {
@@ -133,17 +135,18 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 	}
 	reasoningEffort := extractOpenAIReasoningEffortFromBody(patchedBody, originalModel)
 	return &OpenAIForwardResult{
-		RequestID:       firstNonEmpty(resp.Header.Get("x-request-id"), resp.Header.Get("xai-request-id")),
-		ResponseID:      responseID,
-		Usage:           *usage,
-		Model:           originalModel,
-		UpstreamModel:   upstreamModel,
-		ReasoningEffort: reasoningEffort,
-		Stream:          reqStream,
-		OpenAIWSMode:    false,
-		ResponseHeaders: resp.Header.Clone(),
-		Duration:        time.Since(startTime),
-		FirstTokenMs:    firstTokenMs,
+		RequestID:        firstNonEmpty(resp.Header.Get("x-request-id"), resp.Header.Get("xai-request-id")),
+		ResponseID:       responseID,
+		Usage:            *usage,
+		Model:            originalModel,
+		UpstreamModel:    upstreamModel,
+		ReasoningEffort:  reasoningEffort,
+		Stream:           reqStream,
+		OpenAIWSMode:     false,
+		ResponseHeaders:  resp.Header.Clone(),
+		Duration:         time.Since(startTime),
+		FirstTokenMs:     firstTokenMs,
+		ClientDisconnect: clientDisconnect,
 	}, nil
 }
 
@@ -507,7 +510,11 @@ func (s *OpenAIGatewayService) describeGrokComposerImage(
 				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 			}
 		}
-		return "", OpenAIUsage{}, fmt.Errorf("grok composer image bridge upstream error: %s", upstreamMsg)
+		return "", OpenAIUsage{}, NewUpstreamOutcomeError(
+			resp.StatusCode,
+			respBody,
+			fmt.Errorf("grok composer image bridge upstream error: %s", upstreamMsg),
+		)
 	}
 
 	s.updateGrokUsageSnapshot(ctx, account.ID, xai.ParseQuotaHeaders(resp.Header, resp.StatusCode))

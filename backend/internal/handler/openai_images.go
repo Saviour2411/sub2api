@@ -139,6 +139,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	switchCount := 0
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
+	outcomeTracker := newOpenAIUpstreamOutcomeTracker()
 	var lastFailoverErr *service.UpstreamFailoverError
 
 	for {
@@ -230,15 +231,24 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, int64(*result.FirstTokenMs))
 		}
 		if err != nil {
-			if result != nil && result.ImageCount > 0 {
+			if canAcceptOpenAIPartialImageResult(result, err) {
 				reqLog.Warn("openai.images.forward_partial_error_with_image_result",
 					zap.Int64("account_id", account.ID),
 					zap.Int("image_count", result.ImageCount),
 					zap.Error(err),
 				)
 			} else {
+				outcomeTracker.recordOutcomeError(requestCtx, h.gatewayService, account.ID, err, result != nil && result.ClientDisconnect)
 				var imageUpstreamErr *service.OpenAIImagesUpstreamError
 				if errors.As(err, &imageUpstreamErr) {
+					if result == nil || !result.ClientDisconnect {
+						outcomeTracker.recordFailure(
+							requestCtx,
+							h.gatewayService,
+							account.ID,
+							openAIImageUpstreamOutcomeError(imageUpstreamErr),
+						)
+					}
 					retryableServerError := service.IsOpenAIImagesRetryableUpstreamError(imageUpstreamErr)
 					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, !retryableServerError, nil)
 					logEvent := "openai.images.upstream_user_error"
@@ -258,6 +268,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				if errors.As(err, &failoverErr) {
 					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
 					if c.Writer.Size() != writerSizeBeforeForward {
+						outcomeTracker.recordFailure(requestCtx, h.gatewayService, account.ID, failoverErr)
 						reqLog.Warn("openai.images.upstream_failover_skipped_after_flush",
 							zap.Int64("account_id", account.ID),
 							zap.Int("upstream_status", failoverErr.StatusCode),
@@ -283,6 +294,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 							continue
 						}
 					}
+					outcomeTracker.recordFailure(requestCtx, h.gatewayService, account.ID, failoverErr)
 					h.gatewayService.RecordOpenAIAccountSwitch()
 					failedAccountIDs[account.ID] = struct{}{}
 					lastFailoverErr = failoverErr
@@ -323,6 +335,12 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				return
 			}
 		}
+		outcomeTracker.recordSuccess(
+			requestCtx,
+			h.gatewayService,
+			account.ID,
+			result != nil && result.ClientDisconnect,
+		)
 		if result != nil {
 			// 排除 spark 影子:其 codex_* 仅由 QueryUsage(/wham/usage bengalfox)更新(外审第7轮 P1)。
 			if account.Type == service.AccountTypeOAuth && !account.IsShadow() {

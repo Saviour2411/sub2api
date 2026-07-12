@@ -340,6 +340,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	flushedBufferedEventCount := 0
 	firstEventType := ""
 	lastEventType := ""
+	var terminalPayload []byte
 
 	var flusher http.Flusher
 	if reqStream {
@@ -472,6 +473,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		isTerminalEvent := isOpenAIWSTerminalEvent(eventType)
 		if isTerminalEvent {
 			terminalEventCount++
+			terminalPayload = append(terminalPayload[:0], message...)
 		}
 		if firstTokenAttempt != nil {
 			if isMeaningfulFirstTokenJSON(message) {
@@ -594,7 +596,13 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 					},
 				})
 			}
-			return nil, fmt.Errorf("openai ws error event: %s", errMsg)
+			outcomeErr := NewUpstreamOutcomeError(
+				statusCode,
+				message,
+				fmt.Errorf("openai ws error event: %s", errMsg),
+			)
+			outcomeErr.ClientDisconnect = clientDisconnected
+			return nil, outcomeErr
 		}
 
 		if reqStream {
@@ -695,7 +703,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		clientDisconnected,
 	)
 
-	return &OpenAIForwardResult{
+	result := &OpenAIForwardResult{
 		RequestID:        responseID,
 		Usage:            *usage,
 		Model:            originalModel,
@@ -709,7 +717,19 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		ResponseHeaders:  lease.HandshakeHeaders(),
 		Duration:         time.Since(startTime),
 		FirstTokenMs:     firstTokenMs,
-	}, nil
+		ClientDisconnect: clientDisconnected,
+	}
+	if lastEventType == "response.failed" {
+		message := extractOpenAISSEErrorMessage(terminalPayload)
+		result.UpstreamOutcome = NewUpstreamOutcomeError(
+			openAIStreamFailedEventSemanticStatus(terminalPayload, message),
+			terminalPayload,
+			fmt.Errorf("upstream response failed: %s", message),
+		)
+		result.UpstreamOutcome.ClientDisconnect = clientDisconnected
+		return result, result.UpstreamOutcome
+	}
+	return result, nil
 }
 
 // ProxyResponsesWebSocketFromClient 处理客户端入站 WebSocket（OpenAI Responses WS Mode）并转发到上游。
