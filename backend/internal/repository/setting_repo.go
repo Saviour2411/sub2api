@@ -46,7 +46,7 @@ func (r *settingRepository) SetMultipleWithMonotonicRevision(
 		SetValue(strconv.FormatInt(initialRevision, 10)).
 		SetUpdatedAt(now).
 		OnConflictColumns(setting.FieldKey).
-		DoNothing().
+		Ignore().
 		Exec(ctx); err != nil {
 		return 0, err
 	}
