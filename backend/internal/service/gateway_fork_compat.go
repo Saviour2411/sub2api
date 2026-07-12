@@ -173,11 +173,6 @@ func prependClaudeCodeMimicSystemBlocks(body []byte) []byte {
 	return body
 }
 
-func isCompleteClaudeCodeBillingBlock(text string) bool {
-	return strings.HasPrefix(text, claudeCodeBillingHeaderPrefix) &&
-		strings.Contains(text, claudeCodeEntrypointMarker)
-}
-
 func claudeCodeMimicClientDiscriminator(c *gin.Context) string {
 	if c == nil || c.Request == nil {
 		return ""

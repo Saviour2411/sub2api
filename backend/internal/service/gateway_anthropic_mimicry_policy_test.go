@@ -20,6 +20,11 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+func isCompleteClaudeCodeBillingBlock(text string) bool {
+	return strings.HasPrefix(text, claudeCodeBillingHeaderPrefix) &&
+		strings.Contains(text, claudeCodeEntrypointMarker)
+}
+
 func TestShouldMimicClaudeCodeForAccount_StrategyMatrix(t *testing.T) {
 	tests := []struct {
 		name       string

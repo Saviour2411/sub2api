@@ -356,7 +356,7 @@ func sanitizeAnthropicMimicTools(body []byte, finalBeta string, _ anthropicMimic
 	}
 
 	if !removedTool && !droppedNestedTool && len(removedNames) == 0 && len(removedTypes) == 0 && !removeMCPHistory &&
-		!(len(kept) == 0 && gjson.GetBytes(out, "tool_choice").Exists()) {
+		(len(kept) != 0 || !gjson.GetBytes(out, "tool_choice").Exists()) {
 		return out
 	}
 	// 同名的普通工具仍然存在时，历史 tool_use/tool_result 不能仅凭名称删除。
