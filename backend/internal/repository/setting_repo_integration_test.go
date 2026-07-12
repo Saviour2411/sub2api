@@ -4,9 +4,13 @@ package repository
 
 import (
 	"context"
+	"strconv"
 	"testing"
+	"time"
 
+	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -104,6 +108,42 @@ func (s *SettingRepoSuite) TestSetMultiple_Upsert() {
 	got2, err := s.repo.GetValue(s.ctx, "new_key")
 	s.Require().NoError(err)
 	s.Require().Equal("new_val", got2)
+}
+
+func TestSetMultipleWithMonotonicRevision_ExistingRevision(t *testing.T) {
+	ctx := context.Background()
+	repo := NewSettingRepository(integrationEntClient).(*settingRepository)
+	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
+	revisionKey := "test_gateway_revision_" + suffix
+	fingerprintKey := "test_gateway_fingerprint_" + suffix
+	settingKey := "test_gateway_timeout_" + suffix
+	keys := []string{revisionKey, fingerprintKey, settingKey}
+	t.Cleanup(func() {
+		_, _ = integrationEntClient.Setting.Delete().Where(setting.KeyIn(keys...)).Exec(context.Background())
+	})
+
+	require.NoError(t, repo.SetMultiple(ctx, map[string]string{
+		revisionKey:    "7",
+		fingerprintKey: "old-fingerprint",
+	}))
+
+	next, err := repo.SetMultipleWithMonotonicRevision(
+		ctx,
+		map[string]string{settingKey: "120"},
+		revisionKey,
+		fingerprintKey,
+		1,
+		"old-fingerprint",
+		"new-fingerprint",
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(8), next)
+
+	stored, err := repo.GetMultiple(ctx, keys)
+	require.NoError(t, err)
+	require.Equal(t, "8", stored[revisionKey])
+	require.Equal(t, "new-fingerprint", stored[fingerprintKey])
+	require.Equal(t, "120", stored[settingKey])
 }
 
 // TestSet_EmptyValue 测试保存空字符串值
