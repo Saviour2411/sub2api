@@ -195,7 +195,7 @@
           default-sort-key="name"
           default-sort-order="asc"
           :sort-storage-key="ACCOUNT_SORT_STORAGE_KEY"
-          :estimate-row-height="72"
+          :estimate-row-height="156"
           :overscan="5"
           :virtualized="false"
           :scroll-reset-key="accountTableScrollResetKey"

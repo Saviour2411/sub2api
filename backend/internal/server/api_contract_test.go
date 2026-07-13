@@ -374,6 +374,7 @@ func TestAPIContracts(t *testing.T) {
 						"video_price_480p": null,
 						"video_price_720p": null,
 						"video_price_1080p": null,
+						"web_search_price_per_call": null,
 						"video_rate_independent": false,
 						"video_rate_multiplier": 0,
 						"fallback_group_id": null,

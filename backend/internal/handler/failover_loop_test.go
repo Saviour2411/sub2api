@@ -12,8 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const maxSameAccountRetries = 3
-
 // ---------------------------------------------------------------------------
 // Mock
 // ---------------------------------------------------------------------------
@@ -420,6 +418,43 @@ func TestHandleFailoverError_SameAccountRetry(t *testing.T) {
 		action = fs.HandleFailoverError(context.Background(), mock, 100, "openai", err, maxSameAccountRetries)
 		require.Equal(t, FailoverContinue, action)
 		require.Len(t, mock.calls, 2, "第二次耗尽也应调用 TempUnschedule")
+	})
+
+	t.Run("尊重账号级retryLimit_配置1次只重试1次", func(t *testing.T) {
+		// 回归测试：Anthropic 等路径此前硬编码同账号重试 3 次，忽略账号
+		// pool_mode_retry_count 配置。此处验证传入 retryLimit=1 时只重试 1 次即切换。
+		mock := &mockTempUnscheduler{}
+		fs := NewFailoverState(5, false)
+		err := newTestFailoverErr(403, true, false)
+		const retryLimit = 1
+
+		// 第 1 次：同账号重试
+		action := fs.HandleFailoverError(context.Background(), mock, 100, "openai", err, retryLimit)
+		require.Equal(t, FailoverContinue, action)
+		require.Equal(t, 1, fs.SameAccountRetryCount[100])
+		require.Equal(t, 0, fs.SwitchCount, "首次重试不应切换账号")
+		require.Empty(t, mock.calls, "未耗尽前不应 TempUnschedule")
+
+		// 第 2 次：已达上限 1 → 不再同账号重试，直接切换 + TempUnschedule
+		action = fs.HandleFailoverError(context.Background(), mock, 100, "openai", err, retryLimit)
+		require.Equal(t, FailoverContinue, action)
+		require.Equal(t, 1, fs.SameAccountRetryCount[100], "重试计数不应超过 retryLimit")
+		require.Equal(t, 1, fs.SwitchCount, "重试耗尽应切换账号")
+		require.Contains(t, fs.FailedAccountIDs, int64(100))
+		require.Len(t, mock.calls, 1, "重试耗尽应触发 TempUnschedule")
+	})
+
+	t.Run("retryLimit为0时立即切换不重试", func(t *testing.T) {
+		// pool_mode_retry_count=0 表示关闭同账号重试（如 GPT Image 账号）。
+		mock := &mockTempUnscheduler{}
+		fs := NewFailoverState(5, false)
+		err := newTestFailoverErr(403, true, false)
+
+		action := fs.HandleFailoverError(context.Background(), mock, 100, "openai", err, 0)
+		require.Equal(t, FailoverContinue, action)
+		require.Equal(t, 0, fs.SameAccountRetryCount[100], "retryLimit=0 不应发生同账号重试")
+		require.Equal(t, 1, fs.SwitchCount, "应立即切换账号")
+		require.Len(t, mock.calls, 1, "应立即 TempUnschedule")
 	})
 }
 

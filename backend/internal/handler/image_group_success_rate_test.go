@@ -104,6 +104,8 @@ func TestImageGroupSuccessRateEndpoint排除非生成请求(t *testing.T) {
 		{path: "/v1/messages", want: true},
 		{path: "/v1/responses/compact", want: true},
 		{path: "/v1/images/generations", want: true},
+		{path: "/v1/videos/edits", want: true},
+		{path: "/videos/extensions", want: true},
 		{path: "/v1beta/models/gemini-3:streamGenerateContent", want: true},
 		{path: "/v1/messages/count_tokens"},
 		{path: "/v1/embeddings"},

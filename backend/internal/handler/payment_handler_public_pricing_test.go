@@ -145,7 +145,7 @@ func TestPaymentHandler_GetPublicModelPricingSanitizesAndFiltersPlans(t *testing
 		service.SettingHelpText:            "请扫码联系客服",
 		service.SettingHelpImageURL:        "https://example.com/help.png",
 	}}, nil)
-	h := NewPaymentHandler(nil, configSvc, nil)
+	h := NewPaymentHandler(nil, configSvc)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -211,7 +211,7 @@ func TestPaymentHandler_GetPublicModelPricingDisabledReturnsEmptyPlans(t *testin
 	configSvc := service.NewPaymentConfigService(client, publicPricingSettingRepo{values: map[string]string{
 		service.SettingPaymentEnabled: "false",
 	}}, nil)
-	h := NewPaymentHandler(nil, configSvc, nil)
+	h := NewPaymentHandler(nil, configSvc)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -240,7 +240,7 @@ func TestPaymentHandler_GetCheckoutInfoExposesBalanceRechargeBonusRules(t *testi
 		service.SettingPaymentEnabled:    "true",
 		service.SettingBalanceBonusRules: `[{"min_amount":10,"max_amount":50,"bonus_rate":5},{"min_amount":50,"max_amount":200,"bonus_rate":8},{"min_amount":200,"bonus_rate":10}]`,
 	}}, nil)
-	h := NewPaymentHandler(nil, configSvc, nil)
+	h := NewPaymentHandler(nil, configSvc)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -267,7 +267,7 @@ func TestPaymentHandler_GetCheckoutInfoReturnsEmptyBalanceRechargeBonusRules(t *
 	gin.SetMode(gin.TestMode)
 	client := newPublicPricingTestClient(t)
 	configSvc := service.NewPaymentConfigService(client, publicPricingSettingRepo{values: map[string]string{}}, nil)
-	h := NewPaymentHandler(nil, configSvc, nil)
+	h := NewPaymentHandler(nil, configSvc)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)

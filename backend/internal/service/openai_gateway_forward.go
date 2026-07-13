@@ -56,7 +56,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 	if account.Platform == PlatformGrok {
 		_ = promptCacheKey
-		return s.forwardGrokResponses(ctx, c, account, body, originalModel, upstreamStream, startTime)
+		return s.forwardGrokResponses(ctx, c, account, body, originalModel, upstreamStream, clientStream, startTime)
 	}
 
 	if account.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(account.Extra) {
