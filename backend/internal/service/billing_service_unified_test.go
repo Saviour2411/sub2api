@@ -336,6 +336,26 @@ func TestCalculateCostUnified_GPT56PartialIntervalFallbackUsesBuiltInLongContext
 		require.InDelta(t, 1000*0.5e-6*2, cost.CacheReadCost, 1e-12)
 		require.InDelta(t, 100*30e-6*1.5, cost.OutputCost, 1e-12)
 	})
+
+	t.Run("272001 fallback respects account opt-out", func(t *testing.T) {
+		tokens := UsageTokens{
+			InputTokens:         270001,
+			CacheCreationTokens: 1000,
+			CacheReadTokens:     1000,
+			OutputTokens:        100,
+		}
+		enabled := false
+		cost, costErr := bs.CalculateCostUnified(CostInput{
+			Model: "gpt-5.6-sol", Tokens: tokens, RateMultiplier: 1,
+			Resolver: resolver, Resolved: resolved, LongContextBillingEnabled: &enabled,
+		})
+		require.NoError(t, costErr)
+		require.InDelta(t, 270001*5e-6, cost.InputCost, 1e-12)
+		require.InDelta(t, 1000*6.25e-6, cost.CacheCreationCost, 1e-12)
+		require.InDelta(t, 1000*0.5e-6, cost.CacheReadCost, 1e-12)
+		require.InDelta(t, 100*30e-6, cost.OutputCost, 1e-12)
+		require.False(t, cost.LongContextBillingApplied)
+	})
 }
 
 func TestCalculateCostUnified_PartialIntervalWithoutBaseFailsClosed(t *testing.T) {

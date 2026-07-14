@@ -12,6 +12,7 @@ func TestMigration175DefaultsOrdinaryOpenAIAndInheritsForSparkShadows(t *testing
 
 	sql := string(content)
 	require.Contains(t, sql, "parent_account_id IS NULL")
+	require.Contains(t, sql, "'true'::jsonb")
 	require.Contains(t, sql, "quota_dimension = 'spark'")
 	require.Contains(t, sql, "parent.extra")
 	require.Contains(t, sql, "jsonb_typeof")

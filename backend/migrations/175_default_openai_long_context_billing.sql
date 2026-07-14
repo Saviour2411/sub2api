@@ -117,11 +117,14 @@ WHERE platform = 'openai'
   AND COALESCE(extra, '{}'::jsonb) ? 'openai_long_context_billing_enabled'
   AND jsonb_typeof(extra->'openai_long_context_billing_enabled') IS DISTINCT FROM 'boolean';
 
+-- Existing accounts were always billed with long-context multipliers before
+-- the per-account switch existed. Preserve that effective behavior during the
+-- upgrade; newly created accounts still default to false in the trigger above.
 UPDATE accounts
 SET extra = jsonb_set(
     COALESCE(extra, '{}'::jsonb),
     '{openai_long_context_billing_enabled}',
-    'false'::jsonb,
+    'true'::jsonb,
     true
 )
 WHERE platform = 'openai'
