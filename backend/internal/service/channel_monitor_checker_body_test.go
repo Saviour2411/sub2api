@@ -131,7 +131,7 @@ func setupFakeOpenAI(t *testing.T, handler *openAICaptureHandler) string {
 }
 
 func answerFromOpenAIRequest(body map[string]any) string {
-	prompt, _ := body["input"].(string)
+	prompt := promptFromOpenAIResponsesInput(body["input"])
 	if prompt == "" {
 		if messages, ok := body["messages"].([]any); ok && len(messages) > 0 {
 			if msg, ok := messages[0].(map[string]any); ok {
@@ -140,6 +140,39 @@ func answerFromOpenAIRequest(body map[string]any) string {
 		}
 	}
 	return answerFromChallengePrompt(prompt)
+}
+
+func promptFromOpenAIResponsesInput(input any) string {
+	if prompt, ok := input.(string); ok {
+		return prompt
+	}
+	items, ok := input.([]any)
+	if !ok {
+		return ""
+	}
+	for _, item := range items {
+		message, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if prompt, ok := message["content"].(string); ok && prompt != "" {
+			return prompt
+		}
+		content, ok := message["content"].([]any)
+		if !ok {
+			continue
+		}
+		for _, part := range content {
+			block, ok := part.(map[string]any)
+			if !ok || block["type"] != "input_text" {
+				continue
+			}
+			if prompt, ok := block["text"].(string); ok && prompt != "" {
+				return prompt
+			}
+		}
+	}
+	return ""
 }
 
 type anthropicStreamCaptureHandler struct {
@@ -305,9 +338,24 @@ func TestRunCheckForModel_OpenAIResponses_DefaultRequest(t *testing.T) {
 	if strings.TrimSpace(instructions) == "" {
 		t.Error("responses body should contain non-empty instructions")
 	}
-	input, _ := h.lastBody["input"].(string)
-	if strings.TrimSpace(input) == "" {
-		t.Error("responses body should contain non-empty input")
+	input, ok := h.lastBody["input"].([]any)
+	if !ok || len(input) != 1 {
+		t.Fatalf("responses body input should contain exactly one item, got %#v", h.lastBody["input"])
+	}
+	message, ok := input[0].(map[string]any)
+	if !ok {
+		t.Fatalf("responses body input item should be an object, got %#v", input[0])
+	}
+	if message["type"] != "message" || message["role"] != "user" {
+		t.Errorf("responses input item should be a user message, got %#v", message)
+	}
+	content, ok := message["content"].([]any)
+	if !ok || len(content) != 1 {
+		t.Fatalf("responses user message should contain exactly one content block, got %#v", message["content"])
+	}
+	inputText, ok := content[0].(map[string]any)
+	if !ok || inputText["type"] != "input_text" || strings.TrimSpace(stringFromAny(inputText["text"])) == "" {
+		t.Errorf("responses content block should contain non-empty input_text, got %#v", content[0])
 	}
 	if _, ok := h.lastBody["messages"]; ok {
 		t.Error("responses body must not contain chat messages")

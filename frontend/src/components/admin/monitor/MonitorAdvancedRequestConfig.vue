@@ -314,7 +314,7 @@ const bodyPlaceholder = computed(() => {
     if (props.bodyOverrideMode === 'merge') {
       return '{\n  "max_output_tokens": 20\n}'
     }
-    return '{\n  "model": "gpt-4o-mini",\n  "instructions": "You are a health check endpoint. Reply briefly.",\n  "input": "Reply with exactly: ok",\n  "max_output_tokens": 20,\n  "stream": false\n}'
+    return '{\n  "model": "gpt-4o-mini",\n  "instructions": "You are a health check endpoint. Reply briefly.",\n  "input": [\n    {\n      "type": "message",\n      "role": "user",\n      "content": [\n        {"type": "input_text", "text": "Reply with exactly: ok"}\n      ]\n    }\n  ],\n  "max_output_tokens": 20,\n  "stream": false\n}'
   }
   if (props.provider === PROVIDER_OPENAI) {
     if (props.bodyOverrideMode === 'merge') {
