@@ -94,6 +94,167 @@
 - TLS 指纹集成测试依赖外部站点，本次环境无法访问；该失败在同步前后保持一致。
 - 未执行 push、PR、部署、远程服务器访问或生产数据操作。
 
+## 2026-07-14 同步至 da85cc7e4
+
+- 执行时间：2026-07-14T23:31:44+08:00
+- 执行状态：同步分支完整合并并验证完成；本记录提交后使用 `--ff-only` 更新本地 `main`
+- 本地目标分支：`main`
+- `LOCAL_PRE_SYNC_SHA`：`ce7ff703925415b61855d5d3b67fcee413fc5e87`
+- 上游代码合并提交：`1774fb96e15e69a13956580c15318cc24ac624a0`
+- 最后一个代码提交：`9386396d30814e928b68488c2e643ec6e35c3656`
+- 上游仓库：`https://github.com/Wei-Shaw/sub2api.git`
+- 上游分支：`main`
+- `UPSTREAM_OLD_SHA`：`7d239d62e8f1c6aea79164f88903f4158cbf2f98`
+- `UPSTREAM_NEW_SHA`：`da85cc7e47882090b115d664afe8e39b37aa7417`
+- merge-base：`7d239d62e8f1c6aea79164f88903f4158cbf2f98`
+- `LAST_FULLY_INTEGRATED_UPSTREAM_SHA`：`da85cc7e47882090b115d664afe8e39b37aa7417`
+- 集成策略：在隔离同步分支使用 `git merge --no-ff --no-commit` 完整合并固定上游 SHA，逐文件解决文本和语义冲突，重新生成 Ent/Wire，再提交二次开发兼容调整
+- 备份分支：`backup/pre-upstream-sync-20260714-230039-ce7ff7039`
+- 同步分支：`sync/upstream-20260714-da85cc7e4`
+
+### 上游提交处置
+
+本次固定范围共 68 个提交，其中 26 个 merge commit、42 个 non-merge commit。66 个为 `Applied`，2 个为 `Applied + Overridden`；无 `Already Applied`、`Skipped` 或 `Deferred`。
+
+| 上游提交 | 状态 | 内容与处置 |
+| --- | --- | --- |
+| `b6bb74b6fa83c3fb16357d3eafdad68182d14c97` | Applied | 防止重复注入 Codex 图片工具 |
+| `0dce07ee8b189c1c8ce9f90e636c50e0c638a170` | Applied | API Key 上游支持代理 Codex 模型清单 |
+| `92dcfb5ebcf18efe2b360cca547b1aaab76a0c51` | Applied | 按账号控制 OpenAI 长上下文计费并记录 usage 快照 |
+| `139f79b85afc7444a98a0df52e3bc550d420f5d0` | Applied | 补齐长上下文计费 API 契约测试 |
+| `0d9c140bc22a808bf201eb796f3fae149714cd8e` | Applied | 合并长上下文计费功能分支的上游基线 |
+| `54a8606e2afec3c8c5e67a2ebc68c56a79c9aca3` | Applied | 原生 Responses namespace 兼容设计文档 |
+| `1d86c1bf81592920353850091720940de0f36842` | Applied | 原生 Responses namespace 实施计划 |
+| `317de9c04b610eb853080991c2bd8f4574db8d2f` | Applied | 原生 Responses 支持 namespace 工具摊平与回程恢复 |
+| `8d5bc448b5b966f17e6511f1cb31d5a7967411c3` | Applied | 避免重复扫描 OpenAI 请求体 |
+| `a0ac5e024041d21f527a345d4a20bf22168c59d3` | Applied | 完成长上下文计费开关在创建、导入和同步路径的接线 |
+| `40ec74b9fc84f82afba64949433445d27dc00ce3` | Applied | 保留 Messages 分发的精确模型映射 |
+| `3e4d48e01082be4cca86a1bc565c59c39ddeb03b` | Applied | 合并长上下文计费分支的后续上游基线 |
+| `f63d168ae0bbae3ddd8aea1f2eadb5d883ec4ed1` | Applied | 校验长上下文开关必须为布尔值 |
+| `ed31a52424ff996d9210fbad1644cd9a1a7c8698` | Applied | 稳定 API Key Codex 清单刷新 |
+| `c896cacf6d093adc39bdb18c7d3ec8d3cdae5f44` | Applied | 改进 Grok 免费额度探测与用量展示 |
+| `3c68b2e3693272e6066cf2cb072e3fb6b41a02aa` | Applied | Codex 清单刷新支持账号故障转移 |
+| `a0778e9a42bcce7948922c1f74cf839a7ae331f3` | Applied | 调度延迟改为读取未消费 outbox 事件 |
+| `831862b9240b1d56f27f478951bc0fdb90f1b5e2` | Applied | 合并并发全量调度重建请求 |
+| `98027cdded50997c416ce7aa389e35993c410968` | Applied | OpenAI HTTP/2 连接启用 keepalive PING |
+| `e9fb5983cd0744eaff5cd4486118d7ff190a0a60` | Applied + Overridden | 新账号继续默认关闭长上下文计费；历史缺失字段账号回填为开启，保持同步前有效计费行为 |
+| `ad4bf5c60d06e2a75a222dfedfa63cc8459a3c72` | Applied | Grok Web SSO 批量导入并转换 Build OAuth |
+| `54d228dda5d2616dbd4b590d8af50c1f81ec5b11` | Applied | 增加默认关闭的管理端 Server-Timing 指标 |
+| `966afd1b4b1c0bffea4988f6823690709816e473` | Applied | 保留被监测 HTTP client 的接口契约 |
+| `2c2e50ba589ed828a001b5e34295602391c8c663` | Applied | 系统日志增加主机字段、筛选和索引 |
+| `0f2ec134b5eb8bcaa67a06aa920b014d18a4e309` | Applied | 限制日志主机索引字段长度 |
+| `6c441637b048916058697eeb5efe688510338ff7` | Applied | 移除账号类型页重复的 Grok SSO 卡片入口 |
+| `f2ca16577e4ac71d03372347b573fa53fef45543` | Applied | 补齐流式图片生成最终结果状态 |
+| `002c0b9fda475344c44037275cbc07783f98f793` | Applied | 非流式 Images 请求支持可选 JSON keepalive |
+| `74e78c3de0784747fe079d448f088a61a01ff29f` | Applied | 合并 OpenAI 长上下文计费功能 PR |
+| `8f328d4ab3b6bd97bb83d43b2fcb9463044c9716` | Applied | 代理到期改投使用定向调度事件 |
+| `9033e14bb7570a01ce12cd08d767683cd89078db` | Applied | 账号到期暂停使用定向调度事件 |
+| `8cd848313c92edc3ea8ecc913e2fcfd77924a81e` | Applied | 改进 OpenAI reset credit quota 识别 |
+| `029e5ce9f925eaefcda67bc86b912f50939f5e11` | Applied | 合并 Codex 图片工具重复注入修复 PR |
+| `7358810659f11ab4f5a01fdf985c77d158c533f1` | Applied | 合并请求体单次扫描优化 PR |
+| `1847bdf9fd42e40639660b0df7fc7f04731c2234` | Applied | 合并 Messages 精确模型映射修复 PR |
+| `41c71a1528b3eaa9673d11b195e92a4030c0d95d` | Applied | 合并 Ops 日志主机筛选 PR |
+| `623a9647c07fd172593574de1471078024d20f12` | Applied | 合并 API Key Codex 模型代理 PR |
+| `a8927d8ec7684782c1eac83c7b2dca5cd887b171` | Applied | 合并 Server-Timing 指标 PR |
+| `93f2ccf3a5fddc171129237ce07902692586c68e` | Applied | 合并 Grok 免费额度探测 PR |
+| `d41a10111dd5347bbf57bd1cc94ed4bfd7a7cfeb` | Applied | Grok SSO 功能分支同步上游主线 |
+| `5d1c577cb2c735ca1f1d57533dff1302f6998d91` | Applied | 合并 Grok SSO 设备授权 PR |
+| `30d4301bea25a5367d161a0d2e9ac927fa688728` | Applied | Grok 免费额度改用滚动 24 小时估算 |
+| `27fcbace8945cd8cc474e61a1a4c3e3fa55d9649` | Applied | 合并 HTTP/2 keepalive PR |
+| `87118829186aadabd3ca08fae953b5df53df5c25` | Applied | 合并账号自动暂停调度事件 PR |
+| `9c3c560d4958e26445107b6877308898472fa357` | Applied | 合并代理到期调度事件 PR |
+| `24d908b257f4ad593cdfd5622052a818c10df5b8` | Applied | 合并调度 outbox 延迟修复 PR |
+| `2590b86e3164e577e847e35a8a17e0ca25964a0d` | Applied | 合并调度重建并发合并 PR |
+| `97176993677e78efe7b4d31e4506ac87b54bed2a` | Applied | 合并流式图片最终状态修复 PR |
+| `527279c95312010009d41835ff66680e6bb0b2db` | Applied | 合并额度重置识别修复 PR |
+| `ac7a141a2475d85d2824cff7cf027cb78924fe8e` | Applied | Images keepalive 写入大小用于 OAuth 响应快照 |
+| `c361b0606dee7d8de78145c64e97369b2f48910f` | Applied | 合并非流式 Images keepalive PR |
+| `69bc6a87dde89e79ba39436467ec46dee6a6b234` | Applied | 合并 Grok 滚动 24 小时额度 PR |
+| `a1b5c75ca334c972a6bc62ef99baf35ab1eee716` | Applied | 新导入 Grok OAuth 账号自动探测额度 |
+| `d8a07e91a5945882a18de104d389ab23460c0b11` | Applied | 稳定 Grok prompt cache 路由 identity |
+| `0a64a6d8ceba7b0429e2efa1c1e8b23162d30011` | Applied | 渠道健康监控支持 Grok provider |
+| `d2d3fcf57ba5647d23817c077a49b9d4b3132217` | Applied | 前端展示 Grok 监控与 Free 标识 |
+| `16d1fbfd4e2ed219c607afc9a9ac8d0c0ac32c05` | Applied | 探测调度快照保持为测试内状态 |
+| `ff639ba757cd28126adea4281550d993fd22f032` | Applied | 清除 Grok reasoning 项的空 content |
+| `2f715baf054ba040b4c75c5e82657c1aab24d540` | Applied | Responses Lite 保留客户端图片工具 |
+| `2e9b8d9a648ce9c37ab1c89df3db8cad8ef85eea` | Applied | 修复 reasoning 测试的 lint 和格式问题 |
+| `03646e943404bf025d4d41cb75f6d953111f52f5` | Applied | 合并 Grok reasoning 空 content 修复 PR |
+| `11ed22d052415340dabe4d0be295ebfd3256add0` | Applied | 合并 Responses Lite 图片展示修复 PR |
+| `53004e2e90bf061bc92c1189f5b71b383991649b` | Applied | 合并 Grok 监控自动探测 PR |
+| `252ef8b73a668d06b74c8c8be4646fed57cac3f5` | Applied | namespace 功能分支同步上游主线 |
+| `fa1641f05f1607276b867e20194e12ad5499f4ef` | Applied | WSv2 转发保持 namespace 原样并修复测试断言 |
+| `41cec0db059ffb82d0efdcfcf07a24ab51fbfe97` | Applied | 合并原生 Responses namespace PR |
+| `7c717365ef728e53cdcf6d639a4dd68226db03b2` | Applied + Overridden | 上游版本更新至 0.1.155；保留本地较新版本 0.1.193 |
+| `da85cc7e47882090b115d664afe8e39b37aa7417` | Applied | 更新赞助商文档与图片 |
+
+### 本地提交与文件
+
+- 上游范围整体映射到本地 merge commit：`1774fb96e15e69a13956580c15318cc24ac624a0`。
+- 二次开发兼容提交：`9386396d30814e928b68488c2e643ec6e35c3656`。
+- 同步记录提交前，代码与配置相对 `LOCAL_PRE_SYNC_SHA` 修改 237 个文件：新增 54 个、修改 183 个、删除 0 个，共增加 14792 行、删除 874 行。
+- 主要更新：OpenAI 长上下文计费开关和 usage 快照、Codex namespace 与 Responses Lite 图片工具、Images 非流式 keepalive 和流式结果修复、API Key Codex 模型清单、HTTP/2 PING、Grok SSO/额度/监控、Server-Timing、Ops 日志主机筛选、调度 outbox 与重建优化、额度重置识别及赞助商文档。
+- 重新生成 Ent/Wire；生成结果与 schema 和 provider 源一致，未保留 Wire 工具自身写入的无关 `go.sum` 校验和。
+
+### 冲突与最终解决方案
+
+- 15 个文本冲突均逐文件解决，无整文件采用 `ours` 或 `theirs`。
+- `backend/cmd/server/VERSION` 保留本地 `0.1.193`。
+- HTTP upstream 在 `servertiming.Do` 前继续启动本地首 Token 计时，并纳入上游 HTTP/2 PING。
+- Images handler 使用排除 keepalive 的有效写入大小判断是否可以 failover，同时保留本地 outcome 失败结算。
+- Responses 流先规范图片完成状态，再执行本地语义错误检测，并继续完成 namespace 回程恢复。
+- 原生 namespace 根据本地 HTTP 流式转 WSv2 的实际决策决定是否摊平；WSv2 保持原样，`image_gen` 继续受本地 Codex 图片工具策略控制。
+- 渠道监控保留本地结构化 Responses `input`，同时引入 Grok adapter 与 Server-Timing wrapper。
+- 长上下文计费保留本地“仅实际命中区间时禁用内置倍率”规则，并叠加账号开关；历史缺失开关的 OpenAI 主账号回填为开启，新账号默认关闭。
+- Grok SSO、长上下文开关与本地 Codex CLI 控件在账号创建弹窗中并存。
+- `deploy/docker-compose.yml` 与 `deploy/docker-compose.sub2api.yml` 同步增加默认关闭的 `ENABLE_SERVER_TIMING`，最终内容保持完全一致；生产 bind mount、localhost 暴露和安全开关未改变。
+- 上游新增 Images 测试适配本地带账号参数的响应处理签名；除此之外没有计划外业务取舍。
+
+### 刻意保留的二次开发功能
+
+- 账号连续失败停调度、strict 调度、pending/final outcome 与 streak 清理。
+- 首 Token 超时、body-signal compact、paused keepalive、WS lease 和流内错误结算。
+- 按请求模型计费、部分区间价格回退、图片分组成功率、视频价格、充值返利、签到和模型广场。
+- Codex 图片工具策略、Claude 上游模拟、渠道/分组扩展配置和 API 契约。
+- Responses 渠道监控的结构化 `input` 请求格式。
+- 账号列表禁用虚拟化及查询上下文滚动重置。
+- 生产 bind-mounted 数据目录、localhost 暴露、HTTP upstream 安全开关和双 Compose 一致性约束。
+
+### 验证记录
+
+验证实际使用 Go 自动工具链 1.26.5、Node 24.15.0 和 pnpm 9.15.9。本机无 Docker、Node 20 或安全隔离的应用启动配置。
+
+| 阶段 | 命令 | 退出码 | 结果 |
+| --- | --- | ---: | --- |
+| 同步前 | `go test -tags=unit ./...` | 1 | 仅 `TestProcessGeminiStream_SemanticErrorFails` 在全量并行运行中偶发未命中断言；随后定向重跑退出码 0 |
+| 同步前 | `go test -tags=integration ./...` | 1 | 仅 `internal/pkg/tlsfingerprint` 的 3 个外部联网用例因 `tls.peet.ws:443` 拒绝连接失败，其余通过 |
+| 同步前 | `golangci-lint run ./...` | 0 | `0 issues` |
+| 同步前 | `go build -o <系统临时文件> ./cmd/server` | 0 | 构建通过，临时产物已删除 |
+| 同步前 | 前端 lint、typecheck | 0 | 均通过 |
+| 同步前 | `corepack pnpm --dir frontend run test:run` | 0 | 163 个文件、1035 个测试通过 |
+| 同步前 | `corepack pnpm --dir frontend run build` | 0 | 通过，存在既有 Browserslist、动态导入和大 chunk 警告 |
+| 生成 | `go generate ./ent`、`go generate ./cmd/server` | 0 | Ent/Wire 生成成功 |
+| 适配 | `go test ./... -run '^$'` | 1/0 | 首次发现上游新增 Images 测试缺少本地账号参数；适配后全量编译检查通过 |
+| 适配 | 长上下文计费与 migration 定向测试 | 0 | 历史回填、新账号默认关闭、区间回退和账号 opt-out 组合通过 |
+| 同步后 | `go test -tags=unit ./...` | 0 | 全部通过，包含同步前偶发失败用例 |
+| 同步后 | `go test -tags=integration ./...` | 1 | 与同步前完全相同，仅 3 个 `tls.peet.ws` 外网用例失败，无新增失败 |
+| 同步后 | `golangci-lint run ./...` | 0 | `0 issues` |
+| 同步后 | `go build -o <系统临时文件> ./cmd/server` | 0 | 构建通过，临时产物已删除 |
+| 同步后 | `corepack pnpm --dir frontend run typecheck` | 0 | 通过 |
+| 同步后 | `corepack pnpm --dir frontend run test:run` | 0 | 170 个文件、1093 个测试全部通过 |
+| 同步后 | `corepack pnpm --dir frontend run build` | 0 | 通过，非致命警告与同步前同类 |
+| 同步后 | 前端 lint 与 Vitest 并行执行 | 1 | ESLint 扫描到 Vitest 已删除的瞬时时间戳文件；所有前端进程结束后单独重跑通过 |
+| 同步后 | `corepack pnpm --dir frontend run lint:check`（独立重跑） | 0 | 通过，瞬时时间戳文件数量为 0 |
+| 同步后 | Compose 哈希、`git diff --check` 与冲突标记检查 | 0 | 两个生产 Compose 完全一致，无冲突标记或空白错误 |
+
+### 未验证项与残余风险
+
+- 本机没有 Docker，依赖 testcontainers 的集成路径无法等价覆盖；迁移静态测试和不依赖 Docker 的集成用例已通过。
+- 本机没有 Node 20，未验证与 CI Node 20 完全等价；Node 24 验证已通过。
+- 未读取 `.env`，也没有安全隔离的 PostgreSQL/Redis 配置，因此未执行本地服务启动、健康检查或真实数据库迁移。
+- 未使用真实 Grok SSO、quota、Codex/OpenAI 上游凭据验证外部业务流程；相关请求转换、handler、service 和前端用例已通过本地测试。
+- 未验证生产环境应用迁移；本次未访问服务器、修改生产文件、重启容器或操作生产数据。
+- 未执行 push、PR 或部署。
+
 ## 2026-07-14 同步至 7d239d62e
 
 - 执行时间：2026-07-14T01:25:25+08:00
