@@ -53,7 +53,7 @@ npm install -g pnpm
 
 ### CI 要求
 
-- Go 版本必须是 **1.26.3**
+- Go 版本必须是 **1.26.5**
 - golangci-lint 使用 **v2.9**
 - 前端使用 `pnpm install --frozen-lockfile`，必须提交 `pnpm-lock.yaml`
 
@@ -402,9 +402,19 @@ sub2api-bmai/
     └── CLAUDE.md            # 本文档
 ```
 
-## 七、参考资源
+## 七、二次开发功能台账
+
+`docs/custom-development-history.md` 是本仓库相对上游仍需独立维护的二次开发功能事实来源。
+
+- 新增、修改、停用、删除二次开发功能或改变默认值时，必须在同一提交中更新对应功能清单项并追加变更记录。
+- 新功能必须分配稳定的 `CUST-<DOMAIN>-<NUMBER>` 编号；不得复用或静默删除历史编号。
+- 上游同步影响二次开发功能时，必须同时更新 `docs/upstream-sync-history.md` 和 `docs/custom-development-history.md`。
+- 没有本地行为覆盖的纯上游变化只记录在上游同步历史中。
+
+## 八、参考资源
 
 - [上游仓库](https://github.com/Wei-Shaw/sub2api)
+- [二次开发功能台账](docs/custom-development-history.md)
 - [Ent 文档](https://entgo.io/docs/getting-started)
 - [Vue3 文档](https://vuejs.org/)
 - [pnpm 文档](https://pnpm.io/)
