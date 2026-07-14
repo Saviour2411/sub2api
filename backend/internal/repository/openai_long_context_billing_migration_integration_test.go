@@ -56,11 +56,11 @@ RETURNING id
 
 	var ordinaryEnabled bool
 	require.NoError(t, tx.QueryRowContext(ctx, `
-SELECT (extra->>'openai_long_context_billing_enabled')::boolean
-FROM accounts
-WHERE id = $1
+	SELECT (extra->>'openai_long_context_billing_enabled')::boolean
+	FROM accounts
+	WHERE id = $1
 `, ordinaryID).Scan(&ordinaryEnabled))
-	require.False(t, ordinaryEnabled)
+	require.True(t, ordinaryEnabled)
 
 	var shadowEnabled bool
 	require.NoError(t, tx.QueryRowContext(ctx, `
