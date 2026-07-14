@@ -20,7 +20,9 @@ func TestUpstreamRepositoryCommitSyncIdempotentAndCascadeDelete(t *testing.T) {
 	db, err := sql.Open("sqlite", fmt.Sprintf("file:upstream-%d?mode=memory&cache=shared&_pragma=foreign_keys(1)&_time_format=sqlite", time.Now().UnixNano()))
 	require.NoError(t, err)
 	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(entsql.OpenDB(dialect.SQLite, db))))
-	defer client.Close()
+	t.Cleanup(func() {
+		require.NoError(t, client.Close())
+	})
 	repo := NewUpstreamRepository(client)
 	ctx := context.Background()
 	loc := time.FixedZone("Asia/Shanghai", 8*60*60)

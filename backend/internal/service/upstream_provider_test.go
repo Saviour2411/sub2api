@@ -120,11 +120,12 @@ func TestNewAPIUpstreamProviderPaginationTokenFallbackAndUSD(t *testing.T) {
 	mux.HandleFunc("/api/log/self", func(w http.ResponseWriter, r *http.Request) {
 		page, _ := strconv.Atoi(r.URL.Query().Get("p"))
 		items := make([]any, 0)
-		if page == 1 {
+		switch page {
+		case 1:
 			for index := 0; index < newAPILogPageSize; index++ {
 				items = append(items, map[string]any{"total_tokens": 10, "quota": 500, "group": "vip"})
 			}
-		} else if page == 2 {
+		case 2:
 			items = append(items, map[string]any{"prompt_tokens": 3, "completion_tokens": 4, "quota": 1000, "group": "vip"})
 		}
 		writeUpstreamJSON(t, w, map[string]any{"items": items, "total": 101})

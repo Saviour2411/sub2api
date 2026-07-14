@@ -59,5 +59,5 @@ func TestUpstreamServiceRejectsNewAPITokenMode(t *testing.T) {
 		AuthMode: UpstreamAuthToken,
 	}, UpstreamCredential{AccessToken: "token"})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "New API 仅支持密码认证")
+	require.Contains(t, err.Error(), "new API 仅支持密码认证")
 }

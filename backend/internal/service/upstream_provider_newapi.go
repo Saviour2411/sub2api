@@ -92,7 +92,7 @@ func (p *newAPIUpstreamProvider) authenticate(ctx context.Context, site *Upstrea
 		cookie = credential.Cookie
 	}
 	if cookie == "" {
-		return nil, fmt.Errorf("New API 登录未返回 Cookie")
+		return nil, fmt.Errorf("new API 登录未返回 Cookie")
 	}
 	credential.Cookie = cookie
 	userID := stringValue(valueByKeys(apiData(login), "id", "user_id"))
@@ -110,7 +110,7 @@ func (p *newAPIUpstreamProvider) authenticate(ctx context.Context, site *Upstrea
 	}
 	quotaPerUnit, ok := numberValue(valueByKeys(apiData(status), "quota_per_unit"))
 	if !ok || quotaPerUnit <= 0 {
-		return nil, fmt.Errorf("New API quota_per_unit 无效")
+		return nil, fmt.Errorf("new API quota_per_unit 无效")
 	}
 	return &newAPIAuthState{credential: credential, headers: headers, self: self, quotaPerUnit: quotaPerUnit}, nil
 }
@@ -195,7 +195,7 @@ func (p *newAPIUpstreamProvider) fetchDailyLogs(ctx context.Context, site *Upstr
 			break
 		}
 		if page == 10000 {
-			return UpstreamDailySnapshot{}, nil, fmt.Errorf("New API %s 日志分页超过安全上限", start.Format("2006-01-02"))
+			return UpstreamDailySnapshot{}, nil, fmt.Errorf("new API %s 日志分页超过安全上限", start.Format("2006-01-02"))
 		}
 	}
 

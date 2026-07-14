@@ -161,8 +161,7 @@ func (s *UpstreamService) Update(ctx context.Context, id int64, input UpstreamUp
 }
 
 func (s *UpstreamService) SetEnabled(ctx context.Context, id int64, enabled bool) (*UpstreamSiteView, error) {
-	site, err := s.repo.GetByID(ctx, id)
-	if err != nil {
+	if _, err := s.repo.GetByID(ctx, id); err != nil {
 		return nil, err
 	}
 	var next *time.Time
@@ -179,7 +178,7 @@ func (s *UpstreamService) SetEnabled(ctx context.Context, id int64, enabled bool
 		}
 		s.enqueue(id)
 	}
-	site, err = s.repo.GetByID(ctx, id)
+	site, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -315,7 +314,7 @@ func (s *UpstreamService) validateSite(site *UpstreamSite, credential UpstreamCr
 		return ErrUpstreamInvalidInput.WithCause(fmt.Errorf("auth_mode 仅支持 password 或 token"))
 	}
 	if site.Platform == UpstreamPlatformNewAPI && site.AuthMode != UpstreamAuthPassword {
-		return ErrUpstreamInvalidInput.WithCause(fmt.Errorf("New API 仅支持密码认证"))
+		return ErrUpstreamInvalidInput.WithCause(fmt.Errorf("new API 仅支持密码认证"))
 	}
 	if site.AuthMode == UpstreamAuthPassword {
 		if site.Account == "" || credential.Password == "" {
