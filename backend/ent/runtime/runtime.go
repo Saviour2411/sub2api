@@ -36,6 +36,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
+	"github.com/Wei-Shaw/sub2api/ent/upstreamdailystat"
+	"github.com/Wei-Shaw/sub2api/ent/upstreamgroup"
+	"github.com/Wei-Shaw/sub2api/ent/upstreamsite"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -1817,6 +1820,184 @@ func init() {
 	tlsfingerprintprofileDescEnableGrease := tlsfingerprintprofileFields[2].Descriptor()
 	// tlsfingerprintprofile.DefaultEnableGrease holds the default value on creation for the enable_grease field.
 	tlsfingerprintprofile.DefaultEnableGrease = tlsfingerprintprofileDescEnableGrease.Default.(bool)
+	upstreamdailystatFields := schema.UpstreamDailyStat{}.Fields()
+	_ = upstreamdailystatFields
+	// upstreamdailystatDescTokens is the schema descriptor for tokens field.
+	upstreamdailystatDescTokens := upstreamdailystatFields[3].Descriptor()
+	// upstreamdailystat.DefaultTokens holds the default value on creation for the tokens field.
+	upstreamdailystat.DefaultTokens = upstreamdailystatDescTokens.Default.(int64)
+	// upstreamdailystatDescCostUsd is the schema descriptor for cost_usd field.
+	upstreamdailystatDescCostUsd := upstreamdailystatFields[4].Descriptor()
+	// upstreamdailystat.DefaultCostUsd holds the default value on creation for the cost_usd field.
+	upstreamdailystat.DefaultCostUsd = upstreamdailystatDescCostUsd.Default.(float64)
+	// upstreamdailystatDescCreatedAt is the schema descriptor for created_at field.
+	upstreamdailystatDescCreatedAt := upstreamdailystatFields[5].Descriptor()
+	// upstreamdailystat.DefaultCreatedAt holds the default value on creation for the created_at field.
+	upstreamdailystat.DefaultCreatedAt = upstreamdailystatDescCreatedAt.Default.(func() time.Time)
+	// upstreamdailystatDescUpdatedAt is the schema descriptor for updated_at field.
+	upstreamdailystatDescUpdatedAt := upstreamdailystatFields[6].Descriptor()
+	// upstreamdailystat.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	upstreamdailystat.DefaultUpdatedAt = upstreamdailystatDescUpdatedAt.Default.(func() time.Time)
+	// upstreamdailystat.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	upstreamdailystat.UpdateDefaultUpdatedAt = upstreamdailystatDescUpdatedAt.UpdateDefault.(func() time.Time)
+	upstreamgroupMixin := schema.UpstreamGroup{}.Mixin()
+	upstreamgroupMixinFields0 := upstreamgroupMixin[0].Fields()
+	_ = upstreamgroupMixinFields0
+	upstreamgroupFields := schema.UpstreamGroup{}.Fields()
+	_ = upstreamgroupFields
+	// upstreamgroupDescCreatedAt is the schema descriptor for created_at field.
+	upstreamgroupDescCreatedAt := upstreamgroupMixinFields0[0].Descriptor()
+	// upstreamgroup.DefaultCreatedAt holds the default value on creation for the created_at field.
+	upstreamgroup.DefaultCreatedAt = upstreamgroupDescCreatedAt.Default.(func() time.Time)
+	// upstreamgroupDescUpdatedAt is the schema descriptor for updated_at field.
+	upstreamgroupDescUpdatedAt := upstreamgroupMixinFields0[1].Descriptor()
+	// upstreamgroup.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	upstreamgroup.DefaultUpdatedAt = upstreamgroupDescUpdatedAt.Default.(func() time.Time)
+	// upstreamgroup.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	upstreamgroup.UpdateDefaultUpdatedAt = upstreamgroupDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// upstreamgroupDescRemoteID is the schema descriptor for remote_id field.
+	upstreamgroupDescRemoteID := upstreamgroupFields[1].Descriptor()
+	// upstreamgroup.RemoteIDValidator is a validator for the "remote_id" field. It is called by the builders before save.
+	upstreamgroup.RemoteIDValidator = func() func(string) error {
+		validators := upstreamgroupDescRemoteID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(remote_id string) error {
+			for _, fn := range fns {
+				if err := fn(remote_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// upstreamgroupDescName is the schema descriptor for name field.
+	upstreamgroupDescName := upstreamgroupFields[2].Descriptor()
+	// upstreamgroup.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	upstreamgroup.NameValidator = func() func(string) error {
+		validators := upstreamgroupDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// upstreamgroupDescPlatform is the schema descriptor for platform field.
+	upstreamgroupDescPlatform := upstreamgroupFields[3].Descriptor()
+	// upstreamgroup.DefaultPlatform holds the default value on creation for the platform field.
+	upstreamgroup.DefaultPlatform = upstreamgroupDescPlatform.Default.(string)
+	// upstreamgroup.PlatformValidator is a validator for the "platform" field. It is called by the builders before save.
+	upstreamgroup.PlatformValidator = upstreamgroupDescPlatform.Validators[0].(func(string) error)
+	// upstreamgroupDescTodayTokens is the schema descriptor for today_tokens field.
+	upstreamgroupDescTodayTokens := upstreamgroupFields[5].Descriptor()
+	// upstreamgroup.DefaultTodayTokens holds the default value on creation for the today_tokens field.
+	upstreamgroup.DefaultTodayTokens = upstreamgroupDescTodayTokens.Default.(int64)
+	// upstreamgroupDescTodayCostUsd is the schema descriptor for today_cost_usd field.
+	upstreamgroupDescTodayCostUsd := upstreamgroupFields[6].Descriptor()
+	// upstreamgroup.DefaultTodayCostUsd holds the default value on creation for the today_cost_usd field.
+	upstreamgroup.DefaultTodayCostUsd = upstreamgroupDescTodayCostUsd.Default.(float64)
+	// upstreamgroupDescLastSyncedAt is the schema descriptor for last_synced_at field.
+	upstreamgroupDescLastSyncedAt := upstreamgroupFields[7].Descriptor()
+	// upstreamgroup.DefaultLastSyncedAt holds the default value on creation for the last_synced_at field.
+	upstreamgroup.DefaultLastSyncedAt = upstreamgroupDescLastSyncedAt.Default.(func() time.Time)
+	upstreamsiteMixin := schema.UpstreamSite{}.Mixin()
+	upstreamsiteMixinFields0 := upstreamsiteMixin[0].Fields()
+	_ = upstreamsiteMixinFields0
+	upstreamsiteFields := schema.UpstreamSite{}.Fields()
+	_ = upstreamsiteFields
+	// upstreamsiteDescCreatedAt is the schema descriptor for created_at field.
+	upstreamsiteDescCreatedAt := upstreamsiteMixinFields0[0].Descriptor()
+	// upstreamsite.DefaultCreatedAt holds the default value on creation for the created_at field.
+	upstreamsite.DefaultCreatedAt = upstreamsiteDescCreatedAt.Default.(func() time.Time)
+	// upstreamsiteDescUpdatedAt is the schema descriptor for updated_at field.
+	upstreamsiteDescUpdatedAt := upstreamsiteMixinFields0[1].Descriptor()
+	// upstreamsite.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	upstreamsite.DefaultUpdatedAt = upstreamsiteDescUpdatedAt.Default.(func() time.Time)
+	// upstreamsite.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	upstreamsite.UpdateDefaultUpdatedAt = upstreamsiteDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// upstreamsiteDescName is the schema descriptor for name field.
+	upstreamsiteDescName := upstreamsiteFields[0].Descriptor()
+	// upstreamsite.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	upstreamsite.NameValidator = func() func(string) error {
+		validators := upstreamsiteDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// upstreamsiteDescBaseURL is the schema descriptor for base_url field.
+	upstreamsiteDescBaseURL := upstreamsiteFields[1].Descriptor()
+	// upstreamsite.BaseURLValidator is a validator for the "base_url" field. It is called by the builders before save.
+	upstreamsite.BaseURLValidator = func() func(string) error {
+		validators := upstreamsiteDescBaseURL.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(base_url string) error {
+			for _, fn := range fns {
+				if err := fn(base_url); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// upstreamsiteDescAccount is the schema descriptor for account field.
+	upstreamsiteDescAccount := upstreamsiteFields[4].Descriptor()
+	// upstreamsite.DefaultAccount holds the default value on creation for the account field.
+	upstreamsite.DefaultAccount = upstreamsiteDescAccount.Default.(string)
+	// upstreamsite.AccountValidator is a validator for the "account" field. It is called by the builders before save.
+	upstreamsite.AccountValidator = upstreamsiteDescAccount.Validators[0].(func(string) error)
+	// upstreamsiteDescCredentialEncrypted is the schema descriptor for credential_encrypted field.
+	upstreamsiteDescCredentialEncrypted := upstreamsiteFields[5].Descriptor()
+	// upstreamsite.CredentialEncryptedValidator is a validator for the "credential_encrypted" field. It is called by the builders before save.
+	upstreamsite.CredentialEncryptedValidator = upstreamsiteDescCredentialEncrypted.Validators[0].(func(string) error)
+	// upstreamsiteDescEnabled is the schema descriptor for enabled field.
+	upstreamsiteDescEnabled := upstreamsiteFields[6].Descriptor()
+	// upstreamsite.DefaultEnabled holds the default value on creation for the enabled field.
+	upstreamsite.DefaultEnabled = upstreamsiteDescEnabled.Default.(bool)
+	// upstreamsiteDescErrorMessage is the schema descriptor for error_message field.
+	upstreamsiteDescErrorMessage := upstreamsiteFields[8].Descriptor()
+	// upstreamsite.ErrorMessageValidator is a validator for the "error_message" field. It is called by the builders before save.
+	upstreamsite.ErrorMessageValidator = upstreamsiteDescErrorMessage.Validators[0].(func(string) error)
+	// upstreamsiteDescTodayTokens is the schema descriptor for today_tokens field.
+	upstreamsiteDescTodayTokens := upstreamsiteFields[10].Descriptor()
+	// upstreamsite.DefaultTodayTokens holds the default value on creation for the today_tokens field.
+	upstreamsite.DefaultTodayTokens = upstreamsiteDescTodayTokens.Default.(int64)
+	// upstreamsiteDescTodayCostUsd is the schema descriptor for today_cost_usd field.
+	upstreamsiteDescTodayCostUsd := upstreamsiteFields[11].Descriptor()
+	// upstreamsite.DefaultTodayCostUsd holds the default value on creation for the today_cost_usd field.
+	upstreamsite.DefaultTodayCostUsd = upstreamsiteDescTodayCostUsd.Default.(float64)
+	// upstreamsiteDescTotalTokens is the schema descriptor for total_tokens field.
+	upstreamsiteDescTotalTokens := upstreamsiteFields[12].Descriptor()
+	// upstreamsite.DefaultTotalTokens holds the default value on creation for the total_tokens field.
+	upstreamsite.DefaultTotalTokens = upstreamsiteDescTotalTokens.Default.(int64)
+	// upstreamsiteDescTotalCostUsd is the schema descriptor for total_cost_usd field.
+	upstreamsiteDescTotalCostUsd := upstreamsiteFields[13].Descriptor()
+	// upstreamsite.DefaultTotalCostUsd holds the default value on creation for the total_cost_usd field.
+	upstreamsite.DefaultTotalCostUsd = upstreamsiteDescTotalCostUsd.Default.(float64)
+	// upstreamsiteDescTrackingStartedAt is the schema descriptor for tracking_started_at field.
+	upstreamsiteDescTrackingStartedAt := upstreamsiteFields[14].Descriptor()
+	// upstreamsite.DefaultTrackingStartedAt holds the default value on creation for the tracking_started_at field.
+	upstreamsite.DefaultTrackingStartedAt = upstreamsiteDescTrackingStartedAt.Default.(func() time.Time)
 	usagecleanuptaskMixin := schema.UsageCleanupTask{}.Mixin()
 	usagecleanuptaskMixinFields0 := usagecleanuptaskMixin[0].Fields()
 	_ = usagecleanuptaskMixinFields0

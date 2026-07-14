@@ -1505,6 +1505,135 @@ var (
 		Columns:    TLSFingerprintProfilesColumns,
 		PrimaryKey: []*schema.Column{TLSFingerprintProfilesColumns[0]},
 	}
+	// UpstreamDailyStatsColumns holds the columns for the "upstream_daily_stats" table.
+	UpstreamDailyStatsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "usage_date", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "date"}},
+		{Name: "balance_usd", Type: field.TypeFloat64, Nullable: true},
+		{Name: "tokens", Type: field.TypeInt64, Default: 0},
+		{Name: "cost_usd", Type: field.TypeFloat64, Default: 0},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "site_id", Type: field.TypeInt64},
+	}
+	// UpstreamDailyStatsTable holds the schema information for the "upstream_daily_stats" table.
+	UpstreamDailyStatsTable = &schema.Table{
+		Name:       "upstream_daily_stats",
+		Columns:    UpstreamDailyStatsColumns,
+		PrimaryKey: []*schema.Column{UpstreamDailyStatsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "upstream_daily_stats_upstream_sites_daily_stats",
+				Columns:    []*schema.Column{UpstreamDailyStatsColumns[7]},
+				RefColumns: []*schema.Column{UpstreamSitesColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "upstreamdailystat_site_id_usage_date",
+				Unique:  true,
+				Columns: []*schema.Column{UpstreamDailyStatsColumns[7], UpstreamDailyStatsColumns[1]},
+			},
+			{
+				Name:    "upstreamdailystat_usage_date",
+				Unique:  false,
+				Columns: []*schema.Column{UpstreamDailyStatsColumns[1]},
+			},
+		},
+	}
+	// UpstreamGroupsColumns holds the columns for the "upstream_groups" table.
+	UpstreamGroupsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "remote_id", Type: field.TypeString, Size: 100},
+		{Name: "name", Type: field.TypeString, Size: 100},
+		{Name: "platform", Type: field.TypeString, Size: 50, Default: ""},
+		{Name: "multiplier", Type: field.TypeFloat64, Nullable: true},
+		{Name: "today_tokens", Type: field.TypeInt64, Default: 0},
+		{Name: "today_cost_usd", Type: field.TypeFloat64, Default: 0},
+		{Name: "last_synced_at", Type: field.TypeTime},
+		{Name: "site_id", Type: field.TypeInt64},
+	}
+	// UpstreamGroupsTable holds the schema information for the "upstream_groups" table.
+	UpstreamGroupsTable = &schema.Table{
+		Name:       "upstream_groups",
+		Columns:    UpstreamGroupsColumns,
+		PrimaryKey: []*schema.Column{UpstreamGroupsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "upstream_groups_upstream_sites_groups",
+				Columns:    []*schema.Column{UpstreamGroupsColumns[10]},
+				RefColumns: []*schema.Column{UpstreamSitesColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "upstreamgroup_site_id_remote_id",
+				Unique:  true,
+				Columns: []*schema.Column{UpstreamGroupsColumns[10], UpstreamGroupsColumns[3]},
+			},
+			{
+				Name:    "upstreamgroup_site_id_name",
+				Unique:  false,
+				Columns: []*schema.Column{UpstreamGroupsColumns[10], UpstreamGroupsColumns[4]},
+			},
+		},
+	}
+	// UpstreamSitesColumns holds the columns for the "upstream_sites" table.
+	UpstreamSitesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "name", Type: field.TypeString, Size: 100},
+		{Name: "base_url", Type: field.TypeString, Size: 500},
+		{Name: "platform", Type: field.TypeEnum, Enums: []string{"sub2api", "newapi"}},
+		{Name: "auth_mode", Type: field.TypeEnum, Enums: []string{"password", "token"}},
+		{Name: "account", Type: field.TypeString, Size: 255, Default: ""},
+		{Name: "credential_encrypted", Type: field.TypeString},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "syncing", "healthy", "error"}, Default: "pending"},
+		{Name: "error_message", Type: field.TypeString, Nullable: true, Size: 500},
+		{Name: "balance_usd", Type: field.TypeFloat64, Nullable: true},
+		{Name: "today_tokens", Type: field.TypeInt64, Default: 0},
+		{Name: "today_cost_usd", Type: field.TypeFloat64, Default: 0},
+		{Name: "total_tokens", Type: field.TypeInt64, Default: 0},
+		{Name: "total_cost_usd", Type: field.TypeFloat64, Default: 0},
+		{Name: "tracking_started_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "last_synced_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "next_sync_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "created_by", Type: field.TypeInt64},
+	}
+	// UpstreamSitesTable holds the schema information for the "upstream_sites" table.
+	UpstreamSitesTable = &schema.Table{
+		Name:       "upstream_sites",
+		Columns:    UpstreamSitesColumns,
+		PrimaryKey: []*schema.Column{UpstreamSitesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "upstreamsite_enabled_next_sync_at",
+				Unique:  false,
+				Columns: []*schema.Column{UpstreamSitesColumns[9], UpstreamSitesColumns[19]},
+			},
+			{
+				Name:    "upstreamsite_platform",
+				Unique:  false,
+				Columns: []*schema.Column{UpstreamSitesColumns[5]},
+			},
+			{
+				Name:    "upstreamsite_status",
+				Unique:  false,
+				Columns: []*schema.Column{UpstreamSitesColumns[10]},
+			},
+			{
+				Name:    "upstreamsite_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{UpstreamSitesColumns[1]},
+			},
+		},
+	}
 	// UsageCleanupTasksColumns holds the columns for the "usage_cleanup_tasks" table.
 	UsageCleanupTasksColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -2025,6 +2154,9 @@ var (
 		SettingsTable,
 		SubscriptionPlansTable,
 		TLSFingerprintProfilesTable,
+		UpstreamDailyStatsTable,
+		UpstreamGroupsTable,
+		UpstreamSitesTable,
 		UsageCleanupTasksTable,
 		UsageLogsTable,
 		UsersTable,
@@ -2148,6 +2280,17 @@ func init() {
 	}
 	TLSFingerprintProfilesTable.Annotation = &entsql.Annotation{
 		Table: "tls_fingerprint_profiles",
+	}
+	UpstreamDailyStatsTable.ForeignKeys[0].RefTable = UpstreamSitesTable
+	UpstreamDailyStatsTable.Annotation = &entsql.Annotation{
+		Table: "upstream_daily_stats",
+	}
+	UpstreamGroupsTable.ForeignKeys[0].RefTable = UpstreamSitesTable
+	UpstreamGroupsTable.Annotation = &entsql.Annotation{
+		Table: "upstream_groups",
+	}
+	UpstreamSitesTable.Annotation = &entsql.Annotation{
+		Table: "upstream_sites",
 	}
 	UsageCleanupTasksTable.Annotation = &entsql.Annotation{
 		Table: "usage_cleanup_tasks",

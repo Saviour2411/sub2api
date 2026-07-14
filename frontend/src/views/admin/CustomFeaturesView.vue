@@ -33,7 +33,9 @@
         </nav>
       </div>
 
-      <div v-if="loading" class="flex items-center justify-center py-16">
+      <UpstreamManagementPanel v-if="activeTab === 'upstream'" />
+
+      <div v-else-if="loading" class="flex items-center justify-center py-16">
         <div class="h-8 w-8 animate-spin rounded-full border-b-2 border-primary-600"></div>
       </div>
 
@@ -684,6 +686,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import Select from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
+import UpstreamManagementPanel from '@/components/admin/upstream/UpstreamManagementPanel.vue'
 import groupsAPI from '@/api/admin/groups'
 import customFeaturesAPI, {
   type DailyCheckinPrizeConfig,
@@ -695,18 +698,19 @@ import type { AdminGroup } from '@/types'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 
-type CustomFeatureTab = 'model-marketplace' | 'gateway' | 'daily-checkin'
+type CustomFeatureTab = 'upstream' | 'model-marketplace' | 'gateway' | 'daily-checkin'
 
 const { t } = useI18n()
 const appStore = useAppStore()
 
-const tabs: Array<{ key: CustomFeatureTab; labelKey: string; icon: 'cube' | 'cog' | 'gift' }> = [
+const tabs: Array<{ key: CustomFeatureTab; labelKey: string; icon: 'server' | 'cube' | 'cog' | 'gift' }> = [
+  { key: 'upstream', labelKey: 'admin.customFeatures.tabs.upstream', icon: 'server' },
   { key: 'model-marketplace', labelKey: 'admin.customFeatures.tabs.modelMarketplace', icon: 'cube' },
   { key: 'gateway', labelKey: 'admin.customFeatures.tabs.gateway', icon: 'cog' },
   { key: 'daily-checkin', labelKey: 'admin.customFeatures.tabs.dailyCheckin', icon: 'gift' }
 ]
 
-const activeTab = ref<CustomFeatureTab>('model-marketplace')
+const activeTab = ref<CustomFeatureTab>('upstream')
 const loading = ref(true)
 const loadFailed = ref(false)
 const savingMarketplace = ref(false)

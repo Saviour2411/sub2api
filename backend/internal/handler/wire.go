@@ -99,6 +99,12 @@ func ProvideAdminSettingHandler(settingService *service.SettingService, emailSer
 	return h
 }
 
+func ProvideCustomFeatureHandler(settingService *service.SettingService, successRateService *service.ImageGroupSuccessRateService, upstreamService *service.UpstreamService) *admin.CustomFeatureHandler {
+	handler := admin.NewCustomFeatureHandler(settingService, successRateService)
+	handler.SetUpstreamService(upstreamService)
+	return handler
+}
+
 // ProvideHandlers creates the Handlers struct
 func ProvideHandlers(
 	authHandler *AuthHandler,
@@ -185,7 +191,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewRedeemHandler,
 	admin.NewPromoHandler,
 	ProvideAdminSettingHandler,
-	admin.NewCustomFeatureHandler,
+	ProvideCustomFeatureHandler,
 	admin.NewOpsHandler,
 	ProvideSystemHandler,
 	admin.NewSubscriptionHandler,

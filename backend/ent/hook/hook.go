@@ -369,6 +369,42 @@ func (f TLSFingerprintProfileFunc) Mutate(ctx context.Context, m ent.Mutation) (
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.TLSFingerprintProfileMutation", m)
 }
 
+// The UpstreamDailyStatFunc type is an adapter to allow the use of ordinary
+// function as UpstreamDailyStat mutator.
+type UpstreamDailyStatFunc func(context.Context, *ent.UpstreamDailyStatMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f UpstreamDailyStatFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.UpstreamDailyStatMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UpstreamDailyStatMutation", m)
+}
+
+// The UpstreamGroupFunc type is an adapter to allow the use of ordinary
+// function as UpstreamGroup mutator.
+type UpstreamGroupFunc func(context.Context, *ent.UpstreamGroupMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f UpstreamGroupFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.UpstreamGroupMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UpstreamGroupMutation", m)
+}
+
+// The UpstreamSiteFunc type is an adapter to allow the use of ordinary
+// function as UpstreamSite mutator.
+type UpstreamSiteFunc func(context.Context, *ent.UpstreamSiteMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f UpstreamSiteFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.UpstreamSiteMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UpstreamSiteMutation", m)
+}
+
 // The UsageCleanupTaskFunc type is an adapter to allow the use of ordinary
 // function as UsageCleanupTask mutator.
 type UsageCleanupTaskFunc func(context.Context, *ent.UsageCleanupTaskMutation) (ent.Value, error)

@@ -41,6 +41,20 @@ vi.mock('@/api/admin/groups', () => ({
   },
 }))
 
+vi.mock('@/api/admin/upstreams', () => ({
+  default: {
+    list: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    setEnabled: vi.fn(),
+    remove: vi.fn(),
+    sync: vi.fn(),
+    syncAll: vi.fn(),
+    groups: vi.fn(),
+    history: vi.fn(),
+  },
+}))
+
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({ showSuccess, showError }),
 }))
@@ -126,6 +140,7 @@ function mountView() {
         AppLayout: { template: '<div><slot /></div>' },
         Icon: true,
         Toggle: ToggleStub,
+        UpstreamManagementPanel: { template: '<div data-test="upstream-management-panel" />' },
         Select: SelectStub,
         ConfirmDialog: ConfirmDialogStub,
       },
@@ -155,17 +170,29 @@ describe('admin CustomFeaturesView', () => {
     resetImageGroupSuccessRates.mockResolvedValue({ reset_at: '2026-07-12T00:00:00Z' })
   })
 
-  it('loads the independent forms and switches tabs', async () => {
+  it('默认显示第一个上游管理 Tab，并可切换到独立配置表单', async () => {
     const wrapper = mountView()
     await flushPromises()
 
     expect(getSettings).toHaveBeenCalledOnce()
     expect(getGroups).toHaveBeenCalledOnce()
+    expect(wrapper.find('[data-test="upstream-management-panel"]').exists()).toBe(true)
+
+    await wrapper.get('[data-test="custom-feature-tab-model-marketplace"]').trigger('click')
     expect(wrapper.find('[data-test="model-marketplace-form"]').exists()).toBe(true)
 
     await wrapper.get('[data-test="custom-feature-tab-daily-checkin"]').trigger('click')
     expect(wrapper.find('[data-test="daily-checkin-form"]').exists()).toBe(true)
     expect(wrapper.findAll('[data-test^="daily-prize-"]')).toHaveLength(4)
+  })
+
+  it('原配置加载失败时不阻塞上游管理', async () => {
+    getSettings.mockRejectedValueOnce(new Error('failed'))
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="upstream-management-panel"]').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('admin.customFeatures.loadFailed')
   })
 
   it('loads and saves normalized gateway settings independently', async () => {
@@ -353,6 +380,8 @@ describe('admin CustomFeaturesView', () => {
   it('saves the model marketplace intro and selected groups independently', async () => {
     const wrapper = mountView()
     await flushPromises()
+
+	await wrapper.get('[data-test="custom-feature-tab-model-marketplace"]').trigger('click')
 
     await wrapper.get('[data-test="model-marketplace-intro"]').setValue('  新说明  ')
     const firstGroup = wrapper.findAll<HTMLInputElement>('input[type="checkbox"]')[0]

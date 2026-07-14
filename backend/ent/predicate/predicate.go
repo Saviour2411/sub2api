@@ -96,6 +96,15 @@ type SubscriptionPlan func(*sql.Selector)
 // TLSFingerprintProfile is the predicate function for tlsfingerprintprofile builders.
 type TLSFingerprintProfile func(*sql.Selector)
 
+// UpstreamDailyStat is the predicate function for upstreamdailystat builders.
+type UpstreamDailyStat func(*sql.Selector)
+
+// UpstreamGroup is the predicate function for upstreamgroup builders.
+type UpstreamGroup func(*sql.Selector)
+
+// UpstreamSite is the predicate function for upstreamsite builders.
+type UpstreamSite func(*sql.Selector)
+
 // UsageCleanupTask is the predicate function for usagecleanuptask builders.
 type UsageCleanupTask func(*sql.Selector)
 
