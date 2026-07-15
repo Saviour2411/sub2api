@@ -44,18 +44,33 @@ func (p *newAPIUpstreamProvider) Validate(ctx context.Context, site *UpstreamSit
 func (p *newAPIUpstreamProvider) Sync(ctx context.Context, req UpstreamSyncRequest) (*UpstreamSyncResult, error) {
 	state, err := p.authenticate(ctx, req.Site, req.Credential)
 	if err != nil {
+		if state != nil {
+			return upstreamResultWithCredential(nil, state.credential), err
+		}
 		return nil, err
 	}
 	result, err := p.syncAuthenticated(ctx, req, state)
+	if err == nil {
+		return result, nil
+	}
 	if !isUpstreamAuthenticationError(err) {
-		return result, err
+		return upstreamResultWithCredential(result, state.credential), err
 	}
 
-	state, authErr := p.authenticate(ctx, req.Site, state.credential)
+	reauthenticated, authErr := p.login(ctx, req.Site, state.credential)
 	if authErr != nil {
-		return nil, fmt.Errorf("重新登录 New API: %w", authErr)
+		credential := state.credential
+		if reauthenticated != nil {
+			credential = reauthenticated.credential
+		}
+		return upstreamResultWithCredential(result, credential), fmt.Errorf("重新登录 New API: %w", authErr)
 	}
-	return p.syncAuthenticated(ctx, req, state)
+	state = reauthenticated
+	result, err = p.syncAuthenticated(ctx, req, state)
+	if err != nil {
+		return upstreamResultWithCredential(result, state.credential), err
+	}
+	return result, nil
 }
 
 func (p *newAPIUpstreamProvider) syncAuthenticated(ctx context.Context, req UpstreamSyncRequest, state *newAPIAuthState) (*UpstreamSyncResult, error) {
@@ -97,6 +112,19 @@ func (p *newAPIUpstreamProvider) syncAuthenticated(ctx context.Context, req Upst
 }
 
 func (p *newAPIUpstreamProvider) authenticate(ctx context.Context, site *UpstreamSite, credential UpstreamCredential) (*newAPIAuthState, error) {
+	if credential.Cookie != "" {
+		state, err := p.loadAuthState(ctx, site, credential)
+		if err == nil {
+			return state, nil
+		}
+		if !isUpstreamAuthenticationError(err) {
+			return state, err
+		}
+	}
+	return p.login(ctx, site, credential)
+}
+
+func (p *newAPIUpstreamProvider) login(ctx context.Context, site *UpstreamSite, credential UpstreamCredential) (*newAPIAuthState, error) {
 	login, cookie, err := p.http.doJSON(ctx, http.MethodPost, site.BaseURL, "/api/user/login", nil, "", map[string]string{
 		"username": site.Account,
 		"password": credential.Password,
@@ -105,30 +133,38 @@ func (p *newAPIUpstreamProvider) authenticate(ctx context.Context, site *Upstrea
 		return nil, fmt.Errorf("登录 New API: %w", err)
 	}
 	if cookie == "" {
-		cookie = credential.Cookie
-	}
-	if cookie == "" {
 		return nil, fmt.Errorf("new API 登录未返回 Cookie")
 	}
 	credential.Cookie = cookie
-	userID := stringValue(valueByKeys(apiData(login), "id", "user_id"))
+	credential.NewAPIUserID = stringValue(valueByKeys(apiData(login), "id", "user_id"))
+	return p.loadAuthState(ctx, site, credential)
+}
+
+func (p *newAPIUpstreamProvider) loadAuthState(ctx context.Context, site *UpstreamSite, credential UpstreamCredential) (*newAPIAuthState, error) {
 	headers := map[string]string{}
-	if userID != "" {
+	if credential.NewAPIUserID != "" {
+		headers["New-Api-User"] = credential.NewAPIUserID
+	}
+	state := &newAPIAuthState{credential: credential, headers: headers}
+	self, _, err := p.http.doJSON(ctx, http.MethodGet, site.BaseURL, "/api/user/self", headers, credential.Cookie, nil)
+	if err != nil {
+		return state, fmt.Errorf("读取 New API 账号信息: %w", err)
+	}
+	if userID := stringValue(valueByKeys(apiData(self), "id", "user_id")); userID != "" {
+		state.credential.NewAPIUserID = userID
 		headers["New-Api-User"] = userID
 	}
-	self, _, err := p.http.doJSON(ctx, http.MethodGet, site.BaseURL, "/api/user/self", headers, cookie, nil)
-	if err != nil {
-		return nil, fmt.Errorf("读取 New API 账号信息: %w", err)
-	}
+	state.self = self
 	status, _, err := p.http.doJSON(ctx, http.MethodGet, site.BaseURL, "/api/status", nil, "", nil)
 	if err != nil {
-		return nil, fmt.Errorf("读取 New API 计价单位: %w", err)
+		return state, fmt.Errorf("读取 New API 计价单位: %w", err)
 	}
 	quotaPerUnit, ok := numberValue(valueByKeys(apiData(status), "quota_per_unit"))
 	if !ok || quotaPerUnit <= 0 {
-		return nil, fmt.Errorf("new API quota_per_unit 无效")
+		return state, fmt.Errorf("new API quota_per_unit 无效")
 	}
-	return &newAPIAuthState{credential: credential, headers: headers, self: self, quotaPerUnit: quotaPerUnit}, nil
+	state.quotaPerUnit = quotaPerUnit
+	return state, nil
 }
 
 func (p *newAPIUpstreamProvider) fetchGroups(ctx context.Context, site *UpstreamSite, state *newAPIAuthState) ([]UpstreamGroupSnapshot, error) {

@@ -53,6 +53,7 @@ type UpstreamCredential struct {
 	AccessToken  string `json:"access_token,omitempty"`
 	RefreshToken string `json:"refresh_token,omitempty"`
 	Cookie       string `json:"cookie,omitempty"`
+	NewAPIUserID string `json:"newapi_user_id,omitempty"`
 }
 
 // UpstreamSite 是独立上游管理领域的站点模型。

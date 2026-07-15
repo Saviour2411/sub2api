@@ -185,6 +185,125 @@ func TestSub2APIUpstreamProviderRefreshToken(t *testing.T) {
 	require.Equal(t, "refreshed", credential.AccessToken)
 }
 
+func TestSub2APIUpstreamProviderPasswordModeReusesCachedAccessToken(t *testing.T) {
+	var loginCalls int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/auth/login", func(w http.ResponseWriter, _ *http.Request) {
+		loginCalls++
+		http.Error(w, "不应登录", http.StatusInternalServerError)
+	})
+	mux.HandleFunc("/api/v1/auth/me", func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "Bearer cached-access", r.Header.Get("Authorization"))
+		writeUpstreamJSON(t, w, map[string]any{"id": 1})
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	provider := newSub2APIUpstreamProvider(newTestUpstreamHTTPClient(t))
+	credential, err := provider.Validate(context.Background(), &UpstreamSite{
+		BaseURL: server.URL, Platform: UpstreamPlatformSub2API,
+		AuthMode: UpstreamAuthPassword, Account: "admin@example.com",
+	}, UpstreamCredential{Password: "secret", AccessToken: "cached-access", RefreshToken: "cached-refresh"})
+	require.NoError(t, err)
+	require.Zero(t, loginCalls)
+	require.Equal(t, "cached-access", credential.AccessToken)
+}
+
+func TestSub2APIUpstreamProviderPasswordModeRefreshesBeforeLogin(t *testing.T) {
+	var loginCalls, refreshCalls int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/auth/login", func(w http.ResponseWriter, _ *http.Request) {
+		loginCalls++
+		http.Error(w, "不应登录", http.StatusInternalServerError)
+	})
+	mux.HandleFunc("/api/v1/auth/refresh", func(w http.ResponseWriter, _ *http.Request) {
+		refreshCalls++
+		writeUpstreamJSON(t, w, map[string]any{"access_token": "refreshed-access", "refresh_token": "refreshed-refresh"})
+	})
+	mux.HandleFunc("/api/v1/auth/me", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "Bearer cached-access" {
+			http.Error(w, "expired", http.StatusUnauthorized)
+			return
+		}
+		require.Equal(t, "Bearer refreshed-access", r.Header.Get("Authorization"))
+		writeUpstreamJSON(t, w, map[string]any{"id": 1})
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	provider := newSub2APIUpstreamProvider(newTestUpstreamHTTPClient(t))
+	credential, err := provider.Validate(context.Background(), &UpstreamSite{
+		BaseURL: server.URL, Platform: UpstreamPlatformSub2API,
+		AuthMode: UpstreamAuthPassword, Account: "admin@example.com",
+	}, UpstreamCredential{Password: "secret", AccessToken: "cached-access", RefreshToken: "cached-refresh"})
+	require.NoError(t, err)
+	require.Zero(t, loginCalls)
+	require.Equal(t, 1, refreshCalls)
+	require.Equal(t, "refreshed-access", credential.AccessToken)
+	require.Equal(t, "refreshed-refresh", credential.RefreshToken)
+}
+
+func TestSub2APIUpstreamProviderPasswordModeFallsBackAfterRefreshRejected(t *testing.T) {
+	var loginCalls, refreshCalls int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/auth/login", func(w http.ResponseWriter, _ *http.Request) {
+		loginCalls++
+		writeUpstreamJSON(t, w, map[string]any{"access_token": "login-access", "refresh_token": "login-refresh"})
+	})
+	mux.HandleFunc("/api/v1/auth/refresh", func(w http.ResponseWriter, _ *http.Request) {
+		refreshCalls++
+		http.Error(w, "refresh rejected", http.StatusUnauthorized)
+	})
+	mux.HandleFunc("/api/v1/auth/me", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "Bearer cached-access" {
+			http.Error(w, "expired", http.StatusUnauthorized)
+			return
+		}
+		require.Equal(t, "Bearer login-access", r.Header.Get("Authorization"))
+		writeUpstreamJSON(t, w, map[string]any{"id": 1})
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	provider := newSub2APIUpstreamProvider(newTestUpstreamHTTPClient(t))
+	credential, err := provider.Validate(context.Background(), &UpstreamSite{
+		BaseURL: server.URL, Platform: UpstreamPlatformSub2API,
+		AuthMode: UpstreamAuthPassword, Account: "admin@example.com",
+	}, UpstreamCredential{Password: "secret", AccessToken: "cached-access", RefreshToken: "cached-refresh"})
+	require.NoError(t, err)
+	require.Equal(t, 1, refreshCalls)
+	require.Equal(t, 1, loginCalls)
+	require.Equal(t, "login-access", credential.AccessToken)
+	require.Equal(t, "login-refresh", credential.RefreshToken)
+}
+
+func TestSub2APIUpstreamProviderDoesNotLoginOnNonAuthFailure(t *testing.T) {
+	var loginCalls int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/auth/login", func(w http.ResponseWriter, _ *http.Request) {
+		loginCalls++
+		http.Error(w, "不应登录", http.StatusInternalServerError)
+	})
+	mux.HandleFunc("/api/v1/auth/me", func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "upstream unavailable", http.StatusServiceUnavailable)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	provider := newSub2APIUpstreamProvider(newTestUpstreamHTTPClient(t))
+	result, err := provider.Sync(context.Background(), UpstreamSyncRequest{
+		Site: &UpstreamSite{
+			BaseURL: server.URL, Platform: UpstreamPlatformSub2API,
+			AuthMode: UpstreamAuthPassword, Account: "admin@example.com",
+		},
+		Credential: UpstreamCredential{Password: "secret", AccessToken: "cached-access"},
+	})
+	require.Error(t, err)
+	require.Zero(t, loginCalls)
+	require.NotNil(t, result)
+	require.Equal(t, "cached-access", result.Credential.AccessToken)
+}
+
 func TestSub2APIUpstreamProviderMapsTurnstileLoginFailure(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/auth/login", func(w http.ResponseWriter, _ *http.Request) {
@@ -259,6 +378,120 @@ func TestNewAPIUpstreamProviderPaginationTokenFallbackAndUSD(t *testing.T) {
 	require.Equal(t, "New API", result.Groups[0].Platform)
 	require.Equal(t, int64(1007), result.Groups[0].TodayTokens)
 	require.Equal(t, "session=cookie-1", result.Credential.Cookie)
+	require.Equal(t, "9", result.Credential.NewAPIUserID)
+}
+
+func TestNewAPIUpstreamProviderReusesCachedCookie(t *testing.T) {
+	var loginCalls int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/user/login", func(w http.ResponseWriter, _ *http.Request) {
+		loginCalls++
+		http.Error(w, "不应登录", http.StatusInternalServerError)
+	})
+	mux.HandleFunc("/api/user/self", func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "session=cached", r.Header.Get("Cookie"))
+		require.Empty(t, r.Header.Get("New-Api-User"), "旧凭证允许从 self 响应补全用户 ID")
+		writeUpstreamJSON(t, w, map[string]any{"id": 9, "quota": 100})
+	})
+	mux.HandleFunc("/api/status", func(w http.ResponseWriter, _ *http.Request) {
+		writeUpstreamJSON(t, w, map[string]any{"quota_per_unit": 100})
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	provider := newNewAPIUpstreamProvider(newTestUpstreamHTTPClient(t))
+	credential, err := provider.Validate(context.Background(), &UpstreamSite{
+		BaseURL: server.URL, Platform: UpstreamPlatformNewAPI,
+		AuthMode: UpstreamAuthPassword, Account: "admin",
+	}, UpstreamCredential{Password: "secret", Cookie: "session=cached"})
+	require.NoError(t, err)
+	require.Zero(t, loginCalls)
+	require.Equal(t, "session=cached", credential.Cookie)
+	require.Equal(t, "9", credential.NewAPIUserID)
+}
+
+func TestNewAPIUpstreamProviderReloginsAfterCookieRejected(t *testing.T) {
+	var loginCalls int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/user/login", func(w http.ResponseWriter, _ *http.Request) {
+		loginCalls++
+		http.SetCookie(w, &http.Cookie{Name: "session", Value: "renewed"})
+		writeUpstreamJSON(t, w, map[string]any{"id": 9})
+	})
+	mux.HandleFunc("/api/user/self", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Cookie") == "session=expired" {
+			http.Error(w, "expired", http.StatusUnauthorized)
+			return
+		}
+		require.Equal(t, "session=renewed", r.Header.Get("Cookie"))
+		writeUpstreamJSON(t, w, map[string]any{"id": 9, "quota": 100})
+	})
+	mux.HandleFunc("/api/status", func(w http.ResponseWriter, _ *http.Request) {
+		writeUpstreamJSON(t, w, map[string]any{"quota_per_unit": 100})
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	provider := newNewAPIUpstreamProvider(newTestUpstreamHTTPClient(t))
+	credential, err := provider.Validate(context.Background(), &UpstreamSite{
+		BaseURL: server.URL, Platform: UpstreamPlatformNewAPI,
+		AuthMode: UpstreamAuthPassword, Account: "admin",
+	}, UpstreamCredential{Password: "secret", Cookie: "session=expired", NewAPIUserID: "9"})
+	require.NoError(t, err)
+	require.Equal(t, 1, loginCalls)
+	require.Equal(t, "session=renewed", credential.Cookie)
+}
+
+func TestNewAPIUpstreamProviderDoesNotLoginOnNonAuthFailure(t *testing.T) {
+	var loginCalls int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/user/login", func(w http.ResponseWriter, _ *http.Request) {
+		loginCalls++
+		http.Error(w, "不应登录", http.StatusInternalServerError)
+	})
+	mux.HandleFunc("/api/user/self", func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "upstream unavailable", http.StatusServiceUnavailable)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	provider := newNewAPIUpstreamProvider(newTestUpstreamHTTPClient(t))
+	_, err := provider.Validate(context.Background(), &UpstreamSite{
+		BaseURL: server.URL, Platform: UpstreamPlatformNewAPI,
+		AuthMode: UpstreamAuthPassword, Account: "admin",
+	}, UpstreamCredential{Password: "secret", Cookie: "session=cached", NewAPIUserID: "9"})
+	require.Error(t, err)
+	require.Zero(t, loginCalls)
+}
+
+func TestNewAPIUpstreamProviderPreservesLoginCookieWhenPostLoginLoadFails(t *testing.T) {
+	var loginCalls int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/user/login", func(w http.ResponseWriter, _ *http.Request) {
+		loginCalls++
+		http.SetCookie(w, &http.Cookie{Name: "session", Value: "new-cookie"})
+		writeUpstreamJSON(t, w, map[string]any{"id": 9})
+	})
+	mux.HandleFunc("/api/user/self", func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "upstream unavailable", http.StatusServiceUnavailable)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	provider := newNewAPIUpstreamProvider(newTestUpstreamHTTPClient(t))
+	result, err := provider.Sync(context.Background(), UpstreamSyncRequest{
+		Site: &UpstreamSite{
+			BaseURL: server.URL, Platform: UpstreamPlatformNewAPI,
+			AuthMode: UpstreamAuthPassword, Account: "admin",
+		},
+		Credential: UpstreamCredential{Password: "secret"},
+	})
+	require.Error(t, err)
+	require.Equal(t, 1, loginCalls)
+	require.NotNil(t, result)
+	require.NotNil(t, result.Credential)
+	require.Equal(t, "session=new-cookie", result.Credential.Cookie)
+	require.Equal(t, "9", result.Credential.NewAPIUserID)
 }
 
 func TestNewAPIUpstreamProviderDoesNotReturnPartialPagination(t *testing.T) {
@@ -293,7 +526,10 @@ func TestNewAPIUpstreamProviderDoesNotReturnPartialPagination(t *testing.T) {
 		Credential: UpstreamCredential{Password: "secret"}, Dates: []time.Time{time.Now()}, Location: time.Local,
 	})
 	require.Error(t, err)
-	require.Nil(t, result)
+	require.NotNil(t, result)
+	require.NotNil(t, result.Credential)
+	require.Empty(t, result.Groups)
+	require.Empty(t, result.Daily)
 	require.Contains(t, err.Error(), fmt.Sprintf("第 %d 页", 2))
 }
 

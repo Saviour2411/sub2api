@@ -44,19 +44,30 @@ func (p *sub2APIUpstreamProvider) Sync(ctx context.Context, req UpstreamSyncRequ
 		return nil, err
 	}
 	result, err := p.syncAuthenticated(ctx, req, credential, headers)
+	if err == nil {
+		return result, nil
+	}
 	if !isUpstreamAuthenticationError(err) {
-		return result, err
+		return upstreamResultWithCredential(result, credential), err
 	}
 
 	credential, headers, authErr := p.reauthenticate(ctx, req.Site, credential)
 	if authErr != nil {
-		return nil, authErr
+		return upstreamResultWithCredential(result, credential), authErr
 	}
 	result, err = p.syncAuthenticated(ctx, req, credential, headers)
 	if err != nil {
-		return &UpstreamSyncResult{Credential: &credential}, err
+		return upstreamResultWithCredential(result, credential), err
 	}
 	return result, nil
+}
+
+func upstreamResultWithCredential(result *UpstreamSyncResult, credential UpstreamCredential) *UpstreamSyncResult {
+	if result == nil {
+		result = &UpstreamSyncResult{}
+	}
+	result.Credential = &credential
+	return result
 }
 
 func (p *sub2APIUpstreamProvider) syncAuthenticated(
@@ -237,26 +248,46 @@ func sub2APIStatsQuery(date time.Time, loc *time.Location) url.Values {
 }
 
 func (p *sub2APIUpstreamProvider) authenticate(ctx context.Context, site *UpstreamSite, credential UpstreamCredential) (UpstreamCredential, map[string]string, error) {
+	if credential.AccessToken != "" {
+		return credential, map[string]string{"Authorization": "Bearer " + credential.AccessToken}, nil
+	}
+	if credential.RefreshToken != "" {
+		updated, headers, err := p.refresh(ctx, site, credential)
+		if err == nil {
+			return updated, headers, nil
+		}
+		if site.AuthMode != UpstreamAuthPassword || !canFallbackToPasswordLogin(err) {
+			return credential, nil, err
+		}
+	}
 	if site.AuthMode == UpstreamAuthPassword {
 		return p.login(ctx, site, credential)
 	}
-	if credential.AccessToken == "" && credential.RefreshToken != "" {
-		return p.refresh(ctx, site, credential)
-	}
-	if credential.AccessToken == "" {
-		return credential, nil, fmt.Errorf("Sub2API 未返回访问令牌")
-	}
-	return credential, map[string]string{"Authorization": "Bearer " + credential.AccessToken}, nil
+	return credential, nil, fmt.Errorf("Sub2API 未返回访问令牌")
 }
 
 func (p *sub2APIUpstreamProvider) reauthenticate(ctx context.Context, site *UpstreamSite, credential UpstreamCredential) (UpstreamCredential, map[string]string, error) {
+	if credential.RefreshToken != "" {
+		updated, headers, err := p.refresh(ctx, site, credential)
+		if err == nil {
+			return updated, headers, nil
+		}
+		if site.AuthMode != UpstreamAuthPassword || !canFallbackToPasswordLogin(err) {
+			return credential, nil, err
+		}
+	}
 	if site.AuthMode == UpstreamAuthPassword {
 		return p.login(ctx, site, credential)
 	}
-	if credential.RefreshToken == "" {
-		return credential, nil, fmt.Errorf("Sub2API 访问令牌已过期且没有刷新令牌")
-	}
-	return p.refresh(ctx, site, credential)
+	return credential, nil, fmt.Errorf("Sub2API 访问令牌已过期且没有刷新令牌")
+}
+
+func canFallbackToPasswordLogin(err error) bool {
+	return isHTTPStatus(err, http.StatusBadRequest) ||
+		isHTTPStatus(err, http.StatusUnauthorized) ||
+		isHTTPStatus(err, http.StatusForbidden) ||
+		isHTTPStatus(err, http.StatusNotFound) ||
+		isHTTPStatus(err, http.StatusMethodNotAllowed)
 }
 
 func (p *sub2APIUpstreamProvider) login(ctx context.Context, site *UpstreamSite, credential UpstreamCredential) (UpstreamCredential, map[string]string, error) {
@@ -270,9 +301,7 @@ func (p *sub2APIUpstreamProvider) login(ctx context.Context, site *UpstreamSite,
 		return credential, nil, fmt.Errorf("登录 Sub2API: %w", err)
 	}
 	credential.AccessToken = stringValue(valueByKeys(apiData(payload), "access_token", "token"))
-	if refresh := stringValue(valueByKeys(apiData(payload), "refresh_token")); refresh != "" {
-		credential.RefreshToken = refresh
-	}
+	credential.RefreshToken = stringValue(valueByKeys(apiData(payload), "refresh_token"))
 	if credential.AccessToken == "" {
 		return credential, nil, fmt.Errorf("Sub2API 未返回访问令牌")
 	}

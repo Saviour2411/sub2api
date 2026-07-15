@@ -322,7 +322,10 @@ func TestNewAPIUpstreamProviderStopsAfterSecondUnauthorized(t *testing.T) {
 		Credential: UpstreamCredential{Password: "secret"},
 	})
 	require.Error(t, err)
-	require.Nil(t, result)
+	require.NotNil(t, result)
+	require.NotNil(t, result.Credential)
+	require.Empty(t, result.Groups)
+	require.Empty(t, result.Daily)
 	require.Equal(t, int32(2), loginCalls.Load(), "重新认证不得超过一次")
 	require.Equal(t, int32(2), groupCalls.Load())
 }

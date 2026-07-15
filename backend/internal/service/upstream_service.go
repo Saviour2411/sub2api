@@ -429,7 +429,10 @@ func (s *UpstreamService) validateSite(site *UpstreamSite, credential UpstreamCr
 
 func mergeUpstreamUpdate(site *UpstreamSite, credential *UpstreamCredential, input UpstreamUpdateInput) bool {
 	changed := false
+	previousBaseURL := site.BaseURL
+	previousPlatform := site.Platform
 	previousAuthMode := site.AuthMode
+	previousAccount := site.Account
 	apply := func(target *string, value *string, normalize func(string) string) {
 		if value == nil {
 			return
@@ -447,20 +450,23 @@ func mergeUpstreamUpdate(site *UpstreamSite, credential *UpstreamCredential, inp
 	apply(&site.Platform, input.Platform, lower)
 	apply(&site.AuthMode, input.AuthMode, lower)
 	apply(&site.Account, input.Account, trim)
+	if previousBaseURL != site.BaseURL || previousPlatform != site.Platform || previousAccount != site.Account {
+		clearUpstreamSessionCredential(credential)
+	}
 	if previousAuthMode != site.AuthMode {
 		if site.AuthMode == UpstreamAuthToken {
 			credential.Password = ""
 			credential.Cookie = ""
+			credential.NewAPIUserID = ""
 		} else {
-			credential.AccessToken = ""
-			credential.RefreshToken = ""
-			credential.Cookie = ""
+			clearUpstreamSessionCredential(credential)
 		}
 	}
 	if input.Enabled != nil {
 		site.Enabled = *input.Enabled
 	}
 	if input.Password != nil && strings.TrimSpace(*input.Password) != "" {
+		clearUpstreamSessionCredential(credential)
 		credential.Password = strings.TrimSpace(*input.Password)
 		changed = true
 	}
@@ -473,6 +479,13 @@ func mergeUpstreamUpdate(site *UpstreamSite, credential *UpstreamCredential, inp
 		changed = true
 	}
 	return changed
+}
+
+func clearUpstreamSessionCredential(credential *UpstreamCredential) {
+	credential.AccessToken = ""
+	credential.RefreshToken = ""
+	credential.Cookie = ""
+	credential.NewAPIUserID = ""
 }
 
 func (s *UpstreamService) encryptCredential(credential UpstreamCredential) (string, error) {

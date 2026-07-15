@@ -171,6 +171,48 @@ func TestMergeUpstreamUpdateClearsCredentialFromPreviousAuthMode(t *testing.T) {
 	})
 }
 
+func TestMergeUpstreamUpdateInvalidatesCachedSessionWhenCredentialScopeChanges(t *testing.T) {
+	assertSessionCleared := func(t *testing.T, credential UpstreamCredential) {
+		t.Helper()
+		require.Empty(t, credential.AccessToken)
+		require.Empty(t, credential.RefreshToken)
+		require.Empty(t, credential.Cookie)
+		require.Empty(t, credential.NewAPIUserID)
+	}
+	credentialFixture := func() UpstreamCredential {
+		return UpstreamCredential{
+			Password: "old-password", AccessToken: "old-access", RefreshToken: "old-refresh",
+			Cookie: "old-cookie", NewAPIUserID: "9",
+		}
+	}
+
+	t.Run("账号变化", func(t *testing.T) {
+		site := &UpstreamSite{BaseURL: "https://example.com", Platform: UpstreamPlatformSub2API, AuthMode: UpstreamAuthPassword, Account: "old"}
+		credential := credentialFixture()
+		account := "new"
+		mergeUpstreamUpdate(site, &credential, UpstreamUpdateInput{Account: &account})
+		assertSessionCleared(t, credential)
+		require.Equal(t, "old-password", credential.Password)
+	})
+
+	t.Run("上游地址变化", func(t *testing.T) {
+		site := &UpstreamSite{BaseURL: "https://old.example.com", Platform: UpstreamPlatformSub2API, AuthMode: UpstreamAuthToken}
+		credential := credentialFixture()
+		baseURL := "https://new.example.com"
+		mergeUpstreamUpdate(site, &credential, UpstreamUpdateInput{BaseURL: &baseURL})
+		assertSessionCleared(t, credential)
+	})
+
+	t.Run("显式更新密码", func(t *testing.T) {
+		site := &UpstreamSite{BaseURL: "https://example.com", Platform: UpstreamPlatformNewAPI, AuthMode: UpstreamAuthPassword, Account: "admin"}
+		credential := credentialFixture()
+		password := "new-password"
+		mergeUpstreamUpdate(site, &credential, UpstreamUpdateInput{Password: &password})
+		assertSessionCleared(t, credential)
+		require.Equal(t, "new-password", credential.Password)
+	})
+}
+
 func TestUpstreamServiceRejectsNewAPITokenMode(t *testing.T) {
 	service := &UpstreamService{}
 	err := service.validateSite(&UpstreamSite{
