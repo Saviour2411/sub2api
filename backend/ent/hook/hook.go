@@ -393,6 +393,18 @@ func (f UpstreamGroupFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Valu
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UpstreamGroupMutation", m)
 }
 
+// The UpstreamGroupMultiplierHistoryFunc type is an adapter to allow the use of ordinary
+// function as UpstreamGroupMultiplierHistory mutator.
+type UpstreamGroupMultiplierHistoryFunc func(context.Context, *ent.UpstreamGroupMultiplierHistoryMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f UpstreamGroupMultiplierHistoryFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.UpstreamGroupMultiplierHistoryMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UpstreamGroupMultiplierHistoryMutation", m)
+}
+
 // The UpstreamSiteFunc type is an adapter to allow the use of ordinary
 // function as UpstreamSite mutator.
 type UpstreamSiteFunc func(context.Context, *ent.UpstreamSiteMutation) (ent.Value, error)

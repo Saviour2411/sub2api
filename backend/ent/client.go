@@ -47,6 +47,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamdailystat"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamgroup"
+	"github.com/Wei-Shaw/sub2api/ent/upstreamgroupmultiplierhistory"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamsite"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
@@ -129,6 +130,8 @@ type Client struct {
 	UpstreamDailyStat *UpstreamDailyStatClient
 	// UpstreamGroup is the client for interacting with the UpstreamGroup builders.
 	UpstreamGroup *UpstreamGroupClient
+	// UpstreamGroupMultiplierHistory is the client for interacting with the UpstreamGroupMultiplierHistory builders.
+	UpstreamGroupMultiplierHistory *UpstreamGroupMultiplierHistoryClient
 	// UpstreamSite is the client for interacting with the UpstreamSite builders.
 	UpstreamSite *UpstreamSiteClient
 	// UsageCleanupTask is the client for interacting with the UsageCleanupTask builders.
@@ -190,6 +193,7 @@ func (c *Client) init() {
 	c.TLSFingerprintProfile = NewTLSFingerprintProfileClient(c.config)
 	c.UpstreamDailyStat = NewUpstreamDailyStatClient(c.config)
 	c.UpstreamGroup = NewUpstreamGroupClient(c.config)
+	c.UpstreamGroupMultiplierHistory = NewUpstreamGroupMultiplierHistoryClient(c.config)
 	c.UpstreamSite = NewUpstreamSiteClient(c.config)
 	c.UsageCleanupTask = NewUsageCleanupTaskClient(c.config)
 	c.UsageLog = NewUsageLogClient(c.config)
@@ -289,49 +293,50 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:                           ctx,
-		config:                        cfg,
-		APIKey:                        NewAPIKeyClient(cfg),
-		Account:                       NewAccountClient(cfg),
-		AccountGroup:                  NewAccountGroupClient(cfg),
-		Announcement:                  NewAnnouncementClient(cfg),
-		AnnouncementRead:              NewAnnouncementReadClient(cfg),
-		AuthIdentity:                  NewAuthIdentityClient(cfg),
-		AuthIdentityChannel:           NewAuthIdentityChannelClient(cfg),
-		BatchImageEvent:               NewBatchImageEventClient(cfg),
-		BatchImageItem:                NewBatchImageItemClient(cfg),
-		BatchImageJob:                 NewBatchImageJobClient(cfg),
-		ChannelMonitor:                NewChannelMonitorClient(cfg),
-		ChannelMonitorDailyRollup:     NewChannelMonitorDailyRollupClient(cfg),
-		ChannelMonitorHistory:         NewChannelMonitorHistoryClient(cfg),
-		ChannelMonitorRequestTemplate: NewChannelMonitorRequestTemplateClient(cfg),
-		ErrorPassthroughRule:          NewErrorPassthroughRuleClient(cfg),
-		Group:                         NewGroupClient(cfg),
-		IdempotencyRecord:             NewIdempotencyRecordClient(cfg),
-		IdentityAdoptionDecision:      NewIdentityAdoptionDecisionClient(cfg),
-		PaymentAuditLog:               NewPaymentAuditLogClient(cfg),
-		PaymentOrder:                  NewPaymentOrderClient(cfg),
-		PaymentProviderInstance:       NewPaymentProviderInstanceClient(cfg),
-		PendingAuthSession:            NewPendingAuthSessionClient(cfg),
-		PromoCode:                     NewPromoCodeClient(cfg),
-		PromoCodeUsage:                NewPromoCodeUsageClient(cfg),
-		Proxy:                         NewProxyClient(cfg),
-		RedeemCode:                    NewRedeemCodeClient(cfg),
-		SecuritySecret:                NewSecuritySecretClient(cfg),
-		Setting:                       NewSettingClient(cfg),
-		SubscriptionPlan:              NewSubscriptionPlanClient(cfg),
-		TLSFingerprintProfile:         NewTLSFingerprintProfileClient(cfg),
-		UpstreamDailyStat:             NewUpstreamDailyStatClient(cfg),
-		UpstreamGroup:                 NewUpstreamGroupClient(cfg),
-		UpstreamSite:                  NewUpstreamSiteClient(cfg),
-		UsageCleanupTask:              NewUsageCleanupTaskClient(cfg),
-		UsageLog:                      NewUsageLogClient(cfg),
-		User:                          NewUserClient(cfg),
-		UserAllowedGroup:              NewUserAllowedGroupClient(cfg),
-		UserAttributeDefinition:       NewUserAttributeDefinitionClient(cfg),
-		UserAttributeValue:            NewUserAttributeValueClient(cfg),
-		UserPlatformQuota:             NewUserPlatformQuotaClient(cfg),
-		UserSubscription:              NewUserSubscriptionClient(cfg),
+		ctx:                            ctx,
+		config:                         cfg,
+		APIKey:                         NewAPIKeyClient(cfg),
+		Account:                        NewAccountClient(cfg),
+		AccountGroup:                   NewAccountGroupClient(cfg),
+		Announcement:                   NewAnnouncementClient(cfg),
+		AnnouncementRead:               NewAnnouncementReadClient(cfg),
+		AuthIdentity:                   NewAuthIdentityClient(cfg),
+		AuthIdentityChannel:            NewAuthIdentityChannelClient(cfg),
+		BatchImageEvent:                NewBatchImageEventClient(cfg),
+		BatchImageItem:                 NewBatchImageItemClient(cfg),
+		BatchImageJob:                  NewBatchImageJobClient(cfg),
+		ChannelMonitor:                 NewChannelMonitorClient(cfg),
+		ChannelMonitorDailyRollup:      NewChannelMonitorDailyRollupClient(cfg),
+		ChannelMonitorHistory:          NewChannelMonitorHistoryClient(cfg),
+		ChannelMonitorRequestTemplate:  NewChannelMonitorRequestTemplateClient(cfg),
+		ErrorPassthroughRule:           NewErrorPassthroughRuleClient(cfg),
+		Group:                          NewGroupClient(cfg),
+		IdempotencyRecord:              NewIdempotencyRecordClient(cfg),
+		IdentityAdoptionDecision:       NewIdentityAdoptionDecisionClient(cfg),
+		PaymentAuditLog:                NewPaymentAuditLogClient(cfg),
+		PaymentOrder:                   NewPaymentOrderClient(cfg),
+		PaymentProviderInstance:        NewPaymentProviderInstanceClient(cfg),
+		PendingAuthSession:             NewPendingAuthSessionClient(cfg),
+		PromoCode:                      NewPromoCodeClient(cfg),
+		PromoCodeUsage:                 NewPromoCodeUsageClient(cfg),
+		Proxy:                          NewProxyClient(cfg),
+		RedeemCode:                     NewRedeemCodeClient(cfg),
+		SecuritySecret:                 NewSecuritySecretClient(cfg),
+		Setting:                        NewSettingClient(cfg),
+		SubscriptionPlan:               NewSubscriptionPlanClient(cfg),
+		TLSFingerprintProfile:          NewTLSFingerprintProfileClient(cfg),
+		UpstreamDailyStat:              NewUpstreamDailyStatClient(cfg),
+		UpstreamGroup:                  NewUpstreamGroupClient(cfg),
+		UpstreamGroupMultiplierHistory: NewUpstreamGroupMultiplierHistoryClient(cfg),
+		UpstreamSite:                   NewUpstreamSiteClient(cfg),
+		UsageCleanupTask:               NewUsageCleanupTaskClient(cfg),
+		UsageLog:                       NewUsageLogClient(cfg),
+		User:                           NewUserClient(cfg),
+		UserAllowedGroup:               NewUserAllowedGroupClient(cfg),
+		UserAttributeDefinition:        NewUserAttributeDefinitionClient(cfg),
+		UserAttributeValue:             NewUserAttributeValueClient(cfg),
+		UserPlatformQuota:              NewUserPlatformQuotaClient(cfg),
+		UserSubscription:               NewUserSubscriptionClient(cfg),
 	}, nil
 }
 
@@ -349,49 +354,50 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:                           ctx,
-		config:                        cfg,
-		APIKey:                        NewAPIKeyClient(cfg),
-		Account:                       NewAccountClient(cfg),
-		AccountGroup:                  NewAccountGroupClient(cfg),
-		Announcement:                  NewAnnouncementClient(cfg),
-		AnnouncementRead:              NewAnnouncementReadClient(cfg),
-		AuthIdentity:                  NewAuthIdentityClient(cfg),
-		AuthIdentityChannel:           NewAuthIdentityChannelClient(cfg),
-		BatchImageEvent:               NewBatchImageEventClient(cfg),
-		BatchImageItem:                NewBatchImageItemClient(cfg),
-		BatchImageJob:                 NewBatchImageJobClient(cfg),
-		ChannelMonitor:                NewChannelMonitorClient(cfg),
-		ChannelMonitorDailyRollup:     NewChannelMonitorDailyRollupClient(cfg),
-		ChannelMonitorHistory:         NewChannelMonitorHistoryClient(cfg),
-		ChannelMonitorRequestTemplate: NewChannelMonitorRequestTemplateClient(cfg),
-		ErrorPassthroughRule:          NewErrorPassthroughRuleClient(cfg),
-		Group:                         NewGroupClient(cfg),
-		IdempotencyRecord:             NewIdempotencyRecordClient(cfg),
-		IdentityAdoptionDecision:      NewIdentityAdoptionDecisionClient(cfg),
-		PaymentAuditLog:               NewPaymentAuditLogClient(cfg),
-		PaymentOrder:                  NewPaymentOrderClient(cfg),
-		PaymentProviderInstance:       NewPaymentProviderInstanceClient(cfg),
-		PendingAuthSession:            NewPendingAuthSessionClient(cfg),
-		PromoCode:                     NewPromoCodeClient(cfg),
-		PromoCodeUsage:                NewPromoCodeUsageClient(cfg),
-		Proxy:                         NewProxyClient(cfg),
-		RedeemCode:                    NewRedeemCodeClient(cfg),
-		SecuritySecret:                NewSecuritySecretClient(cfg),
-		Setting:                       NewSettingClient(cfg),
-		SubscriptionPlan:              NewSubscriptionPlanClient(cfg),
-		TLSFingerprintProfile:         NewTLSFingerprintProfileClient(cfg),
-		UpstreamDailyStat:             NewUpstreamDailyStatClient(cfg),
-		UpstreamGroup:                 NewUpstreamGroupClient(cfg),
-		UpstreamSite:                  NewUpstreamSiteClient(cfg),
-		UsageCleanupTask:              NewUsageCleanupTaskClient(cfg),
-		UsageLog:                      NewUsageLogClient(cfg),
-		User:                          NewUserClient(cfg),
-		UserAllowedGroup:              NewUserAllowedGroupClient(cfg),
-		UserAttributeDefinition:       NewUserAttributeDefinitionClient(cfg),
-		UserAttributeValue:            NewUserAttributeValueClient(cfg),
-		UserPlatformQuota:             NewUserPlatformQuotaClient(cfg),
-		UserSubscription:              NewUserSubscriptionClient(cfg),
+		ctx:                            ctx,
+		config:                         cfg,
+		APIKey:                         NewAPIKeyClient(cfg),
+		Account:                        NewAccountClient(cfg),
+		AccountGroup:                   NewAccountGroupClient(cfg),
+		Announcement:                   NewAnnouncementClient(cfg),
+		AnnouncementRead:               NewAnnouncementReadClient(cfg),
+		AuthIdentity:                   NewAuthIdentityClient(cfg),
+		AuthIdentityChannel:            NewAuthIdentityChannelClient(cfg),
+		BatchImageEvent:                NewBatchImageEventClient(cfg),
+		BatchImageItem:                 NewBatchImageItemClient(cfg),
+		BatchImageJob:                  NewBatchImageJobClient(cfg),
+		ChannelMonitor:                 NewChannelMonitorClient(cfg),
+		ChannelMonitorDailyRollup:      NewChannelMonitorDailyRollupClient(cfg),
+		ChannelMonitorHistory:          NewChannelMonitorHistoryClient(cfg),
+		ChannelMonitorRequestTemplate:  NewChannelMonitorRequestTemplateClient(cfg),
+		ErrorPassthroughRule:           NewErrorPassthroughRuleClient(cfg),
+		Group:                          NewGroupClient(cfg),
+		IdempotencyRecord:              NewIdempotencyRecordClient(cfg),
+		IdentityAdoptionDecision:       NewIdentityAdoptionDecisionClient(cfg),
+		PaymentAuditLog:                NewPaymentAuditLogClient(cfg),
+		PaymentOrder:                   NewPaymentOrderClient(cfg),
+		PaymentProviderInstance:        NewPaymentProviderInstanceClient(cfg),
+		PendingAuthSession:             NewPendingAuthSessionClient(cfg),
+		PromoCode:                      NewPromoCodeClient(cfg),
+		PromoCodeUsage:                 NewPromoCodeUsageClient(cfg),
+		Proxy:                          NewProxyClient(cfg),
+		RedeemCode:                     NewRedeemCodeClient(cfg),
+		SecuritySecret:                 NewSecuritySecretClient(cfg),
+		Setting:                        NewSettingClient(cfg),
+		SubscriptionPlan:               NewSubscriptionPlanClient(cfg),
+		TLSFingerprintProfile:          NewTLSFingerprintProfileClient(cfg),
+		UpstreamDailyStat:              NewUpstreamDailyStatClient(cfg),
+		UpstreamGroup:                  NewUpstreamGroupClient(cfg),
+		UpstreamGroupMultiplierHistory: NewUpstreamGroupMultiplierHistoryClient(cfg),
+		UpstreamSite:                   NewUpstreamSiteClient(cfg),
+		UsageCleanupTask:               NewUsageCleanupTaskClient(cfg),
+		UsageLog:                       NewUsageLogClient(cfg),
+		User:                           NewUserClient(cfg),
+		UserAllowedGroup:               NewUserAllowedGroupClient(cfg),
+		UserAttributeDefinition:        NewUserAttributeDefinitionClient(cfg),
+		UserAttributeValue:             NewUserAttributeValueClient(cfg),
+		UserPlatformQuota:              NewUserPlatformQuotaClient(cfg),
+		UserSubscription:               NewUserSubscriptionClient(cfg),
 	}, nil
 }
 
@@ -429,10 +435,10 @@ func (c *Client) Use(hooks ...Hook) {
 		c.IdentityAdoptionDecision, c.PaymentAuditLog, c.PaymentOrder,
 		c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage,
 		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
-		c.TLSFingerprintProfile, c.UpstreamDailyStat, c.UpstreamGroup, c.UpstreamSite,
-		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
-		c.UserAttributeDefinition, c.UserAttributeValue, c.UserPlatformQuota,
-		c.UserSubscription,
+		c.TLSFingerprintProfile, c.UpstreamDailyStat, c.UpstreamGroup,
+		c.UpstreamGroupMultiplierHistory, c.UpstreamSite, c.UsageCleanupTask,
+		c.UsageLog, c.User, c.UserAllowedGroup, c.UserAttributeDefinition,
+		c.UserAttributeValue, c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Use(hooks...)
 	}
@@ -450,10 +456,10 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.IdentityAdoptionDecision, c.PaymentAuditLog, c.PaymentOrder,
 		c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage,
 		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
-		c.TLSFingerprintProfile, c.UpstreamDailyStat, c.UpstreamGroup, c.UpstreamSite,
-		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
-		c.UserAttributeDefinition, c.UserAttributeValue, c.UserPlatformQuota,
-		c.UserSubscription,
+		c.TLSFingerprintProfile, c.UpstreamDailyStat, c.UpstreamGroup,
+		c.UpstreamGroupMultiplierHistory, c.UpstreamSite, c.UsageCleanupTask,
+		c.UsageLog, c.User, c.UserAllowedGroup, c.UserAttributeDefinition,
+		c.UserAttributeValue, c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -526,6 +532,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.UpstreamDailyStat.mutate(ctx, m)
 	case *UpstreamGroupMutation:
 		return c.UpstreamGroup.mutate(ctx, m)
+	case *UpstreamGroupMultiplierHistoryMutation:
+		return c.UpstreamGroupMultiplierHistory.mutate(ctx, m)
 	case *UpstreamSiteMutation:
 		return c.UpstreamSite.mutate(ctx, m)
 	case *UsageCleanupTaskMutation:
@@ -5500,6 +5508,155 @@ func (c *UpstreamGroupClient) mutate(ctx context.Context, m *UpstreamGroupMutati
 	}
 }
 
+// UpstreamGroupMultiplierHistoryClient is a client for the UpstreamGroupMultiplierHistory schema.
+type UpstreamGroupMultiplierHistoryClient struct {
+	config
+}
+
+// NewUpstreamGroupMultiplierHistoryClient returns a client for the UpstreamGroupMultiplierHistory from the given config.
+func NewUpstreamGroupMultiplierHistoryClient(c config) *UpstreamGroupMultiplierHistoryClient {
+	return &UpstreamGroupMultiplierHistoryClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `upstreamgroupmultiplierhistory.Hooks(f(g(h())))`.
+func (c *UpstreamGroupMultiplierHistoryClient) Use(hooks ...Hook) {
+	c.hooks.UpstreamGroupMultiplierHistory = append(c.hooks.UpstreamGroupMultiplierHistory, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `upstreamgroupmultiplierhistory.Intercept(f(g(h())))`.
+func (c *UpstreamGroupMultiplierHistoryClient) Intercept(interceptors ...Interceptor) {
+	c.inters.UpstreamGroupMultiplierHistory = append(c.inters.UpstreamGroupMultiplierHistory, interceptors...)
+}
+
+// Create returns a builder for creating a UpstreamGroupMultiplierHistory entity.
+func (c *UpstreamGroupMultiplierHistoryClient) Create() *UpstreamGroupMultiplierHistoryCreate {
+	mutation := newUpstreamGroupMultiplierHistoryMutation(c.config, OpCreate)
+	return &UpstreamGroupMultiplierHistoryCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of UpstreamGroupMultiplierHistory entities.
+func (c *UpstreamGroupMultiplierHistoryClient) CreateBulk(builders ...*UpstreamGroupMultiplierHistoryCreate) *UpstreamGroupMultiplierHistoryCreateBulk {
+	return &UpstreamGroupMultiplierHistoryCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *UpstreamGroupMultiplierHistoryClient) MapCreateBulk(slice any, setFunc func(*UpstreamGroupMultiplierHistoryCreate, int)) *UpstreamGroupMultiplierHistoryCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &UpstreamGroupMultiplierHistoryCreateBulk{err: fmt.Errorf("calling to UpstreamGroupMultiplierHistoryClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*UpstreamGroupMultiplierHistoryCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &UpstreamGroupMultiplierHistoryCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for UpstreamGroupMultiplierHistory.
+func (c *UpstreamGroupMultiplierHistoryClient) Update() *UpstreamGroupMultiplierHistoryUpdate {
+	mutation := newUpstreamGroupMultiplierHistoryMutation(c.config, OpUpdate)
+	return &UpstreamGroupMultiplierHistoryUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *UpstreamGroupMultiplierHistoryClient) UpdateOne(_m *UpstreamGroupMultiplierHistory) *UpstreamGroupMultiplierHistoryUpdateOne {
+	mutation := newUpstreamGroupMultiplierHistoryMutation(c.config, OpUpdateOne, withUpstreamGroupMultiplierHistory(_m))
+	return &UpstreamGroupMultiplierHistoryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *UpstreamGroupMultiplierHistoryClient) UpdateOneID(id int64) *UpstreamGroupMultiplierHistoryUpdateOne {
+	mutation := newUpstreamGroupMultiplierHistoryMutation(c.config, OpUpdateOne, withUpstreamGroupMultiplierHistoryID(id))
+	return &UpstreamGroupMultiplierHistoryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for UpstreamGroupMultiplierHistory.
+func (c *UpstreamGroupMultiplierHistoryClient) Delete() *UpstreamGroupMultiplierHistoryDelete {
+	mutation := newUpstreamGroupMultiplierHistoryMutation(c.config, OpDelete)
+	return &UpstreamGroupMultiplierHistoryDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *UpstreamGroupMultiplierHistoryClient) DeleteOne(_m *UpstreamGroupMultiplierHistory) *UpstreamGroupMultiplierHistoryDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *UpstreamGroupMultiplierHistoryClient) DeleteOneID(id int64) *UpstreamGroupMultiplierHistoryDeleteOne {
+	builder := c.Delete().Where(upstreamgroupmultiplierhistory.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &UpstreamGroupMultiplierHistoryDeleteOne{builder}
+}
+
+// Query returns a query builder for UpstreamGroupMultiplierHistory.
+func (c *UpstreamGroupMultiplierHistoryClient) Query() *UpstreamGroupMultiplierHistoryQuery {
+	return &UpstreamGroupMultiplierHistoryQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeUpstreamGroupMultiplierHistory},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a UpstreamGroupMultiplierHistory entity by its id.
+func (c *UpstreamGroupMultiplierHistoryClient) Get(ctx context.Context, id int64) (*UpstreamGroupMultiplierHistory, error) {
+	return c.Query().Where(upstreamgroupmultiplierhistory.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *UpstreamGroupMultiplierHistoryClient) GetX(ctx context.Context, id int64) *UpstreamGroupMultiplierHistory {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QuerySite queries the site edge of a UpstreamGroupMultiplierHistory.
+func (c *UpstreamGroupMultiplierHistoryClient) QuerySite(_m *UpstreamGroupMultiplierHistory) *UpstreamSiteQuery {
+	query := (&UpstreamSiteClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(upstreamgroupmultiplierhistory.Table, upstreamgroupmultiplierhistory.FieldID, id),
+			sqlgraph.To(upstreamsite.Table, upstreamsite.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, upstreamgroupmultiplierhistory.SiteTable, upstreamgroupmultiplierhistory.SiteColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *UpstreamGroupMultiplierHistoryClient) Hooks() []Hook {
+	return c.hooks.UpstreamGroupMultiplierHistory
+}
+
+// Interceptors returns the client interceptors.
+func (c *UpstreamGroupMultiplierHistoryClient) Interceptors() []Interceptor {
+	return c.inters.UpstreamGroupMultiplierHistory
+}
+
+func (c *UpstreamGroupMultiplierHistoryClient) mutate(ctx context.Context, m *UpstreamGroupMultiplierHistoryMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&UpstreamGroupMultiplierHistoryCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&UpstreamGroupMultiplierHistoryUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&UpstreamGroupMultiplierHistoryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&UpstreamGroupMultiplierHistoryDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown UpstreamGroupMultiplierHistory mutation op: %q", m.Op())
+	}
+}
+
 // UpstreamSiteClient is a client for the UpstreamSite schema.
 type UpstreamSiteClient struct {
 	config
@@ -5633,6 +5790,22 @@ func (c *UpstreamSiteClient) QueryDailyStats(_m *UpstreamSite) *UpstreamDailySta
 			sqlgraph.From(upstreamsite.Table, upstreamsite.FieldID, id),
 			sqlgraph.To(upstreamdailystat.Table, upstreamdailystat.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, upstreamsite.DailyStatsTable, upstreamsite.DailyStatsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryGroupMultiplierHistory queries the group_multiplier_history edge of a UpstreamSite.
+func (c *UpstreamSiteClient) QueryGroupMultiplierHistory(_m *UpstreamSite) *UpstreamGroupMultiplierHistoryQuery {
+	query := (&UpstreamGroupMultiplierHistoryClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(upstreamsite.Table, upstreamsite.FieldID, id),
+			sqlgraph.To(upstreamgroupmultiplierhistory.Table, upstreamgroupmultiplierhistory.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, upstreamsite.GroupMultiplierHistoryTable, upstreamsite.GroupMultiplierHistoryColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -7162,9 +7335,9 @@ type (
 		IdentityAdoptionDecision, PaymentAuditLog, PaymentOrder,
 		PaymentProviderInstance, PendingAuthSession, PromoCode, PromoCodeUsage, Proxy,
 		RedeemCode, SecuritySecret, Setting, SubscriptionPlan, TLSFingerprintProfile,
-		UpstreamDailyStat, UpstreamGroup, UpstreamSite, UsageCleanupTask, UsageLog,
-		User, UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
-		UserPlatformQuota, UserSubscription []ent.Hook
+		UpstreamDailyStat, UpstreamGroup, UpstreamGroupMultiplierHistory, UpstreamSite,
+		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
+		UserAttributeValue, UserPlatformQuota, UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
@@ -7174,9 +7347,9 @@ type (
 		IdentityAdoptionDecision, PaymentAuditLog, PaymentOrder,
 		PaymentProviderInstance, PendingAuthSession, PromoCode, PromoCodeUsage, Proxy,
 		RedeemCode, SecuritySecret, Setting, SubscriptionPlan, TLSFingerprintProfile,
-		UpstreamDailyStat, UpstreamGroup, UpstreamSite, UsageCleanupTask, UsageLog,
-		User, UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
-		UserPlatformQuota, UserSubscription []ent.Interceptor
+		UpstreamDailyStat, UpstreamGroup, UpstreamGroupMultiplierHistory, UpstreamSite,
+		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
+		UserAttributeValue, UserPlatformQuota, UserSubscription []ent.Interceptor
 	}
 )
 

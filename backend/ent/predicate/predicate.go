@@ -102,6 +102,9 @@ type UpstreamDailyStat func(*sql.Selector)
 // UpstreamGroup is the predicate function for upstreamgroup builders.
 type UpstreamGroup func(*sql.Selector)
 
+// UpstreamGroupMultiplierHistory is the predicate function for upstreamgroupmultiplierhistory builders.
+type UpstreamGroupMultiplierHistory func(*sql.Selector)
+
 // UpstreamSite is the predicate function for upstreamsite builders.
 type UpstreamSite func(*sql.Selector)
 

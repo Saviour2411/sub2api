@@ -69,9 +69,11 @@ type UpstreamSiteEdges struct {
 	Groups []*UpstreamGroup `json:"groups,omitempty"`
 	// DailyStats holds the value of the daily_stats edge.
 	DailyStats []*UpstreamDailyStat `json:"daily_stats,omitempty"`
+	// GroupMultiplierHistory holds the value of the group_multiplier_history edge.
+	GroupMultiplierHistory []*UpstreamGroupMultiplierHistory `json:"group_multiplier_history,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [2]bool
+	loadedTypes [3]bool
 }
 
 // GroupsOrErr returns the Groups value or an error if the edge
@@ -90,6 +92,15 @@ func (e UpstreamSiteEdges) DailyStatsOrErr() ([]*UpstreamDailyStat, error) {
 		return e.DailyStats, nil
 	}
 	return nil, &NotLoadedError{edge: "daily_stats"}
+}
+
+// GroupMultiplierHistoryOrErr returns the GroupMultiplierHistory value or an error if the edge
+// was not loaded in eager-loading.
+func (e UpstreamSiteEdges) GroupMultiplierHistoryOrErr() ([]*UpstreamGroupMultiplierHistory, error) {
+	if e.loadedTypes[2] {
+		return e.GroupMultiplierHistory, nil
+	}
+	return nil, &NotLoadedError{edge: "group_multiplier_history"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -273,6 +284,11 @@ func (_m *UpstreamSite) QueryGroups() *UpstreamGroupQuery {
 // QueryDailyStats queries the "daily_stats" edge of the UpstreamSite entity.
 func (_m *UpstreamSite) QueryDailyStats() *UpstreamDailyStatQuery {
 	return NewUpstreamSiteClient(_m.config).QueryDailyStats(_m)
+}
+
+// QueryGroupMultiplierHistory queries the "group_multiplier_history" edge of the UpstreamSite entity.
+func (_m *UpstreamSite) QueryGroupMultiplierHistory() *UpstreamGroupMultiplierHistoryQuery {
+	return NewUpstreamSiteClient(_m.config).QueryGroupMultiplierHistory(_m)
 }
 
 // Update returns a builder for updating this UpstreamSite.

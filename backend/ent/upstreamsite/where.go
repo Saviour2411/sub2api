@@ -1061,6 +1061,29 @@ func HasDailyStatsWith(preds ...predicate.UpstreamDailyStat) predicate.UpstreamS
 	})
 }
 
+// HasGroupMultiplierHistory applies the HasEdge predicate on the "group_multiplier_history" edge.
+func HasGroupMultiplierHistory() predicate.UpstreamSite {
+	return predicate.UpstreamSite(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, GroupMultiplierHistoryTable, GroupMultiplierHistoryColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasGroupMultiplierHistoryWith applies the HasEdge predicate on the "group_multiplier_history" edge with a given conditions (other predicates).
+func HasGroupMultiplierHistoryWith(preds ...predicate.UpstreamGroupMultiplierHistory) predicate.UpstreamSite {
+	return predicate.UpstreamSite(func(s *sql.Selector) {
+		step := newGroupMultiplierHistoryStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // And groups predicates with the AND operator between them.
 func And(predicates ...predicate.UpstreamSite) predicate.UpstreamSite {
 	return predicate.UpstreamSite(sql.AndPredicates(predicates...))

@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamdailystat"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamgroup"
+	"github.com/Wei-Shaw/sub2api/ent/upstreamgroupmultiplierhistory"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamsite"
 )
 
@@ -384,6 +385,21 @@ func (_u *UpstreamSiteUpdate) AddDailyStats(v ...*UpstreamDailyStat) *UpstreamSi
 	return _u.AddDailyStatIDs(ids...)
 }
 
+// AddGroupMultiplierHistoryIDs adds the "group_multiplier_history" edge to the UpstreamGroupMultiplierHistory entity by IDs.
+func (_u *UpstreamSiteUpdate) AddGroupMultiplierHistoryIDs(ids ...int64) *UpstreamSiteUpdate {
+	_u.mutation.AddGroupMultiplierHistoryIDs(ids...)
+	return _u
+}
+
+// AddGroupMultiplierHistory adds the "group_multiplier_history" edges to the UpstreamGroupMultiplierHistory entity.
+func (_u *UpstreamSiteUpdate) AddGroupMultiplierHistory(v ...*UpstreamGroupMultiplierHistory) *UpstreamSiteUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddGroupMultiplierHistoryIDs(ids...)
+}
+
 // Mutation returns the UpstreamSiteMutation object of the builder.
 func (_u *UpstreamSiteUpdate) Mutation() *UpstreamSiteMutation {
 	return _u.mutation
@@ -429,6 +445,27 @@ func (_u *UpstreamSiteUpdate) RemoveDailyStats(v ...*UpstreamDailyStat) *Upstrea
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveDailyStatIDs(ids...)
+}
+
+// ClearGroupMultiplierHistory clears all "group_multiplier_history" edges to the UpstreamGroupMultiplierHistory entity.
+func (_u *UpstreamSiteUpdate) ClearGroupMultiplierHistory() *UpstreamSiteUpdate {
+	_u.mutation.ClearGroupMultiplierHistory()
+	return _u
+}
+
+// RemoveGroupMultiplierHistoryIDs removes the "group_multiplier_history" edge to UpstreamGroupMultiplierHistory entities by IDs.
+func (_u *UpstreamSiteUpdate) RemoveGroupMultiplierHistoryIDs(ids ...int64) *UpstreamSiteUpdate {
+	_u.mutation.RemoveGroupMultiplierHistoryIDs(ids...)
+	return _u
+}
+
+// RemoveGroupMultiplierHistory removes "group_multiplier_history" edges to UpstreamGroupMultiplierHistory entities.
+func (_u *UpstreamSiteUpdate) RemoveGroupMultiplierHistory(v ...*UpstreamGroupMultiplierHistory) *UpstreamSiteUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveGroupMultiplierHistoryIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -694,6 +731,51 @@ func (_u *UpstreamSiteUpdate) sqlSave(ctx context.Context) (_node int, err error
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(upstreamdailystat.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.GroupMultiplierHistoryCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   upstreamsite.GroupMultiplierHistoryTable,
+			Columns: []string{upstreamsite.GroupMultiplierHistoryColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(upstreamgroupmultiplierhistory.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedGroupMultiplierHistoryIDs(); len(nodes) > 0 && !_u.mutation.GroupMultiplierHistoryCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   upstreamsite.GroupMultiplierHistoryTable,
+			Columns: []string{upstreamsite.GroupMultiplierHistoryColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(upstreamgroupmultiplierhistory.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.GroupMultiplierHistoryIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   upstreamsite.GroupMultiplierHistoryTable,
+			Columns: []string{upstreamsite.GroupMultiplierHistoryColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(upstreamgroupmultiplierhistory.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
@@ -1075,6 +1157,21 @@ func (_u *UpstreamSiteUpdateOne) AddDailyStats(v ...*UpstreamDailyStat) *Upstrea
 	return _u.AddDailyStatIDs(ids...)
 }
 
+// AddGroupMultiplierHistoryIDs adds the "group_multiplier_history" edge to the UpstreamGroupMultiplierHistory entity by IDs.
+func (_u *UpstreamSiteUpdateOne) AddGroupMultiplierHistoryIDs(ids ...int64) *UpstreamSiteUpdateOne {
+	_u.mutation.AddGroupMultiplierHistoryIDs(ids...)
+	return _u
+}
+
+// AddGroupMultiplierHistory adds the "group_multiplier_history" edges to the UpstreamGroupMultiplierHistory entity.
+func (_u *UpstreamSiteUpdateOne) AddGroupMultiplierHistory(v ...*UpstreamGroupMultiplierHistory) *UpstreamSiteUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddGroupMultiplierHistoryIDs(ids...)
+}
+
 // Mutation returns the UpstreamSiteMutation object of the builder.
 func (_u *UpstreamSiteUpdateOne) Mutation() *UpstreamSiteMutation {
 	return _u.mutation
@@ -1120,6 +1217,27 @@ func (_u *UpstreamSiteUpdateOne) RemoveDailyStats(v ...*UpstreamDailyStat) *Upst
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveDailyStatIDs(ids...)
+}
+
+// ClearGroupMultiplierHistory clears all "group_multiplier_history" edges to the UpstreamGroupMultiplierHistory entity.
+func (_u *UpstreamSiteUpdateOne) ClearGroupMultiplierHistory() *UpstreamSiteUpdateOne {
+	_u.mutation.ClearGroupMultiplierHistory()
+	return _u
+}
+
+// RemoveGroupMultiplierHistoryIDs removes the "group_multiplier_history" edge to UpstreamGroupMultiplierHistory entities by IDs.
+func (_u *UpstreamSiteUpdateOne) RemoveGroupMultiplierHistoryIDs(ids ...int64) *UpstreamSiteUpdateOne {
+	_u.mutation.RemoveGroupMultiplierHistoryIDs(ids...)
+	return _u
+}
+
+// RemoveGroupMultiplierHistory removes "group_multiplier_history" edges to UpstreamGroupMultiplierHistory entities.
+func (_u *UpstreamSiteUpdateOne) RemoveGroupMultiplierHistory(v ...*UpstreamGroupMultiplierHistory) *UpstreamSiteUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveGroupMultiplierHistoryIDs(ids...)
 }
 
 // Where appends a list predicates to the UpstreamSiteUpdate builder.
@@ -1415,6 +1533,51 @@ func (_u *UpstreamSiteUpdateOne) sqlSave(ctx context.Context) (_node *UpstreamSi
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(upstreamdailystat.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.GroupMultiplierHistoryCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   upstreamsite.GroupMultiplierHistoryTable,
+			Columns: []string{upstreamsite.GroupMultiplierHistoryColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(upstreamgroupmultiplierhistory.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedGroupMultiplierHistoryIDs(); len(nodes) > 0 && !_u.mutation.GroupMultiplierHistoryCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   upstreamsite.GroupMultiplierHistoryTable,
+			Columns: []string{upstreamsite.GroupMultiplierHistoryColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(upstreamgroupmultiplierhistory.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.GroupMultiplierHistoryIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   upstreamsite.GroupMultiplierHistoryTable,
+			Columns: []string{upstreamsite.GroupMultiplierHistoryColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(upstreamgroupmultiplierhistory.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

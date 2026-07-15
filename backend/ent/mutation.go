@@ -45,6 +45,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamdailystat"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamgroup"
+	"github.com/Wei-Shaw/sub2api/ent/upstreamgroupmultiplierhistory"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamsite"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
@@ -66,47 +67,48 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
-	TypeAPIKey                        = "APIKey"
-	TypeAccount                       = "Account"
-	TypeAccountGroup                  = "AccountGroup"
-	TypeAnnouncement                  = "Announcement"
-	TypeAnnouncementRead              = "AnnouncementRead"
-	TypeAuthIdentity                  = "AuthIdentity"
-	TypeAuthIdentityChannel           = "AuthIdentityChannel"
-	TypeBatchImageEvent               = "BatchImageEvent"
-	TypeBatchImageItem                = "BatchImageItem"
-	TypeBatchImageJob                 = "BatchImageJob"
-	TypeChannelMonitor                = "ChannelMonitor"
-	TypeChannelMonitorDailyRollup     = "ChannelMonitorDailyRollup"
-	TypeChannelMonitorHistory         = "ChannelMonitorHistory"
-	TypeChannelMonitorRequestTemplate = "ChannelMonitorRequestTemplate"
-	TypeErrorPassthroughRule          = "ErrorPassthroughRule"
-	TypeGroup                         = "Group"
-	TypeIdempotencyRecord             = "IdempotencyRecord"
-	TypeIdentityAdoptionDecision      = "IdentityAdoptionDecision"
-	TypePaymentAuditLog               = "PaymentAuditLog"
-	TypePaymentOrder                  = "PaymentOrder"
-	TypePaymentProviderInstance       = "PaymentProviderInstance"
-	TypePendingAuthSession            = "PendingAuthSession"
-	TypePromoCode                     = "PromoCode"
-	TypePromoCodeUsage                = "PromoCodeUsage"
-	TypeProxy                         = "Proxy"
-	TypeRedeemCode                    = "RedeemCode"
-	TypeSecuritySecret                = "SecuritySecret"
-	TypeSetting                       = "Setting"
-	TypeSubscriptionPlan              = "SubscriptionPlan"
-	TypeTLSFingerprintProfile         = "TLSFingerprintProfile"
-	TypeUpstreamDailyStat             = "UpstreamDailyStat"
-	TypeUpstreamGroup                 = "UpstreamGroup"
-	TypeUpstreamSite                  = "UpstreamSite"
-	TypeUsageCleanupTask              = "UsageCleanupTask"
-	TypeUsageLog                      = "UsageLog"
-	TypeUser                          = "User"
-	TypeUserAllowedGroup              = "UserAllowedGroup"
-	TypeUserAttributeDefinition       = "UserAttributeDefinition"
-	TypeUserAttributeValue            = "UserAttributeValue"
-	TypeUserPlatformQuota             = "UserPlatformQuota"
-	TypeUserSubscription              = "UserSubscription"
+	TypeAPIKey                         = "APIKey"
+	TypeAccount                        = "Account"
+	TypeAccountGroup                   = "AccountGroup"
+	TypeAnnouncement                   = "Announcement"
+	TypeAnnouncementRead               = "AnnouncementRead"
+	TypeAuthIdentity                   = "AuthIdentity"
+	TypeAuthIdentityChannel            = "AuthIdentityChannel"
+	TypeBatchImageEvent                = "BatchImageEvent"
+	TypeBatchImageItem                 = "BatchImageItem"
+	TypeBatchImageJob                  = "BatchImageJob"
+	TypeChannelMonitor                 = "ChannelMonitor"
+	TypeChannelMonitorDailyRollup      = "ChannelMonitorDailyRollup"
+	TypeChannelMonitorHistory          = "ChannelMonitorHistory"
+	TypeChannelMonitorRequestTemplate  = "ChannelMonitorRequestTemplate"
+	TypeErrorPassthroughRule           = "ErrorPassthroughRule"
+	TypeGroup                          = "Group"
+	TypeIdempotencyRecord              = "IdempotencyRecord"
+	TypeIdentityAdoptionDecision       = "IdentityAdoptionDecision"
+	TypePaymentAuditLog                = "PaymentAuditLog"
+	TypePaymentOrder                   = "PaymentOrder"
+	TypePaymentProviderInstance        = "PaymentProviderInstance"
+	TypePendingAuthSession             = "PendingAuthSession"
+	TypePromoCode                      = "PromoCode"
+	TypePromoCodeUsage                 = "PromoCodeUsage"
+	TypeProxy                          = "Proxy"
+	TypeRedeemCode                     = "RedeemCode"
+	TypeSecuritySecret                 = "SecuritySecret"
+	TypeSetting                        = "Setting"
+	TypeSubscriptionPlan               = "SubscriptionPlan"
+	TypeTLSFingerprintProfile          = "TLSFingerprintProfile"
+	TypeUpstreamDailyStat              = "UpstreamDailyStat"
+	TypeUpstreamGroup                  = "UpstreamGroup"
+	TypeUpstreamGroupMultiplierHistory = "UpstreamGroupMultiplierHistory"
+	TypeUpstreamSite                   = "UpstreamSite"
+	TypeUsageCleanupTask               = "UsageCleanupTask"
+	TypeUsageLog                       = "UsageLog"
+	TypeUser                           = "User"
+	TypeUserAllowedGroup               = "UserAllowedGroup"
+	TypeUserAttributeDefinition        = "UserAttributeDefinition"
+	TypeUserAttributeValue             = "UserAttributeValue"
+	TypeUserPlatformQuota              = "UserPlatformQuota"
+	TypeUserSubscription               = "UserSubscription"
 )
 
 // APIKeyMutation represents an operation that mutates the APIKey nodes in the graph.
@@ -41182,24 +41184,26 @@ func (m *TLSFingerprintProfileMutation) ResetEdge(name string) error {
 // UpstreamDailyStatMutation represents an operation that mutates the UpstreamDailyStat nodes in the graph.
 type UpstreamDailyStatMutation struct {
 	config
-	op             Op
-	typ            string
-	id             *int64
-	usage_date     *time.Time
-	balance_usd    *float64
-	addbalance_usd *float64
-	tokens         *int64
-	addtokens      *int64
-	cost_usd       *float64
-	addcost_usd    *float64
-	created_at     *time.Time
-	updated_at     *time.Time
-	clearedFields  map[string]struct{}
-	site           *int64
-	clearedsite    bool
-	done           bool
-	oldValue       func(context.Context) (*UpstreamDailyStat, error)
-	predicates     []predicate.UpstreamDailyStat
+	op                    Op
+	typ                   string
+	id                    *int64
+	usage_date            *time.Time
+	balance_usd           *float64
+	addbalance_usd        *float64
+	tokens                *int64
+	addtokens             *int64
+	cost_usd              *float64
+	addcost_usd           *float64
+	cost_basis_version    *int
+	addcost_basis_version *int
+	created_at            *time.Time
+	updated_at            *time.Time
+	clearedFields         map[string]struct{}
+	site                  *int64
+	clearedsite           bool
+	done                  bool
+	oldValue              func(context.Context) (*UpstreamDailyStat, error)
+	predicates            []predicate.UpstreamDailyStat
 }
 
 var _ ent.Mutation = (*UpstreamDailyStatMutation)(nil)
@@ -41554,6 +41558,62 @@ func (m *UpstreamDailyStatMutation) ResetCostUsd() {
 	m.addcost_usd = nil
 }
 
+// SetCostBasisVersion sets the "cost_basis_version" field.
+func (m *UpstreamDailyStatMutation) SetCostBasisVersion(i int) {
+	m.cost_basis_version = &i
+	m.addcost_basis_version = nil
+}
+
+// CostBasisVersion returns the value of the "cost_basis_version" field in the mutation.
+func (m *UpstreamDailyStatMutation) CostBasisVersion() (r int, exists bool) {
+	v := m.cost_basis_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCostBasisVersion returns the old "cost_basis_version" field's value of the UpstreamDailyStat entity.
+// If the UpstreamDailyStat object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamDailyStatMutation) OldCostBasisVersion(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCostBasisVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCostBasisVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCostBasisVersion: %w", err)
+	}
+	return oldValue.CostBasisVersion, nil
+}
+
+// AddCostBasisVersion adds i to the "cost_basis_version" field.
+func (m *UpstreamDailyStatMutation) AddCostBasisVersion(i int) {
+	if m.addcost_basis_version != nil {
+		*m.addcost_basis_version += i
+	} else {
+		m.addcost_basis_version = &i
+	}
+}
+
+// AddedCostBasisVersion returns the value that was added to the "cost_basis_version" field in this mutation.
+func (m *UpstreamDailyStatMutation) AddedCostBasisVersion() (r int, exists bool) {
+	v := m.addcost_basis_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCostBasisVersion resets all changes to the "cost_basis_version" field.
+func (m *UpstreamDailyStatMutation) ResetCostBasisVersion() {
+	m.cost_basis_version = nil
+	m.addcost_basis_version = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *UpstreamDailyStatMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -41687,7 +41747,7 @@ func (m *UpstreamDailyStatMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UpstreamDailyStatMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 8)
 	if m.site != nil {
 		fields = append(fields, upstreamdailystat.FieldSiteID)
 	}
@@ -41702,6 +41762,9 @@ func (m *UpstreamDailyStatMutation) Fields() []string {
 	}
 	if m.cost_usd != nil {
 		fields = append(fields, upstreamdailystat.FieldCostUsd)
+	}
+	if m.cost_basis_version != nil {
+		fields = append(fields, upstreamdailystat.FieldCostBasisVersion)
 	}
 	if m.created_at != nil {
 		fields = append(fields, upstreamdailystat.FieldCreatedAt)
@@ -41727,6 +41790,8 @@ func (m *UpstreamDailyStatMutation) Field(name string) (ent.Value, bool) {
 		return m.Tokens()
 	case upstreamdailystat.FieldCostUsd:
 		return m.CostUsd()
+	case upstreamdailystat.FieldCostBasisVersion:
+		return m.CostBasisVersion()
 	case upstreamdailystat.FieldCreatedAt:
 		return m.CreatedAt()
 	case upstreamdailystat.FieldUpdatedAt:
@@ -41750,6 +41815,8 @@ func (m *UpstreamDailyStatMutation) OldField(ctx context.Context, name string) (
 		return m.OldTokens(ctx)
 	case upstreamdailystat.FieldCostUsd:
 		return m.OldCostUsd(ctx)
+	case upstreamdailystat.FieldCostBasisVersion:
+		return m.OldCostBasisVersion(ctx)
 	case upstreamdailystat.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case upstreamdailystat.FieldUpdatedAt:
@@ -41798,6 +41865,13 @@ func (m *UpstreamDailyStatMutation) SetField(name string, value ent.Value) error
 		}
 		m.SetCostUsd(v)
 		return nil
+	case upstreamdailystat.FieldCostBasisVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCostBasisVersion(v)
+		return nil
 	case upstreamdailystat.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -41829,6 +41903,9 @@ func (m *UpstreamDailyStatMutation) AddedFields() []string {
 	if m.addcost_usd != nil {
 		fields = append(fields, upstreamdailystat.FieldCostUsd)
 	}
+	if m.addcost_basis_version != nil {
+		fields = append(fields, upstreamdailystat.FieldCostBasisVersion)
+	}
 	return fields
 }
 
@@ -41843,6 +41920,8 @@ func (m *UpstreamDailyStatMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedTokens()
 	case upstreamdailystat.FieldCostUsd:
 		return m.AddedCostUsd()
+	case upstreamdailystat.FieldCostBasisVersion:
+		return m.AddedCostBasisVersion()
 	}
 	return nil, false
 }
@@ -41872,6 +41951,13 @@ func (m *UpstreamDailyStatMutation) AddField(name string, value ent.Value) error
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddCostUsd(v)
+		return nil
+	case upstreamdailystat.FieldCostBasisVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCostBasisVersion(v)
 		return nil
 	}
 	return fmt.Errorf("unknown UpstreamDailyStat numeric field %s", name)
@@ -41923,6 +42009,9 @@ func (m *UpstreamDailyStatMutation) ResetField(name string) error {
 		return nil
 	case upstreamdailystat.FieldCostUsd:
 		m.ResetCostUsd()
+		return nil
+	case upstreamdailystat.FieldCostBasisVersion:
+		m.ResetCostBasisVersion()
 		return nil
 	case upstreamdailystat.FieldCreatedAt:
 		m.ResetCreatedAt()
@@ -42019,6 +42108,7 @@ type UpstreamGroupMutation struct {
 	remote_id         *string
 	name              *string
 	platform          *string
+	description       *string
 	multiplier        *float64
 	addmultiplier     *float64
 	today_tokens      *int64
@@ -42348,6 +42438,42 @@ func (m *UpstreamGroupMutation) ResetPlatform() {
 	m.platform = nil
 }
 
+// SetDescription sets the "description" field.
+func (m *UpstreamGroupMutation) SetDescription(s string) {
+	m.description = &s
+}
+
+// Description returns the value of the "description" field in the mutation.
+func (m *UpstreamGroupMutation) Description() (r string, exists bool) {
+	v := m.description
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDescription returns the old "description" field's value of the UpstreamGroup entity.
+// If the UpstreamGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamGroupMutation) OldDescription(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDescription is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDescription requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDescription: %w", err)
+	}
+	return oldValue.Description, nil
+}
+
+// ResetDescription resets all changes to the "description" field.
+func (m *UpstreamGroupMutation) ResetDescription() {
+	m.description = nil
+}
+
 // SetMultiplier sets the "multiplier" field.
 func (m *UpstreamGroupMutation) SetMultiplier(f float64) {
 	m.multiplier = &f
@@ -42627,7 +42753,7 @@ func (m *UpstreamGroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UpstreamGroupMutation) Fields() []string {
-	fields := make([]string, 0, 10)
+	fields := make([]string, 0, 11)
 	if m.created_at != nil {
 		fields = append(fields, upstreamgroup.FieldCreatedAt)
 	}
@@ -42645,6 +42771,9 @@ func (m *UpstreamGroupMutation) Fields() []string {
 	}
 	if m.platform != nil {
 		fields = append(fields, upstreamgroup.FieldPlatform)
+	}
+	if m.description != nil {
+		fields = append(fields, upstreamgroup.FieldDescription)
 	}
 	if m.multiplier != nil {
 		fields = append(fields, upstreamgroup.FieldMultiplier)
@@ -42678,6 +42807,8 @@ func (m *UpstreamGroupMutation) Field(name string) (ent.Value, bool) {
 		return m.Name()
 	case upstreamgroup.FieldPlatform:
 		return m.Platform()
+	case upstreamgroup.FieldDescription:
+		return m.Description()
 	case upstreamgroup.FieldMultiplier:
 		return m.Multiplier()
 	case upstreamgroup.FieldTodayTokens:
@@ -42707,6 +42838,8 @@ func (m *UpstreamGroupMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldName(ctx)
 	case upstreamgroup.FieldPlatform:
 		return m.OldPlatform(ctx)
+	case upstreamgroup.FieldDescription:
+		return m.OldDescription(ctx)
 	case upstreamgroup.FieldMultiplier:
 		return m.OldMultiplier(ctx)
 	case upstreamgroup.FieldTodayTokens:
@@ -42765,6 +42898,13 @@ func (m *UpstreamGroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetPlatform(v)
+		return nil
+	case upstreamgroup.FieldDescription:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDescription(v)
 		return nil
 	case upstreamgroup.FieldMultiplier:
 		v, ok := value.(float64)
@@ -42909,6 +43049,9 @@ func (m *UpstreamGroupMutation) ResetField(name string) error {
 	case upstreamgroup.FieldPlatform:
 		m.ResetPlatform()
 		return nil
+	case upstreamgroup.FieldDescription:
+		m.ResetDescription()
+		return nil
 	case upstreamgroup.FieldMultiplier:
 		m.ResetMultiplier()
 		return nil
@@ -42999,48 +43142,814 @@ func (m *UpstreamGroupMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown UpstreamGroup edge %s", name)
 }
 
+// UpstreamGroupMultiplierHistoryMutation represents an operation that mutates the UpstreamGroupMultiplierHistory nodes in the graph.
+type UpstreamGroupMultiplierHistoryMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *int64
+	remote_id     *string
+	name          *string
+	platform      *string
+	description   *string
+	multiplier    *float64
+	addmultiplier *float64
+	recorded_at   *time.Time
+	clearedFields map[string]struct{}
+	site          *int64
+	clearedsite   bool
+	done          bool
+	oldValue      func(context.Context) (*UpstreamGroupMultiplierHistory, error)
+	predicates    []predicate.UpstreamGroupMultiplierHistory
+}
+
+var _ ent.Mutation = (*UpstreamGroupMultiplierHistoryMutation)(nil)
+
+// upstreamgroupmultiplierhistoryOption allows management of the mutation configuration using functional options.
+type upstreamgroupmultiplierhistoryOption func(*UpstreamGroupMultiplierHistoryMutation)
+
+// newUpstreamGroupMultiplierHistoryMutation creates new mutation for the UpstreamGroupMultiplierHistory entity.
+func newUpstreamGroupMultiplierHistoryMutation(c config, op Op, opts ...upstreamgroupmultiplierhistoryOption) *UpstreamGroupMultiplierHistoryMutation {
+	m := &UpstreamGroupMultiplierHistoryMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeUpstreamGroupMultiplierHistory,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withUpstreamGroupMultiplierHistoryID sets the ID field of the mutation.
+func withUpstreamGroupMultiplierHistoryID(id int64) upstreamgroupmultiplierhistoryOption {
+	return func(m *UpstreamGroupMultiplierHistoryMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *UpstreamGroupMultiplierHistory
+		)
+		m.oldValue = func(ctx context.Context) (*UpstreamGroupMultiplierHistory, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().UpstreamGroupMultiplierHistory.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withUpstreamGroupMultiplierHistory sets the old UpstreamGroupMultiplierHistory of the mutation.
+func withUpstreamGroupMultiplierHistory(node *UpstreamGroupMultiplierHistory) upstreamgroupmultiplierhistoryOption {
+	return func(m *UpstreamGroupMultiplierHistoryMutation) {
+		m.oldValue = func(context.Context) (*UpstreamGroupMultiplierHistory, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m UpstreamGroupMultiplierHistoryMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m UpstreamGroupMultiplierHistoryMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *UpstreamGroupMultiplierHistoryMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *UpstreamGroupMultiplierHistoryMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().UpstreamGroupMultiplierHistory.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetSiteID sets the "site_id" field.
+func (m *UpstreamGroupMultiplierHistoryMutation) SetSiteID(i int64) {
+	m.site = &i
+}
+
+// SiteID returns the value of the "site_id" field in the mutation.
+func (m *UpstreamGroupMultiplierHistoryMutation) SiteID() (r int64, exists bool) {
+	v := m.site
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSiteID returns the old "site_id" field's value of the UpstreamGroupMultiplierHistory entity.
+// If the UpstreamGroupMultiplierHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamGroupMultiplierHistoryMutation) OldSiteID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSiteID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSiteID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSiteID: %w", err)
+	}
+	return oldValue.SiteID, nil
+}
+
+// ResetSiteID resets all changes to the "site_id" field.
+func (m *UpstreamGroupMultiplierHistoryMutation) ResetSiteID() {
+	m.site = nil
+}
+
+// SetRemoteID sets the "remote_id" field.
+func (m *UpstreamGroupMultiplierHistoryMutation) SetRemoteID(s string) {
+	m.remote_id = &s
+}
+
+// RemoteID returns the value of the "remote_id" field in the mutation.
+func (m *UpstreamGroupMultiplierHistoryMutation) RemoteID() (r string, exists bool) {
+	v := m.remote_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRemoteID returns the old "remote_id" field's value of the UpstreamGroupMultiplierHistory entity.
+// If the UpstreamGroupMultiplierHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamGroupMultiplierHistoryMutation) OldRemoteID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRemoteID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRemoteID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRemoteID: %w", err)
+	}
+	return oldValue.RemoteID, nil
+}
+
+// ResetRemoteID resets all changes to the "remote_id" field.
+func (m *UpstreamGroupMultiplierHistoryMutation) ResetRemoteID() {
+	m.remote_id = nil
+}
+
+// SetName sets the "name" field.
+func (m *UpstreamGroupMultiplierHistoryMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *UpstreamGroupMultiplierHistoryMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the UpstreamGroupMultiplierHistory entity.
+// If the UpstreamGroupMultiplierHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamGroupMultiplierHistoryMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *UpstreamGroupMultiplierHistoryMutation) ResetName() {
+	m.name = nil
+}
+
+// SetPlatform sets the "platform" field.
+func (m *UpstreamGroupMultiplierHistoryMutation) SetPlatform(s string) {
+	m.platform = &s
+}
+
+// Platform returns the value of the "platform" field in the mutation.
+func (m *UpstreamGroupMultiplierHistoryMutation) Platform() (r string, exists bool) {
+	v := m.platform
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPlatform returns the old "platform" field's value of the UpstreamGroupMultiplierHistory entity.
+// If the UpstreamGroupMultiplierHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamGroupMultiplierHistoryMutation) OldPlatform(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPlatform is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPlatform requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPlatform: %w", err)
+	}
+	return oldValue.Platform, nil
+}
+
+// ResetPlatform resets all changes to the "platform" field.
+func (m *UpstreamGroupMultiplierHistoryMutation) ResetPlatform() {
+	m.platform = nil
+}
+
+// SetDescription sets the "description" field.
+func (m *UpstreamGroupMultiplierHistoryMutation) SetDescription(s string) {
+	m.description = &s
+}
+
+// Description returns the value of the "description" field in the mutation.
+func (m *UpstreamGroupMultiplierHistoryMutation) Description() (r string, exists bool) {
+	v := m.description
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDescription returns the old "description" field's value of the UpstreamGroupMultiplierHistory entity.
+// If the UpstreamGroupMultiplierHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamGroupMultiplierHistoryMutation) OldDescription(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDescription is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDescription requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDescription: %w", err)
+	}
+	return oldValue.Description, nil
+}
+
+// ResetDescription resets all changes to the "description" field.
+func (m *UpstreamGroupMultiplierHistoryMutation) ResetDescription() {
+	m.description = nil
+}
+
+// SetMultiplier sets the "multiplier" field.
+func (m *UpstreamGroupMultiplierHistoryMutation) SetMultiplier(f float64) {
+	m.multiplier = &f
+	m.addmultiplier = nil
+}
+
+// Multiplier returns the value of the "multiplier" field in the mutation.
+func (m *UpstreamGroupMultiplierHistoryMutation) Multiplier() (r float64, exists bool) {
+	v := m.multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMultiplier returns the old "multiplier" field's value of the UpstreamGroupMultiplierHistory entity.
+// If the UpstreamGroupMultiplierHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamGroupMultiplierHistoryMutation) OldMultiplier(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMultiplier is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMultiplier requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMultiplier: %w", err)
+	}
+	return oldValue.Multiplier, nil
+}
+
+// AddMultiplier adds f to the "multiplier" field.
+func (m *UpstreamGroupMultiplierHistoryMutation) AddMultiplier(f float64) {
+	if m.addmultiplier != nil {
+		*m.addmultiplier += f
+	} else {
+		m.addmultiplier = &f
+	}
+}
+
+// AddedMultiplier returns the value that was added to the "multiplier" field in this mutation.
+func (m *UpstreamGroupMultiplierHistoryMutation) AddedMultiplier() (r float64, exists bool) {
+	v := m.addmultiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearMultiplier clears the value of the "multiplier" field.
+func (m *UpstreamGroupMultiplierHistoryMutation) ClearMultiplier() {
+	m.multiplier = nil
+	m.addmultiplier = nil
+	m.clearedFields[upstreamgroupmultiplierhistory.FieldMultiplier] = struct{}{}
+}
+
+// MultiplierCleared returns if the "multiplier" field was cleared in this mutation.
+func (m *UpstreamGroupMultiplierHistoryMutation) MultiplierCleared() bool {
+	_, ok := m.clearedFields[upstreamgroupmultiplierhistory.FieldMultiplier]
+	return ok
+}
+
+// ResetMultiplier resets all changes to the "multiplier" field.
+func (m *UpstreamGroupMultiplierHistoryMutation) ResetMultiplier() {
+	m.multiplier = nil
+	m.addmultiplier = nil
+	delete(m.clearedFields, upstreamgroupmultiplierhistory.FieldMultiplier)
+}
+
+// SetRecordedAt sets the "recorded_at" field.
+func (m *UpstreamGroupMultiplierHistoryMutation) SetRecordedAt(t time.Time) {
+	m.recorded_at = &t
+}
+
+// RecordedAt returns the value of the "recorded_at" field in the mutation.
+func (m *UpstreamGroupMultiplierHistoryMutation) RecordedAt() (r time.Time, exists bool) {
+	v := m.recorded_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRecordedAt returns the old "recorded_at" field's value of the UpstreamGroupMultiplierHistory entity.
+// If the UpstreamGroupMultiplierHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamGroupMultiplierHistoryMutation) OldRecordedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRecordedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRecordedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRecordedAt: %w", err)
+	}
+	return oldValue.RecordedAt, nil
+}
+
+// ResetRecordedAt resets all changes to the "recorded_at" field.
+func (m *UpstreamGroupMultiplierHistoryMutation) ResetRecordedAt() {
+	m.recorded_at = nil
+}
+
+// ClearSite clears the "site" edge to the UpstreamSite entity.
+func (m *UpstreamGroupMultiplierHistoryMutation) ClearSite() {
+	m.clearedsite = true
+	m.clearedFields[upstreamgroupmultiplierhistory.FieldSiteID] = struct{}{}
+}
+
+// SiteCleared reports if the "site" edge to the UpstreamSite entity was cleared.
+func (m *UpstreamGroupMultiplierHistoryMutation) SiteCleared() bool {
+	return m.clearedsite
+}
+
+// SiteIDs returns the "site" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// SiteID instead. It exists only for internal usage by the builders.
+func (m *UpstreamGroupMultiplierHistoryMutation) SiteIDs() (ids []int64) {
+	if id := m.site; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetSite resets all changes to the "site" edge.
+func (m *UpstreamGroupMultiplierHistoryMutation) ResetSite() {
+	m.site = nil
+	m.clearedsite = false
+}
+
+// Where appends a list predicates to the UpstreamGroupMultiplierHistoryMutation builder.
+func (m *UpstreamGroupMultiplierHistoryMutation) Where(ps ...predicate.UpstreamGroupMultiplierHistory) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the UpstreamGroupMultiplierHistoryMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *UpstreamGroupMultiplierHistoryMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.UpstreamGroupMultiplierHistory, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *UpstreamGroupMultiplierHistoryMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *UpstreamGroupMultiplierHistoryMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (UpstreamGroupMultiplierHistory).
+func (m *UpstreamGroupMultiplierHistoryMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *UpstreamGroupMultiplierHistoryMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.site != nil {
+		fields = append(fields, upstreamgroupmultiplierhistory.FieldSiteID)
+	}
+	if m.remote_id != nil {
+		fields = append(fields, upstreamgroupmultiplierhistory.FieldRemoteID)
+	}
+	if m.name != nil {
+		fields = append(fields, upstreamgroupmultiplierhistory.FieldName)
+	}
+	if m.platform != nil {
+		fields = append(fields, upstreamgroupmultiplierhistory.FieldPlatform)
+	}
+	if m.description != nil {
+		fields = append(fields, upstreamgroupmultiplierhistory.FieldDescription)
+	}
+	if m.multiplier != nil {
+		fields = append(fields, upstreamgroupmultiplierhistory.FieldMultiplier)
+	}
+	if m.recorded_at != nil {
+		fields = append(fields, upstreamgroupmultiplierhistory.FieldRecordedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *UpstreamGroupMultiplierHistoryMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case upstreamgroupmultiplierhistory.FieldSiteID:
+		return m.SiteID()
+	case upstreamgroupmultiplierhistory.FieldRemoteID:
+		return m.RemoteID()
+	case upstreamgroupmultiplierhistory.FieldName:
+		return m.Name()
+	case upstreamgroupmultiplierhistory.FieldPlatform:
+		return m.Platform()
+	case upstreamgroupmultiplierhistory.FieldDescription:
+		return m.Description()
+	case upstreamgroupmultiplierhistory.FieldMultiplier:
+		return m.Multiplier()
+	case upstreamgroupmultiplierhistory.FieldRecordedAt:
+		return m.RecordedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *UpstreamGroupMultiplierHistoryMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case upstreamgroupmultiplierhistory.FieldSiteID:
+		return m.OldSiteID(ctx)
+	case upstreamgroupmultiplierhistory.FieldRemoteID:
+		return m.OldRemoteID(ctx)
+	case upstreamgroupmultiplierhistory.FieldName:
+		return m.OldName(ctx)
+	case upstreamgroupmultiplierhistory.FieldPlatform:
+		return m.OldPlatform(ctx)
+	case upstreamgroupmultiplierhistory.FieldDescription:
+		return m.OldDescription(ctx)
+	case upstreamgroupmultiplierhistory.FieldMultiplier:
+		return m.OldMultiplier(ctx)
+	case upstreamgroupmultiplierhistory.FieldRecordedAt:
+		return m.OldRecordedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown UpstreamGroupMultiplierHistory field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *UpstreamGroupMultiplierHistoryMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case upstreamgroupmultiplierhistory.FieldSiteID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSiteID(v)
+		return nil
+	case upstreamgroupmultiplierhistory.FieldRemoteID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRemoteID(v)
+		return nil
+	case upstreamgroupmultiplierhistory.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case upstreamgroupmultiplierhistory.FieldPlatform:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPlatform(v)
+		return nil
+	case upstreamgroupmultiplierhistory.FieldDescription:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDescription(v)
+		return nil
+	case upstreamgroupmultiplierhistory.FieldMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMultiplier(v)
+		return nil
+	case upstreamgroupmultiplierhistory.FieldRecordedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRecordedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown UpstreamGroupMultiplierHistory field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *UpstreamGroupMultiplierHistoryMutation) AddedFields() []string {
+	var fields []string
+	if m.addmultiplier != nil {
+		fields = append(fields, upstreamgroupmultiplierhistory.FieldMultiplier)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *UpstreamGroupMultiplierHistoryMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case upstreamgroupmultiplierhistory.FieldMultiplier:
+		return m.AddedMultiplier()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *UpstreamGroupMultiplierHistoryMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case upstreamgroupmultiplierhistory.FieldMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddMultiplier(v)
+		return nil
+	}
+	return fmt.Errorf("unknown UpstreamGroupMultiplierHistory numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *UpstreamGroupMultiplierHistoryMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(upstreamgroupmultiplierhistory.FieldMultiplier) {
+		fields = append(fields, upstreamgroupmultiplierhistory.FieldMultiplier)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *UpstreamGroupMultiplierHistoryMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *UpstreamGroupMultiplierHistoryMutation) ClearField(name string) error {
+	switch name {
+	case upstreamgroupmultiplierhistory.FieldMultiplier:
+		m.ClearMultiplier()
+		return nil
+	}
+	return fmt.Errorf("unknown UpstreamGroupMultiplierHistory nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *UpstreamGroupMultiplierHistoryMutation) ResetField(name string) error {
+	switch name {
+	case upstreamgroupmultiplierhistory.FieldSiteID:
+		m.ResetSiteID()
+		return nil
+	case upstreamgroupmultiplierhistory.FieldRemoteID:
+		m.ResetRemoteID()
+		return nil
+	case upstreamgroupmultiplierhistory.FieldName:
+		m.ResetName()
+		return nil
+	case upstreamgroupmultiplierhistory.FieldPlatform:
+		m.ResetPlatform()
+		return nil
+	case upstreamgroupmultiplierhistory.FieldDescription:
+		m.ResetDescription()
+		return nil
+	case upstreamgroupmultiplierhistory.FieldMultiplier:
+		m.ResetMultiplier()
+		return nil
+	case upstreamgroupmultiplierhistory.FieldRecordedAt:
+		m.ResetRecordedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown UpstreamGroupMultiplierHistory field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *UpstreamGroupMultiplierHistoryMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.site != nil {
+		edges = append(edges, upstreamgroupmultiplierhistory.EdgeSite)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *UpstreamGroupMultiplierHistoryMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case upstreamgroupmultiplierhistory.EdgeSite:
+		if id := m.site; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *UpstreamGroupMultiplierHistoryMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *UpstreamGroupMultiplierHistoryMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *UpstreamGroupMultiplierHistoryMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedsite {
+		edges = append(edges, upstreamgroupmultiplierhistory.EdgeSite)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *UpstreamGroupMultiplierHistoryMutation) EdgeCleared(name string) bool {
+	switch name {
+	case upstreamgroupmultiplierhistory.EdgeSite:
+		return m.clearedsite
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *UpstreamGroupMultiplierHistoryMutation) ClearEdge(name string) error {
+	switch name {
+	case upstreamgroupmultiplierhistory.EdgeSite:
+		m.ClearSite()
+		return nil
+	}
+	return fmt.Errorf("unknown UpstreamGroupMultiplierHistory unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *UpstreamGroupMultiplierHistoryMutation) ResetEdge(name string) error {
+	switch name {
+	case upstreamgroupmultiplierhistory.EdgeSite:
+		m.ResetSite()
+		return nil
+	}
+	return fmt.Errorf("unknown UpstreamGroupMultiplierHistory edge %s", name)
+}
+
 // UpstreamSiteMutation represents an operation that mutates the UpstreamSite nodes in the graph.
 type UpstreamSiteMutation struct {
 	config
-	op                   Op
-	typ                  string
-	id                   *int64
-	created_at           *time.Time
-	updated_at           *time.Time
-	name                 *string
-	base_url             *string
-	platform             *upstreamsite.Platform
-	auth_mode            *upstreamsite.AuthMode
-	account              *string
-	credential_encrypted *string
-	enabled              *bool
-	status               *upstreamsite.Status
-	error_message        *string
-	balance_usd          *float64
-	addbalance_usd       *float64
-	today_tokens         *int64
-	addtoday_tokens      *int64
-	today_cost_usd       *float64
-	addtoday_cost_usd    *float64
-	total_tokens         *int64
-	addtotal_tokens      *int64
-	total_cost_usd       *float64
-	addtotal_cost_usd    *float64
-	tracking_started_at  *time.Time
-	last_synced_at       *time.Time
-	next_sync_at         *time.Time
-	created_by           *int64
-	addcreated_by        *int64
-	clearedFields        map[string]struct{}
-	groups               map[int64]struct{}
-	removedgroups        map[int64]struct{}
-	clearedgroups        bool
-	daily_stats          map[int64]struct{}
-	removeddaily_stats   map[int64]struct{}
-	cleareddaily_stats   bool
-	done                 bool
-	oldValue             func(context.Context) (*UpstreamSite, error)
-	predicates           []predicate.UpstreamSite
+	op                              Op
+	typ                             string
+	id                              *int64
+	created_at                      *time.Time
+	updated_at                      *time.Time
+	name                            *string
+	base_url                        *string
+	platform                        *upstreamsite.Platform
+	auth_mode                       *upstreamsite.AuthMode
+	account                         *string
+	credential_encrypted            *string
+	enabled                         *bool
+	status                          *upstreamsite.Status
+	error_message                   *string
+	balance_usd                     *float64
+	addbalance_usd                  *float64
+	today_tokens                    *int64
+	addtoday_tokens                 *int64
+	today_cost_usd                  *float64
+	addtoday_cost_usd               *float64
+	total_tokens                    *int64
+	addtotal_tokens                 *int64
+	total_cost_usd                  *float64
+	addtotal_cost_usd               *float64
+	tracking_started_at             *time.Time
+	last_synced_at                  *time.Time
+	next_sync_at                    *time.Time
+	created_by                      *int64
+	addcreated_by                   *int64
+	clearedFields                   map[string]struct{}
+	groups                          map[int64]struct{}
+	removedgroups                   map[int64]struct{}
+	clearedgroups                   bool
+	daily_stats                     map[int64]struct{}
+	removeddaily_stats              map[int64]struct{}
+	cleareddaily_stats              bool
+	group_multiplier_history        map[int64]struct{}
+	removedgroup_multiplier_history map[int64]struct{}
+	clearedgroup_multiplier_history bool
+	done                            bool
+	oldValue                        func(context.Context) (*UpstreamSite, error)
+	predicates                      []predicate.UpstreamSite
 }
 
 var _ ent.Mutation = (*UpstreamSiteMutation)(nil)
@@ -44142,6 +45051,60 @@ func (m *UpstreamSiteMutation) ResetDailyStats() {
 	m.removeddaily_stats = nil
 }
 
+// AddGroupMultiplierHistoryIDs adds the "group_multiplier_history" edge to the UpstreamGroupMultiplierHistory entity by ids.
+func (m *UpstreamSiteMutation) AddGroupMultiplierHistoryIDs(ids ...int64) {
+	if m.group_multiplier_history == nil {
+		m.group_multiplier_history = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.group_multiplier_history[ids[i]] = struct{}{}
+	}
+}
+
+// ClearGroupMultiplierHistory clears the "group_multiplier_history" edge to the UpstreamGroupMultiplierHistory entity.
+func (m *UpstreamSiteMutation) ClearGroupMultiplierHistory() {
+	m.clearedgroup_multiplier_history = true
+}
+
+// GroupMultiplierHistoryCleared reports if the "group_multiplier_history" edge to the UpstreamGroupMultiplierHistory entity was cleared.
+func (m *UpstreamSiteMutation) GroupMultiplierHistoryCleared() bool {
+	return m.clearedgroup_multiplier_history
+}
+
+// RemoveGroupMultiplierHistoryIDs removes the "group_multiplier_history" edge to the UpstreamGroupMultiplierHistory entity by IDs.
+func (m *UpstreamSiteMutation) RemoveGroupMultiplierHistoryIDs(ids ...int64) {
+	if m.removedgroup_multiplier_history == nil {
+		m.removedgroup_multiplier_history = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.group_multiplier_history, ids[i])
+		m.removedgroup_multiplier_history[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedGroupMultiplierHistory returns the removed IDs of the "group_multiplier_history" edge to the UpstreamGroupMultiplierHistory entity.
+func (m *UpstreamSiteMutation) RemovedGroupMultiplierHistoryIDs() (ids []int64) {
+	for id := range m.removedgroup_multiplier_history {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// GroupMultiplierHistoryIDs returns the "group_multiplier_history" edge IDs in the mutation.
+func (m *UpstreamSiteMutation) GroupMultiplierHistoryIDs() (ids []int64) {
+	for id := range m.group_multiplier_history {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetGroupMultiplierHistory resets all changes to the "group_multiplier_history" edge.
+func (m *UpstreamSiteMutation) ResetGroupMultiplierHistory() {
+	m.group_multiplier_history = nil
+	m.clearedgroup_multiplier_history = false
+	m.removedgroup_multiplier_history = nil
+}
+
 // Where appends a list predicates to the UpstreamSiteMutation builder.
 func (m *UpstreamSiteMutation) Where(ps ...predicate.UpstreamSite) {
 	m.predicates = append(m.predicates, ps...)
@@ -44700,12 +45663,15 @@ func (m *UpstreamSiteMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *UpstreamSiteMutation) AddedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 3)
 	if m.groups != nil {
 		edges = append(edges, upstreamsite.EdgeGroups)
 	}
 	if m.daily_stats != nil {
 		edges = append(edges, upstreamsite.EdgeDailyStats)
+	}
+	if m.group_multiplier_history != nil {
+		edges = append(edges, upstreamsite.EdgeGroupMultiplierHistory)
 	}
 	return edges
 }
@@ -44726,18 +45692,27 @@ func (m *UpstreamSiteMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case upstreamsite.EdgeGroupMultiplierHistory:
+		ids := make([]ent.Value, 0, len(m.group_multiplier_history))
+		for id := range m.group_multiplier_history {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *UpstreamSiteMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 3)
 	if m.removedgroups != nil {
 		edges = append(edges, upstreamsite.EdgeGroups)
 	}
 	if m.removeddaily_stats != nil {
 		edges = append(edges, upstreamsite.EdgeDailyStats)
+	}
+	if m.removedgroup_multiplier_history != nil {
+		edges = append(edges, upstreamsite.EdgeGroupMultiplierHistory)
 	}
 	return edges
 }
@@ -44758,18 +45733,27 @@ func (m *UpstreamSiteMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case upstreamsite.EdgeGroupMultiplierHistory:
+		ids := make([]ent.Value, 0, len(m.removedgroup_multiplier_history))
+		for id := range m.removedgroup_multiplier_history {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *UpstreamSiteMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 3)
 	if m.clearedgroups {
 		edges = append(edges, upstreamsite.EdgeGroups)
 	}
 	if m.cleareddaily_stats {
 		edges = append(edges, upstreamsite.EdgeDailyStats)
+	}
+	if m.clearedgroup_multiplier_history {
+		edges = append(edges, upstreamsite.EdgeGroupMultiplierHistory)
 	}
 	return edges
 }
@@ -44782,6 +45766,8 @@ func (m *UpstreamSiteMutation) EdgeCleared(name string) bool {
 		return m.clearedgroups
 	case upstreamsite.EdgeDailyStats:
 		return m.cleareddaily_stats
+	case upstreamsite.EdgeGroupMultiplierHistory:
+		return m.clearedgroup_multiplier_history
 	}
 	return false
 }
@@ -44803,6 +45789,9 @@ func (m *UpstreamSiteMutation) ResetEdge(name string) error {
 		return nil
 	case upstreamsite.EdgeDailyStats:
 		m.ResetDailyStats()
+		return nil
+	case upstreamsite.EdgeGroupMultiplierHistory:
+		m.ResetGroupMultiplierHistory()
 		return nil
 	}
 	return fmt.Errorf("unknown UpstreamSite edge %s", name)

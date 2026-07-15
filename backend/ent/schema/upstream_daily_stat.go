@@ -28,6 +28,7 @@ func (UpstreamDailyStat) Fields() []ent.Field {
 		field.Float("balance_usd").Optional().Nillable(),
 		field.Int64("tokens").Default(0),
 		field.Float("cost_usd").Default(0),
+		field.Int("cost_basis_version").Default(1),
 		field.Time("created_at").Default(time.Now),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
 	}

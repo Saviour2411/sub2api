@@ -1,4 +1,5 @@
 import { mount } from '@vue/test-utils'
+import { h } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import DataTable from '../DataTable.vue'
@@ -14,6 +15,22 @@ const stubDesktopMatchMedia = () => {
     writable: true,
     value: vi.fn().mockImplementation((query: string) => ({
       matches: true,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn()
+    }))
+  })
+}
+
+const stubMobileMatchMedia = () => {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: false,
       media: query,
       onchange: null,
       addEventListener: vi.fn(),
@@ -120,5 +137,81 @@ describe('DataTable', () => {
     // getItemKey must resolve to the row's stable key (id), not the positional index.
     expect(instance.options.getItemKey(0)).toBe(100)
     expect(instance.options.getItemKey(5)).toBe(105)
+  })
+
+  it('renders an expanded desktop detail row across all columns', async () => {
+    const wrapper = mount(DataTable, {
+      props: {
+        columns: [
+          { key: 'name', label: 'Name' },
+          { key: 'status', label: 'Status' }
+        ],
+        data: [
+          { id: 'alpha', name: 'Alpha', status: 'Ready' },
+          { id: 'beta', name: 'Beta', status: 'Ready' }
+        ],
+        rowKey: 'id',
+        expandedRowKeys: ['beta']
+      },
+      slots: {
+        'row-details': ({ row }: { row: { name: string } }) =>
+          h('div', { class: 'detail-content' }, `${row.name} details`)
+      }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    const details = wrapper.findAll('tbody tr.data-table-row-details')
+    expect(details).toHaveLength(1)
+    expect(details[0].text()).toBe('Beta details')
+    expect(details[0].find('td').attributes('colspan')).toBe('2')
+  })
+
+  it('renders row details at the bottom of the matching mobile card', async () => {
+    stubMobileMatchMedia()
+    const wrapper = mount(DataTable, {
+      props: {
+        columns: [{ key: 'name', label: 'Name' }],
+        data: [
+          { id: 1, name: 'Alpha' },
+          { id: 2, name: 'Beta' }
+        ],
+        expandedRowKeys: [2]
+      },
+      slots: {
+        'row-details': ({ row }: { row: { name: string } }) =>
+          h('div', { class: 'detail-content' }, `${row.name} details`)
+      }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('table').exists()).toBe(false)
+    const details = wrapper.findAll('.data-table-row-details')
+    expect(details).toHaveLength(1)
+    expect(details[0].text()).toBe('Beta details')
+    expect(details[0].element.parentElement?.textContent).toContain('Beta')
+    expect(details[0].element.parentElement?.textContent).not.toContain('Alpha')
+  })
+
+  it('disables virtual row rendering whenever the row-details slot is used', async () => {
+    const data = Array.from({ length: 12 }, (_, i) => ({ id: i + 1, name: `Row ${i + 1}` }))
+    const wrapper = mount(DataTable, {
+      props: {
+        columns: [{ key: 'name', label: 'Name' }],
+        data,
+        virtualizeThreshold: 3,
+        expandedRowKeys: []
+      },
+      slots: {
+        'row-details': ({ row }: { row: { name: string } }) => h('div', row.name)
+      }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    expect((wrapper.vm as any).shouldVirtualize).toBe(false)
+    expect(wrapper.find('.table-wrapper').attributes('data-virtualized')).toBe('false')
+    expect(wrapper.findAll('tbody tr[data-index]')).toHaveLength(data.length)
   })
 })

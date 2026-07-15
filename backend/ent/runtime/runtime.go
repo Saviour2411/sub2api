@@ -38,6 +38,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamdailystat"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamgroup"
+	"github.com/Wei-Shaw/sub2api/ent/upstreamgroupmultiplierhistory"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamsite"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
@@ -1830,12 +1831,16 @@ func init() {
 	upstreamdailystatDescCostUsd := upstreamdailystatFields[4].Descriptor()
 	// upstreamdailystat.DefaultCostUsd holds the default value on creation for the cost_usd field.
 	upstreamdailystat.DefaultCostUsd = upstreamdailystatDescCostUsd.Default.(float64)
+	// upstreamdailystatDescCostBasisVersion is the schema descriptor for cost_basis_version field.
+	upstreamdailystatDescCostBasisVersion := upstreamdailystatFields[5].Descriptor()
+	// upstreamdailystat.DefaultCostBasisVersion holds the default value on creation for the cost_basis_version field.
+	upstreamdailystat.DefaultCostBasisVersion = upstreamdailystatDescCostBasisVersion.Default.(int)
 	// upstreamdailystatDescCreatedAt is the schema descriptor for created_at field.
-	upstreamdailystatDescCreatedAt := upstreamdailystatFields[5].Descriptor()
+	upstreamdailystatDescCreatedAt := upstreamdailystatFields[6].Descriptor()
 	// upstreamdailystat.DefaultCreatedAt holds the default value on creation for the created_at field.
 	upstreamdailystat.DefaultCreatedAt = upstreamdailystatDescCreatedAt.Default.(func() time.Time)
 	// upstreamdailystatDescUpdatedAt is the schema descriptor for updated_at field.
-	upstreamdailystatDescUpdatedAt := upstreamdailystatFields[6].Descriptor()
+	upstreamdailystatDescUpdatedAt := upstreamdailystatFields[7].Descriptor()
 	// upstreamdailystat.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	upstreamdailystat.DefaultUpdatedAt = upstreamdailystatDescUpdatedAt.Default.(func() time.Time)
 	// upstreamdailystat.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -1897,18 +1902,74 @@ func init() {
 	upstreamgroup.DefaultPlatform = upstreamgroupDescPlatform.Default.(string)
 	// upstreamgroup.PlatformValidator is a validator for the "platform" field. It is called by the builders before save.
 	upstreamgroup.PlatformValidator = upstreamgroupDescPlatform.Validators[0].(func(string) error)
+	// upstreamgroupDescDescription is the schema descriptor for description field.
+	upstreamgroupDescDescription := upstreamgroupFields[4].Descriptor()
+	// upstreamgroup.DefaultDescription holds the default value on creation for the description field.
+	upstreamgroup.DefaultDescription = upstreamgroupDescDescription.Default.(string)
 	// upstreamgroupDescTodayTokens is the schema descriptor for today_tokens field.
-	upstreamgroupDescTodayTokens := upstreamgroupFields[5].Descriptor()
+	upstreamgroupDescTodayTokens := upstreamgroupFields[6].Descriptor()
 	// upstreamgroup.DefaultTodayTokens holds the default value on creation for the today_tokens field.
 	upstreamgroup.DefaultTodayTokens = upstreamgroupDescTodayTokens.Default.(int64)
 	// upstreamgroupDescTodayCostUsd is the schema descriptor for today_cost_usd field.
-	upstreamgroupDescTodayCostUsd := upstreamgroupFields[6].Descriptor()
+	upstreamgroupDescTodayCostUsd := upstreamgroupFields[7].Descriptor()
 	// upstreamgroup.DefaultTodayCostUsd holds the default value on creation for the today_cost_usd field.
 	upstreamgroup.DefaultTodayCostUsd = upstreamgroupDescTodayCostUsd.Default.(float64)
 	// upstreamgroupDescLastSyncedAt is the schema descriptor for last_synced_at field.
-	upstreamgroupDescLastSyncedAt := upstreamgroupFields[7].Descriptor()
+	upstreamgroupDescLastSyncedAt := upstreamgroupFields[8].Descriptor()
 	// upstreamgroup.DefaultLastSyncedAt holds the default value on creation for the last_synced_at field.
 	upstreamgroup.DefaultLastSyncedAt = upstreamgroupDescLastSyncedAt.Default.(func() time.Time)
+	upstreamgroupmultiplierhistoryFields := schema.UpstreamGroupMultiplierHistory{}.Fields()
+	_ = upstreamgroupmultiplierhistoryFields
+	// upstreamgroupmultiplierhistoryDescRemoteID is the schema descriptor for remote_id field.
+	upstreamgroupmultiplierhistoryDescRemoteID := upstreamgroupmultiplierhistoryFields[1].Descriptor()
+	// upstreamgroupmultiplierhistory.RemoteIDValidator is a validator for the "remote_id" field. It is called by the builders before save.
+	upstreamgroupmultiplierhistory.RemoteIDValidator = func() func(string) error {
+		validators := upstreamgroupmultiplierhistoryDescRemoteID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(remote_id string) error {
+			for _, fn := range fns {
+				if err := fn(remote_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// upstreamgroupmultiplierhistoryDescName is the schema descriptor for name field.
+	upstreamgroupmultiplierhistoryDescName := upstreamgroupmultiplierhistoryFields[2].Descriptor()
+	// upstreamgroupmultiplierhistory.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	upstreamgroupmultiplierhistory.NameValidator = func() func(string) error {
+		validators := upstreamgroupmultiplierhistoryDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// upstreamgroupmultiplierhistoryDescPlatform is the schema descriptor for platform field.
+	upstreamgroupmultiplierhistoryDescPlatform := upstreamgroupmultiplierhistoryFields[3].Descriptor()
+	// upstreamgroupmultiplierhistory.DefaultPlatform holds the default value on creation for the platform field.
+	upstreamgroupmultiplierhistory.DefaultPlatform = upstreamgroupmultiplierhistoryDescPlatform.Default.(string)
+	// upstreamgroupmultiplierhistory.PlatformValidator is a validator for the "platform" field. It is called by the builders before save.
+	upstreamgroupmultiplierhistory.PlatformValidator = upstreamgroupmultiplierhistoryDescPlatform.Validators[0].(func(string) error)
+	// upstreamgroupmultiplierhistoryDescDescription is the schema descriptor for description field.
+	upstreamgroupmultiplierhistoryDescDescription := upstreamgroupmultiplierhistoryFields[4].Descriptor()
+	// upstreamgroupmultiplierhistory.DefaultDescription holds the default value on creation for the description field.
+	upstreamgroupmultiplierhistory.DefaultDescription = upstreamgroupmultiplierhistoryDescDescription.Default.(string)
+	// upstreamgroupmultiplierhistoryDescRecordedAt is the schema descriptor for recorded_at field.
+	upstreamgroupmultiplierhistoryDescRecordedAt := upstreamgroupmultiplierhistoryFields[6].Descriptor()
+	// upstreamgroupmultiplierhistory.DefaultRecordedAt holds the default value on creation for the recorded_at field.
+	upstreamgroupmultiplierhistory.DefaultRecordedAt = upstreamgroupmultiplierhistoryDescRecordedAt.Default.(func() time.Time)
 	upstreamsiteMixin := schema.UpstreamSite{}.Mixin()
 	upstreamsiteMixinFields0 := upstreamsiteMixin[0].Fields()
 	_ = upstreamsiteMixinFields0

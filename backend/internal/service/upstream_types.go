@@ -18,6 +18,9 @@ const (
 	UpstreamStatusSyncing = "syncing"
 	UpstreamStatusHealthy = "healthy"
 	UpstreamStatusError   = "error"
+
+	// UpstreamCostBasisActual 表示 cost_usd 来自上游实际扣费，而非标准成本。
+	UpstreamCostBasisActual = 2
 )
 
 var (
@@ -133,6 +136,7 @@ type UpstreamGroup struct {
 	RemoteID     string    `json:"remote_id"`
 	Name         string    `json:"name"`
 	Platform     string    `json:"platform"`
+	Description  string    `json:"description"`
 	Multiplier   *float64  `json:"multiplier"`
 	TodayTokens  int64     `json:"today_tokens"`
 	TodayCostUSD float64   `json:"today_cost_usd"`
@@ -140,14 +144,15 @@ type UpstreamGroup struct {
 }
 
 type UpstreamDailyStat struct {
-	ID         int64     `json:"id"`
-	SiteID     int64     `json:"site_id"`
-	Date       time.Time `json:"date"`
-	BalanceUSD *float64  `json:"balance_usd"`
-	Tokens     int64     `json:"tokens"`
-	CostUSD    float64   `json:"cost_usd"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID               int64     `json:"id"`
+	SiteID           int64     `json:"site_id"`
+	Date             time.Time `json:"date"`
+	BalanceUSD       *float64  `json:"balance_usd"`
+	Tokens           int64     `json:"tokens"`
+	CostUSD          float64   `json:"cost_usd"`
+	CostBasisVersion int       `json:"cost_basis_version"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 type UpstreamSyncRequest struct {
@@ -161,6 +166,7 @@ type UpstreamGroupSnapshot struct {
 	RemoteID     string
 	Name         string
 	Platform     string
+	Description  string
 	Multiplier   *float64
 	TodayTokens  int64
 	TodayCostUSD float64
@@ -171,6 +177,20 @@ type UpstreamDailySnapshot struct {
 	BalanceUSD *float64
 	Tokens     int64
 	CostUSD    float64
+}
+
+type UpstreamGroupMultiplierPoint struct {
+	RecordedAt time.Time `json:"recorded_at"`
+	Multiplier *float64  `json:"multiplier"`
+}
+
+type UpstreamGroupMultiplierHistory struct {
+	RemoteID          string                         `json:"remote_id"`
+	Name              string                         `json:"name"`
+	Platform          string                         `json:"platform"`
+	Description       string                         `json:"description"`
+	CurrentMultiplier *float64                       `json:"current_multiplier"`
+	Points            []UpstreamGroupMultiplierPoint `json:"points"`
 }
 
 // UpstreamSyncResult 必须在适配器完成全部分页后一次性返回。
@@ -199,10 +219,12 @@ type UpstreamRepository interface {
 	MarkPending(ctx context.Context, id int64, nextSyncAt *time.Time) error
 	MarkSyncing(ctx context.Context, id int64) error
 	MarkSyncFailed(ctx context.Context, id int64, message string, nextSyncAt *time.Time) error
+	UpdateCredential(ctx context.Context, id int64, encryptedCredential string) error
 	MissingDates(ctx context.Context, id int64, from, through time.Time, loc *time.Location) ([]time.Time, error)
 	CommitSync(ctx context.Context, id int64, result *UpstreamSyncResult, encryptedCredential string, syncedAt time.Time, nextSyncAt *time.Time) error
 	ListGroups(ctx context.Context, siteID int64) ([]UpstreamGroup, error)
 	ListHistory(ctx context.Context, siteID int64, from, through time.Time) ([]UpstreamDailyStat, error)
+	ListMultiplierHistory(ctx context.Context, siteID int64, from, through time.Time) ([]UpstreamGroupMultiplierHistory, error)
 }
 
 type UpstreamSyncScheduler interface {

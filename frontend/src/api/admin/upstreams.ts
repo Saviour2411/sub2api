@@ -33,10 +33,25 @@ export interface UpstreamGroup {
   remote_id: string
   name: string
   platform: string
+  description: string
   multiplier: number | null
   today_tokens: number
   today_cost_usd: number
   last_synced_at: string
+}
+
+export interface UpstreamGroupMultiplierPoint {
+  recorded_at: string
+  multiplier: number | null
+}
+
+export interface UpstreamGroupMultiplierHistory {
+  remote_id: string
+  name: string
+  platform: string
+  description: string
+  current_multiplier: number | null
+  points: UpstreamGroupMultiplierPoint[]
 }
 
 export interface UpstreamDailyStat {
@@ -116,20 +131,34 @@ export async function groups(id: number): Promise<UpstreamGroup[]> {
   return data
 }
 
-export async function history(id: number, days: 7 | 30 | 90): Promise<UpstreamDailyStat[]> {
-  const end = new Date()
-  const start = new Date(end)
-  start.setDate(start.getDate() - days + 1)
-  const dateOnly = (value: Date) => {
-    const year = value.getFullYear()
-    const month = String(value.getMonth() + 1).padStart(2, '0')
-    const day = String(value.getDate()).padStart(2, '0')
-    return `${year}-${month}-${day}`
+function dateRange(days: 7 | 30 | 90) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date())
+  const part = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((item) => item.type === type)?.value)
+  const end = Date.UTC(part('year'), part('month') - 1, part('day'))
+  return {
+    from: new Date(end - (days - 1) * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+    to: new Date(end).toISOString().slice(0, 10)
   }
+}
+
+export async function history(id: number, days: 7 | 30 | 90): Promise<UpstreamDailyStat[]> {
   const { data } = await apiClient.get<UpstreamDailyStat[]>(`/admin/custom-features/upstreams/${id}/history`, {
-    params: { from: dateOnly(start), to: dateOnly(end) }
+    params: dateRange(days)
   })
   return data
 }
 
-export default { list, create, update, setEnabled, remove, sync, syncAll, groups, history }
+export async function multiplierHistory(id: number, days: 7 | 30 | 90): Promise<UpstreamGroupMultiplierHistory[]> {
+  const { data } = await apiClient.get<UpstreamGroupMultiplierHistory[]>(
+    `/admin/custom-features/upstreams/${id}/multiplier-history`,
+    { params: dateRange(days) }
+  )
+  return data
+}
+
+export default { list, create, update, setEnabled, remove, sync, syncAll, groups, history, multiplierHistory }

@@ -91,6 +91,20 @@ func (_u *UpstreamGroupUpdate) SetNillablePlatform(v *string) *UpstreamGroupUpda
 	return _u
 }
 
+// SetDescription sets the "description" field.
+func (_u *UpstreamGroupUpdate) SetDescription(v string) *UpstreamGroupUpdate {
+	_u.mutation.SetDescription(v)
+	return _u
+}
+
+// SetNillableDescription sets the "description" field if the given value is not nil.
+func (_u *UpstreamGroupUpdate) SetNillableDescription(v *string) *UpstreamGroupUpdate {
+	if v != nil {
+		_u.SetDescription(*v)
+	}
+	return _u
+}
+
 // SetMultiplier sets the "multiplier" field.
 func (_u *UpstreamGroupUpdate) SetMultiplier(v float64) *UpstreamGroupUpdate {
 	_u.mutation.ResetMultiplier()
@@ -273,6 +287,9 @@ func (_u *UpstreamGroupUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	if value, ok := _u.mutation.Platform(); ok {
 		_spec.SetField(upstreamgroup.FieldPlatform, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.Description(); ok {
+		_spec.SetField(upstreamgroup.FieldDescription, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.Multiplier(); ok {
 		_spec.SetField(upstreamgroup.FieldMultiplier, field.TypeFloat64, value)
 	}
@@ -404,6 +421,20 @@ func (_u *UpstreamGroupUpdateOne) SetPlatform(v string) *UpstreamGroupUpdateOne 
 func (_u *UpstreamGroupUpdateOne) SetNillablePlatform(v *string) *UpstreamGroupUpdateOne {
 	if v != nil {
 		_u.SetPlatform(*v)
+	}
+	return _u
+}
+
+// SetDescription sets the "description" field.
+func (_u *UpstreamGroupUpdateOne) SetDescription(v string) *UpstreamGroupUpdateOne {
+	_u.mutation.SetDescription(v)
+	return _u
+}
+
+// SetNillableDescription sets the "description" field if the given value is not nil.
+func (_u *UpstreamGroupUpdateOne) SetNillableDescription(v *string) *UpstreamGroupUpdateOne {
+	if v != nil {
+		_u.SetDescription(*v)
 	}
 	return _u
 }
@@ -619,6 +650,9 @@ func (_u *UpstreamGroupUpdateOne) sqlSave(ctx context.Context) (_node *UpstreamG
 	}
 	if value, ok := _u.mutation.Platform(); ok {
 		_spec.SetField(upstreamgroup.FieldPlatform, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Description(); ok {
+		_spec.SetField(upstreamgroup.FieldDescription, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Multiplier(); ok {
 		_spec.SetField(upstreamgroup.FieldMultiplier, field.TypeFloat64, value)

@@ -9,19 +9,15 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
-	"github.com/Wei-Shaw/sub2api/ent/upstreamgroup"
+	"github.com/Wei-Shaw/sub2api/ent/upstreamgroupmultiplierhistory"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamsite"
 )
 
-// UpstreamGroup is the model entity for the UpstreamGroup schema.
-type UpstreamGroup struct {
+// UpstreamGroupMultiplierHistory is the model entity for the UpstreamGroupMultiplierHistory schema.
+type UpstreamGroupMultiplierHistory struct {
 	config `json:"-"`
 	// ID of the ent.
 	ID int64 `json:"id,omitempty"`
-	// CreatedAt holds the value of the "created_at" field.
-	CreatedAt time.Time `json:"created_at,omitempty"`
-	// UpdatedAt holds the value of the "updated_at" field.
-	UpdatedAt time.Time `json:"updated_at,omitempty"`
 	// SiteID holds the value of the "site_id" field.
 	SiteID int64 `json:"site_id,omitempty"`
 	// RemoteID holds the value of the "remote_id" field.
@@ -34,20 +30,16 @@ type UpstreamGroup struct {
 	Description string `json:"description,omitempty"`
 	// Multiplier holds the value of the "multiplier" field.
 	Multiplier *float64 `json:"multiplier,omitempty"`
-	// TodayTokens holds the value of the "today_tokens" field.
-	TodayTokens int64 `json:"today_tokens,omitempty"`
-	// TodayCostUsd holds the value of the "today_cost_usd" field.
-	TodayCostUsd float64 `json:"today_cost_usd,omitempty"`
-	// LastSyncedAt holds the value of the "last_synced_at" field.
-	LastSyncedAt time.Time `json:"last_synced_at,omitempty"`
+	// RecordedAt holds the value of the "recorded_at" field.
+	RecordedAt time.Time `json:"recorded_at,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
-	// The values are being populated by the UpstreamGroupQuery when eager-loading is set.
-	Edges        UpstreamGroupEdges `json:"edges"`
+	// The values are being populated by the UpstreamGroupMultiplierHistoryQuery when eager-loading is set.
+	Edges        UpstreamGroupMultiplierHistoryEdges `json:"edges"`
 	selectValues sql.SelectValues
 }
 
-// UpstreamGroupEdges holds the relations/edges for other nodes in the graph.
-type UpstreamGroupEdges struct {
+// UpstreamGroupMultiplierHistoryEdges holds the relations/edges for other nodes in the graph.
+type UpstreamGroupMultiplierHistoryEdges struct {
 	// Site holds the value of the site edge.
 	Site *UpstreamSite `json:"site,omitempty"`
 	// loadedTypes holds the information for reporting if a
@@ -57,7 +49,7 @@ type UpstreamGroupEdges struct {
 
 // SiteOrErr returns the Site value or an error if the edge
 // was not loaded in eager-loading, or loaded but was not found.
-func (e UpstreamGroupEdges) SiteOrErr() (*UpstreamSite, error) {
+func (e UpstreamGroupMultiplierHistoryEdges) SiteOrErr() (*UpstreamSite, error) {
 	if e.Site != nil {
 		return e.Site, nil
 	} else if e.loadedTypes[0] {
@@ -67,17 +59,17 @@ func (e UpstreamGroupEdges) SiteOrErr() (*UpstreamSite, error) {
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
-func (*UpstreamGroup) scanValues(columns []string) ([]any, error) {
+func (*UpstreamGroupMultiplierHistory) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case upstreamgroup.FieldMultiplier, upstreamgroup.FieldTodayCostUsd:
+		case upstreamgroupmultiplierhistory.FieldMultiplier:
 			values[i] = new(sql.NullFloat64)
-		case upstreamgroup.FieldID, upstreamgroup.FieldSiteID, upstreamgroup.FieldTodayTokens:
+		case upstreamgroupmultiplierhistory.FieldID, upstreamgroupmultiplierhistory.FieldSiteID:
 			values[i] = new(sql.NullInt64)
-		case upstreamgroup.FieldRemoteID, upstreamgroup.FieldName, upstreamgroup.FieldPlatform, upstreamgroup.FieldDescription:
+		case upstreamgroupmultiplierhistory.FieldRemoteID, upstreamgroupmultiplierhistory.FieldName, upstreamgroupmultiplierhistory.FieldPlatform, upstreamgroupmultiplierhistory.FieldDescription:
 			values[i] = new(sql.NullString)
-		case upstreamgroup.FieldCreatedAt, upstreamgroup.FieldUpdatedAt, upstreamgroup.FieldLastSyncedAt:
+		case upstreamgroupmultiplierhistory.FieldRecordedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -87,85 +79,61 @@ func (*UpstreamGroup) scanValues(columns []string) ([]any, error) {
 }
 
 // assignValues assigns the values that were returned from sql.Rows (after scanning)
-// to the UpstreamGroup fields.
-func (_m *UpstreamGroup) assignValues(columns []string, values []any) error {
+// to the UpstreamGroupMultiplierHistory fields.
+func (_m *UpstreamGroupMultiplierHistory) assignValues(columns []string, values []any) error {
 	if m, n := len(values), len(columns); m < n {
 		return fmt.Errorf("mismatch number of scan values: %d != %d", m, n)
 	}
 	for i := range columns {
 		switch columns[i] {
-		case upstreamgroup.FieldID:
+		case upstreamgroupmultiplierhistory.FieldID:
 			value, ok := values[i].(*sql.NullInt64)
 			if !ok {
 				return fmt.Errorf("unexpected type %T for field id", value)
 			}
 			_m.ID = int64(value.Int64)
-		case upstreamgroup.FieldCreatedAt:
-			if value, ok := values[i].(*sql.NullTime); !ok {
-				return fmt.Errorf("unexpected type %T for field created_at", values[i])
-			} else if value.Valid {
-				_m.CreatedAt = value.Time
-			}
-		case upstreamgroup.FieldUpdatedAt:
-			if value, ok := values[i].(*sql.NullTime); !ok {
-				return fmt.Errorf("unexpected type %T for field updated_at", values[i])
-			} else if value.Valid {
-				_m.UpdatedAt = value.Time
-			}
-		case upstreamgroup.FieldSiteID:
+		case upstreamgroupmultiplierhistory.FieldSiteID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field site_id", values[i])
 			} else if value.Valid {
 				_m.SiteID = value.Int64
 			}
-		case upstreamgroup.FieldRemoteID:
+		case upstreamgroupmultiplierhistory.FieldRemoteID:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field remote_id", values[i])
 			} else if value.Valid {
 				_m.RemoteID = value.String
 			}
-		case upstreamgroup.FieldName:
+		case upstreamgroupmultiplierhistory.FieldName:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field name", values[i])
 			} else if value.Valid {
 				_m.Name = value.String
 			}
-		case upstreamgroup.FieldPlatform:
+		case upstreamgroupmultiplierhistory.FieldPlatform:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field platform", values[i])
 			} else if value.Valid {
 				_m.Platform = value.String
 			}
-		case upstreamgroup.FieldDescription:
+		case upstreamgroupmultiplierhistory.FieldDescription:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field description", values[i])
 			} else if value.Valid {
 				_m.Description = value.String
 			}
-		case upstreamgroup.FieldMultiplier:
+		case upstreamgroupmultiplierhistory.FieldMultiplier:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
 				return fmt.Errorf("unexpected type %T for field multiplier", values[i])
 			} else if value.Valid {
 				_m.Multiplier = new(float64)
 				*_m.Multiplier = value.Float64
 			}
-		case upstreamgroup.FieldTodayTokens:
-			if value, ok := values[i].(*sql.NullInt64); !ok {
-				return fmt.Errorf("unexpected type %T for field today_tokens", values[i])
-			} else if value.Valid {
-				_m.TodayTokens = value.Int64
-			}
-		case upstreamgroup.FieldTodayCostUsd:
-			if value, ok := values[i].(*sql.NullFloat64); !ok {
-				return fmt.Errorf("unexpected type %T for field today_cost_usd", values[i])
-			} else if value.Valid {
-				_m.TodayCostUsd = value.Float64
-			}
-		case upstreamgroup.FieldLastSyncedAt:
+		case upstreamgroupmultiplierhistory.FieldRecordedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
-				return fmt.Errorf("unexpected type %T for field last_synced_at", values[i])
+				return fmt.Errorf("unexpected type %T for field recorded_at", values[i])
 			} else if value.Valid {
-				_m.LastSyncedAt = value.Time
+				_m.RecordedAt = value.Time
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -174,46 +142,40 @@ func (_m *UpstreamGroup) assignValues(columns []string, values []any) error {
 	return nil
 }
 
-// Value returns the ent.Value that was dynamically selected and assigned to the UpstreamGroup.
+// Value returns the ent.Value that was dynamically selected and assigned to the UpstreamGroupMultiplierHistory.
 // This includes values selected through modifiers, order, etc.
-func (_m *UpstreamGroup) Value(name string) (ent.Value, error) {
+func (_m *UpstreamGroupMultiplierHistory) Value(name string) (ent.Value, error) {
 	return _m.selectValues.Get(name)
 }
 
-// QuerySite queries the "site" edge of the UpstreamGroup entity.
-func (_m *UpstreamGroup) QuerySite() *UpstreamSiteQuery {
-	return NewUpstreamGroupClient(_m.config).QuerySite(_m)
+// QuerySite queries the "site" edge of the UpstreamGroupMultiplierHistory entity.
+func (_m *UpstreamGroupMultiplierHistory) QuerySite() *UpstreamSiteQuery {
+	return NewUpstreamGroupMultiplierHistoryClient(_m.config).QuerySite(_m)
 }
 
-// Update returns a builder for updating this UpstreamGroup.
-// Note that you need to call UpstreamGroup.Unwrap() before calling this method if this UpstreamGroup
+// Update returns a builder for updating this UpstreamGroupMultiplierHistory.
+// Note that you need to call UpstreamGroupMultiplierHistory.Unwrap() before calling this method if this UpstreamGroupMultiplierHistory
 // was returned from a transaction, and the transaction was committed or rolled back.
-func (_m *UpstreamGroup) Update() *UpstreamGroupUpdateOne {
-	return NewUpstreamGroupClient(_m.config).UpdateOne(_m)
+func (_m *UpstreamGroupMultiplierHistory) Update() *UpstreamGroupMultiplierHistoryUpdateOne {
+	return NewUpstreamGroupMultiplierHistoryClient(_m.config).UpdateOne(_m)
 }
 
-// Unwrap unwraps the UpstreamGroup entity that was returned from a transaction after it was closed,
+// Unwrap unwraps the UpstreamGroupMultiplierHistory entity that was returned from a transaction after it was closed,
 // so that all future queries will be executed through the driver which created the transaction.
-func (_m *UpstreamGroup) Unwrap() *UpstreamGroup {
+func (_m *UpstreamGroupMultiplierHistory) Unwrap() *UpstreamGroupMultiplierHistory {
 	_tx, ok := _m.config.driver.(*txDriver)
 	if !ok {
-		panic("ent: UpstreamGroup is not a transactional entity")
+		panic("ent: UpstreamGroupMultiplierHistory is not a transactional entity")
 	}
 	_m.config.driver = _tx.drv
 	return _m
 }
 
 // String implements the fmt.Stringer.
-func (_m *UpstreamGroup) String() string {
+func (_m *UpstreamGroupMultiplierHistory) String() string {
 	var builder strings.Builder
-	builder.WriteString("UpstreamGroup(")
+	builder.WriteString("UpstreamGroupMultiplierHistory(")
 	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
-	builder.WriteString("created_at=")
-	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))
-	builder.WriteString(", ")
-	builder.WriteString("updated_at=")
-	builder.WriteString(_m.UpdatedAt.Format(time.ANSIC))
-	builder.WriteString(", ")
 	builder.WriteString("site_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.SiteID))
 	builder.WriteString(", ")
@@ -234,17 +196,11 @@ func (_m *UpstreamGroup) String() string {
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")
-	builder.WriteString("today_tokens=")
-	builder.WriteString(fmt.Sprintf("%v", _m.TodayTokens))
-	builder.WriteString(", ")
-	builder.WriteString("today_cost_usd=")
-	builder.WriteString(fmt.Sprintf("%v", _m.TodayCostUsd))
-	builder.WriteString(", ")
-	builder.WriteString("last_synced_at=")
-	builder.WriteString(_m.LastSyncedAt.Format(time.ANSIC))
+	builder.WriteString("recorded_at=")
+	builder.WriteString(_m.RecordedAt.Format(time.ANSIC))
 	builder.WriteByte(')')
 	return builder.String()
 }
 
-// UpstreamGroups is a parsable slice of UpstreamGroup.
-type UpstreamGroups []*UpstreamGroup
+// UpstreamGroupMultiplierHistories is a parsable slice of UpstreamGroupMultiplierHistory.
+type UpstreamGroupMultiplierHistories []*UpstreamGroupMultiplierHistory

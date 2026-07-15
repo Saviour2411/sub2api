@@ -24,6 +24,8 @@ const (
 	FieldTokens = "tokens"
 	// FieldCostUsd holds the string denoting the cost_usd field in the database.
 	FieldCostUsd = "cost_usd"
+	// FieldCostBasisVersion holds the string denoting the cost_basis_version field in the database.
+	FieldCostBasisVersion = "cost_basis_version"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -49,6 +51,7 @@ var Columns = []string{
 	FieldBalanceUsd,
 	FieldTokens,
 	FieldCostUsd,
+	FieldCostBasisVersion,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -68,6 +71,8 @@ var (
 	DefaultTokens int64
 	// DefaultCostUsd holds the default value on creation for the "cost_usd" field.
 	DefaultCostUsd float64
+	// DefaultCostBasisVersion holds the default value on creation for the "cost_basis_version" field.
+	DefaultCostBasisVersion int
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -107,6 +112,11 @@ func ByTokens(opts ...sql.OrderTermOption) OrderOption {
 // ByCostUsd orders the results by the cost_usd field.
 func ByCostUsd(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCostUsd, opts...).ToFunc()
+}
+
+// ByCostBasisVersion orders the results by the cost_basis_version field.
+func ByCostBasisVersion(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCostBasisVersion, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

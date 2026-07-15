@@ -116,6 +116,7 @@ func writeUpstreamJSON(t *testing.T, w http.ResponseWriter, data any) {
 
 func TestSub2APIUpstreamProviderPasswordAndUsage(t *testing.T) {
 	mux := http.NewServeMux()
+	statsGroupIDs := make([]string, 0, 2)
 	mux.HandleFunc("/api/v1/auth/login", func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, http.MethodPost, r.Method)
 		writeUpstreamJSON(t, w, map[string]any{"access_token": "access-1", "refresh_token": "refresh-1"})
@@ -125,17 +126,20 @@ func TestSub2APIUpstreamProviderPasswordAndUsage(t *testing.T) {
 		writeUpstreamJSON(t, w, map[string]any{"balance": 12.5})
 	})
 	mux.HandleFunc("/api/v1/groups/available", func(w http.ResponseWriter, _ *http.Request) {
-		writeUpstreamJSON(t, w, []any{map[string]any{"id": "g1", "name": "默认组", "platform": "openai"}})
+		writeUpstreamJSON(t, w, []any{map[string]any{
+			"id": "g1", "name": "默认组", "platform": "openai",
+			"description": "默认分组", "rate_multiplier": 1.2,
+		}})
 	})
 	mux.HandleFunc("/api/v1/groups/rates", func(w http.ResponseWriter, _ *http.Request) {
 		writeUpstreamJSON(t, w, map[string]any{"rates": map[string]any{"g1": 1.5}})
 	})
 	mux.HandleFunc("/api/v1/usage/stats", func(w http.ResponseWriter, r *http.Request) {
 		require.NotEmpty(t, r.URL.Query().Get("start_date"))
+		statsGroupIDs = append(statsGroupIDs, r.URL.Query().Get("group_id"))
 		writeUpstreamJSON(t, w, map[string]any{
-			"total_tokens": 1234,
-			"total_cost":   0.42,
-			"groups":       []any{map[string]any{"group_id": "g1", "tokens": 1234, "cost": 0.42}},
+			"total_tokens":      1234,
+			"total_actual_cost": 0.42,
 		})
 	})
 	server := httptest.NewServer(mux)
@@ -155,8 +159,10 @@ func TestSub2APIUpstreamProviderPasswordAndUsage(t *testing.T) {
 	require.InDelta(t, 0.42, result.Daily[0].CostUSD, 1e-9)
 	require.Len(t, result.Groups, 1)
 	require.InDelta(t, 1.5, *result.Groups[0].Multiplier, 1e-9)
+	require.Equal(t, "默认分组", result.Groups[0].Description)
 	require.Equal(t, int64(1234), result.Groups[0].TodayTokens)
 	require.Equal(t, "refresh-1", result.Credential.RefreshToken)
+	require.Equal(t, []string{"", "g1"}, statsGroupIDs, "旧接口回退必须按 group_id 单独查询每个分组")
 }
 
 func TestSub2APIUpstreamProviderRefreshToken(t *testing.T) {
@@ -196,7 +202,7 @@ func TestNewAPIUpstreamProviderPaginationTokenFallbackAndUSD(t *testing.T) {
 		writeUpstreamJSON(t, w, map[string]any{"quota_per_unit": 500_000})
 	})
 	mux.HandleFunc("/api/user/self/groups", func(w http.ResponseWriter, _ *http.Request) {
-		writeUpstreamJSON(t, w, map[string]any{"vip": map[string]any{"ratio": 1.2}})
+		writeUpstreamJSON(t, w, map[string]any{"vip": map[string]any{"ratio": 1.2, "desc": "高级分组"}})
 	})
 	mux.HandleFunc("/api/pricing", func(w http.ResponseWriter, _ *http.Request) {
 		writeUpstreamJSON(t, w, map[string]any{"group_ratio": map[string]any{"vip": 2}})
@@ -231,6 +237,8 @@ func TestNewAPIUpstreamProviderPaginationTokenFallbackAndUSD(t *testing.T) {
 	require.InDelta(t, 0.102, result.Daily[0].CostUSD, 1e-9)
 	require.Len(t, result.Groups, 1)
 	require.InDelta(t, 2, *result.Groups[0].Multiplier, 1e-9)
+	require.Equal(t, "高级分组", result.Groups[0].Description)
+	require.Equal(t, "New API", result.Groups[0].Platform)
 	require.Equal(t, int64(1007), result.Groups[0].TodayTokens)
 	require.Equal(t, "session=cookie-1", result.Credential.Cookie)
 }

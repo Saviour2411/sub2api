@@ -228,10 +228,20 @@ func (s *UpstreamService) ListGroups(ctx context.Context, id int64) ([]UpstreamG
 func (s *UpstreamService) ListHistory(ctx context.Context, id int64, from, through time.Time) ([]UpstreamDailyStat, error) {
 	from = dayStartInLocation(from, s.location)
 	through = dayStartInLocation(through, s.location)
-	if through.Before(from) || through.Sub(from) > 365*24*time.Hour {
+	if through.Before(from) || through.After(from.AddDate(0, 0, 365)) {
 		return nil, ErrUpstreamInvalidInput.WithCause(fmt.Errorf("历史日期范围必须在 1 到 366 天内"))
 	}
 	return s.repo.ListHistory(ctx, id, from, through)
+}
+
+func (s *UpstreamService) ListMultiplierHistory(ctx context.Context, id int64, from, through time.Time) ([]UpstreamGroupMultiplierHistory, error) {
+	from = dayStartInLocation(from, s.location)
+	through = dayStartInLocation(through, s.location)
+	if through.Before(from) || through.After(from.AddDate(0, 0, 365)) {
+		return nil, ErrUpstreamInvalidInput.WithCause(fmt.Errorf("历史日期范围必须在 1 到 366 天内"))
+	}
+	through = through.AddDate(0, 0, 1).Add(-time.Nanosecond)
+	return s.repo.ListMultiplierHistory(ctx, id, from, through)
 }
 
 func (s *UpstreamService) ListDue(ctx context.Context, now time.Time, limit int) ([]int64, error) {
@@ -264,6 +274,9 @@ func (s *UpstreamService) RunSync(ctx context.Context, id int64) error {
 	}
 	result, err := provider.Sync(ctx, UpstreamSyncRequest{Site: site, Credential: credential, Dates: dates, Location: s.location})
 	if err != nil {
+		if credentialErr := s.persistFailedSyncCredential(id, result); credentialErr != nil {
+			err = fmt.Errorf("%w；保存刷新后的上游凭证失败: %v", err, credentialErr)
+		}
 		s.markSyncFailed(id, site.Enabled, err)
 		return err
 	}
@@ -280,6 +293,19 @@ func (s *UpstreamService) RunSync(ctx context.Context, id int64) error {
 		return err
 	}
 	return nil
+}
+
+func (s *UpstreamService) persistFailedSyncCredential(id int64, result *UpstreamSyncResult) error {
+	if result == nil || result.Credential == nil {
+		return nil
+	}
+	encrypted, err := s.encryptCredential(*result.Credential)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return s.repo.UpdateCredential(ctx, id, encrypted)
 }
 
 func (s *UpstreamService) prepareCreate(input UpstreamCreateInput) (*UpstreamSite, UpstreamCredential, error) {

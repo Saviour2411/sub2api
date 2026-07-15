@@ -77,6 +77,20 @@ func (_c *UpstreamDailyStatCreate) SetNillableCostUsd(v *float64) *UpstreamDaily
 	return _c
 }
 
+// SetCostBasisVersion sets the "cost_basis_version" field.
+func (_c *UpstreamDailyStatCreate) SetCostBasisVersion(v int) *UpstreamDailyStatCreate {
+	_c.mutation.SetCostBasisVersion(v)
+	return _c
+}
+
+// SetNillableCostBasisVersion sets the "cost_basis_version" field if the given value is not nil.
+func (_c *UpstreamDailyStatCreate) SetNillableCostBasisVersion(v *int) *UpstreamDailyStatCreate {
+	if v != nil {
+		_c.SetCostBasisVersion(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *UpstreamDailyStatCreate) SetCreatedAt(v time.Time) *UpstreamDailyStatCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -153,6 +167,10 @@ func (_c *UpstreamDailyStatCreate) defaults() {
 		v := upstreamdailystat.DefaultCostUsd
 		_c.mutation.SetCostUsd(v)
 	}
+	if _, ok := _c.mutation.CostBasisVersion(); !ok {
+		v := upstreamdailystat.DefaultCostBasisVersion
+		_c.mutation.SetCostBasisVersion(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := upstreamdailystat.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -176,6 +194,9 @@ func (_c *UpstreamDailyStatCreate) check() error {
 	}
 	if _, ok := _c.mutation.CostUsd(); !ok {
 		return &ValidationError{Name: "cost_usd", err: errors.New(`ent: missing required field "UpstreamDailyStat.cost_usd"`)}
+	}
+	if _, ok := _c.mutation.CostBasisVersion(); !ok {
+		return &ValidationError{Name: "cost_basis_version", err: errors.New(`ent: missing required field "UpstreamDailyStat.cost_basis_version"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "UpstreamDailyStat.created_at"`)}
@@ -228,6 +249,10 @@ func (_c *UpstreamDailyStatCreate) createSpec() (*UpstreamDailyStat, *sqlgraph.C
 	if value, ok := _c.mutation.CostUsd(); ok {
 		_spec.SetField(upstreamdailystat.FieldCostUsd, field.TypeFloat64, value)
 		_node.CostUsd = value
+	}
+	if value, ok := _c.mutation.CostBasisVersion(); ok {
+		_spec.SetField(upstreamdailystat.FieldCostBasisVersion, field.TypeInt, value)
+		_node.CostBasisVersion = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(upstreamdailystat.FieldCreatedAt, field.TypeTime, value)
@@ -390,6 +415,24 @@ func (u *UpstreamDailyStatUpsert) AddCostUsd(v float64) *UpstreamDailyStatUpsert
 	return u
 }
 
+// SetCostBasisVersion sets the "cost_basis_version" field.
+func (u *UpstreamDailyStatUpsert) SetCostBasisVersion(v int) *UpstreamDailyStatUpsert {
+	u.Set(upstreamdailystat.FieldCostBasisVersion, v)
+	return u
+}
+
+// UpdateCostBasisVersion sets the "cost_basis_version" field to the value that was provided on create.
+func (u *UpstreamDailyStatUpsert) UpdateCostBasisVersion() *UpstreamDailyStatUpsert {
+	u.SetExcluded(upstreamdailystat.FieldCostBasisVersion)
+	return u
+}
+
+// AddCostBasisVersion adds v to the "cost_basis_version" field.
+func (u *UpstreamDailyStatUpsert) AddCostBasisVersion(v int) *UpstreamDailyStatUpsert {
+	u.Add(upstreamdailystat.FieldCostBasisVersion, v)
+	return u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (u *UpstreamDailyStatUpsert) SetCreatedAt(v time.Time) *UpstreamDailyStatUpsert {
 	u.Set(upstreamdailystat.FieldCreatedAt, v)
@@ -549,6 +592,27 @@ func (u *UpstreamDailyStatUpsertOne) AddCostUsd(v float64) *UpstreamDailyStatUps
 func (u *UpstreamDailyStatUpsertOne) UpdateCostUsd() *UpstreamDailyStatUpsertOne {
 	return u.Update(func(s *UpstreamDailyStatUpsert) {
 		s.UpdateCostUsd()
+	})
+}
+
+// SetCostBasisVersion sets the "cost_basis_version" field.
+func (u *UpstreamDailyStatUpsertOne) SetCostBasisVersion(v int) *UpstreamDailyStatUpsertOne {
+	return u.Update(func(s *UpstreamDailyStatUpsert) {
+		s.SetCostBasisVersion(v)
+	})
+}
+
+// AddCostBasisVersion adds v to the "cost_basis_version" field.
+func (u *UpstreamDailyStatUpsertOne) AddCostBasisVersion(v int) *UpstreamDailyStatUpsertOne {
+	return u.Update(func(s *UpstreamDailyStatUpsert) {
+		s.AddCostBasisVersion(v)
+	})
+}
+
+// UpdateCostBasisVersion sets the "cost_basis_version" field to the value that was provided on create.
+func (u *UpstreamDailyStatUpsertOne) UpdateCostBasisVersion() *UpstreamDailyStatUpsertOne {
+	return u.Update(func(s *UpstreamDailyStatUpsert) {
+		s.UpdateCostBasisVersion()
 	})
 }
 
@@ -879,6 +943,27 @@ func (u *UpstreamDailyStatUpsertBulk) AddCostUsd(v float64) *UpstreamDailyStatUp
 func (u *UpstreamDailyStatUpsertBulk) UpdateCostUsd() *UpstreamDailyStatUpsertBulk {
 	return u.Update(func(s *UpstreamDailyStatUpsert) {
 		s.UpdateCostUsd()
+	})
+}
+
+// SetCostBasisVersion sets the "cost_basis_version" field.
+func (u *UpstreamDailyStatUpsertBulk) SetCostBasisVersion(v int) *UpstreamDailyStatUpsertBulk {
+	return u.Update(func(s *UpstreamDailyStatUpsert) {
+		s.SetCostBasisVersion(v)
+	})
+}
+
+// AddCostBasisVersion adds v to the "cost_basis_version" field.
+func (u *UpstreamDailyStatUpsertBulk) AddCostBasisVersion(v int) *UpstreamDailyStatUpsertBulk {
+	return u.Update(func(s *UpstreamDailyStatUpsert) {
+		s.AddCostBasisVersion(v)
+	})
+}
+
+// UpdateCostBasisVersion sets the "cost_basis_version" field to the value that was provided on create.
+func (u *UpstreamDailyStatUpsertBulk) UpdateCostBasisVersion() *UpstreamDailyStatUpsertBulk {
+	return u.Update(func(s *UpstreamDailyStatUpsert) {
+		s.UpdateCostBasisVersion()
 	})
 }
 

@@ -58,6 +58,13 @@
             <slot name="cell-actions" :row="row" :value="row['actions']" :expanded="actionsExpanded"></slot>
           </div>
         </div>
+        <div
+          v-if="isRowExpanded(row, index)"
+          class="data-table-row-details mt-4 border-t border-gray-200 pt-4 dark:border-dark-700"
+          @click.stop
+        >
+          <slot name="row-details" :row="row"></slot>
+        </div>
       </div>
     </template>
   </div>
@@ -163,36 +170,50 @@
                 :style="{ height: virtualPaddingTop + 'px', padding: 0, border: 'none' }">
             </td>
           </tr>
-          <tr
+          <template
             v-for="item in renderRows"
             :key="resolveRowKey(item.row, item.index)"
-            :data-row-id="resolveRowKey(item.row, item.index)"
-            :data-index="item.index"
-            :ref="item.measure ? measureElement : undefined"
-            class="hover:bg-gray-50 dark:hover:bg-dark-800"
-            :class="{ 'cursor-pointer': clickableRows }"
-            @click="clickableRows && emit('rowClick', item.row)"
           >
-            <td
-              v-for="(column, colIndex) in columns"
-              :key="column.key"
-              :class="[
-                'whitespace-nowrap py-4 text-sm text-gray-900 dark:text-gray-100',
-                getAdaptivePaddingClass(),
-                getStickyColumnClass(column, colIndex),
-                column.class
-              ]"
+            <tr
+              :data-row-id="resolveRowKey(item.row, item.index)"
+              :data-index="item.index"
+              :ref="item.measure ? measureElement : undefined"
+              class="hover:bg-gray-50 dark:hover:bg-dark-800"
+              :class="{ 'cursor-pointer': clickableRows }"
+              @click="clickableRows && emit('rowClick', item.row)"
             >
-              <slot :name="`cell-${column.key}`"
-                    :row="item.row"
-                    :value="item.row[column.key]"
-                    :expanded="actionsExpanded">
-                {{ column.formatter
-                   ? column.formatter(item.row[column.key], item.row)
-                   : item.row[column.key] }}
-              </slot>
-            </td>
-          </tr>
+              <td
+                v-for="(column, colIndex) in columns"
+                :key="column.key"
+                :class="[
+                  'whitespace-nowrap py-4 text-sm text-gray-900 dark:text-gray-100',
+                  getAdaptivePaddingClass(),
+                  getStickyColumnClass(column, colIndex),
+                  column.class
+                ]"
+              >
+                <slot :name="`cell-${column.key}`"
+                      :row="item.row"
+                      :value="item.row[column.key]"
+                      :expanded="actionsExpanded">
+                  {{ column.formatter
+                     ? column.formatter(item.row[column.key], item.row)
+                     : item.row[column.key] }}
+                </slot>
+              </td>
+            </tr>
+            <tr
+              v-if="isRowExpanded(item.row, item.index)"
+              class="data-table-row-details bg-gray-50 dark:bg-dark-800"
+            >
+              <td
+                :colspan="columns.length"
+                :class="['py-4', getAdaptivePaddingClass()]"
+              >
+                <slot name="row-details" :row="item.row"></slot>
+              </td>
+            </tr>
+          </template>
           <tr v-if="virtualPaddingBottom > 0" aria-hidden="true">
             <td :colspan="columns.length"
                 :style="{ height: virtualPaddingBottom + 'px', padding: 0, border: 'none' }">
@@ -205,13 +226,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch, nextTick, useSlots } from 'vue'
 import { useVirtualizer, observeElementRect as observeElementRectDefault } from '@tanstack/vue-virtual'
 import { useI18n } from 'vue-i18n'
 import type { Column } from './types'
 import Icon from '@/components/icons/Icon.vue'
 
 const { t } = useI18n()
+const slots = useSlots()
 
 const desktopViewportQuery = '(min-width: 768px)'
 const isDesktopViewport = ref(
@@ -403,6 +425,8 @@ interface Props {
   virtualized?: boolean
   /** External key used by parents to signal scroll context changes */
   scrollResetKey?: string
+  /** Row keys whose row-details slot should be rendered */
+  expandedRowKeys?: ReadonlyArray<string | number>
   /**
    * Only virtualize when the row count exceeds this threshold (default 100).
    * Smaller lists render in full, avoiding the scroll-compensation jank caused by
@@ -569,6 +593,12 @@ const resolveRowKey = (row: any, index: number) => {
   return key ?? index
 }
 
+const hasRowDetailsSlot = computed(() => Boolean(slots['row-details']))
+const expandedRowKeySet = computed(() => new Set(props.expandedRowKeys ?? []))
+const isRowExpanded = (row: any, index: number) => {
+  return hasRowDetailsSlot.value && expandedRowKeySet.value.has(resolveRowKey(row, index))
+}
+
 const dataColumns = computed(() => props.columns.filter((column) => column.key !== 'actions'))
 const columnsSignature = computed(() =>
   props.columns.map((column) => `${column.key}:${column.sortable ? '1' : '0'}`).join('|')
@@ -654,6 +684,7 @@ const sortedData = computed(() => {
 // 估算/测量/滚动补偿链路,消除可变行高导致的滚动抖动。
 const shouldVirtualize = computed(() =>
   props.virtualized &&
+  !hasRowDetailsSlot.value &&
   isDesktopViewport.value &&
   (sortedData.value?.length ?? 0) > (props.virtualizeThreshold ?? 100)
 )

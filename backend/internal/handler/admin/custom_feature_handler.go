@@ -226,6 +226,36 @@ func (h *CustomFeatureHandler) ListUpstreamHistory(c *gin.Context) {
 	if !ok {
 		return
 	}
+	from, through, ok := parseUpstreamDateRange(c)
+	if !ok {
+		return
+	}
+	items, err := h.upstreamService.ListHistory(c.Request.Context(), id, from, through)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, items)
+}
+
+func (h *CustomFeatureHandler) ListUpstreamMultiplierHistory(c *gin.Context) {
+	id, ok := parseUpstreamID(c)
+	if !ok {
+		return
+	}
+	from, through, ok := parseUpstreamDateRange(c)
+	if !ok {
+		return
+	}
+	items, err := h.upstreamService.ListMultiplierHistory(c.Request.Context(), id, from, through)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, items)
+}
+
+func parseUpstreamDateRange(c *gin.Context) (time.Time, time.Time, bool) {
 	loc, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
 		loc = time.FixedZone("Asia/Shanghai", 8*60*60)
@@ -237,22 +267,17 @@ func (h *CustomFeatureHandler) ListUpstreamHistory(c *gin.Context) {
 		from, err = time.ParseInLocation("2006-01-02", raw, loc)
 		if err != nil {
 			response.BadRequest(c, "from 日期格式无效")
-			return
+			return time.Time{}, time.Time{}, false
 		}
 	}
 	if raw := strings.TrimSpace(c.Query("to")); raw != "" {
 		through, err = time.ParseInLocation("2006-01-02", raw, loc)
 		if err != nil {
 			response.BadRequest(c, "to 日期格式无效")
-			return
+			return time.Time{}, time.Time{}, false
 		}
 	}
-	items, err := h.upstreamService.ListHistory(c.Request.Context(), id, from, through)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	response.Success(c, items)
+	return from, through, true
 }
 
 func parseUpstreamID(c *gin.Context) (int64, bool) {

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -4031,9 +4032,11 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ClientDisconnect
 	cfg.Gateway.OpenAIWS.WriteTimeoutSeconds = 3
 
 	// 多个上游事件：前几个为非 terminal 事件，最后一个为 terminal。
-	// 第一个事件延迟 250ms 让客户端 RST 有时间传播，使 writeClientMessage 可靠失败。
+	// 首个事件等待服务端明确观察到客户端断连，避免依赖 TCP 关闭传播时序。
+	disconnectObservedCh := make(chan struct{})
+	disconnectErrCh := make(chan error, 1)
 	captureConn := &openAIWSCaptureConn{
-		readDelays: []time.Duration{250 * time.Millisecond, 0, 0},
+		firstReadGate: disconnectObservedCh,
 		events: [][]byte{
 			[]byte(`{"type":"response.created","response":{"id":"resp_ingress_disconnect","model":"gpt-5.1"}}`),
 			[]byte(`{"type":"response.output_item.added","response":{"id":"resp_ingress_disconnect"}}`),
@@ -4112,6 +4115,25 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ClientDisconnect
 			return
 		}
 
+		go func() {
+			_, _, observeErr := conn.Read(r.Context())
+			var resultErr error
+			if observeErr == nil {
+				resultErr = errors.New("observer expected websocket client disconnect")
+			} else if !isOpenAIWSClientDisconnectError(observeErr) {
+				resultErr = fmt.Errorf("observer read unexpected error: %w", observeErr)
+			}
+			if closeErr := conn.CloseNow(); closeErr != nil {
+				if resultErr == nil {
+					resultErr = fmt.Errorf("close observed websocket: %w", closeErr)
+				} else {
+					resultErr = fmt.Errorf("%v; close observed websocket: %w", resultErr, closeErr)
+				}
+			}
+			disconnectErrCh <- resultErr
+			close(disconnectObservedCh)
+		}()
+
 		serverErrCh <- svc.ProxyResponsesWebSocketFromClient(r.Context(), ginCtx, conn, account, "sk-test", firstMessage, hooks)
 	}))
 	defer wsServer.Close()
@@ -4127,6 +4149,13 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ClientDisconnect
 	require.NoError(t, err)
 	// 立即关闭客户端，模拟客户端在 relay 期间断连。
 	require.NoError(t, clientConn.CloseNow(), "模拟 ingress 客户端提前断连")
+
+	select {
+	case observeErr := <-disconnectErrCh:
+		require.NoError(t, observeErr, "服务端 observer 应明确识别客户端断连")
+	case <-time.After(3 * time.Second):
+		t.Fatal("等待服务端 observer 确认客户端断连超时")
+	}
 
 	select {
 	case serverErr := <-serverErrCh:

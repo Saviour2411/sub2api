@@ -59,6 +59,8 @@ const (
 	EdgeGroups = "groups"
 	// EdgeDailyStats holds the string denoting the daily_stats edge name in mutations.
 	EdgeDailyStats = "daily_stats"
+	// EdgeGroupMultiplierHistory holds the string denoting the group_multiplier_history edge name in mutations.
+	EdgeGroupMultiplierHistory = "group_multiplier_history"
 	// Table holds the table name of the upstreamsite in the database.
 	Table = "upstream_sites"
 	// GroupsTable is the table that holds the groups relation/edge.
@@ -75,6 +77,13 @@ const (
 	DailyStatsInverseTable = "upstream_daily_stats"
 	// DailyStatsColumn is the table column denoting the daily_stats relation/edge.
 	DailyStatsColumn = "site_id"
+	// GroupMultiplierHistoryTable is the table that holds the group_multiplier_history relation/edge.
+	GroupMultiplierHistoryTable = "upstream_group_multiplier_history"
+	// GroupMultiplierHistoryInverseTable is the table name for the UpstreamGroupMultiplierHistory entity.
+	// It exists in this package in order to avoid circular dependency with the "upstreamgroupmultiplierhistory" package.
+	GroupMultiplierHistoryInverseTable = "upstream_group_multiplier_history"
+	// GroupMultiplierHistoryColumn is the table column denoting the group_multiplier_history relation/edge.
+	GroupMultiplierHistoryColumn = "site_id"
 )
 
 // Columns holds all SQL columns for upstreamsite fields.
@@ -354,6 +363,20 @@ func ByDailyStats(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newDailyStatsStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// ByGroupMultiplierHistoryCount orders the results by group_multiplier_history count.
+func ByGroupMultiplierHistoryCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newGroupMultiplierHistoryStep(), opts...)
+	}
+}
+
+// ByGroupMultiplierHistory orders the results by group_multiplier_history terms.
+func ByGroupMultiplierHistory(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newGroupMultiplierHistoryStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newGroupsStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -366,5 +389,12 @@ func newDailyStatsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(DailyStatsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, DailyStatsTable, DailyStatsColumn),
+	)
+}
+func newGroupMultiplierHistoryStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(GroupMultiplierHistoryInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, GroupMultiplierHistoryTable, GroupMultiplierHistoryColumn),
 	)
 }

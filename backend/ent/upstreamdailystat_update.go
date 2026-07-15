@@ -126,6 +126,27 @@ func (_u *UpstreamDailyStatUpdate) AddCostUsd(v float64) *UpstreamDailyStatUpdat
 	return _u
 }
 
+// SetCostBasisVersion sets the "cost_basis_version" field.
+func (_u *UpstreamDailyStatUpdate) SetCostBasisVersion(v int) *UpstreamDailyStatUpdate {
+	_u.mutation.ResetCostBasisVersion()
+	_u.mutation.SetCostBasisVersion(v)
+	return _u
+}
+
+// SetNillableCostBasisVersion sets the "cost_basis_version" field if the given value is not nil.
+func (_u *UpstreamDailyStatUpdate) SetNillableCostBasisVersion(v *int) *UpstreamDailyStatUpdate {
+	if v != nil {
+		_u.SetCostBasisVersion(*v)
+	}
+	return _u
+}
+
+// AddCostBasisVersion adds value to the "cost_basis_version" field.
+func (_u *UpstreamDailyStatUpdate) AddCostBasisVersion(v int) *UpstreamDailyStatUpdate {
+	_u.mutation.AddCostBasisVersion(v)
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *UpstreamDailyStatUpdate) SetCreatedAt(v time.Time) *UpstreamDailyStatUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -241,6 +262,12 @@ func (_u *UpstreamDailyStatUpdate) sqlSave(ctx context.Context) (_node int, err 
 	}
 	if value, ok := _u.mutation.AddedCostUsd(); ok {
 		_spec.AddField(upstreamdailystat.FieldCostUsd, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.CostBasisVersion(); ok {
+		_spec.SetField(upstreamdailystat.FieldCostBasisVersion, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedCostBasisVersion(); ok {
+		_spec.AddField(upstreamdailystat.FieldCostBasisVersion, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(upstreamdailystat.FieldCreatedAt, field.TypeTime, value)
@@ -394,6 +421,27 @@ func (_u *UpstreamDailyStatUpdateOne) AddCostUsd(v float64) *UpstreamDailyStatUp
 	return _u
 }
 
+// SetCostBasisVersion sets the "cost_basis_version" field.
+func (_u *UpstreamDailyStatUpdateOne) SetCostBasisVersion(v int) *UpstreamDailyStatUpdateOne {
+	_u.mutation.ResetCostBasisVersion()
+	_u.mutation.SetCostBasisVersion(v)
+	return _u
+}
+
+// SetNillableCostBasisVersion sets the "cost_basis_version" field if the given value is not nil.
+func (_u *UpstreamDailyStatUpdateOne) SetNillableCostBasisVersion(v *int) *UpstreamDailyStatUpdateOne {
+	if v != nil {
+		_u.SetCostBasisVersion(*v)
+	}
+	return _u
+}
+
+// AddCostBasisVersion adds value to the "cost_basis_version" field.
+func (_u *UpstreamDailyStatUpdateOne) AddCostBasisVersion(v int) *UpstreamDailyStatUpdateOne {
+	_u.mutation.AddCostBasisVersion(v)
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *UpstreamDailyStatUpdateOne) SetCreatedAt(v time.Time) *UpstreamDailyStatUpdateOne {
 	_u.mutation.SetCreatedAt(v)
@@ -539,6 +587,12 @@ func (_u *UpstreamDailyStatUpdateOne) sqlSave(ctx context.Context) (_node *Upstr
 	}
 	if value, ok := _u.mutation.AddedCostUsd(); ok {
 		_spec.AddField(upstreamdailystat.FieldCostUsd, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.CostBasisVersion(); ok {
+		_spec.SetField(upstreamdailystat.FieldCostBasisVersion, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedCostBasisVersion(); ok {
+		_spec.AddField(upstreamdailystat.FieldCostBasisVersion, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(upstreamdailystat.FieldCreatedAt, field.TypeTime, value)

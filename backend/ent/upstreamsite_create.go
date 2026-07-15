@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamdailystat"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamgroup"
+	"github.com/Wei-Shaw/sub2api/ent/upstreamgroupmultiplierhistory"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamsite"
 )
 
@@ -284,6 +285,21 @@ func (_c *UpstreamSiteCreate) AddDailyStats(v ...*UpstreamDailyStat) *UpstreamSi
 		ids[i] = v[i].ID
 	}
 	return _c.AddDailyStatIDs(ids...)
+}
+
+// AddGroupMultiplierHistoryIDs adds the "group_multiplier_history" edge to the UpstreamGroupMultiplierHistory entity by IDs.
+func (_c *UpstreamSiteCreate) AddGroupMultiplierHistoryIDs(ids ...int64) *UpstreamSiteCreate {
+	_c.mutation.AddGroupMultiplierHistoryIDs(ids...)
+	return _c
+}
+
+// AddGroupMultiplierHistory adds the "group_multiplier_history" edges to the UpstreamGroupMultiplierHistory entity.
+func (_c *UpstreamSiteCreate) AddGroupMultiplierHistory(v ...*UpstreamGroupMultiplierHistory) *UpstreamSiteCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddGroupMultiplierHistoryIDs(ids...)
 }
 
 // Mutation returns the UpstreamSiteMutation object of the builder.
@@ -585,6 +601,22 @@ func (_c *UpstreamSiteCreate) createSpec() (*UpstreamSite, *sqlgraph.CreateSpec)
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(upstreamdailystat.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.GroupMultiplierHistoryIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   upstreamsite.GroupMultiplierHistoryTable,
+			Columns: []string{upstreamsite.GroupMultiplierHistoryColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(upstreamgroupmultiplierhistory.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

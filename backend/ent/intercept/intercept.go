@@ -41,6 +41,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamdailystat"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamgroup"
+	"github.com/Wei-Shaw/sub2api/ent/upstreamgroupmultiplierhistory"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamsite"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
@@ -972,6 +973,33 @@ func (f TraverseUpstreamGroup) Traverse(ctx context.Context, q ent.Query) error 
 	return fmt.Errorf("unexpected query type %T. expect *ent.UpstreamGroupQuery", q)
 }
 
+// The UpstreamGroupMultiplierHistoryFunc type is an adapter to allow the use of ordinary function as a Querier.
+type UpstreamGroupMultiplierHistoryFunc func(context.Context, *ent.UpstreamGroupMultiplierHistoryQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f UpstreamGroupMultiplierHistoryFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.UpstreamGroupMultiplierHistoryQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.UpstreamGroupMultiplierHistoryQuery", q)
+}
+
+// The TraverseUpstreamGroupMultiplierHistory type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseUpstreamGroupMultiplierHistory func(context.Context, *ent.UpstreamGroupMultiplierHistoryQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseUpstreamGroupMultiplierHistory) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseUpstreamGroupMultiplierHistory) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.UpstreamGroupMultiplierHistoryQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.UpstreamGroupMultiplierHistoryQuery", q)
+}
+
 // The UpstreamSiteFunc type is an adapter to allow the use of ordinary function as a Querier.
 type UpstreamSiteFunc func(context.Context, *ent.UpstreamSiteQuery) (ent.Value, error)
 
@@ -1282,6 +1310,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.UpstreamDailyStatQuery, predicate.UpstreamDailyStat, upstreamdailystat.OrderOption]{typ: ent.TypeUpstreamDailyStat, tq: q}, nil
 	case *ent.UpstreamGroupQuery:
 		return &query[*ent.UpstreamGroupQuery, predicate.UpstreamGroup, upstreamgroup.OrderOption]{typ: ent.TypeUpstreamGroup, tq: q}, nil
+	case *ent.UpstreamGroupMultiplierHistoryQuery:
+		return &query[*ent.UpstreamGroupMultiplierHistoryQuery, predicate.UpstreamGroupMultiplierHistory, upstreamgroupmultiplierhistory.OrderOption]{typ: ent.TypeUpstreamGroupMultiplierHistory, tq: q}, nil
 	case *ent.UpstreamSiteQuery:
 		return &query[*ent.UpstreamSiteQuery, predicate.UpstreamSite, upstreamsite.OrderOption]{typ: ent.TypeUpstreamSite, tq: q}, nil
 	case *ent.UsageCleanupTaskQuery:

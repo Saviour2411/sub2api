@@ -11,7 +11,10 @@ import (
 	"time"
 )
 
-const newAPILogPageSize = 100
+const (
+	newAPILogPageSize          = 100
+	newAPIUpstreamPlatformName = "New API"
+)
 
 type newAPIUpstreamProvider struct {
 	http *upstreamHTTPClient
@@ -43,6 +46,19 @@ func (p *newAPIUpstreamProvider) Sync(ctx context.Context, req UpstreamSyncReque
 	if err != nil {
 		return nil, err
 	}
+	result, err := p.syncAuthenticated(ctx, req, state)
+	if !isUpstreamAuthenticationError(err) {
+		return result, err
+	}
+
+	state, authErr := p.authenticate(ctx, req.Site, state.credential)
+	if authErr != nil {
+		return nil, fmt.Errorf("重新登录 New API: %w", authErr)
+	}
+	return p.syncAuthenticated(ctx, req, state)
+}
+
+func (p *newAPIUpstreamProvider) syncAuthenticated(ctx context.Context, req UpstreamSyncRequest, state *newAPIAuthState) (*UpstreamSyncResult, error) {
 	quota, ok := numberValue(valueByKeys(apiData(state.self), "quota", "balance"))
 	var balance *float64
 	if ok {
@@ -241,7 +257,18 @@ func parseNewAPIGroups(value any) []UpstreamGroupSnapshot {
 				}
 				multiplier = floatPointer(valueByKeys(item, "ratio", "rate", "multiplier"))
 			}
-			groups = append(groups, UpstreamGroupSnapshot{RemoteID: remoteID, Name: name, Platform: UpstreamPlatformNewAPI, Multiplier: multiplier})
+			platform := newAPIUpstreamPlatformName
+			description := ""
+			if item := asMap(raw); item != nil {
+				if value := stringValue(valueByKeys(item, "platform")); value != "" {
+					platform = value
+				}
+				description = stringValue(valueByKeys(item, "description", "desc"))
+			}
+			groups = append(groups, UpstreamGroupSnapshot{
+				RemoteID: remoteID, Name: name, Platform: platform,
+				Description: description, Multiplier: multiplier,
+			})
 		}
 	}
 	if items := asSlice(value); items != nil {
@@ -262,7 +289,15 @@ func parseNewAPIGroups(value any) []UpstreamGroupSnapshot {
 				remoteID = fmt.Sprintf("group-%d", index+1)
 				name = remoteID
 			}
-			groups = append(groups, UpstreamGroupSnapshot{RemoteID: remoteID, Name: name, Platform: UpstreamPlatformNewAPI, Multiplier: floatPointer(valueByKeys(item, "ratio", "rate", "multiplier"))})
+			platform := stringValue(valueByKeys(item, "platform"))
+			if platform == "" {
+				platform = newAPIUpstreamPlatformName
+			}
+			groups = append(groups, UpstreamGroupSnapshot{
+				RemoteID: remoteID, Name: name, Platform: platform,
+				Description: stringValue(valueByKeys(item, "description", "desc")),
+				Multiplier:  floatPointer(valueByKeys(item, "ratio", "rate", "multiplier")),
+			})
 		}
 	}
 	sort.Slice(groups, func(i, j int) bool { return groups[i].Name < groups[j].Name })

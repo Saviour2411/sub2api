@@ -28,6 +28,8 @@ type UpstreamDailyStat struct {
 	Tokens int64 `json:"tokens,omitempty"`
 	// CostUsd holds the value of the "cost_usd" field.
 	CostUsd float64 `json:"cost_usd,omitempty"`
+	// CostBasisVersion holds the value of the "cost_basis_version" field.
+	CostBasisVersion int `json:"cost_basis_version,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -65,7 +67,7 @@ func (*UpstreamDailyStat) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case upstreamdailystat.FieldBalanceUsd, upstreamdailystat.FieldCostUsd:
 			values[i] = new(sql.NullFloat64)
-		case upstreamdailystat.FieldID, upstreamdailystat.FieldSiteID, upstreamdailystat.FieldTokens:
+		case upstreamdailystat.FieldID, upstreamdailystat.FieldSiteID, upstreamdailystat.FieldTokens, upstreamdailystat.FieldCostBasisVersion:
 			values[i] = new(sql.NullInt64)
 		case upstreamdailystat.FieldUsageDate, upstreamdailystat.FieldCreatedAt, upstreamdailystat.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -120,6 +122,12 @@ func (_m *UpstreamDailyStat) assignValues(columns []string, values []any) error 
 				return fmt.Errorf("unexpected type %T for field cost_usd", values[i])
 			} else if value.Valid {
 				_m.CostUsd = value.Float64
+			}
+		case upstreamdailystat.FieldCostBasisVersion:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field cost_basis_version", values[i])
+			} else if value.Valid {
+				_m.CostBasisVersion = int(value.Int64)
 			}
 		case upstreamdailystat.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -190,6 +198,9 @@ func (_m *UpstreamDailyStat) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("cost_usd=")
 	builder.WriteString(fmt.Sprintf("%v", _m.CostUsd))
+	builder.WriteString(", ")
+	builder.WriteString("cost_basis_version=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CostBasisVersion))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

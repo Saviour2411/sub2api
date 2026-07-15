@@ -85,6 +85,11 @@ func Platform(v string) predicate.UpstreamGroup {
 	return predicate.UpstreamGroup(sql.FieldEQ(FieldPlatform, v))
 }
 
+// Description applies equality check predicate on the "description" field. It's identical to DescriptionEQ.
+func Description(v string) predicate.UpstreamGroup {
+	return predicate.UpstreamGroup(sql.FieldEQ(FieldDescription, v))
+}
+
 // Multiplier applies equality check predicate on the "multiplier" field. It's identical to MultiplierEQ.
 func Multiplier(v float64) predicate.UpstreamGroup {
 	return predicate.UpstreamGroup(sql.FieldEQ(FieldMultiplier, v))
@@ -398,6 +403,71 @@ func PlatformEqualFold(v string) predicate.UpstreamGroup {
 // PlatformContainsFold applies the ContainsFold predicate on the "platform" field.
 func PlatformContainsFold(v string) predicate.UpstreamGroup {
 	return predicate.UpstreamGroup(sql.FieldContainsFold(FieldPlatform, v))
+}
+
+// DescriptionEQ applies the EQ predicate on the "description" field.
+func DescriptionEQ(v string) predicate.UpstreamGroup {
+	return predicate.UpstreamGroup(sql.FieldEQ(FieldDescription, v))
+}
+
+// DescriptionNEQ applies the NEQ predicate on the "description" field.
+func DescriptionNEQ(v string) predicate.UpstreamGroup {
+	return predicate.UpstreamGroup(sql.FieldNEQ(FieldDescription, v))
+}
+
+// DescriptionIn applies the In predicate on the "description" field.
+func DescriptionIn(vs ...string) predicate.UpstreamGroup {
+	return predicate.UpstreamGroup(sql.FieldIn(FieldDescription, vs...))
+}
+
+// DescriptionNotIn applies the NotIn predicate on the "description" field.
+func DescriptionNotIn(vs ...string) predicate.UpstreamGroup {
+	return predicate.UpstreamGroup(sql.FieldNotIn(FieldDescription, vs...))
+}
+
+// DescriptionGT applies the GT predicate on the "description" field.
+func DescriptionGT(v string) predicate.UpstreamGroup {
+	return predicate.UpstreamGroup(sql.FieldGT(FieldDescription, v))
+}
+
+// DescriptionGTE applies the GTE predicate on the "description" field.
+func DescriptionGTE(v string) predicate.UpstreamGroup {
+	return predicate.UpstreamGroup(sql.FieldGTE(FieldDescription, v))
+}
+
+// DescriptionLT applies the LT predicate on the "description" field.
+func DescriptionLT(v string) predicate.UpstreamGroup {
+	return predicate.UpstreamGroup(sql.FieldLT(FieldDescription, v))
+}
+
+// DescriptionLTE applies the LTE predicate on the "description" field.
+func DescriptionLTE(v string) predicate.UpstreamGroup {
+	return predicate.UpstreamGroup(sql.FieldLTE(FieldDescription, v))
+}
+
+// DescriptionContains applies the Contains predicate on the "description" field.
+func DescriptionContains(v string) predicate.UpstreamGroup {
+	return predicate.UpstreamGroup(sql.FieldContains(FieldDescription, v))
+}
+
+// DescriptionHasPrefix applies the HasPrefix predicate on the "description" field.
+func DescriptionHasPrefix(v string) predicate.UpstreamGroup {
+	return predicate.UpstreamGroup(sql.FieldHasPrefix(FieldDescription, v))
+}
+
+// DescriptionHasSuffix applies the HasSuffix predicate on the "description" field.
+func DescriptionHasSuffix(v string) predicate.UpstreamGroup {
+	return predicate.UpstreamGroup(sql.FieldHasSuffix(FieldDescription, v))
+}
+
+// DescriptionEqualFold applies the EqualFold predicate on the "description" field.
+func DescriptionEqualFold(v string) predicate.UpstreamGroup {
+	return predicate.UpstreamGroup(sql.FieldEqualFold(FieldDescription, v))
+}
+
+// DescriptionContainsFold applies the ContainsFold predicate on the "description" field.
+func DescriptionContainsFold(v string) predicate.UpstreamGroup {
+	return predicate.UpstreamGroup(sql.FieldContainsFold(FieldDescription, v))
 }
 
 // MultiplierEQ applies the EQ predicate on the "multiplier" field.

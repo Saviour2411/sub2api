@@ -25,7 +25,13 @@ func (p *sub2APIUpstreamProvider) Validate(ctx context.Context, site *UpstreamSi
 	if err != nil {
 		return nil, err
 	}
-	if _, _, err = p.http.doJSON(ctx, http.MethodGet, site.BaseURL, "/api/v1/auth/me", headers, "", nil); err != nil {
+	if _, _, err = p.http.doJSON(ctx, http.MethodGet, site.BaseURL, "/api/v1/auth/me", headers, "", nil); isUpstreamAuthenticationError(err) {
+		updated, headers, err = p.reauthenticate(ctx, site, updated)
+		if err == nil {
+			_, _, err = p.http.doJSON(ctx, http.MethodGet, site.BaseURL, "/api/v1/auth/me", headers, "", nil)
+		}
+	}
+	if err != nil {
 		return nil, fmt.Errorf("验证 Sub2API 登录状态: %w", err)
 	}
 	return &updated, nil
@@ -36,6 +42,28 @@ func (p *sub2APIUpstreamProvider) Sync(ctx context.Context, req UpstreamSyncRequ
 	if err != nil {
 		return nil, err
 	}
+	result, err := p.syncAuthenticated(ctx, req, credential, headers)
+	if !isUpstreamAuthenticationError(err) {
+		return result, err
+	}
+
+	credential, headers, authErr := p.reauthenticate(ctx, req.Site, credential)
+	if authErr != nil {
+		return nil, authErr
+	}
+	result, err = p.syncAuthenticated(ctx, req, credential, headers)
+	if err != nil {
+		return &UpstreamSyncResult{Credential: &credential}, err
+	}
+	return result, nil
+}
+
+func (p *sub2APIUpstreamProvider) syncAuthenticated(
+	ctx context.Context,
+	req UpstreamSyncRequest,
+	credential UpstreamCredential,
+	headers map[string]string,
+) (*UpstreamSyncResult, error) {
 	me, _, err := p.http.doJSON(ctx, http.MethodGet, req.Site.BaseURL, "/api/v1/auth/me", headers, "", nil)
 	if err != nil {
 		return nil, fmt.Errorf("读取 Sub2API 账号信息: %w", err)
@@ -52,23 +80,15 @@ func (p *sub2APIUpstreamProvider) Sync(ctx context.Context, req UpstreamSyncRequ
 	}
 	groups := parseSub2APIGroups(groupsPayload, ratesPayload)
 
-	daily := make([]UpstreamDailySnapshot, 0, len(req.Dates))
-	usageByGroup := make(map[string]UpstreamGroupSnapshot)
+	daily, usageByGroup, err := p.fetchUsage(ctx, req, headers, groups)
+	if err != nil {
+		return nil, err
+	}
 	todayKey := dayKey(time.Now(), req.Location)
-	for _, date := range req.Dates {
-		query := url.Values{}
-		query.Set("start_date", date.In(req.Location).Format("2006-01-02"))
-		query.Set("end_date", date.In(req.Location).Format("2006-01-02"))
-		payload, _, requestErr := p.http.doJSON(ctx, http.MethodGet, req.Site.BaseURL, "/api/v1/usage/stats?"+query.Encode(), headers, "", nil)
-		if requestErr != nil {
-			return nil, fmt.Errorf("读取 Sub2API %s 用量: %w", date.Format("2006-01-02"), requestErr)
+	for index := range daily {
+		if dayKey(daily[index].Date, req.Location) == todayKey {
+			daily[index].BalanceUSD = balance
 		}
-		snapshot, groupUsage := parseSub2APIUsage(payload, date)
-		if dayKey(date, req.Location) == todayKey {
-			snapshot.BalanceUSD = balance
-			usageByGroup = groupUsage
-		}
-		daily = append(daily, snapshot)
 	}
 	for index := range groups {
 		if usage, ok := usageByGroup[groups[index].RemoteID]; ok {
@@ -82,33 +102,196 @@ func (p *sub2APIUpstreamProvider) Sync(ctx context.Context, req UpstreamSyncRequ
 	return &UpstreamSyncResult{BalanceUSD: balance, Groups: groups, Daily: daily, Credential: &credential}, nil
 }
 
-func (p *sub2APIUpstreamProvider) authenticate(ctx context.Context, site *UpstreamSite, credential UpstreamCredential) (UpstreamCredential, map[string]string, error) {
-	if site.AuthMode == UpstreamAuthPassword {
-		payload, _, err := p.http.doJSON(ctx, http.MethodPost, site.BaseURL, "/api/v1/auth/login", nil, "", map[string]any{
-			"email": site.Account, "username": site.Account, "password": credential.Password,
-		})
-		if err != nil {
-			return credential, nil, fmt.Errorf("登录 Sub2API: %w", err)
+func (p *sub2APIUpstreamProvider) fetchUsage(
+	ctx context.Context,
+	req UpstreamSyncRequest,
+	headers map[string]string,
+	groups []UpstreamGroupSnapshot,
+) ([]UpstreamDailySnapshot, map[string]UpstreamGroupSnapshot, error) {
+	daily, groupUsage, err := p.fetchSnapshotUsage(ctx, req, headers)
+	if err == nil {
+		return daily, groupUsage, nil
+	}
+	if !isHTTPStatus(err, http.StatusNotFound) {
+		return nil, nil, fmt.Errorf("读取 Sub2API 用量快照: %w", err)
+	}
+	return p.fetchLegacyUsage(ctx, req, headers, groups)
+}
+
+func (p *sub2APIUpstreamProvider) fetchSnapshotUsage(
+	ctx context.Context,
+	req UpstreamSyncRequest,
+	headers map[string]string,
+) ([]UpstreamDailySnapshot, map[string]UpstreamGroupSnapshot, error) {
+	if len(req.Dates) == 0 {
+		return []UpstreamDailySnapshot{}, map[string]UpstreamGroupSnapshot{}, nil
+	}
+	loc := req.Location
+	if loc == nil {
+		loc = time.Local
+	}
+	first, last := req.Dates[0].In(loc), req.Dates[0].In(loc)
+	for _, date := range req.Dates[1:] {
+		localized := date.In(loc)
+		if localized.Before(first) {
+			first = localized
 		}
-		credential.AccessToken = stringValue(valueByKeys(apiData(payload), "access_token", "token"))
-		if refresh := stringValue(valueByKeys(apiData(payload), "refresh_token")); refresh != "" {
-			credential.RefreshToken = refresh
+		if localized.After(last) {
+			last = localized
 		}
 	}
+
+	query := sub2APISnapshotQuery(first, last, loc, true, false)
+	payload, _, err := p.http.doJSON(ctx, http.MethodGet, req.Site.BaseURL, "/api/v1/usage/dashboard/snapshot-v2?"+query.Encode(), headers, "", nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	daily, err := parseSub2APISnapshotTrend(payload, req.Dates, loc)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	groupUsage := make(map[string]UpstreamGroupSnapshot)
+	today := time.Now().In(loc)
+	if !containsDay(req.Dates, today, loc) {
+		return daily, groupUsage, nil
+	}
+	query = sub2APISnapshotQuery(today, today, loc, false, true)
+	payload, _, err = p.http.doJSON(ctx, http.MethodGet, req.Site.BaseURL, "/api/v1/usage/dashboard/snapshot-v2?"+query.Encode(), headers, "", nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	groupUsage, err = parseSub2APISnapshotGroups(payload)
+	if err != nil {
+		return nil, nil, err
+	}
+	return daily, groupUsage, nil
+}
+
+func sub2APISnapshotQuery(first, last time.Time, loc *time.Location, includeTrend, includeGroups bool) url.Values {
+	query := url.Values{}
+	query.Set("start_date", first.In(loc).Format("2006-01-02"))
+	query.Set("end_date", last.In(loc).Format("2006-01-02"))
+	query.Set("granularity", "day")
+	query.Set("include_trend", fmt.Sprintf("%t", includeTrend))
+	query.Set("include_model_stats", "false")
+	query.Set("include_group_stats", fmt.Sprintf("%t", includeGroups))
+	query.Set("timezone", loc.String())
+	return query
+}
+
+func (p *sub2APIUpstreamProvider) fetchLegacyUsage(
+	ctx context.Context,
+	req UpstreamSyncRequest,
+	headers map[string]string,
+	groups []UpstreamGroupSnapshot,
+) ([]UpstreamDailySnapshot, map[string]UpstreamGroupSnapshot, error) {
+	loc := req.Location
+	if loc == nil {
+		loc = time.Local
+	}
+	daily := make([]UpstreamDailySnapshot, 0, len(req.Dates))
+	usageByGroup := make(map[string]UpstreamGroupSnapshot)
+	todayKey := dayKey(time.Now(), loc)
+	for _, date := range req.Dates {
+		query := sub2APIStatsQuery(date, loc)
+		payload, _, requestErr := p.http.doJSON(ctx, http.MethodGet, req.Site.BaseURL, "/api/v1/usage/stats?"+query.Encode(), headers, "", nil)
+		if requestErr != nil {
+			return nil, nil, fmt.Errorf("读取 Sub2API %s 用量: %w", dayKey(date, loc), requestErr)
+		}
+		snapshot, parseErr := parseSub2APIUsage(payload, date)
+		if parseErr != nil {
+			return nil, nil, fmt.Errorf("解析 Sub2API %s 用量: %w", dayKey(date, loc), parseErr)
+		}
+		daily = append(daily, snapshot)
+		if dayKey(date, loc) != todayKey {
+			continue
+		}
+		for _, group := range groups {
+			groupQuery := sub2APIStatsQuery(date, loc)
+			groupQuery.Set("group_id", group.RemoteID)
+			groupPayload, _, groupErr := p.http.doJSON(ctx, http.MethodGet, req.Site.BaseURL, "/api/v1/usage/stats?"+groupQuery.Encode(), headers, "", nil)
+			if groupErr != nil {
+				return nil, nil, fmt.Errorf("读取 Sub2API 分组 %s 当日用量: %w", group.Name, groupErr)
+			}
+			groupSnapshot, parseGroupErr := parseSub2APIUsage(groupPayload, date)
+			if parseGroupErr != nil {
+				return nil, nil, fmt.Errorf("解析 Sub2API 分组 %s 当日用量: %w", group.Name, parseGroupErr)
+			}
+			usageByGroup[group.RemoteID] = UpstreamGroupSnapshot{
+				RemoteID: group.RemoteID, Name: group.Name,
+				TodayTokens: groupSnapshot.Tokens, TodayCostUSD: groupSnapshot.CostUSD,
+			}
+		}
+	}
+	return daily, usageByGroup, nil
+}
+
+func sub2APIStatsQuery(date time.Time, loc *time.Location) url.Values {
+	query := url.Values{}
+	query.Set("start_date", date.In(loc).Format("2006-01-02"))
+	query.Set("end_date", date.In(loc).Format("2006-01-02"))
+	query.Set("timezone", loc.String())
+	return query
+}
+
+func (p *sub2APIUpstreamProvider) authenticate(ctx context.Context, site *UpstreamSite, credential UpstreamCredential) (UpstreamCredential, map[string]string, error) {
+	if site.AuthMode == UpstreamAuthPassword {
+		return p.login(ctx, site, credential)
+	}
 	if credential.AccessToken == "" && credential.RefreshToken != "" {
-		payload, _, err := p.http.doJSON(ctx, http.MethodPost, site.BaseURL, "/api/v1/auth/refresh", nil, "", map[string]string{"refresh_token": credential.RefreshToken})
-		if err != nil {
-			return credential, nil, fmt.Errorf("刷新 Sub2API 令牌: %w", err)
-		}
-		credential.AccessToken = stringValue(valueByKeys(apiData(payload), "access_token", "token"))
-		if refresh := stringValue(valueByKeys(apiData(payload), "refresh_token")); refresh != "" {
-			credential.RefreshToken = refresh
-		}
+		return p.refresh(ctx, site, credential)
 	}
 	if credential.AccessToken == "" {
 		return credential, nil, fmt.Errorf("Sub2API 未返回访问令牌")
 	}
 	return credential, map[string]string{"Authorization": "Bearer " + credential.AccessToken}, nil
+}
+
+func (p *sub2APIUpstreamProvider) reauthenticate(ctx context.Context, site *UpstreamSite, credential UpstreamCredential) (UpstreamCredential, map[string]string, error) {
+	if site.AuthMode == UpstreamAuthPassword {
+		return p.login(ctx, site, credential)
+	}
+	if credential.RefreshToken == "" {
+		return credential, nil, fmt.Errorf("Sub2API 访问令牌已过期且没有刷新令牌")
+	}
+	return p.refresh(ctx, site, credential)
+}
+
+func (p *sub2APIUpstreamProvider) login(ctx context.Context, site *UpstreamSite, credential UpstreamCredential) (UpstreamCredential, map[string]string, error) {
+	payload, _, err := p.http.doJSON(ctx, http.MethodPost, site.BaseURL, "/api/v1/auth/login", nil, "", map[string]any{
+		"email": site.Account, "username": site.Account, "password": credential.Password,
+	})
+	if err != nil {
+		return credential, nil, fmt.Errorf("登录 Sub2API: %w", err)
+	}
+	credential.AccessToken = stringValue(valueByKeys(apiData(payload), "access_token", "token"))
+	if refresh := stringValue(valueByKeys(apiData(payload), "refresh_token")); refresh != "" {
+		credential.RefreshToken = refresh
+	}
+	if credential.AccessToken == "" {
+		return credential, nil, fmt.Errorf("Sub2API 未返回访问令牌")
+	}
+	return credential, map[string]string{"Authorization": "Bearer " + credential.AccessToken}, nil
+}
+
+func (p *sub2APIUpstreamProvider) refresh(ctx context.Context, site *UpstreamSite, credential UpstreamCredential) (UpstreamCredential, map[string]string, error) {
+	payload, _, err := p.http.doJSON(ctx, http.MethodPost, site.BaseURL, "/api/v1/auth/refresh", nil, "", map[string]string{"refresh_token": credential.RefreshToken})
+	if err != nil {
+		return credential, nil, fmt.Errorf("刷新 Sub2API 令牌: %w", err)
+	}
+	credential.AccessToken = stringValue(valueByKeys(apiData(payload), "access_token", "token"))
+	if refresh := stringValue(valueByKeys(apiData(payload), "refresh_token")); refresh != "" {
+		credential.RefreshToken = refresh
+	}
+	if credential.AccessToken == "" {
+		return credential, nil, fmt.Errorf("Sub2API 未返回访问令牌")
+	}
+	return credential, map[string]string{"Authorization": "Bearer " + credential.AccessToken}, nil
+}
+
+func isUpstreamAuthenticationError(err error) bool {
+	return isHTTPStatus(err, http.StatusUnauthorized) || isHTTPStatus(err, http.StatusForbidden)
 }
 
 func parseSub2APIGroups(groupsPayload, ratesPayload map[string]any) []UpstreamGroupSnapshot {
@@ -132,19 +315,18 @@ func parseSub2APIGroups(groupsPayload, ratesPayload map[string]any) []UpstreamGr
 			remoteID = fmt.Sprintf("group-%d", index+1)
 			name = remoteID
 		}
-		multiplier := floatPointer(valueByKeys(object, "multiplier", "rate", "ratio"))
-		if multiplier == nil {
-			if value, ok := rates[remoteID]; ok {
-				valueCopy := value
-				multiplier = &valueCopy
-			} else if value, ok := rates[name]; ok {
-				valueCopy := value
-				multiplier = &valueCopy
-			}
+		multiplier := floatPointer(valueByKeys(object, "rate_multiplier", "multiplier", "rate", "ratio"))
+		if value, ok := rates[remoteID]; ok {
+			valueCopy := value
+			multiplier = &valueCopy
+		} else if value, ok := rates[name]; ok {
+			valueCopy := value
+			multiplier = &valueCopy
 		}
 		groups = append(groups, UpstreamGroupSnapshot{
 			RemoteID: remoteID, Name: name,
-			Platform: stringValue(valueByKeys(object, "platform")), Multiplier: multiplier,
+			Platform:    stringValue(valueByKeys(object, "platform")),
+			Description: stringValue(valueByKeys(object, "description", "desc")), Multiplier: multiplier,
 		})
 	}
 	sort.Slice(groups, func(i, j int) bool { return groups[i].Name < groups[j].Name })
@@ -163,7 +345,7 @@ func collectNamedRates(value any) map[string]float64 {
 			continue
 		}
 		if nested := asMap(raw); nested != nil {
-			if number, ok := numberValue(valueByKeys(nested, "multiplier", "rate", "ratio")); ok {
+			if number, ok := numberValue(valueByKeys(nested, "rate_multiplier", "multiplier", "rate", "ratio")); ok {
 				result[key] = number
 			}
 		}
@@ -176,7 +358,7 @@ func collectNamedRates(value any) map[string]float64 {
 	return result
 }
 
-func parseSub2APIUsage(payload map[string]any, date time.Time) (UpstreamDailySnapshot, map[string]UpstreamGroupSnapshot) {
+func parseSub2APIUsage(payload map[string]any, date time.Time) (UpstreamDailySnapshot, error) {
 	data := apiData(payload)
 	tokens, _ := int64Value(valueByKeys(data, "total_tokens", "tokens", "token_used"))
 	if tokens == 0 {
@@ -184,38 +366,126 @@ func parseSub2APIUsage(payload map[string]any, date time.Time) (UpstreamDailySna
 		completion, _ := int64Value(valueByKeys(data, "completion_tokens", "output_tokens"))
 		tokens = prompt + completion
 	}
-	cost, _ := numberValue(valueByKeys(data, "total_cost_usd", "total_cost", "cost", "amount"))
-	snapshot := UpstreamDailySnapshot{Date: date, Tokens: tokens, CostUSD: cost}
-	groups := make(map[string]UpstreamGroupSnapshot)
-	for _, key := range []string{"groups", "by_group", "group_usage"} {
-		raw := valueByKeys(data, key)
-		if items := asSlice(raw); items != nil {
-			for _, item := range items {
-				addSub2APIGroupUsage(groups, asMap(item), "")
-			}
-		} else if object := asMap(raw); object != nil {
-			for name, item := range object {
-				addSub2APIGroupUsage(groups, asMap(item), name)
-			}
-		}
+	cost, ok := numberValue(valueByKeys(data, "total_actual_cost", "actual_cost"))
+	if !ok {
+		return UpstreamDailySnapshot{}, fmt.Errorf("响应缺少实际扣费字段 total_actual_cost/actual_cost")
 	}
-	return snapshot, groups
+	return UpstreamDailySnapshot{Date: date, Tokens: tokens, CostUSD: cost}, nil
 }
 
-func addSub2APIGroupUsage(target map[string]UpstreamGroupSnapshot, object map[string]any, fallback string) {
+func parseSub2APISnapshotTrend(payload map[string]any, dates []time.Time, loc *time.Location) ([]UpstreamDailySnapshot, error) {
+	data := asMap(apiData(payload))
+	if data == nil {
+		return nil, fmt.Errorf("快照响应 data 无效")
+	}
+	raw, exists := data["trend"]
+	if !exists {
+		return nil, fmt.Errorf("快照响应缺少 trend")
+	}
+	items := asSlice(raw)
+	if raw != nil && items == nil {
+		return nil, fmt.Errorf("快照响应 trend 无效")
+	}
+	byDate := make(map[string]UpstreamDailySnapshot, len(items))
+	for _, item := range items {
+		object := asMap(item)
+		if object == nil {
+			return nil, fmt.Errorf("快照趋势条目无效")
+		}
+		key := normalizedSnapshotDate(stringValue(valueByKeys(object, "date", "bucket_date")))
+		if key == "" {
+			return nil, fmt.Errorf("快照趋势条目缺少日期")
+		}
+		cost, ok := numberValue(valueByKeys(object, "actual_cost", "total_actual_cost"))
+		if !ok {
+			return nil, fmt.Errorf("快照趋势 %s 缺少实际扣费字段 actual_cost", key)
+		}
+		tokens, _ := int64Value(valueByKeys(object, "total_tokens", "tokens"))
+		byDate[key] = UpstreamDailySnapshot{Tokens: tokens, CostUSD: cost}
+	}
+	result := make([]UpstreamDailySnapshot, 0, len(dates))
+	for _, date := range dates {
+		key := dayKey(date, loc)
+		// snapshot-v2 只聚合存在日志的日期；请求成功但缺少日期代表当日零用量。
+		snapshot := byDate[key]
+		snapshot.Date = date
+		result = append(result, snapshot)
+	}
+	return result, nil
+}
+
+func parseSub2APISnapshotGroups(payload map[string]any) (map[string]UpstreamGroupSnapshot, error) {
+	data := asMap(apiData(payload))
+	if data == nil {
+		return nil, fmt.Errorf("快照响应 data 无效")
+	}
+	raw, exists := data["groups"]
+	if !exists {
+		return nil, fmt.Errorf("快照响应缺少 groups")
+	}
+	result := make(map[string]UpstreamGroupSnapshot)
+	if items := asSlice(raw); items != nil {
+		for _, item := range items {
+			if err := addSub2APIGroupUsage(result, asMap(item), ""); err != nil {
+				return nil, err
+			}
+		}
+		return result, nil
+	}
+	if object := asMap(raw); object != nil {
+		for name, item := range object {
+			if err := addSub2APIGroupUsage(result, asMap(item), name); err != nil {
+				return nil, err
+			}
+		}
+		return result, nil
+	}
+	if raw == nil {
+		return result, nil
+	}
+	return nil, fmt.Errorf("快照响应 groups 无效")
+}
+
+func addSub2APIGroupUsage(target map[string]UpstreamGroupSnapshot, object map[string]any, fallback string) error {
 	if object == nil {
-		return
+		return fmt.Errorf("快照分组条目无效")
 	}
 	id := stringValue(valueByKeys(object, "id", "group_id", "name", "group_name"))
 	if id == "" {
 		id = fallback
 	}
 	if id == "" {
-		return
+		return fmt.Errorf("快照分组条目缺少分组标识")
 	}
 	tokens, _ := int64Value(valueByKeys(object, "total_tokens", "tokens", "token_used"))
-	cost, _ := numberValue(valueByKeys(object, "total_cost_usd", "total_cost", "cost", "amount"))
+	cost, ok := numberValue(valueByKeys(object, "actual_cost", "total_actual_cost"))
+	if !ok {
+		return fmt.Errorf("快照分组 %s 缺少实际扣费字段 actual_cost", id)
+	}
 	target[id] = UpstreamGroupSnapshot{RemoteID: id, Name: strings.TrimSpace(fallback), TodayTokens: tokens, TodayCostUSD: cost}
+	return nil
+}
+
+func normalizedSnapshotDate(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) < len("2006-01-02") {
+		return ""
+	}
+	candidate := value[:len("2006-01-02")]
+	if _, err := time.Parse("2006-01-02", candidate); err != nil {
+		return ""
+	}
+	return candidate
+}
+
+func containsDay(dates []time.Time, target time.Time, loc *time.Location) bool {
+	targetKey := dayKey(target, loc)
+	for _, date := range dates {
+		if dayKey(date, loc) == targetKey {
+			return true
+		}
+	}
+	return false
 }
 
 func dayKey(value time.Time, loc *time.Location) string {

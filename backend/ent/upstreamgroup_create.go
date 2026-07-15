@@ -83,6 +83,20 @@ func (_c *UpstreamGroupCreate) SetNillablePlatform(v *string) *UpstreamGroupCrea
 	return _c
 }
 
+// SetDescription sets the "description" field.
+func (_c *UpstreamGroupCreate) SetDescription(v string) *UpstreamGroupCreate {
+	_c.mutation.SetDescription(v)
+	return _c
+}
+
+// SetNillableDescription sets the "description" field if the given value is not nil.
+func (_c *UpstreamGroupCreate) SetNillableDescription(v *string) *UpstreamGroupCreate {
+	if v != nil {
+		_c.SetDescription(*v)
+	}
+	return _c
+}
+
 // SetMultiplier sets the "multiplier" field.
 func (_c *UpstreamGroupCreate) SetMultiplier(v float64) *UpstreamGroupCreate {
 	_c.mutation.SetMultiplier(v)
@@ -191,6 +205,10 @@ func (_c *UpstreamGroupCreate) defaults() {
 		v := upstreamgroup.DefaultPlatform
 		_c.mutation.SetPlatform(v)
 	}
+	if _, ok := _c.mutation.Description(); !ok {
+		v := upstreamgroup.DefaultDescription
+		_c.mutation.SetDescription(v)
+	}
 	if _, ok := _c.mutation.TodayTokens(); !ok {
 		v := upstreamgroup.DefaultTodayTokens
 		_c.mutation.SetTodayTokens(v)
@@ -239,6 +257,9 @@ func (_c *UpstreamGroupCreate) check() error {
 		if err := upstreamgroup.PlatformValidator(v); err != nil {
 			return &ValidationError{Name: "platform", err: fmt.Errorf(`ent: validator failed for field "UpstreamGroup.platform": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.Description(); !ok {
+		return &ValidationError{Name: "description", err: errors.New(`ent: missing required field "UpstreamGroup.description"`)}
 	}
 	if _, ok := _c.mutation.TodayTokens(); !ok {
 		return &ValidationError{Name: "today_tokens", err: errors.New(`ent: missing required field "UpstreamGroup.today_tokens"`)}
@@ -298,6 +319,10 @@ func (_c *UpstreamGroupCreate) createSpec() (*UpstreamGroup, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.Platform(); ok {
 		_spec.SetField(upstreamgroup.FieldPlatform, field.TypeString, value)
 		_node.Platform = value
+	}
+	if value, ok := _c.mutation.Description(); ok {
+		_spec.SetField(upstreamgroup.FieldDescription, field.TypeString, value)
+		_node.Description = value
 	}
 	if value, ok := _c.mutation.Multiplier(); ok {
 		_spec.SetField(upstreamgroup.FieldMultiplier, field.TypeFloat64, value)
@@ -441,6 +466,18 @@ func (u *UpstreamGroupUpsert) SetPlatform(v string) *UpstreamGroupUpsert {
 // UpdatePlatform sets the "platform" field to the value that was provided on create.
 func (u *UpstreamGroupUpsert) UpdatePlatform() *UpstreamGroupUpsert {
 	u.SetExcluded(upstreamgroup.FieldPlatform)
+	return u
+}
+
+// SetDescription sets the "description" field.
+func (u *UpstreamGroupUpsert) SetDescription(v string) *UpstreamGroupUpsert {
+	u.Set(upstreamgroup.FieldDescription, v)
+	return u
+}
+
+// UpdateDescription sets the "description" field to the value that was provided on create.
+func (u *UpstreamGroupUpsert) UpdateDescription() *UpstreamGroupUpsert {
+	u.SetExcluded(upstreamgroup.FieldDescription)
 	return u
 }
 
@@ -628,6 +665,20 @@ func (u *UpstreamGroupUpsertOne) SetPlatform(v string) *UpstreamGroupUpsertOne {
 func (u *UpstreamGroupUpsertOne) UpdatePlatform() *UpstreamGroupUpsertOne {
 	return u.Update(func(s *UpstreamGroupUpsert) {
 		s.UpdatePlatform()
+	})
+}
+
+// SetDescription sets the "description" field.
+func (u *UpstreamGroupUpsertOne) SetDescription(v string) *UpstreamGroupUpsertOne {
+	return u.Update(func(s *UpstreamGroupUpsert) {
+		s.SetDescription(v)
+	})
+}
+
+// UpdateDescription sets the "description" field to the value that was provided on create.
+func (u *UpstreamGroupUpsertOne) UpdateDescription() *UpstreamGroupUpsertOne {
+	return u.Update(func(s *UpstreamGroupUpsert) {
+		s.UpdateDescription()
 	})
 }
 
@@ -993,6 +1044,20 @@ func (u *UpstreamGroupUpsertBulk) SetPlatform(v string) *UpstreamGroupUpsertBulk
 func (u *UpstreamGroupUpsertBulk) UpdatePlatform() *UpstreamGroupUpsertBulk {
 	return u.Update(func(s *UpstreamGroupUpsert) {
 		s.UpdatePlatform()
+	})
+}
+
+// SetDescription sets the "description" field.
+func (u *UpstreamGroupUpsertBulk) SetDescription(v string) *UpstreamGroupUpsertBulk {
+	return u.Update(func(s *UpstreamGroupUpsert) {
+		s.SetDescription(v)
+	})
+}
+
+// UpdateDescription sets the "description" field to the value that was provided on create.
+func (u *UpstreamGroupUpsertBulk) UpdateDescription() *UpstreamGroupUpsertBulk {
+	return u.Update(func(s *UpstreamGroupUpsert) {
+		s.UpdateDescription()
 	})
 }
 

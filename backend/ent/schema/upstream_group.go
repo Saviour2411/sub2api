@@ -6,6 +6,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 
 	"entgo.io/ent"
+	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/edge"
@@ -32,6 +33,7 @@ func (UpstreamGroup) Fields() []ent.Field {
 		field.String("remote_id").NotEmpty().MaxLen(100),
 		field.String("name").NotEmpty().MaxLen(100),
 		field.String("platform").Default("").MaxLen(50),
+		field.String("description").Default("").SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.Float("multiplier").Optional().Nillable(),
 		field.Int64("today_tokens").Default(0),
 		field.Float("today_cost_usd").Default(0),

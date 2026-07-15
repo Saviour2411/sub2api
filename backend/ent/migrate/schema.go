@@ -1512,6 +1512,7 @@ var (
 		{Name: "balance_usd", Type: field.TypeFloat64, Nullable: true},
 		{Name: "tokens", Type: field.TypeInt64, Default: 0},
 		{Name: "cost_usd", Type: field.TypeFloat64, Default: 0},
+		{Name: "cost_basis_version", Type: field.TypeInt, Default: 1},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "site_id", Type: field.TypeInt64},
@@ -1524,7 +1525,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "upstream_daily_stats_upstream_sites_daily_stats",
-				Columns:    []*schema.Column{UpstreamDailyStatsColumns[7]},
+				Columns:    []*schema.Column{UpstreamDailyStatsColumns[8]},
 				RefColumns: []*schema.Column{UpstreamSitesColumns[0]},
 				OnDelete:   schema.Cascade,
 			},
@@ -1533,7 +1534,7 @@ var (
 			{
 				Name:    "upstreamdailystat_site_id_usage_date",
 				Unique:  true,
-				Columns: []*schema.Column{UpstreamDailyStatsColumns[7], UpstreamDailyStatsColumns[1]},
+				Columns: []*schema.Column{UpstreamDailyStatsColumns[8], UpstreamDailyStatsColumns[1]},
 			},
 			{
 				Name:    "upstreamdailystat_usage_date",
@@ -1550,6 +1551,7 @@ var (
 		{Name: "remote_id", Type: field.TypeString, Size: 100},
 		{Name: "name", Type: field.TypeString, Size: 100},
 		{Name: "platform", Type: field.TypeString, Size: 50, Default: ""},
+		{Name: "description", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "multiplier", Type: field.TypeFloat64, Nullable: true},
 		{Name: "today_tokens", Type: field.TypeInt64, Default: 0},
 		{Name: "today_cost_usd", Type: field.TypeFloat64, Default: 0},
@@ -1564,7 +1566,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "upstream_groups_upstream_sites_groups",
-				Columns:    []*schema.Column{UpstreamGroupsColumns[10]},
+				Columns:    []*schema.Column{UpstreamGroupsColumns[11]},
 				RefColumns: []*schema.Column{UpstreamSitesColumns[0]},
 				OnDelete:   schema.Cascade,
 			},
@@ -1573,12 +1575,44 @@ var (
 			{
 				Name:    "upstreamgroup_site_id_remote_id",
 				Unique:  true,
-				Columns: []*schema.Column{UpstreamGroupsColumns[10], UpstreamGroupsColumns[3]},
+				Columns: []*schema.Column{UpstreamGroupsColumns[11], UpstreamGroupsColumns[3]},
 			},
 			{
 				Name:    "upstreamgroup_site_id_name",
 				Unique:  false,
-				Columns: []*schema.Column{UpstreamGroupsColumns[10], UpstreamGroupsColumns[4]},
+				Columns: []*schema.Column{UpstreamGroupsColumns[11], UpstreamGroupsColumns[4]},
+			},
+		},
+	}
+	// UpstreamGroupMultiplierHistoryColumns holds the columns for the "upstream_group_multiplier_history" table.
+	UpstreamGroupMultiplierHistoryColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "remote_id", Type: field.TypeString, Size: 100},
+		{Name: "name", Type: field.TypeString, Size: 100},
+		{Name: "platform", Type: field.TypeString, Size: 50, Default: ""},
+		{Name: "description", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "multiplier", Type: field.TypeFloat64, Nullable: true},
+		{Name: "recorded_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "site_id", Type: field.TypeInt64},
+	}
+	// UpstreamGroupMultiplierHistoryTable holds the schema information for the "upstream_group_multiplier_history" table.
+	UpstreamGroupMultiplierHistoryTable = &schema.Table{
+		Name:       "upstream_group_multiplier_history",
+		Columns:    UpstreamGroupMultiplierHistoryColumns,
+		PrimaryKey: []*schema.Column{UpstreamGroupMultiplierHistoryColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "upstream_group_multiplier_history_upstream_sites_group_multiplier_history",
+				Columns:    []*schema.Column{UpstreamGroupMultiplierHistoryColumns[7]},
+				RefColumns: []*schema.Column{UpstreamSitesColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "upstreamgroupmultiplierhistory_site_id_remote_id_recorded_at",
+				Unique:  false,
+				Columns: []*schema.Column{UpstreamGroupMultiplierHistoryColumns[7], UpstreamGroupMultiplierHistoryColumns[1], UpstreamGroupMultiplierHistoryColumns[6]},
 			},
 		},
 	}
@@ -2156,6 +2190,7 @@ var (
 		TLSFingerprintProfilesTable,
 		UpstreamDailyStatsTable,
 		UpstreamGroupsTable,
+		UpstreamGroupMultiplierHistoryTable,
 		UpstreamSitesTable,
 		UsageCleanupTasksTable,
 		UsageLogsTable,
@@ -2288,6 +2323,10 @@ func init() {
 	UpstreamGroupsTable.ForeignKeys[0].RefTable = UpstreamSitesTable
 	UpstreamGroupsTable.Annotation = &entsql.Annotation{
 		Table: "upstream_groups",
+	}
+	UpstreamGroupMultiplierHistoryTable.ForeignKeys[0].RefTable = UpstreamSitesTable
+	UpstreamGroupMultiplierHistoryTable.Annotation = &entsql.Annotation{
+		Table: "upstream_group_multiplier_history",
 	}
 	UpstreamSitesTable.Annotation = &entsql.Annotation{
 		Table: "upstream_sites",

@@ -3,12 +3,14 @@ package repository
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamdailystat"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamgroup"
+	"github.com/Wei-Shaw/sub2api/ent/upstreamgroupmultiplierhistory"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamsite"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
@@ -228,17 +230,34 @@ func (r *upstreamRepository) MarkSyncFailed(ctx context.Context, id int64, messa
 	return nil
 }
 
+func (r *upstreamRepository) UpdateCredential(ctx context.Context, id int64, encryptedCredential string) error {
+	if err := clientFromContext(ctx, r.client).UpstreamSite.UpdateOneID(id).
+		SetCredentialEncrypted(encryptedCredential).
+		Exec(ctx); err != nil {
+		if dbent.IsNotFound(err) {
+			return service.ErrUpstreamNotFound
+		}
+		return fmt.Errorf("更新上游凭证: %w", err)
+	}
+	return nil
+}
+
 func (r *upstreamRepository) MissingDates(ctx context.Context, id int64, from, through time.Time, loc *time.Location) ([]time.Time, error) {
 	if loc == nil {
 		loc = time.Local
 	}
 	start := dayStart(from, loc)
 	end := dayStart(through, loc)
+	earliest := end.AddDate(0, 0, -365)
+	if start.Before(earliest) {
+		start = earliest
+	}
 	rows, err := clientFromContext(ctx, r.client).UpstreamDailyStat.Query().
 		Where(
 			upstreamdailystat.SiteIDEQ(id),
 			upstreamdailystat.UsageDateGTE(start),
 			upstreamdailystat.UsageDateLTE(end),
+			upstreamdailystat.CostBasisVersionGTE(service.UpstreamCostBasisActual),
 		).
 		All(ctx)
 	if err != nil {
@@ -280,6 +299,41 @@ func (r *upstreamRepository) CommitSync(ctx context.Context, id int64, result *s
 		}
 		return rollback(fmt.Errorf("锁定上游站点: %w", err))
 	}
+	historyRows, err := tx.UpstreamGroupMultiplierHistory.Query().
+		Where(upstreamgroupmultiplierhistory.SiteIDEQ(id)).
+		Order(
+			dbent.Desc(upstreamgroupmultiplierhistory.FieldRecordedAt),
+			dbent.Desc(upstreamgroupmultiplierhistory.FieldID),
+		).
+		All(ctx)
+	if err != nil {
+		return rollback(fmt.Errorf("查询上游分组最新倍率: %w", err))
+	}
+	latestHistoryByRemoteID := make(map[string]*dbent.UpstreamGroupMultiplierHistory, len(historyRows))
+	for _, row := range historyRows {
+		if _, exists := latestHistoryByRemoteID[row.RemoteID]; !exists {
+			latestHistoryByRemoteID[row.RemoteID] = row
+		}
+	}
+	for _, group := range result.Groups {
+		existing, exists := latestHistoryByRemoteID[group.RemoteID]
+		if exists && equalOptionalFloat(existing.Multiplier, group.Multiplier) {
+			continue
+		}
+		builder := tx.UpstreamGroupMultiplierHistory.Create().
+			SetSiteID(id).
+			SetRemoteID(group.RemoteID).
+			SetName(group.Name).
+			SetPlatform(group.Platform).
+			SetDescription(group.Description).
+			SetRecordedAt(syncedAt)
+		if group.Multiplier != nil {
+			builder = builder.SetMultiplier(*group.Multiplier)
+		}
+		if _, err = builder.Save(ctx); err != nil {
+			return rollback(fmt.Errorf("记录上游分组倍率: %w", err))
+		}
+	}
 	if _, err = tx.UpstreamGroup.Delete().Where(upstreamgroup.SiteIDEQ(id)).Exec(ctx); err != nil {
 		return rollback(fmt.Errorf("替换上游分组: %w", err))
 	}
@@ -291,6 +345,7 @@ func (r *upstreamRepository) CommitSync(ctx context.Context, id int64, result *s
 				SetRemoteID(group.RemoteID).
 				SetName(group.Name).
 				SetPlatform(group.Platform).
+				SetDescription(group.Description).
 				SetTodayTokens(group.TodayTokens).
 				SetTodayCostUsd(group.TodayCostUSD).
 				SetLastSyncedAt(syncedAt)
@@ -309,14 +364,12 @@ func (r *upstreamRepository) CommitSync(ctx context.Context, id int64, result *s
 			SetSiteID(id).
 			SetUsageDate(daily.Date).
 			SetTokens(daily.Tokens).
-			SetCostUsd(daily.CostUSD)
+			SetCostUsd(daily.CostUSD).
+			SetCostBasisVersion(service.UpstreamCostBasisActual)
 		if daily.BalanceUSD != nil {
 			b = b.SetBalanceUsd(*daily.BalanceUSD)
 		}
 		upsert := b.OnConflictColumns(upstreamdailystat.FieldSiteID, upstreamdailystat.FieldUsageDate).UpdateNewValues()
-		if daily.BalanceUSD == nil {
-			upsert = upsert.ClearBalanceUsd()
-		}
 		if err = upsert.Exec(ctx); err != nil {
 			return rollback(fmt.Errorf("保存上游每日统计: %w", err))
 		}
@@ -333,10 +386,14 @@ func (r *upstreamRepository) CommitSync(ctx context.Context, id int64, result *s
 	today := dayStart(syncedAt, shanghaiLocation())
 	for _, stat := range stats {
 		totalTokens += stat.Tokens
-		totalCost += stat.CostUsd
+		if stat.CostBasisVersion >= service.UpstreamCostBasisActual {
+			totalCost += stat.CostUsd
+		}
 		if dayStart(stat.UsageDate, shanghaiLocation()).Equal(today) {
 			todayTokens = stat.Tokens
-			todayCost = stat.CostUsd
+			if stat.CostBasisVersion >= service.UpstreamCostBasisActual {
+				todayCost = stat.CostUsd
+			}
 		}
 	}
 
@@ -385,7 +442,7 @@ func (r *upstreamRepository) ListGroups(ctx context.Context, siteID int64) ([]se
 	for _, row := range rows {
 		items = append(items, service.UpstreamGroup{
 			ID: row.ID, SiteID: row.SiteID, RemoteID: row.RemoteID, Name: row.Name,
-			Platform: row.Platform, Multiplier: row.Multiplier, TodayTokens: row.TodayTokens,
+			Platform: row.Platform, Description: row.Description, Multiplier: row.Multiplier, TodayTokens: row.TodayTokens,
 			TodayCostUSD: row.TodayCostUsd, LastSyncedAt: row.LastSyncedAt,
 		})
 	}
@@ -401,6 +458,7 @@ func (r *upstreamRepository) ListHistory(ctx context.Context, siteID int64, from
 			upstreamdailystat.SiteIDEQ(siteID),
 			upstreamdailystat.UsageDateGTE(from),
 			upstreamdailystat.UsageDateLTE(through),
+			upstreamdailystat.CostBasisVersionGTE(service.UpstreamCostBasisActual),
 		).
 		Order(dbent.Asc(upstreamdailystat.FieldUsageDate)).
 		All(ctx)
@@ -411,10 +469,117 @@ func (r *upstreamRepository) ListHistory(ctx context.Context, siteID int64, from
 	for _, row := range rows {
 		items = append(items, service.UpstreamDailyStat{
 			ID: row.ID, SiteID: row.SiteID, Date: row.UsageDate, BalanceUSD: row.BalanceUsd,
-			Tokens: row.Tokens, CostUSD: row.CostUsd, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+			Tokens: row.Tokens, CostUSD: row.CostUsd, CostBasisVersion: row.CostBasisVersion,
+			CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 		})
 	}
 	return items, nil
+}
+
+func (r *upstreamRepository) ListMultiplierHistory(ctx context.Context, siteID int64, from, through time.Time) ([]service.UpstreamGroupMultiplierHistory, error) {
+	if _, err := r.GetByID(ctx, siteID); err != nil {
+		return nil, err
+	}
+	groups, err := clientFromContext(ctx, r.client).UpstreamGroup.Query().
+		Where(upstreamgroup.SiteIDEQ(siteID)).
+		Order(dbent.Asc(upstreamgroup.FieldName), dbent.Asc(upstreamgroup.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("查询上游分组: %w", err)
+	}
+	rows, err := clientFromContext(ctx, r.client).UpstreamGroupMultiplierHistory.Query().
+		Where(
+			upstreamgroupmultiplierhistory.SiteIDEQ(siteID),
+			upstreamgroupmultiplierhistory.RecordedAtLTE(through),
+		).
+		Order(
+			dbent.Asc(upstreamgroupmultiplierhistory.FieldRecordedAt),
+			dbent.Asc(upstreamgroupmultiplierhistory.FieldID),
+		).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("查询上游分组倍率历史: %w", err)
+	}
+
+	type historyGroup struct {
+		current bool
+		item    service.UpstreamGroupMultiplierHistory
+		rows    []*dbent.UpstreamGroupMultiplierHistory
+	}
+	byRemoteID := make(map[string]*historyGroup, len(groups))
+	for _, group := range groups {
+		byRemoteID[group.RemoteID] = &historyGroup{
+			current: true,
+			item: service.UpstreamGroupMultiplierHistory{
+				RemoteID:          group.RemoteID,
+				Name:              group.Name,
+				Platform:          group.Platform,
+				Description:       group.Description,
+				CurrentMultiplier: group.Multiplier,
+			},
+		}
+	}
+	for _, row := range rows {
+		group := byRemoteID[row.RemoteID]
+		if group == nil {
+			group = &historyGroup{item: service.UpstreamGroupMultiplierHistory{RemoteID: row.RemoteID}}
+			byRemoteID[row.RemoteID] = group
+		}
+		group.rows = append(group.rows, row)
+		if !group.current {
+			group.item.Name = row.Name
+			group.item.Platform = row.Platform
+			group.item.Description = row.Description
+			group.item.CurrentMultiplier = row.Multiplier
+		}
+	}
+	items := make([]service.UpstreamGroupMultiplierHistory, 0, len(byRemoteID))
+	for _, group := range byRemoteID {
+		group.item.Points = multiplierHistoryPoints(group.rows, from, through)
+		items = append(items, group.item)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Name == items[j].Name {
+			return items[i].RemoteID < items[j].RemoteID
+		}
+		return items[i].Name < items[j].Name
+	})
+	return items, nil
+}
+
+func multiplierHistoryPoints(rows []*dbent.UpstreamGroupMultiplierHistory, from, through time.Time) []service.UpstreamGroupMultiplierPoint {
+	points := make([]service.UpstreamGroupMultiplierPoint, 0, len(rows)+2)
+	var prior *dbent.UpstreamGroupMultiplierHistory
+	for _, row := range rows {
+		if row.RecordedAt.Before(from) {
+			prior = row
+			continue
+		}
+		points = append(points, service.UpstreamGroupMultiplierPoint{
+			RecordedAt: row.RecordedAt,
+			Multiplier: row.Multiplier,
+		})
+	}
+	if prior != nil && (len(points) == 0 || !points[0].RecordedAt.Equal(from)) {
+		points = append([]service.UpstreamGroupMultiplierPoint{{
+			RecordedAt: from,
+			Multiplier: prior.Multiplier,
+		}}, points...)
+	}
+	if len(points) > 0 && points[len(points)-1].RecordedAt.Before(through) {
+		points = append(points, service.UpstreamGroupMultiplierPoint{
+			RecordedAt: through,
+			Multiplier: points[len(points)-1].Multiplier,
+		})
+	}
+	return points
+}
+
+func equalOptionalFloat(left, right *float64) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return *left == *right
 }
 
 func upstreamSiteFromEnt(row *dbent.UpstreamSite) *service.UpstreamSite {

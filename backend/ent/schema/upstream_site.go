@@ -54,6 +54,7 @@ func (UpstreamSite) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.To("groups", UpstreamGroup.Type).Annotations(entsql.OnDelete(entsql.Cascade)),
 		edge.To("daily_stats", UpstreamDailyStat.Type).Annotations(entsql.OnDelete(entsql.Cascade)),
+		edge.To("group_multiplier_history", UpstreamGroupMultiplierHistory.Type).Annotations(entsql.OnDelete(entsql.Cascade)),
 	}
 }
 

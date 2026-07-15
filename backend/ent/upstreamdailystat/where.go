@@ -80,6 +80,11 @@ func CostUsd(v float64) predicate.UpstreamDailyStat {
 	return predicate.UpstreamDailyStat(sql.FieldEQ(FieldCostUsd, v))
 }
 
+// CostBasisVersion applies equality check predicate on the "cost_basis_version" field. It's identical to CostBasisVersionEQ.
+func CostBasisVersion(v int) predicate.UpstreamDailyStat {
+	return predicate.UpstreamDailyStat(sql.FieldEQ(FieldCostBasisVersion, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.UpstreamDailyStat {
 	return predicate.UpstreamDailyStat(sql.FieldEQ(FieldCreatedAt, v))
@@ -278,6 +283,46 @@ func CostUsdLT(v float64) predicate.UpstreamDailyStat {
 // CostUsdLTE applies the LTE predicate on the "cost_usd" field.
 func CostUsdLTE(v float64) predicate.UpstreamDailyStat {
 	return predicate.UpstreamDailyStat(sql.FieldLTE(FieldCostUsd, v))
+}
+
+// CostBasisVersionEQ applies the EQ predicate on the "cost_basis_version" field.
+func CostBasisVersionEQ(v int) predicate.UpstreamDailyStat {
+	return predicate.UpstreamDailyStat(sql.FieldEQ(FieldCostBasisVersion, v))
+}
+
+// CostBasisVersionNEQ applies the NEQ predicate on the "cost_basis_version" field.
+func CostBasisVersionNEQ(v int) predicate.UpstreamDailyStat {
+	return predicate.UpstreamDailyStat(sql.FieldNEQ(FieldCostBasisVersion, v))
+}
+
+// CostBasisVersionIn applies the In predicate on the "cost_basis_version" field.
+func CostBasisVersionIn(vs ...int) predicate.UpstreamDailyStat {
+	return predicate.UpstreamDailyStat(sql.FieldIn(FieldCostBasisVersion, vs...))
+}
+
+// CostBasisVersionNotIn applies the NotIn predicate on the "cost_basis_version" field.
+func CostBasisVersionNotIn(vs ...int) predicate.UpstreamDailyStat {
+	return predicate.UpstreamDailyStat(sql.FieldNotIn(FieldCostBasisVersion, vs...))
+}
+
+// CostBasisVersionGT applies the GT predicate on the "cost_basis_version" field.
+func CostBasisVersionGT(v int) predicate.UpstreamDailyStat {
+	return predicate.UpstreamDailyStat(sql.FieldGT(FieldCostBasisVersion, v))
+}
+
+// CostBasisVersionGTE applies the GTE predicate on the "cost_basis_version" field.
+func CostBasisVersionGTE(v int) predicate.UpstreamDailyStat {
+	return predicate.UpstreamDailyStat(sql.FieldGTE(FieldCostBasisVersion, v))
+}
+
+// CostBasisVersionLT applies the LT predicate on the "cost_basis_version" field.
+func CostBasisVersionLT(v int) predicate.UpstreamDailyStat {
+	return predicate.UpstreamDailyStat(sql.FieldLT(FieldCostBasisVersion, v))
+}
+
+// CostBasisVersionLTE applies the LTE predicate on the "cost_basis_version" field.
+func CostBasisVersionLTE(v int) predicate.UpstreamDailyStat {
+	return predicate.UpstreamDailyStat(sql.FieldLTE(FieldCostBasisVersion, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
