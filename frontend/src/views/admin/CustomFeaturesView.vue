@@ -1,15 +1,6 @@
 <template>
   <AppLayout>
-    <div class="mx-auto max-w-6xl space-y-6">
-      <header>
-        <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">
-          {{ t('admin.customFeatures.title') }}
-        </h1>
-        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          {{ t('admin.customFeatures.description') }}
-        </p>
-      </header>
-
+    <div data-test="custom-features-content" class="mx-auto w-full max-w-[1600px] space-y-4">
       <div class="border-b border-gray-200 dark:border-dark-700">
         <nav class="flex gap-6 overflow-x-auto" role="tablist" :aria-label="t('admin.customFeatures.title')">
           <button

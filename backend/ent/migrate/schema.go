@@ -1639,6 +1639,7 @@ var (
 		{Name: "auth_mode", Type: field.TypeEnum, Enums: []string{"password", "token"}},
 		{Name: "account", Type: field.TypeString, Size: 255, Default: ""},
 		{Name: "credential_encrypted", Type: field.TypeString},
+		{Name: "sort_order", Type: field.TypeInt, Default: 0},
 		{Name: "enabled", Type: field.TypeBool, Default: true},
 		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "syncing", "healthy", "error"}, Default: "pending"},
 		{Name: "error_message", Type: field.TypeString, Nullable: true, Size: 500},
@@ -1661,7 +1662,7 @@ var (
 			{
 				Name:    "upstreamsite_enabled_next_sync_at",
 				Unique:  false,
-				Columns: []*schema.Column{UpstreamSitesColumns[9], UpstreamSitesColumns[19]},
+				Columns: []*schema.Column{UpstreamSitesColumns[10], UpstreamSitesColumns[20]},
 			},
 			{
 				Name:    "upstreamsite_platform",
@@ -1671,12 +1672,17 @@ var (
 			{
 				Name:    "upstreamsite_status",
 				Unique:  false,
-				Columns: []*schema.Column{UpstreamSitesColumns[10]},
+				Columns: []*schema.Column{UpstreamSitesColumns[11]},
 			},
 			{
 				Name:    "upstreamsite_created_at",
 				Unique:  false,
 				Columns: []*schema.Column{UpstreamSitesColumns[1]},
+			},
+			{
+				Name:    "upstreamsite_sort_order",
+				Unique:  false,
+				Columns: []*schema.Column{UpstreamSitesColumns[9]},
 			},
 		},
 	}

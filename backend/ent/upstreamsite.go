@@ -33,6 +33,8 @@ type UpstreamSite struct {
 	Account string `json:"account,omitempty"`
 	// CredentialEncrypted holds the value of the "credential_encrypted" field.
 	CredentialEncrypted string `json:"-"`
+	// SortOrder holds the value of the "sort_order" field.
+	SortOrder int `json:"sort_order,omitempty"`
 	// Enabled holds the value of the "enabled" field.
 	Enabled bool `json:"enabled,omitempty"`
 	// Status holds the value of the "status" field.
@@ -112,7 +114,7 @@ func (*UpstreamSite) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case upstreamsite.FieldBalanceUsd, upstreamsite.FieldTodayCostUsd, upstreamsite.FieldTotalCostUsd:
 			values[i] = new(sql.NullFloat64)
-		case upstreamsite.FieldID, upstreamsite.FieldTodayTokens, upstreamsite.FieldTotalTokens, upstreamsite.FieldCreatedBy:
+		case upstreamsite.FieldID, upstreamsite.FieldSortOrder, upstreamsite.FieldTodayTokens, upstreamsite.FieldTotalTokens, upstreamsite.FieldCreatedBy:
 			values[i] = new(sql.NullInt64)
 		case upstreamsite.FieldName, upstreamsite.FieldBaseURL, upstreamsite.FieldPlatform, upstreamsite.FieldAuthMode, upstreamsite.FieldAccount, upstreamsite.FieldCredentialEncrypted, upstreamsite.FieldStatus, upstreamsite.FieldErrorMessage:
 			values[i] = new(sql.NullString)
@@ -186,6 +188,12 @@ func (_m *UpstreamSite) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field credential_encrypted", values[i])
 			} else if value.Valid {
 				_m.CredentialEncrypted = value.String
+			}
+		case upstreamsite.FieldSortOrder:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field sort_order", values[i])
+			} else if value.Valid {
+				_m.SortOrder = int(value.Int64)
 			}
 		case upstreamsite.FieldEnabled:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -336,6 +344,9 @@ func (_m *UpstreamSite) String() string {
 	builder.WriteString(_m.Account)
 	builder.WriteString(", ")
 	builder.WriteString("credential_encrypted=<sensitive>")
+	builder.WriteString(", ")
+	builder.WriteString("sort_order=")
+	builder.WriteString(fmt.Sprintf("%v", _m.SortOrder))
 	builder.WriteString(", ")
 	builder.WriteString("enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Enabled))

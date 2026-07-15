@@ -6,7 +6,7 @@ import UpstreamManagementPanel from '../UpstreamManagementPanel.vue'
 
 const api = vi.hoisted(() => ({
   list: vi.fn(), create: vi.fn(), update: vi.fn(), setEnabled: vi.fn(), remove: vi.fn(),
-  sync: vi.fn(), syncAll: vi.fn(), groups: vi.fn(), setGroupDisplayed: vi.fn(), history: vi.fn(), multiplierHistory: vi.fn(),
+  listAll: vi.fn(), updateSortOrder: vi.fn(), sync: vi.fn(), syncAll: vi.fn(), groups: vi.fn(), setGroupDisplayed: vi.fn(), history: vi.fn(), multiplierHistory: vi.fn(),
   showSuccess: vi.fn(), showError: vi.fn(),
 }))
 
@@ -31,8 +31,10 @@ vi.mock('vue-i18n', async (importOriginal) => {
 
 const DataTableStub = defineComponent({
   props: {
+    columns: { type: Array, default: () => [] },
     data: { type: Array, default: () => [] },
     expandedRowKeys: { type: Array, default: () => [] },
+    expandableActions: { type: Boolean, default: true },
     loading: Boolean,
   },
   template: `
@@ -43,6 +45,7 @@ const DataTableStub = defineComponent({
         <slot name="cell-status" :row="row" />
         <slot name="cell-today" :row="row" />
         <slot name="cell-total" :row="row" />
+        <slot name="cell-last_synced_at" :row="row" />
         <slot name="cell-actions" :row="row" />
         <slot name="cell-name" :row="row" />
         <slot name="cell-multiplier" :row="row" />
@@ -118,6 +121,8 @@ describe('UpstreamManagementPanel', () => {
     Object.values(api).forEach((mock) => mock.mockReset())
     api.list.mockResolvedValue({ items: [siteFixture()], total: 1, page: 1, page_size: 20, pages: 1 })
     api.create.mockResolvedValue(siteFixture({ id: 2 }))
+    api.listAll.mockResolvedValue([siteFixture(), siteFixture({ id: 2, name: '上游二号' })])
+    api.updateSortOrder.mockResolvedValue({ updated: 2 })
     api.update.mockResolvedValue(siteFixture())
     api.setEnabled.mockResolvedValue(siteFixture({ enabled: false }))
     api.remove.mockResolvedValue(undefined)
@@ -274,6 +279,70 @@ describe('UpstreamManagementPanel', () => {
     expect(wrapper.text()).toContain('1.2M')
     expect(wrapper.text()).toContain('$71.56')
     expect(wrapper.find('[title="10,388,595,898"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('使用紧凑列宽和两行操作区完整展示右侧统计信息', async () => {
+    const wrapper = mountPanel()
+    await flushPromises()
+
+    const table = wrapper.getComponent(DataTableStub)
+    const columns = table.props('columns') as Array<{ key: string; class?: string }>
+    expect(columns.find((column) => column.key === 'total')?.class).toContain('max-w-32')
+    expect(columns.find((column) => column.key === 'last_synced_at')?.class).toContain('max-w-36')
+    expect(columns.find((column) => column.key === 'actions')?.class).toContain('max-w-32')
+    expect(table.props('expandableActions')).toBe(false)
+
+    const actions = wrapper.get('[data-test="upstream-actions-1"]')
+    expect(actions.classes()).toContain('grid-cols-3')
+    expect(actions.findAll('a, button')).toHaveLength(6)
+    expect(wrapper.get('[data-test="upstream-last-sync-1"]').classes()).toContain('whitespace-normal')
+    wrapper.unmount()
+  })
+
+  it('按分组类型筛选站点并支持余额、今日 Token 排序', async () => {
+    api.list.mockResolvedValue(siteListResult(siteFixture({ displayed_group_count: 1 })))
+    api.groups.mockResolvedValue([
+      { id: 1, site_id: 1, remote_id: 'gpt', name: 'GPT', platform: 'OpenAI', description: '', multiplier: 0.2, today_tokens: 10, today_cost_usd: 0.1, displayed: true, available: true, last_synced_at: '' },
+      { id: 2, site_id: 1, remote_id: 'claude', name: 'Claude', platform: 'Anthropic', description: '', multiplier: 0.1, today_tokens: 20, today_cost_usd: 0.2, displayed: true, available: true, last_synced_at: '' },
+    ])
+    const wrapper = mountPanel()
+    await flushPromises()
+
+    await wrapper.get('select[aria-label="admin.customFeatures.upstream.groupPlatform"]').setValue('Anthropic')
+    await flushPromises()
+    expect(api.list).toHaveBeenLastCalledWith(expect.objectContaining({ group_platform: 'Anthropic' }))
+    expect(wrapper.get('[data-test="expanded-groups-grid"]').text()).toContain('Claude')
+    expect(wrapper.get('[data-test="expanded-groups-grid"]').text()).not.toContain('GPT')
+
+    await wrapper.get('select[aria-label="admin.customFeatures.upstream.sortBy"]').setValue('today_tokens_desc')
+    await flushPromises()
+    expect(api.list).toHaveBeenLastCalledWith(expect.objectContaining({ sort_by: 'today_tokens', sort_order: 'desc' }))
+    wrapper.unmount()
+  })
+
+  it('按平台优先级和倍率升序整理账号下方分组，并可保存站点拖拽排序', async () => {
+    api.list.mockResolvedValue(siteListResult(siteFixture({ displayed_group_count: 1 })))
+    api.groups.mockResolvedValue([
+      { id: 1, site_id: 1, remote_id: 'high-anthropic', name: 'Claude 高', platform: 'Anthropic', description: '', multiplier: 0.5, today_tokens: 1, today_cost_usd: 0.1, displayed: true, available: true, last_synced_at: '' },
+      { id: 2, site_id: 1, remote_id: 'openai', name: 'GPT', platform: 'OpenAI', description: '', multiplier: 0.9, today_tokens: 1, today_cost_usd: 0.1, displayed: true, available: true, last_synced_at: '' },
+      { id: 3, site_id: 1, remote_id: 'low-anthropic', name: 'Claude 低', platform: 'Anthropic', description: '', multiplier: 0.1, today_tokens: 1, today_cost_usd: 0.1, displayed: true, available: true, last_synced_at: '' },
+    ])
+    const wrapper = mountPanel()
+    await flushPromises()
+    const headings = wrapper.get('[data-test="expanded-groups-grid"]').findAll('h4').map((heading) => heading.text())
+    expect(headings).toEqual(['GPT', 'Claude 低', 'Claude 高'])
+
+    await wrapper.get('[data-test="upstream-sort"]').trigger('click')
+    await flushPromises()
+    expect(api.listAll).toHaveBeenCalledOnce()
+    expect(wrapper.find('[data-test="upstream-sortable-sites"]').exists()).toBe(true)
+    await wrapper.get('[data-test="dialog"] button.btn-primary').trigger('click')
+    await flushPromises()
+    expect(api.updateSortOrder).toHaveBeenCalledWith([
+      { id: 1, sort_order: 0 },
+      { id: 2, sort_order: 10 },
+    ])
     wrapper.unmount()
   })
 

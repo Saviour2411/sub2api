@@ -78,6 +78,16 @@ type upstreamGroupDisplayRepo struct {
 	displayed bool
 }
 
+type upstreamSortOrderRepo struct {
+	UpstreamRepository
+	updates []UpstreamSortOrderUpdate
+}
+
+func (r *upstreamSortOrderRepo) UpdateSortOrder(_ context.Context, updates []UpstreamSortOrderUpdate) error {
+	r.updates = append([]UpstreamSortOrderUpdate(nil), updates...)
+	return nil
+}
+
 func (r *upstreamGroupDisplayRepo) SetGroupDisplayed(_ context.Context, _ int64, remoteID string, displayed bool) (*UpstreamGroupDisplayResult, error) {
 	r.remoteID = remoteID
 	r.displayed = displayed
@@ -202,5 +212,24 @@ func TestUpstreamServiceSetGroupDisplayedValidatesInput(t *testing.T) {
 	} {
 		_, err = svc.SetGroupDisplayed(context.Background(), 1, input)
 		require.ErrorIs(t, err, ErrUpstreamInvalidInput)
+	}
+}
+
+func TestUpstreamServiceUpdateSortOrderValidatesInput(t *testing.T) {
+	repo := &upstreamSortOrderRepo{}
+	svc := &UpstreamService{repo: repo}
+	updates := []UpstreamSortOrderUpdate{{ID: 2, SortOrder: 0}, {ID: 1, SortOrder: 10}}
+	require.NoError(t, svc.UpdateSortOrder(context.Background(), updates))
+	require.Equal(t, updates, repo.updates)
+
+	for _, invalid := range [][]UpstreamSortOrderUpdate{
+		nil,
+		{{ID: 0, SortOrder: 0}},
+		{{ID: 1, SortOrder: -1}},
+		{{ID: 1, SortOrder: 0}, {ID: 1, SortOrder: 10}},
+	} {
+		repo.updates = nil
+		require.ErrorIs(t, svc.UpdateSortOrder(context.Background(), invalid), ErrUpstreamInvalidInput)
+		require.Empty(t, repo.updates)
 	}
 }

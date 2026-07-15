@@ -101,23 +101,64 @@ func (h *CustomFeatureHandler) ListUpstreams(c *gin.Context) {
 	if pageSize > 100 {
 		pageSize = 100
 	}
-	params := service.UpstreamListParams{
-		Page: page, PageSize: pageSize, Search: c.Query("search"), Platform: strings.ToLower(strings.TrimSpace(c.Query("platform"))),
+	params, ok := parseUpstreamListParams(c)
+	if !ok {
+		return
 	}
-	if raw := strings.TrimSpace(c.Query("enabled")); raw != "" {
-		enabled, err := strconv.ParseBool(raw)
-		if err != nil {
-			response.BadRequest(c, "enabled 参数无效")
-			return
-		}
-		params.Enabled = &enabled
-	}
+	params.Page, params.PageSize = page, pageSize
 	items, total, err := h.upstreamService.List(c.Request.Context(), params)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 	response.Paginated(c, items, total, page, pageSize)
+}
+
+func (h *CustomFeatureHandler) ListAllUpstreams(c *gin.Context) {
+	params, ok := parseUpstreamListParams(c)
+	if !ok {
+		return
+	}
+	items, err := h.upstreamService.ListAll(c.Request.Context(), params)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, items)
+}
+
+func (h *CustomFeatureHandler) UpdateUpstreamSortOrder(c *gin.Context) {
+	var input struct {
+		Updates []service.UpstreamSortOrderUpdate `json:"updates"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		response.BadRequest(c, "请求格式无效")
+		return
+	}
+	if err := h.upstreamService.UpdateSortOrder(c.Request.Context(), input.Updates); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"updated": len(input.Updates)})
+}
+
+func parseUpstreamListParams(c *gin.Context) (service.UpstreamListParams, bool) {
+	params := service.UpstreamListParams{
+		Search:        c.Query("search"),
+		Platform:      strings.ToLower(strings.TrimSpace(c.Query("platform"))),
+		GroupPlatform: strings.TrimSpace(c.Query("group_platform")),
+		SortBy:        strings.TrimSpace(c.Query("sort_by")),
+		SortOrder:     strings.TrimSpace(c.Query("sort_order")),
+	}
+	if raw := strings.TrimSpace(c.Query("enabled")); raw != "" {
+		enabled, err := strconv.ParseBool(raw)
+		if err != nil {
+			response.BadRequest(c, "enabled 参数无效")
+			return service.UpstreamListParams{}, false
+		}
+		params.Enabled = &enabled
+	}
+	return params, true
 }
 
 func (h *CustomFeatureHandler) CreateUpstream(c *gin.Context) {

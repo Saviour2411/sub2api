@@ -19,6 +19,10 @@
           <Icon name="refresh" size="sm" :class="{ 'animate-spin': syncingAll }" />
           {{ t('admin.customFeatures.upstream.syncAll') }}
         </button>
+        <button type="button" class="btn btn-secondary inline-flex items-center gap-2" data-test="upstream-sort" @click="openSortModal">
+          <Icon name="arrowsUpDown" size="sm" />
+          {{ t('admin.customFeatures.upstream.sortOrder') }}
+        </button>
         <button type="button" class="btn btn-primary inline-flex items-center gap-2" data-test="upstream-add" @click="openCreate">
           <Icon name="plus" size="sm" />
           {{ t('admin.customFeatures.upstream.add') }}
@@ -26,8 +30,8 @@
       </div>
     </div>
 
-    <div class="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_150px_150px]">
-      <div class="relative">
+    <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(240px,1fr)_150px_150px_170px_210px]">
+      <div class="relative sm:col-span-2 xl:col-span-1">
         <Icon name="search" size="sm" class="pointer-events-none absolute left-3 top-3 text-gray-400" />
         <input
           v-model="search"
@@ -46,6 +50,17 @@
         <option value="">{{ t('admin.customFeatures.upstream.allStates') }}</option>
         <option value="true">{{ t('admin.customFeatures.upstream.enabled') }}</option>
         <option value="false">{{ t('admin.customFeatures.upstream.disabled') }}</option>
+      </select>
+      <select v-model="groupPlatformFilter" class="input" :aria-label="t('admin.customFeatures.upstream.groupPlatform')" @change="applyFilters">
+        <option value="">{{ t('admin.customFeatures.upstream.allGroupPlatforms') }}</option>
+        <option v-for="platform in groupPlatforms" :key="platform" :value="platform">{{ platform }}</option>
+      </select>
+      <select v-model="sortSelection" class="input" :aria-label="t('admin.customFeatures.upstream.sortBy')" @change="applySortSelection">
+        <option value="">{{ t('admin.customFeatures.upstream.defaultSort') }}</option>
+        <option value="balance_desc">{{ t('admin.customFeatures.upstream.sort.balanceDesc') }}</option>
+        <option value="balance_asc">{{ t('admin.customFeatures.upstream.sort.balanceAsc') }}</option>
+        <option value="today_tokens_desc">{{ t('admin.customFeatures.upstream.sort.todayTokensDesc') }}</option>
+        <option value="today_tokens_asc">{{ t('admin.customFeatures.upstream.sort.todayTokensAsc') }}</option>
       </select>
     </div>
 
@@ -67,12 +82,12 @@
       row-key="id"
       :sticky-first-column="true"
       :sticky-actions-column="true"
-      :actions-count="6"
+      :expandable-actions="false"
       :expanded-row-keys="expandedSiteKeys"
       compact
     >
       <template #cell-site="{ row }">
-        <div class="flex max-w-64 items-start gap-1 whitespace-normal">
+        <div class="flex max-w-full items-start gap-1 whitespace-normal">
           <button
             v-if="row.displayed_group_count > 0"
             type="button"
@@ -130,10 +145,17 @@
         </div>
       </template>
       <template #cell-last_synced_at="{ row }">
-        <span class="text-xs text-gray-600 dark:text-gray-300">{{ formatDateTime(row.last_synced_at) }}</span>
+        <span
+          class="block whitespace-normal text-xs leading-4 text-gray-600 dark:text-gray-300"
+          :data-test="`upstream-last-sync-${row.id}`"
+        >{{ formatDateTime(row.last_synced_at) }}</span>
       </template>
       <template #cell-actions="{ row }">
-        <div class="flex flex-wrap items-center justify-end gap-1" @click.stop>
+        <div
+          class="ml-auto grid w-[6.5rem] grid-cols-3 justify-items-center gap-1"
+          :data-test="`upstream-actions-${row.id}`"
+          @click.stop
+        >
           <a :href="row.base_url" target="_blank" rel="noopener noreferrer" class="icon-action" :title="t('admin.customFeatures.upstream.openSite')">
             <Icon name="externalLink" size="sm" />
           </a>
@@ -237,6 +259,46 @@
         <button type="button" class="btn btn-secondary" :disabled="page >= pages" @click="changePage(page + 1)">{{ t('admin.customFeatures.upstream.next') }}</button>
       </div>
     </div>
+
+    <BaseDialog :show="sortOpen" :title="t('admin.customFeatures.upstream.sortOrder')" width="normal" @close="closeSortModal">
+      <div class="space-y-4">
+        <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.customFeatures.upstream.sortOrderHint') }}</p>
+        <div v-if="sortLoading" class="flex h-32 items-center justify-center">
+          <span class="h-7 w-7 animate-spin rounded-full border-b-2 border-primary-600"></span>
+        </div>
+        <VueDraggable
+          v-else
+          v-model="sortableSites"
+          :animation="200"
+          class="space-y-2"
+          data-test="upstream-sortable-sites"
+        >
+          <div
+            v-for="site in sortableSites"
+            :key="site.id"
+            class="flex cursor-grab items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 transition-shadow hover:shadow-md active:cursor-grabbing dark:border-dark-600 dark:bg-dark-700"
+            :data-test="`upstream-sort-item-${site.id}`"
+          >
+            <Icon name="menu" size="md" class="flex-shrink-0 text-gray-400" />
+            <div class="min-w-0 flex-1">
+              <div class="truncate font-medium text-gray-900 dark:text-white">{{ site.name }}</div>
+              <div class="truncate text-xs text-gray-500 dark:text-gray-400">{{ site.base_url }}</div>
+            </div>
+            <span class="text-sm text-gray-400">#{{ site.id }}</span>
+          </div>
+        </VueDraggable>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-3 pt-4">
+          <button type="button" class="btn btn-secondary" @click="closeSortModal">{{ t('admin.customFeatures.upstream.cancel') }}</button>
+          <button type="button" class="btn btn-primary inline-flex items-center gap-2" :disabled="sortSubmitting || sortLoading" @click="saveSortOrder">
+            <span v-if="sortSubmitting" class="h-4 w-4 animate-spin rounded-full border-b-2 border-white"></span>
+            <Icon v-else name="check" size="sm" />
+            {{ sortSubmitting ? t('common.saving') : t('common.save') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
 
     <BaseDialog :show="formOpen" :title="editingSite ? t('admin.customFeatures.upstream.editTitle') : t('admin.customFeatures.upstream.addTitle')" width="wide" @close="closeForm">
       <form class="grid grid-cols-1 gap-5 md:grid-cols-2" data-test="upstream-form" @submit.prevent="submitForm">
@@ -414,6 +476,7 @@ import {
   type TooltipItem
 } from 'chart.js'
 import { Line } from 'vue-chartjs'
+import { VueDraggable } from 'vue-draggable-plus'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Toggle from '@/components/common/Toggle.vue'
@@ -423,6 +486,7 @@ import upstreamsAPI, {
   type UpstreamDailyStat,
   type UpstreamGroup,
   type UpstreamGroupMultiplierHistory,
+  type UpstreamGroupPlatform,
   type UpstreamPlatform,
   type UpstreamSite,
   type UpstreamWritePayload
@@ -445,7 +509,14 @@ const pages = ref(1)
 const search = ref('')
 const platformFilter = ref<UpstreamPlatform | ''>('')
 const enabledFilter = ref('')
+const groupPlatformFilter = ref<UpstreamGroupPlatform | ''>('')
+const sortSelection = ref('')
+const groupPlatforms: UpstreamGroupPlatform[] = ['OpenAI', 'Anthropic', 'Gemini', 'Grok', 'Antigravity', 'New API']
 const syncingAll = ref(false)
+const sortOpen = ref(false)
+const sortLoading = ref(false)
+const sortSubmitting = ref(false)
+const sortableSites = ref<UpstreamSite[]>([])
 const formOpen = ref(false)
 const editingSite = ref<UpstreamSite | null>(null)
 const saving = ref(false)
@@ -492,14 +563,14 @@ const form = reactive<UpstreamWritePayload>({
 })
 
 const columns = computed<Column[]>(() => [
-  { key: 'site', label: t('admin.customFeatures.upstream.columns.site'), class: 'min-w-48' },
-  { key: 'platform', label: t('admin.customFeatures.upstream.platform') },
-  { key: 'status', label: t('admin.customFeatures.upstream.columns.status') },
-  { key: 'balance_usd', label: t('admin.customFeatures.upstream.columns.balance') },
-  { key: 'today', label: t('admin.customFeatures.upstream.columns.today') },
-  { key: 'total', label: t('admin.customFeatures.upstream.columns.total') },
-  { key: 'last_synced_at', label: t('admin.customFeatures.upstream.columns.lastSync') },
-  { key: 'actions', label: t('admin.customFeatures.upstream.columns.actions'), class: 'min-w-48' }
+  { key: 'site', label: t('admin.customFeatures.upstream.columns.site'), class: 'w-52 min-w-52 max-w-52' },
+  { key: 'platform', label: t('admin.customFeatures.upstream.platform'), class: 'w-20 min-w-20 max-w-20' },
+  { key: 'status', label: t('admin.customFeatures.upstream.columns.status'), class: 'w-28 min-w-28 max-w-28' },
+  { key: 'balance_usd', label: t('admin.customFeatures.upstream.columns.balance'), class: 'w-24 min-w-24 max-w-24' },
+  { key: 'today', label: t('admin.customFeatures.upstream.columns.today'), class: 'w-32 min-w-32 max-w-32 whitespace-normal' },
+  { key: 'total', label: t('admin.customFeatures.upstream.columns.total'), class: 'w-32 min-w-32 max-w-32 whitespace-normal' },
+  { key: 'last_synced_at', label: t('admin.customFeatures.upstream.columns.lastSync'), class: 'w-36 min-w-36 max-w-36 whitespace-normal' },
+  { key: 'actions', label: t('admin.customFeatures.upstream.columns.actions'), class: 'w-32 min-w-32 max-w-32 text-right' }
 ])
 
 const expandedSiteKeys = computed(() => Array.from(expandedSiteIDs.value))
@@ -613,7 +684,9 @@ function isSiteExpanded(siteID: number) {
 }
 
 function displayedGroups(siteID: number) {
-  return groupState(siteID).groups.filter((group) => group.displayed)
+  return sortGroups(groupState(siteID).groups.filter((group) => (
+    group.displayed && (!groupPlatformFilter.value || displayGroupPlatform(group) === groupPlatformFilter.value)
+  )))
 }
 
 function toggleSiteGroups(site: UpstreamSite) {
@@ -660,7 +733,9 @@ async function loadSites(silent = false) {
   try {
     const result = await upstreamsAPI.list({
       page: page.value, page_size: pageSize, search: search.value.trim(), platform: platformFilter.value,
-      enabled: enabledFilter.value === '' ? undefined : enabledFilter.value === 'true'
+      enabled: enabledFilter.value === '' ? undefined : enabledFilter.value === 'true',
+      group_platform: groupPlatformFilter.value || undefined,
+      ...parseSortSelection(sortSelection.value)
     })
     if (requestVersion !== siteListRequestVersion || disposed) return
     sites.value = result.items || []
@@ -695,7 +770,53 @@ async function loadSites(silent = false) {
 }
 
 function applyFilters() { page.value = 1; loadSites(false) }
+function applySortSelection() { page.value = 1; loadSites(false) }
 function changePage(nextPage: number) { page.value = nextPage; loadSites(false) }
+
+function parseSortSelection(value: string): { sort_by?: 'balance_usd' | 'today_tokens'; sort_order?: 'asc' | 'desc' } {
+  if (!value) return {}
+  const [sortBy, sortOrder] = value.split('_').reduce((parts, part, index, values) => {
+    if (index < values.length - 1) parts[0] += `${parts[0] ? '_' : ''}${part}`
+    else parts[1] = part
+    return parts
+  }, ['', ''] as [string, string])
+  if ((sortBy === 'balance' || sortBy === 'today_tokens') && (sortOrder === 'asc' || sortOrder === 'desc')) {
+    return { sort_by: sortBy === 'balance' ? 'balance_usd' : 'today_tokens', sort_order: sortOrder }
+  }
+  return {}
+}
+
+async function openSortModal() {
+  sortLoading.value = true
+  sortOpen.value = true
+  try {
+    sortableSites.value = await upstreamsAPI.listAll()
+  } catch (error) {
+    sortOpen.value = false
+    appStore.showError(extractApiErrorMessage(error, t('admin.customFeatures.upstream.sortOrderLoadFailed')))
+  } finally {
+    sortLoading.value = false
+  }
+}
+
+function closeSortModal() {
+  if (!sortSubmitting.value) sortOpen.value = false
+}
+
+async function saveSortOrder() {
+  if (sortableSites.value.length === 0) return
+  sortSubmitting.value = true
+  try {
+    await upstreamsAPI.updateSortOrder(sortableSites.value.map((site, index) => ({ id: site.id, sort_order: index * 10 })))
+    appStore.showSuccess(t('admin.customFeatures.upstream.sortOrderUpdated'))
+    sortOpen.value = false
+    await loadSites(true)
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.customFeatures.upstream.sortOrderSaveFailed')))
+  } finally {
+    sortSubmitting.value = false
+  }
+}
 
 function resetForm() {
   Object.assign(form, { name: '', base_url: '', platform: 'sub2api', auth_mode: 'password', account: '', password: '', access_token: '', refresh_token: '', enabled: true })
@@ -948,18 +1069,45 @@ function groupPlatformClass(platform: string) {
   const normalized = platform.trim().toLowerCase()
   if (normalized.includes('openai')) return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
   if (normalized.includes('anthropic') || normalized.includes('claude')) return 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300'
+  if (normalized.includes('antigravity')) return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'
   if (normalized.includes('gemini') || normalized.includes('google')) return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
   return 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-300'
 }
 function displayGroupPlatform(group: Pick<UpstreamGroup, 'name' | 'description' | 'platform'>) {
   const platform = group.platform.trim()
-  if (platform && !['newapi', 'new api'].includes(platform.toLowerCase())) return platform
+  const canonical = canonicalGroupPlatform(platform)
+  if (canonical) return canonical
   const text = `${group.name} ${group.description}`.toLowerCase()
   if (text.includes('claude') || text.includes('anthropic')) return 'Anthropic'
+  if (text.includes('kiro') || text.includes('sonnet') || text.includes('opus') || text.includes('haiku')) return 'Anthropic'
   if (text.includes('gpt') || text.includes('openai')) return 'OpenAI'
+  if (text.includes('antigravity')) return 'Antigravity'
   if (text.includes('gemini') || text.includes('google ai')) return 'Gemini'
   if (text.includes('grok') || text.includes('x.ai')) return 'Grok'
   return platform || '—'
+}
+function canonicalGroupPlatform(platform: string) {
+  const normalized = platform.toLowerCase()
+  if (!normalized || normalized.includes('newapi') || normalized.includes('new api')) return ''
+  if (normalized.includes('antigravity')) return 'Antigravity'
+  if (normalized === 'openai' || normalized === 'open ai') return 'OpenAI'
+  if (normalized === 'anthropic' || normalized === 'claude') return 'Anthropic'
+  if (normalized === 'gemini' || normalized === 'google' || normalized === 'google ai') return 'Gemini'
+  if (normalized === 'grok' || normalized === 'xai' || normalized === 'x.ai') return 'Grok'
+  return platform
+}
+function groupPlatformRank(platform: string) {
+  return ({ openai: 0, anthropic: 1, gemini: 2, grok: 3, antigravity: 4 } as Record<string, number>)[platform.toLowerCase()] ?? 5
+}
+function sortGroups(groups: UpstreamGroup[]) {
+  return [...groups].sort((left, right) => {
+    const platformOrder = groupPlatformRank(displayGroupPlatform(left)) - groupPlatformRank(displayGroupPlatform(right))
+    if (platformOrder !== 0) return platformOrder
+    const leftMultiplier = left.multiplier ?? Number.POSITIVE_INFINITY
+    const rightMultiplier = right.multiplier ?? Number.POSITIVE_INFINITY
+    if (leftMultiplier !== rightMultiplier) return leftMultiplier - rightMultiplier
+    return left.name.localeCompare(right.name, 'zh-CN')
+  })
 }
 function formatMoney(value: number | null | undefined) { return value == null ? '—' : `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}` }
 function formatTokens(value: number) { return formatCompactNumber(Number(value || 0)) }

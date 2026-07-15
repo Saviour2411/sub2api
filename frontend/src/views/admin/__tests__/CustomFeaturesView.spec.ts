@@ -174,6 +174,9 @@ describe('admin CustomFeaturesView', () => {
     const wrapper = mountView()
     await flushPromises()
 
+    const content = wrapper.get('[data-test="custom-features-content"]')
+    expect(content.classes()).toContain('max-w-[1600px]')
+    expect(content.classes()).toContain('space-y-4')
     expect(getSettings).toHaveBeenCalledOnce()
     expect(getGroups).toHaveBeenCalledOnce()
     expect(wrapper.find('[data-test="upstream-management-panel"]').exists()).toBe(true)

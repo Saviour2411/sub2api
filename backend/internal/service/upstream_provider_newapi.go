@@ -317,7 +317,8 @@ func resolveNewAPIGroupPlatform(explicit, name, description string) string {
 
 func canonicalNewAPIGroupPlatform(value string) string {
 	trimmed := strings.TrimSpace(value)
-	switch strings.ToLower(trimmed) {
+	normalized := strings.ToLower(trimmed)
+	switch normalized {
 	case "openai", "open ai":
 		return "OpenAI"
 	case "anthropic", "claude":
@@ -326,9 +327,14 @@ func canonicalNewAPIGroupPlatform(value string) string {
 		return "Gemini"
 	case "grok", "xai", "x.ai":
 		return "Grok"
+	case "antigravity", "google antigravity":
+		return "Antigravity"
 	case "newapi", "new api":
 		return ""
 	default:
+		if strings.Contains(normalized, "newapi") || strings.Contains(normalized, "new api") {
+			return ""
+		}
 		return trimmed
 	}
 }
@@ -338,8 +344,12 @@ func inferNewAPIGroupPlatform(value string) string {
 	switch {
 	case strings.Contains(normalized, "claude"), strings.Contains(normalized, "anthropic"):
 		return "Anthropic"
+	case strings.Contains(normalized, "kiro"), strings.Contains(normalized, "sonnet"), strings.Contains(normalized, "opus"), strings.Contains(normalized, "haiku"):
+		return "Anthropic"
 	case strings.Contains(normalized, "gpt"), strings.Contains(normalized, "openai"):
 		return "OpenAI"
+	case strings.Contains(normalized, "antigravity"):
+		return "Antigravity"
 	case strings.Contains(normalized, "gemini"), strings.Contains(normalized, "google ai"):
 		return "Gemini"
 	case strings.Contains(normalized, "grok"), strings.Contains(normalized, "x.ai"):

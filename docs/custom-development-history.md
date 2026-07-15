@@ -114,6 +114,7 @@
 | 编号 | 功能 | 当前行为与边界 | 关键入口 | 状态 |
 | --- | --- | --- | --- | --- |
 | `CUST-OBS-001` | 流式渠道监控与随机抖动 | 渠道监控和模板可以选择流式检测；检测间隔支持正负随机抖动，避免大量渠道同一时刻探测，并保留 provider/endpoint/请求体的本地扩展。 | `backend/internal/service/channel_monitor_checker.go`、`backend/ent/schema/channel_monitor.go`、`backend/migrations/141_channel_monitor_stream_enabled.sql` | 生效中 |
+| `CUST-OBS-002` | 独立上游站点同步监控 | 在二开管理页统一维护 Sub2API/New API 上游站点，定时同步余额、分组倍率、Token 与实际消耗，保留用量及倍率历史；支持按分组类型筛选、按余额/今日 Token 排序、拖拽调整站点顺序，并按平台优先级和倍率整理账号下方分组。 | `backend/internal/service/upstream_service.go`、`frontend/src/components/admin/upstream/UpstreamManagementPanel.vue`、`backend/migrations/178_upstream_management.sql`、`backend/migrations/181_upstream_management_order_and_platform.sql` | 生效中 |
 
 ### 产品、支付与增长
 
@@ -138,7 +139,7 @@
 
 | 编号 | 功能 | 当前行为与边界 | 关键入口 | 状态 |
 | --- | --- | --- | --- | --- |
-| `CUST-UI-001` | 独立二开管理页 | 将模型广场、每日签到和网关运行策略集中在 `/admin/custom-features`，与上游通用设置隔离。 | `frontend/src/views/admin/CustomFeaturesView.vue`、`backend/internal/server/routes/admin_custom_features.go` | 生效中 |
+| `CUST-UI-001` | 独立二开管理页 | 将上游同步监控、模型广场、每日签到和网关运行策略集中在 `/admin/custom-features`，与上游通用设置隔离；页面使用宽屏管理台布局展示高密度数据。 | `frontend/src/views/admin/CustomFeaturesView.vue`、`backend/internal/server/routes/admin_custom_features.go` | 生效中 |
 | `CUST-UI-002` | 统一功能开关注册表 | 公共设置驱动的入口统一声明 opt-in/opt-out 语义，避免 SSR 注入缺字段导致刷新闪烁或错误隐藏。 | `frontend/src/utils/featureFlags.ts`、`frontend/src/__tests__/featureFlags.spec.ts` | 生效中 |
 | `CUST-UI-003` | 机甲冷蓝主题与浅色默认 | 保留自定义认证背景、扫描线、计数、倾斜等视觉组件，默认使用浅色主题并提供暗色兼容。 | `frontend/src/components/common/BackgroundFX.vue`、`frontend/src/composables/useTilt.ts`、`frontend/src/stores/app.ts` | 生效中 |
 | `CUST-UI-004` | 表格和导航稳定性 | 保留账号列表禁用虚拟化、查询后滚动重置、分页大小持久化、侧边栏滚动位置和日期下拉层级修复。 | `frontend/src/components/common/DataTable.vue`、`frontend/src/components/layout/TablePageLayout.vue`、`frontend/src/components/layout/AppSidebar.vue` | 生效中 |
@@ -159,6 +160,8 @@
 
 | 日期 | 版本/提交 | 类型 | 功能编号 | 变更与原因 | 验证 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-07-16 | `0.1.199` / 待提交 | 修改 | `CUST-OBS-002` | 上游管理新增分组类型筛选、余额/今日 Token 双向排序和站点拖拽排序；New API 分组平台改为优先使用上游显式类型、其次按名称/描述识别 Kiro/Claude/OpenAI/Gemini/Grok/Antigravity，并迁移修复历史错误标签；账号下方分组按 OpenAI、Anthropic、Gemini、Grok、Antigravity 和倍率升序排列。 | 后端服务/仓储测试、前端组件测试、类型检查、生产构建及 Playwright 交互与多视口截图检查 |
+| 2026-07-15 | `0.1.199` / 待提交 | 修改 | `CUST-OBS-002`、`CUST-UI-001` | 补录独立上游站点同步监控能力；二开管理页移除与应用顶栏重复的标题，放宽内容区并收紧纵向间距；上游主表固定紧凑列宽，将操作区改为 3×2 图标网格，使累计 Token、实际消耗和最后同步在常见桌面宽度下无需横向拖动即可查看。 | 前端组件测试、类型检查、生产构建及桌面/窄屏 Playwright 截图检查 |
 | 2026-07-15 | `0.1.194` / `97e3d92c8` | 基线建立 | 全部当前项 | 以 `da85cc7e4` 为已完整集成上游基线，结合 561 个差异文件、377 个本地独有提交、同步记录、迁移、路由和运行配置建立首版能力族台账。 | 功能编号唯一性、关键路径存在性、`git diff --check` 和 Markdown 结构检查 |
 
 后续记录格式示例：
@@ -176,7 +179,7 @@
 3. Anthropic 请求转换和账号测试变化：`CUST-PROTO-003`、`CUST-PROTO-004`、`CUST-ACC-005`；
 4. 计费和 usage schema 变化：`CUST-BILL-001` 至 `CUST-BILL-005`；
 5. account/group/channel/payment schema 变化：`CUST-ACC-001`、`CUST-ACC-006`、`CUST-PROD-005`、`CUST-PROD-006`；
-6. 前端设置、导航和公共配置变化：`CUST-PROD-001`、`CUST-PROD-002`、`CUST-UI-001` 至 `CUST-UI-005`；
+6. 前端设置、导航和公共配置变化：`CUST-PROD-001`、`CUST-PROD-002`、`CUST-OBS-002`、`CUST-UI-001` 至 `CUST-UI-005`；
 7. release、Compose 或镜像变化：`CUST-OPS-001` 至 `CUST-OPS-004`。
 
 ## 已被上游吸收的历史二开

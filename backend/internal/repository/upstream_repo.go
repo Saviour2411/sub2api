@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	entsql "entgo.io/ent/dialect/sql"
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamdailystat"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamgroup"
@@ -24,8 +25,20 @@ func NewUpstreamRepository(client *dbent.Client) service.UpstreamRepository {
 }
 
 func (r *upstreamRepository) Create(ctx context.Context, site *service.UpstreamSite) error {
+	if site.SortOrder == 0 {
+		last, err := clientFromContext(ctx, r.client).UpstreamSite.Query().
+			Order(dbent.Desc(upstreamsite.FieldSortOrder)).
+			First(ctx)
+		if err != nil && !dbent.IsNotFound(err) {
+			return fmt.Errorf("读取上游站点排序: %w", err)
+		}
+		if last != nil {
+			site.SortOrder = last.SortOrder + 10
+		}
+	}
 	b := clientFromContext(ctx, r.client).UpstreamSite.Create().
 		SetName(site.Name).
+		SetSortOrder(site.SortOrder).
 		SetBaseURL(site.BaseURL).
 		SetPlatform(upstreamsite.Platform(site.Platform)).
 		SetAuthMode(upstreamsite.AuthMode(site.AuthMode)).
@@ -68,6 +81,7 @@ func (r *upstreamRepository) GetByID(ctx context.Context, id int64) (*service.Up
 func (r *upstreamRepository) Update(ctx context.Context, site *service.UpstreamSite) error {
 	b := clientFromContext(ctx, r.client).UpstreamSite.UpdateOneID(site.ID).
 		SetName(site.Name).
+		SetSortOrder(site.SortOrder).
 		SetBaseURL(site.BaseURL).
 		SetPlatform(upstreamsite.Platform(site.Platform)).
 		SetAuthMode(upstreamsite.AuthMode(site.AuthMode)).
@@ -120,6 +134,38 @@ func (r *upstreamRepository) Delete(ctx context.Context, id int64) error {
 }
 
 func (r *upstreamRepository) List(ctx context.Context, params service.UpstreamListParams) ([]*service.UpstreamSite, int64, error) {
+	q := r.siteQuery(ctx, params)
+	total, err := q.Count(ctx)
+	if err != nil {
+		return nil, 0, fmt.Errorf("统计上游站点: %w", err)
+	}
+	page, pageSize := params.Page, params.PageSize
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+	rows, err := q.Order(upstreamSiteOrder(params)...).Offset((page - 1) * pageSize).Limit(pageSize).All(ctx)
+	if err != nil {
+		return nil, 0, fmt.Errorf("列出上游站点: %w", err)
+	}
+	items, err := r.buildSiteList(ctx, rows)
+	if err != nil {
+		return nil, 0, err
+	}
+	return items, int64(total), nil
+}
+
+func (r *upstreamRepository) ListAll(ctx context.Context, params service.UpstreamListParams) ([]*service.UpstreamSite, error) {
+	rows, err := r.siteQuery(ctx, params).Order(upstreamSiteOrder(params)...).All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("列出全部上游站点: %w", err)
+	}
+	return r.buildSiteList(ctx, rows)
+}
+
+func (r *upstreamRepository) siteQuery(ctx context.Context, params service.UpstreamListParams) *dbent.UpstreamSiteQuery {
 	q := clientFromContext(ctx, r.client).UpstreamSite.Query()
 	if search := strings.TrimSpace(params.Search); search != "" {
 		q = q.Where(upstreamsite.Or(
@@ -134,21 +180,29 @@ func (r *upstreamRepository) List(ctx context.Context, params service.UpstreamLi
 	if params.Enabled != nil {
 		q = q.Where(upstreamsite.EnabledEQ(*params.Enabled))
 	}
-	total, err := q.Count(ctx)
-	if err != nil {
-		return nil, 0, fmt.Errorf("统计上游站点: %w", err)
+	if groupPlatform := strings.TrimSpace(params.GroupPlatform); groupPlatform != "" {
+		q = q.Where(upstreamsite.HasGroupsWith(upstreamgroup.PlatformEqualFold(groupPlatform)))
 	}
-	page, pageSize := params.Page, params.PageSize
-	if page < 1 {
-		page = 1
+	return q
+}
+
+func upstreamSiteOrder(params service.UpstreamListParams) []upstreamsite.OrderOption {
+	if params.SortBy == "balance_usd" {
+		if params.SortOrder == "desc" {
+			return []upstreamsite.OrderOption{upstreamsite.ByBalanceUsd(entsql.OrderDesc(), entsql.OrderNullsLast()), dbent.Asc(upstreamsite.FieldID)}
+		}
+		return []upstreamsite.OrderOption{upstreamsite.ByBalanceUsd(entsql.OrderNullsLast()), dbent.Asc(upstreamsite.FieldID)}
 	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 20
+	if params.SortBy == "today_tokens" {
+		if params.SortOrder == "desc" {
+			return []upstreamsite.OrderOption{dbent.Desc(upstreamsite.FieldTodayTokens), dbent.Asc(upstreamsite.FieldID)}
+		}
+		return []upstreamsite.OrderOption{dbent.Asc(upstreamsite.FieldTodayTokens), dbent.Asc(upstreamsite.FieldID)}
 	}
-	rows, err := q.Order(dbent.Desc(upstreamsite.FieldID)).Offset((page - 1) * pageSize).Limit(pageSize).All(ctx)
-	if err != nil {
-		return nil, 0, fmt.Errorf("列出上游站点: %w", err)
-	}
+	return []upstreamsite.OrderOption{dbent.Asc(upstreamsite.FieldSortOrder), dbent.Asc(upstreamsite.FieldID)}
+}
+
+func (r *upstreamRepository) buildSiteList(ctx context.Context, rows []*dbent.UpstreamSite) ([]*service.UpstreamSite, error) {
 	displayedCounts := make(map[int64]int, len(rows))
 	if len(rows) > 0 {
 		siteIDs := make([]int64, 0, len(rows))
@@ -159,7 +213,7 @@ func (r *upstreamRepository) List(ctx context.Context, params service.UpstreamLi
 			Where(upstreamgroup.SiteIDIn(siteIDs...), upstreamgroup.DisplayedEQ(true)).
 			All(ctx)
 		if groupErr != nil {
-			return nil, 0, fmt.Errorf("统计已展示上游分组: %w", groupErr)
+			return nil, fmt.Errorf("统计已展示上游分组: %w", groupErr)
 		}
 		for _, group := range groups {
 			displayedCounts[group.SiteID]++
@@ -171,7 +225,32 @@ func (r *upstreamRepository) List(ctx context.Context, params service.UpstreamLi
 		item.DisplayedGroupCount = displayedCounts[row.ID]
 		items = append(items, item)
 	}
-	return items, int64(total), nil
+	return items, nil
+}
+
+func (r *upstreamRepository) UpdateSortOrder(ctx context.Context, updates []service.UpstreamSortOrderUpdate) error {
+	tx, err := r.client.Tx(ctx)
+	if err != nil {
+		return fmt.Errorf("开启上游排序事务: %w", err)
+	}
+	rollback := func(cause error) error {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return fmt.Errorf("%v；回滚失败: %w", cause, rollbackErr)
+		}
+		return cause
+	}
+	for _, update := range updates {
+		if err := tx.UpstreamSite.UpdateOneID(update.ID).SetSortOrder(update.SortOrder).Exec(ctx); err != nil {
+			if dbent.IsNotFound(err) {
+				return rollback(service.ErrUpstreamNotFound)
+			}
+			return rollback(fmt.Errorf("更新上游站点排序: %w", err))
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("提交上游排序事务: %w", err)
+	}
+	return nil
 }
 
 func (r *upstreamRepository) ListIDs(ctx context.Context, enabledOnly bool) ([]int64, error) {

@@ -55,6 +55,7 @@ type UpstreamCredential struct {
 // UpstreamSite 是独立上游管理领域的站点模型。
 type UpstreamSite struct {
 	ID                    int64
+	SortOrder             int
 	Name                  string
 	BaseURL               string
 	Platform              string
@@ -82,6 +83,7 @@ type UpstreamSite struct {
 // UpstreamSiteView 是管理 API 的脱敏响应。
 type UpstreamSiteView struct {
 	ID                  int64      `json:"id"`
+	SortOrder           int        `json:"sort_order"`
 	Name                string     `json:"name"`
 	BaseURL             string     `json:"base_url"`
 	Platform            string     `json:"platform"`
@@ -105,11 +107,19 @@ type UpstreamSiteView struct {
 }
 
 type UpstreamListParams struct {
-	Page     int
-	PageSize int
-	Search   string
-	Platform string
-	Enabled  *bool
+	Page          int
+	PageSize      int
+	Search        string
+	Platform      string
+	Enabled       *bool
+	GroupPlatform string
+	SortBy        string
+	SortOrder     string
+}
+
+type UpstreamSortOrderUpdate struct {
+	ID        int64 `json:"id"`
+	SortOrder int   `json:"sort_order"`
 }
 
 type UpstreamCreateInput struct {
@@ -231,7 +241,9 @@ type UpstreamRepository interface {
 	Create(ctx context.Context, site *UpstreamSite) error
 	GetByID(ctx context.Context, id int64) (*UpstreamSite, error)
 	Update(ctx context.Context, site *UpstreamSite) error
+	ListAll(ctx context.Context, params UpstreamListParams) ([]*UpstreamSite, error)
 	SetEnabled(ctx context.Context, id int64, enabled bool, nextSyncAt *time.Time) error
+	UpdateSortOrder(ctx context.Context, updates []UpstreamSortOrderUpdate) error
 	Delete(ctx context.Context, id int64) error
 	List(ctx context.Context, params UpstreamListParams) ([]*UpstreamSite, int64, error)
 	ListIDs(ctx context.Context, enabledOnly bool) ([]int64, error)

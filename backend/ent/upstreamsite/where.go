@@ -85,6 +85,11 @@ func CredentialEncrypted(v string) predicate.UpstreamSite {
 	return predicate.UpstreamSite(sql.FieldEQ(FieldCredentialEncrypted, v))
 }
 
+// SortOrder applies equality check predicate on the "sort_order" field. It's identical to SortOrderEQ.
+func SortOrder(v int) predicate.UpstreamSite {
+	return predicate.UpstreamSite(sql.FieldEQ(FieldSortOrder, v))
+}
+
 // Enabled applies equality check predicate on the "enabled" field. It's identical to EnabledEQ.
 func Enabled(v bool) predicate.UpstreamSite {
 	return predicate.UpstreamSite(sql.FieldEQ(FieldEnabled, v))
@@ -518,6 +523,46 @@ func CredentialEncryptedEqualFold(v string) predicate.UpstreamSite {
 // CredentialEncryptedContainsFold applies the ContainsFold predicate on the "credential_encrypted" field.
 func CredentialEncryptedContainsFold(v string) predicate.UpstreamSite {
 	return predicate.UpstreamSite(sql.FieldContainsFold(FieldCredentialEncrypted, v))
+}
+
+// SortOrderEQ applies the EQ predicate on the "sort_order" field.
+func SortOrderEQ(v int) predicate.UpstreamSite {
+	return predicate.UpstreamSite(sql.FieldEQ(FieldSortOrder, v))
+}
+
+// SortOrderNEQ applies the NEQ predicate on the "sort_order" field.
+func SortOrderNEQ(v int) predicate.UpstreamSite {
+	return predicate.UpstreamSite(sql.FieldNEQ(FieldSortOrder, v))
+}
+
+// SortOrderIn applies the In predicate on the "sort_order" field.
+func SortOrderIn(vs ...int) predicate.UpstreamSite {
+	return predicate.UpstreamSite(sql.FieldIn(FieldSortOrder, vs...))
+}
+
+// SortOrderNotIn applies the NotIn predicate on the "sort_order" field.
+func SortOrderNotIn(vs ...int) predicate.UpstreamSite {
+	return predicate.UpstreamSite(sql.FieldNotIn(FieldSortOrder, vs...))
+}
+
+// SortOrderGT applies the GT predicate on the "sort_order" field.
+func SortOrderGT(v int) predicate.UpstreamSite {
+	return predicate.UpstreamSite(sql.FieldGT(FieldSortOrder, v))
+}
+
+// SortOrderGTE applies the GTE predicate on the "sort_order" field.
+func SortOrderGTE(v int) predicate.UpstreamSite {
+	return predicate.UpstreamSite(sql.FieldGTE(FieldSortOrder, v))
+}
+
+// SortOrderLT applies the LT predicate on the "sort_order" field.
+func SortOrderLT(v int) predicate.UpstreamSite {
+	return predicate.UpstreamSite(sql.FieldLT(FieldSortOrder, v))
+}
+
+// SortOrderLTE applies the LTE predicate on the "sort_order" field.
+func SortOrderLTE(v int) predicate.UpstreamSite {
+	return predicate.UpstreamSite(sql.FieldLTE(FieldSortOrder, v))
 }
 
 // EnabledEQ applies the EQ predicate on the "enabled" field.

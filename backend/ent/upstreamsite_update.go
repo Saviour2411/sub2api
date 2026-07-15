@@ -121,6 +121,27 @@ func (_u *UpstreamSiteUpdate) SetNillableCredentialEncrypted(v *string) *Upstrea
 	return _u
 }
 
+// SetSortOrder sets the "sort_order" field.
+func (_u *UpstreamSiteUpdate) SetSortOrder(v int) *UpstreamSiteUpdate {
+	_u.mutation.ResetSortOrder()
+	_u.mutation.SetSortOrder(v)
+	return _u
+}
+
+// SetNillableSortOrder sets the "sort_order" field if the given value is not nil.
+func (_u *UpstreamSiteUpdate) SetNillableSortOrder(v *int) *UpstreamSiteUpdate {
+	if v != nil {
+		_u.SetSortOrder(*v)
+	}
+	return _u
+}
+
+// AddSortOrder adds value to the "sort_order" field.
+func (_u *UpstreamSiteUpdate) AddSortOrder(v int) *UpstreamSiteUpdate {
+	_u.mutation.AddSortOrder(v)
+	return _u
+}
+
 // SetEnabled sets the "enabled" field.
 func (_u *UpstreamSiteUpdate) SetEnabled(v bool) *UpstreamSiteUpdate {
 	_u.mutation.SetEnabled(v)
@@ -582,6 +603,12 @@ func (_u *UpstreamSiteUpdate) sqlSave(ctx context.Context) (_node int, err error
 	if value, ok := _u.mutation.CredentialEncrypted(); ok {
 		_spec.SetField(upstreamsite.FieldCredentialEncrypted, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.SortOrder(); ok {
+		_spec.SetField(upstreamsite.FieldSortOrder, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedSortOrder(); ok {
+		_spec.AddField(upstreamsite.FieldSortOrder, field.TypeInt, value)
+	}
 	if value, ok := _u.mutation.Enabled(); ok {
 		_spec.SetField(upstreamsite.FieldEnabled, field.TypeBool, value)
 	}
@@ -890,6 +917,27 @@ func (_u *UpstreamSiteUpdateOne) SetNillableCredentialEncrypted(v *string) *Upst
 	if v != nil {
 		_u.SetCredentialEncrypted(*v)
 	}
+	return _u
+}
+
+// SetSortOrder sets the "sort_order" field.
+func (_u *UpstreamSiteUpdateOne) SetSortOrder(v int) *UpstreamSiteUpdateOne {
+	_u.mutation.ResetSortOrder()
+	_u.mutation.SetSortOrder(v)
+	return _u
+}
+
+// SetNillableSortOrder sets the "sort_order" field if the given value is not nil.
+func (_u *UpstreamSiteUpdateOne) SetNillableSortOrder(v *int) *UpstreamSiteUpdateOne {
+	if v != nil {
+		_u.SetSortOrder(*v)
+	}
+	return _u
+}
+
+// AddSortOrder adds value to the "sort_order" field.
+func (_u *UpstreamSiteUpdateOne) AddSortOrder(v int) *UpstreamSiteUpdateOne {
+	_u.mutation.AddSortOrder(v)
 	return _u
 }
 
@@ -1383,6 +1431,12 @@ func (_u *UpstreamSiteUpdateOne) sqlSave(ctx context.Context) (_node *UpstreamSi
 	}
 	if value, ok := _u.mutation.CredentialEncrypted(); ok {
 		_spec.SetField(upstreamsite.FieldCredentialEncrypted, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SortOrder(); ok {
+		_spec.SetField(upstreamsite.FieldSortOrder, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedSortOrder(); ok {
+		_spec.AddField(upstreamsite.FieldSortOrder, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.Enabled(); ok {
 		_spec.SetField(upstreamsite.FieldEnabled, field.TypeBool, value)

@@ -31,6 +31,8 @@ const (
 	FieldAccount = "account"
 	// FieldCredentialEncrypted holds the string denoting the credential_encrypted field in the database.
 	FieldCredentialEncrypted = "credential_encrypted"
+	// FieldSortOrder holds the string denoting the sort_order field in the database.
+	FieldSortOrder = "sort_order"
 	// FieldEnabled holds the string denoting the enabled field in the database.
 	FieldEnabled = "enabled"
 	// FieldStatus holds the string denoting the status field in the database.
@@ -97,6 +99,7 @@ var Columns = []string{
 	FieldAuthMode,
 	FieldAccount,
 	FieldCredentialEncrypted,
+	FieldSortOrder,
 	FieldEnabled,
 	FieldStatus,
 	FieldErrorMessage,
@@ -138,6 +141,8 @@ var (
 	AccountValidator func(string) error
 	// CredentialEncryptedValidator is a validator for the "credential_encrypted" field. It is called by the builders before save.
 	CredentialEncryptedValidator func(string) error
+	// DefaultSortOrder holds the default value on creation for the "sort_order" field.
+	DefaultSortOrder int
 	// DefaultEnabled holds the default value on creation for the "enabled" field.
 	DefaultEnabled bool
 	// ErrorMessageValidator is a validator for the "error_message" field. It is called by the builders before save.
@@ -274,6 +279,11 @@ func ByAccount(opts ...sql.OrderTermOption) OrderOption {
 // ByCredentialEncrypted orders the results by the credential_encrypted field.
 func ByCredentialEncrypted(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCredentialEncrypted, opts...).ToFunc()
+}
+
+// BySortOrder orders the results by the sort_order field.
+func BySortOrder(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSortOrder, opts...).ToFunc()
 }
 
 // ByEnabled orders the results by the enabled field.

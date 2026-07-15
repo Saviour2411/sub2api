@@ -3,9 +3,11 @@ import { apiClient } from '../client'
 export type UpstreamPlatform = 'sub2api' | 'newapi'
 export type UpstreamAuthMode = 'password' | 'token'
 export type UpstreamStatus = 'pending' | 'syncing' | 'healthy' | 'error'
+export type UpstreamGroupPlatform = 'OpenAI' | 'Anthropic' | 'Gemini' | 'Grok' | 'Antigravity' | 'New API'
 
 export interface UpstreamSite {
   id: number
+  sort_order: number
   name: string
   base_url: string
   platform: UpstreamPlatform
@@ -91,6 +93,9 @@ export interface UpstreamListParams {
   search?: string
   platform?: UpstreamPlatform | ''
   enabled?: boolean
+  group_platform?: UpstreamGroupPlatform | ''
+  sort_by?: 'balance_usd' | 'today_tokens' | ''
+  sort_order?: 'asc' | 'desc'
 }
 
 export interface PaginatedUpstreams {
@@ -103,6 +108,16 @@ export interface PaginatedUpstreams {
 
 export async function list(params: UpstreamListParams = {}): Promise<PaginatedUpstreams> {
   const { data } = await apiClient.get<PaginatedUpstreams>('/admin/custom-features/upstreams', { params })
+  return data
+}
+
+export async function listAll(params: Omit<UpstreamListParams, 'page' | 'page_size'> = {}): Promise<UpstreamSite[]> {
+  const { data } = await apiClient.get<UpstreamSite[]>('/admin/custom-features/upstreams/all', { params })
+  return data
+}
+
+export async function updateSortOrder(updates: Array<{ id: number; sort_order: number }>): Promise<{ updated: number }> {
+  const { data } = await apiClient.put<{ updated: number }>('/admin/custom-features/upstreams/sort-order', { updates })
   return data
 }
 
@@ -177,4 +192,4 @@ export async function multiplierHistory(id: number, days: 7 | 30 | 90): Promise<
   return data
 }
 
-export default { list, create, update, setEnabled, remove, sync, syncAll, groups, setGroupDisplayed, history, multiplierHistory }
+export default { list, listAll, updateSortOrder, create, update, setEnabled, remove, sync, syncAll, groups, setGroupDisplayed, history, multiplierHistory }

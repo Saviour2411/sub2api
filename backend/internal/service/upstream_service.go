@@ -59,8 +59,8 @@ func (s *UpstreamService) List(ctx context.Context, params UpstreamListParams) (
 	if params.PageSize < 1 || params.PageSize > 100 {
 		params.PageSize = 20
 	}
-	if params.Platform != "" && params.Platform != UpstreamPlatformSub2API && params.Platform != UpstreamPlatformNewAPI {
-		return nil, 0, ErrUpstreamInvalidInput
+	if err := validateUpstreamListParams(&params); err != nil {
+		return nil, 0, err
 	}
 	rows, total, err := s.repo.List(ctx, params)
 	if err != nil {
@@ -71,6 +71,38 @@ func (s *UpstreamService) List(ctx context.Context, params UpstreamListParams) (
 		items = append(items, s.toView(row))
 	}
 	return items, total, nil
+}
+
+func (s *UpstreamService) ListAll(ctx context.Context, params UpstreamListParams) ([]UpstreamSiteView, error) {
+	if err := validateUpstreamListParams(&params); err != nil {
+		return nil, err
+	}
+	rows, err := s.repo.ListAll(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]UpstreamSiteView, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, s.toView(row))
+	}
+	return items, nil
+}
+
+func (s *UpstreamService) UpdateSortOrder(ctx context.Context, updates []UpstreamSortOrderUpdate) error {
+	if len(updates) == 0 || len(updates) > 1000 {
+		return ErrUpstreamInvalidInput
+	}
+	seen := make(map[int64]struct{}, len(updates))
+	for _, update := range updates {
+		if update.ID <= 0 || update.SortOrder < 0 {
+			return ErrUpstreamInvalidInput
+		}
+		if _, exists := seen[update.ID]; exists {
+			return ErrUpstreamInvalidInput
+		}
+		seen[update.ID] = struct{}{}
+	}
+	return s.repo.UpdateSortOrder(ctx, updates)
 }
 
 func (s *UpstreamService) Get(ctx context.Context, id int64) (*UpstreamSiteView, error) {
@@ -423,7 +455,7 @@ func (s *UpstreamService) decryptCredential(encrypted string) (UpstreamCredentia
 
 func (s *UpstreamService) toView(site *UpstreamSite) UpstreamSiteView {
 	view := UpstreamSiteView{
-		ID: site.ID, Name: site.Name, BaseURL: site.BaseURL, Platform: site.Platform, AuthMode: site.AuthMode,
+		ID: site.ID, SortOrder: site.SortOrder, Name: site.Name, BaseURL: site.BaseURL, Platform: site.Platform, AuthMode: site.AuthMode,
 		Account: site.Account, Enabled: site.Enabled, Status: site.Status, ErrorMessage: site.ErrorMessage,
 		BalanceUSD: site.BalanceUSD, TodayTokens: site.TodayTokens, TodayCostUSD: site.TodayCostUSD,
 		TotalTokens: site.TotalTokens, TotalCostUSD: site.TotalCostUSD, TrackingStartedAt: site.TrackingStartedAt,
@@ -436,6 +468,32 @@ func (s *UpstreamService) toView(site *UpstreamSite) UpstreamSiteView {
 		view.HasToken = site.AuthMode == UpstreamAuthToken && (credential.AccessToken != "" || credential.RefreshToken != "")
 	}
 	return view
+}
+
+func validateUpstreamListParams(params *UpstreamListParams) error {
+	if params == nil {
+		return ErrUpstreamInvalidInput
+	}
+	params.GroupPlatform = strings.TrimSpace(params.GroupPlatform)
+	if len(params.GroupPlatform) > 50 {
+		return ErrUpstreamInvalidInput
+	}
+	params.Platform = strings.ToLower(strings.TrimSpace(params.Platform))
+	if params.Platform != "" && params.Platform != UpstreamPlatformSub2API && params.Platform != UpstreamPlatformNewAPI {
+		return ErrUpstreamInvalidInput
+	}
+	params.SortBy = strings.ToLower(strings.TrimSpace(params.SortBy))
+	if params.SortBy != "" && params.SortBy != "balance_usd" && params.SortBy != "today_tokens" {
+		return ErrUpstreamInvalidInput
+	}
+	params.SortOrder = strings.ToLower(strings.TrimSpace(params.SortOrder))
+	if params.SortOrder == "" {
+		params.SortOrder = "asc"
+	}
+	if params.SortOrder != "asc" && params.SortOrder != "desc" {
+		return ErrUpstreamInvalidInput
+	}
+	return nil
 }
 
 func (s *UpstreamService) enqueue(id int64) {

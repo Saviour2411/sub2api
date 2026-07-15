@@ -44027,6 +44027,8 @@ type UpstreamSiteMutation struct {
 	auth_mode                       *upstreamsite.AuthMode
 	account                         *string
 	credential_encrypted            *string
+	sort_order                      *int
+	addsort_order                   *int
 	enabled                         *bool
 	status                          *upstreamsite.Status
 	error_message                   *string
@@ -44444,6 +44446,62 @@ func (m *UpstreamSiteMutation) OldCredentialEncrypted(ctx context.Context) (v st
 // ResetCredentialEncrypted resets all changes to the "credential_encrypted" field.
 func (m *UpstreamSiteMutation) ResetCredentialEncrypted() {
 	m.credential_encrypted = nil
+}
+
+// SetSortOrder sets the "sort_order" field.
+func (m *UpstreamSiteMutation) SetSortOrder(i int) {
+	m.sort_order = &i
+	m.addsort_order = nil
+}
+
+// SortOrder returns the value of the "sort_order" field in the mutation.
+func (m *UpstreamSiteMutation) SortOrder() (r int, exists bool) {
+	v := m.sort_order
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSortOrder returns the old "sort_order" field's value of the UpstreamSite entity.
+// If the UpstreamSite object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamSiteMutation) OldSortOrder(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSortOrder is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSortOrder requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSortOrder: %w", err)
+	}
+	return oldValue.SortOrder, nil
+}
+
+// AddSortOrder adds i to the "sort_order" field.
+func (m *UpstreamSiteMutation) AddSortOrder(i int) {
+	if m.addsort_order != nil {
+		*m.addsort_order += i
+	} else {
+		m.addsort_order = &i
+	}
+}
+
+// AddedSortOrder returns the value that was added to the "sort_order" field in this mutation.
+func (m *UpstreamSiteMutation) AddedSortOrder() (r int, exists bool) {
+	v := m.addsort_order
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSortOrder resets all changes to the "sort_order" field.
+func (m *UpstreamSiteMutation) ResetSortOrder() {
+	m.sort_order = nil
+	m.addsort_order = nil
 }
 
 // SetEnabled sets the "enabled" field.
@@ -45247,7 +45305,7 @@ func (m *UpstreamSiteMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UpstreamSiteMutation) Fields() []string {
-	fields := make([]string, 0, 20)
+	fields := make([]string, 0, 21)
 	if m.created_at != nil {
 		fields = append(fields, upstreamsite.FieldCreatedAt)
 	}
@@ -45271,6 +45329,9 @@ func (m *UpstreamSiteMutation) Fields() []string {
 	}
 	if m.credential_encrypted != nil {
 		fields = append(fields, upstreamsite.FieldCredentialEncrypted)
+	}
+	if m.sort_order != nil {
+		fields = append(fields, upstreamsite.FieldSortOrder)
 	}
 	if m.enabled != nil {
 		fields = append(fields, upstreamsite.FieldEnabled)
@@ -45332,6 +45393,8 @@ func (m *UpstreamSiteMutation) Field(name string) (ent.Value, bool) {
 		return m.Account()
 	case upstreamsite.FieldCredentialEncrypted:
 		return m.CredentialEncrypted()
+	case upstreamsite.FieldSortOrder:
+		return m.SortOrder()
 	case upstreamsite.FieldEnabled:
 		return m.Enabled()
 	case upstreamsite.FieldStatus:
@@ -45381,6 +45444,8 @@ func (m *UpstreamSiteMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldAccount(ctx)
 	case upstreamsite.FieldCredentialEncrypted:
 		return m.OldCredentialEncrypted(ctx)
+	case upstreamsite.FieldSortOrder:
+		return m.OldSortOrder(ctx)
 	case upstreamsite.FieldEnabled:
 		return m.OldEnabled(ctx)
 	case upstreamsite.FieldStatus:
@@ -45469,6 +45534,13 @@ func (m *UpstreamSiteMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCredentialEncrypted(v)
+		return nil
+	case upstreamsite.FieldSortOrder:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSortOrder(v)
 		return nil
 	case upstreamsite.FieldEnabled:
 		v, ok := value.(bool)
@@ -45562,6 +45634,9 @@ func (m *UpstreamSiteMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *UpstreamSiteMutation) AddedFields() []string {
 	var fields []string
+	if m.addsort_order != nil {
+		fields = append(fields, upstreamsite.FieldSortOrder)
+	}
 	if m.addbalance_usd != nil {
 		fields = append(fields, upstreamsite.FieldBalanceUsd)
 	}
@@ -45588,6 +45663,8 @@ func (m *UpstreamSiteMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *UpstreamSiteMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case upstreamsite.FieldSortOrder:
+		return m.AddedSortOrder()
 	case upstreamsite.FieldBalanceUsd:
 		return m.AddedBalanceUsd()
 	case upstreamsite.FieldTodayTokens:
@@ -45609,6 +45686,13 @@ func (m *UpstreamSiteMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *UpstreamSiteMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case upstreamsite.FieldSortOrder:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSortOrder(v)
+		return nil
 	case upstreamsite.FieldBalanceUsd:
 		v, ok := value.(float64)
 		if !ok {
@@ -45728,6 +45812,9 @@ func (m *UpstreamSiteMutation) ResetField(name string) error {
 		return nil
 	case upstreamsite.FieldCredentialEncrypted:
 		m.ResetCredentialEncrypted()
+		return nil
+	case upstreamsite.FieldSortOrder:
+		m.ResetSortOrder()
 		return nil
 	case upstreamsite.FieldEnabled:
 		m.ResetEnabled()

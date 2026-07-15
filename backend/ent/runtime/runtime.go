@@ -2039,32 +2039,36 @@ func init() {
 	upstreamsiteDescCredentialEncrypted := upstreamsiteFields[5].Descriptor()
 	// upstreamsite.CredentialEncryptedValidator is a validator for the "credential_encrypted" field. It is called by the builders before save.
 	upstreamsite.CredentialEncryptedValidator = upstreamsiteDescCredentialEncrypted.Validators[0].(func(string) error)
+	// upstreamsiteDescSortOrder is the schema descriptor for sort_order field.
+	upstreamsiteDescSortOrder := upstreamsiteFields[6].Descriptor()
+	// upstreamsite.DefaultSortOrder holds the default value on creation for the sort_order field.
+	upstreamsite.DefaultSortOrder = upstreamsiteDescSortOrder.Default.(int)
 	// upstreamsiteDescEnabled is the schema descriptor for enabled field.
-	upstreamsiteDescEnabled := upstreamsiteFields[6].Descriptor()
+	upstreamsiteDescEnabled := upstreamsiteFields[7].Descriptor()
 	// upstreamsite.DefaultEnabled holds the default value on creation for the enabled field.
 	upstreamsite.DefaultEnabled = upstreamsiteDescEnabled.Default.(bool)
 	// upstreamsiteDescErrorMessage is the schema descriptor for error_message field.
-	upstreamsiteDescErrorMessage := upstreamsiteFields[8].Descriptor()
+	upstreamsiteDescErrorMessage := upstreamsiteFields[9].Descriptor()
 	// upstreamsite.ErrorMessageValidator is a validator for the "error_message" field. It is called by the builders before save.
 	upstreamsite.ErrorMessageValidator = upstreamsiteDescErrorMessage.Validators[0].(func(string) error)
 	// upstreamsiteDescTodayTokens is the schema descriptor for today_tokens field.
-	upstreamsiteDescTodayTokens := upstreamsiteFields[10].Descriptor()
+	upstreamsiteDescTodayTokens := upstreamsiteFields[11].Descriptor()
 	// upstreamsite.DefaultTodayTokens holds the default value on creation for the today_tokens field.
 	upstreamsite.DefaultTodayTokens = upstreamsiteDescTodayTokens.Default.(int64)
 	// upstreamsiteDescTodayCostUsd is the schema descriptor for today_cost_usd field.
-	upstreamsiteDescTodayCostUsd := upstreamsiteFields[11].Descriptor()
+	upstreamsiteDescTodayCostUsd := upstreamsiteFields[12].Descriptor()
 	// upstreamsite.DefaultTodayCostUsd holds the default value on creation for the today_cost_usd field.
 	upstreamsite.DefaultTodayCostUsd = upstreamsiteDescTodayCostUsd.Default.(float64)
 	// upstreamsiteDescTotalTokens is the schema descriptor for total_tokens field.
-	upstreamsiteDescTotalTokens := upstreamsiteFields[12].Descriptor()
+	upstreamsiteDescTotalTokens := upstreamsiteFields[13].Descriptor()
 	// upstreamsite.DefaultTotalTokens holds the default value on creation for the total_tokens field.
 	upstreamsite.DefaultTotalTokens = upstreamsiteDescTotalTokens.Default.(int64)
 	// upstreamsiteDescTotalCostUsd is the schema descriptor for total_cost_usd field.
-	upstreamsiteDescTotalCostUsd := upstreamsiteFields[13].Descriptor()
+	upstreamsiteDescTotalCostUsd := upstreamsiteFields[14].Descriptor()
 	// upstreamsite.DefaultTotalCostUsd holds the default value on creation for the total_cost_usd field.
 	upstreamsite.DefaultTotalCostUsd = upstreamsiteDescTotalCostUsd.Default.(float64)
 	// upstreamsiteDescTrackingStartedAt is the schema descriptor for tracking_started_at field.
-	upstreamsiteDescTrackingStartedAt := upstreamsiteFields[14].Descriptor()
+	upstreamsiteDescTrackingStartedAt := upstreamsiteFields[15].Descriptor()
 	// upstreamsite.DefaultTrackingStartedAt holds the default value on creation for the tracking_started_at field.
 	upstreamsite.DefaultTrackingStartedAt = upstreamsiteDescTrackingStartedAt.Default.(func() time.Time)
 	usagecleanuptaskMixin := schema.UsageCleanupTask{}.Mixin()

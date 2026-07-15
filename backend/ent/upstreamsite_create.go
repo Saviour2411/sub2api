@@ -97,6 +97,20 @@ func (_c *UpstreamSiteCreate) SetCredentialEncrypted(v string) *UpstreamSiteCrea
 	return _c
 }
 
+// SetSortOrder sets the "sort_order" field.
+func (_c *UpstreamSiteCreate) SetSortOrder(v int) *UpstreamSiteCreate {
+	_c.mutation.SetSortOrder(v)
+	return _c
+}
+
+// SetNillableSortOrder sets the "sort_order" field if the given value is not nil.
+func (_c *UpstreamSiteCreate) SetNillableSortOrder(v *int) *UpstreamSiteCreate {
+	if v != nil {
+		_c.SetSortOrder(*v)
+	}
+	return _c
+}
+
 // SetEnabled sets the "enabled" field.
 func (_c *UpstreamSiteCreate) SetEnabled(v bool) *UpstreamSiteCreate {
 	_c.mutation.SetEnabled(v)
@@ -349,6 +363,10 @@ func (_c *UpstreamSiteCreate) defaults() {
 		v := upstreamsite.DefaultAccount
 		_c.mutation.SetAccount(v)
 	}
+	if _, ok := _c.mutation.SortOrder(); !ok {
+		v := upstreamsite.DefaultSortOrder
+		_c.mutation.SetSortOrder(v)
+	}
 	if _, ok := _c.mutation.Enabled(); !ok {
 		v := upstreamsite.DefaultEnabled
 		_c.mutation.SetEnabled(v)
@@ -434,6 +452,9 @@ func (_c *UpstreamSiteCreate) check() error {
 		if err := upstreamsite.CredentialEncryptedValidator(v); err != nil {
 			return &ValidationError{Name: "credential_encrypted", err: fmt.Errorf(`ent: validator failed for field "UpstreamSite.credential_encrypted": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.SortOrder(); !ok {
+		return &ValidationError{Name: "sort_order", err: errors.New(`ent: missing required field "UpstreamSite.sort_order"`)}
 	}
 	if _, ok := _c.mutation.Enabled(); !ok {
 		return &ValidationError{Name: "enabled", err: errors.New(`ent: missing required field "UpstreamSite.enabled"`)}
@@ -527,6 +548,10 @@ func (_c *UpstreamSiteCreate) createSpec() (*UpstreamSite, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.CredentialEncrypted(); ok {
 		_spec.SetField(upstreamsite.FieldCredentialEncrypted, field.TypeString, value)
 		_node.CredentialEncrypted = value
+	}
+	if value, ok := _c.mutation.SortOrder(); ok {
+		_spec.SetField(upstreamsite.FieldSortOrder, field.TypeInt, value)
+		_node.SortOrder = value
 	}
 	if value, ok := _c.mutation.Enabled(); ok {
 		_spec.SetField(upstreamsite.FieldEnabled, field.TypeBool, value)
@@ -757,6 +782,24 @@ func (u *UpstreamSiteUpsert) SetCredentialEncrypted(v string) *UpstreamSiteUpser
 // UpdateCredentialEncrypted sets the "credential_encrypted" field to the value that was provided on create.
 func (u *UpstreamSiteUpsert) UpdateCredentialEncrypted() *UpstreamSiteUpsert {
 	u.SetExcluded(upstreamsite.FieldCredentialEncrypted)
+	return u
+}
+
+// SetSortOrder sets the "sort_order" field.
+func (u *UpstreamSiteUpsert) SetSortOrder(v int) *UpstreamSiteUpsert {
+	u.Set(upstreamsite.FieldSortOrder, v)
+	return u
+}
+
+// UpdateSortOrder sets the "sort_order" field to the value that was provided on create.
+func (u *UpstreamSiteUpsert) UpdateSortOrder() *UpstreamSiteUpsert {
+	u.SetExcluded(upstreamsite.FieldSortOrder)
+	return u
+}
+
+// AddSortOrder adds v to the "sort_order" field.
+func (u *UpstreamSiteUpsert) AddSortOrder(v int) *UpstreamSiteUpsert {
+	u.Add(upstreamsite.FieldSortOrder, v)
 	return u
 }
 
@@ -1104,6 +1147,27 @@ func (u *UpstreamSiteUpsertOne) SetCredentialEncrypted(v string) *UpstreamSiteUp
 func (u *UpstreamSiteUpsertOne) UpdateCredentialEncrypted() *UpstreamSiteUpsertOne {
 	return u.Update(func(s *UpstreamSiteUpsert) {
 		s.UpdateCredentialEncrypted()
+	})
+}
+
+// SetSortOrder sets the "sort_order" field.
+func (u *UpstreamSiteUpsertOne) SetSortOrder(v int) *UpstreamSiteUpsertOne {
+	return u.Update(func(s *UpstreamSiteUpsert) {
+		s.SetSortOrder(v)
+	})
+}
+
+// AddSortOrder adds v to the "sort_order" field.
+func (u *UpstreamSiteUpsertOne) AddSortOrder(v int) *UpstreamSiteUpsertOne {
+	return u.Update(func(s *UpstreamSiteUpsert) {
+		s.AddSortOrder(v)
+	})
+}
+
+// UpdateSortOrder sets the "sort_order" field to the value that was provided on create.
+func (u *UpstreamSiteUpsertOne) UpdateSortOrder() *UpstreamSiteUpsertOne {
+	return u.Update(func(s *UpstreamSiteUpsert) {
+		s.UpdateSortOrder()
 	})
 }
 
@@ -1651,6 +1715,27 @@ func (u *UpstreamSiteUpsertBulk) SetCredentialEncrypted(v string) *UpstreamSiteU
 func (u *UpstreamSiteUpsertBulk) UpdateCredentialEncrypted() *UpstreamSiteUpsertBulk {
 	return u.Update(func(s *UpstreamSiteUpsert) {
 		s.UpdateCredentialEncrypted()
+	})
+}
+
+// SetSortOrder sets the "sort_order" field.
+func (u *UpstreamSiteUpsertBulk) SetSortOrder(v int) *UpstreamSiteUpsertBulk {
+	return u.Update(func(s *UpstreamSiteUpsert) {
+		s.SetSortOrder(v)
+	})
+}
+
+// AddSortOrder adds v to the "sort_order" field.
+func (u *UpstreamSiteUpsertBulk) AddSortOrder(v int) *UpstreamSiteUpsertBulk {
+	return u.Update(func(s *UpstreamSiteUpsert) {
+		s.AddSortOrder(v)
+	})
+}
+
+// UpdateSortOrder sets the "sort_order" field to the value that was provided on create.
+func (u *UpstreamSiteUpsertBulk) UpdateSortOrder() *UpstreamSiteUpsertBulk {
+	return u.Update(func(s *UpstreamSiteUpsert) {
+		s.UpdateSortOrder()
 	})
 }
 

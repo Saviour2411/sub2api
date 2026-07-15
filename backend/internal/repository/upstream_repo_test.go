@@ -274,6 +274,54 @@ func TestUpstreamRepositoryListMultiplierHistoryIncludesDisappearedGroups(t *tes
 	require.InDelta(t, 3.0, *history[2].CurrentMultiplier, 1e-9)
 }
 
+func TestUpstreamRepositoryListFilterSortAndManualOrder(t *testing.T) {
+	db, err := sql.Open("sqlite", fmt.Sprintf("file:upstream-list-%d?mode=memory&cache=shared&_pragma=foreign_keys(1)&_time_format=sqlite", time.Now().UnixNano()))
+	require.NoError(t, err)
+	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(entsql.OpenDB(dialect.SQLite, db))))
+	t.Cleanup(func() { require.NoError(t, client.Close()) })
+	repo := NewUpstreamRepository(client)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	for _, site := range []*service.UpstreamSite{
+		{Name: "站点 A", BaseURL: "https://a.example.com", Platform: service.UpstreamPlatformNewAPI, AuthMode: service.UpstreamAuthPassword, CredentialEncrypted: "enc", Enabled: true, Status: service.UpstreamStatusHealthy, TrackingStartedAt: now, CreatedBy: 1, SortOrder: 30},
+		{Name: "站点 B", BaseURL: "https://b.example.com", Platform: service.UpstreamPlatformSub2API, AuthMode: service.UpstreamAuthPassword, CredentialEncrypted: "enc", Enabled: true, Status: service.UpstreamStatusHealthy, TrackingStartedAt: now, CreatedBy: 1, SortOrder: 10},
+		{Name: "站点 C", BaseURL: "https://c.example.com", Platform: service.UpstreamPlatformNewAPI, AuthMode: service.UpstreamAuthPassword, CredentialEncrypted: "enc", Enabled: true, Status: service.UpstreamStatusHealthy, TrackingStartedAt: now, CreatedBy: 1, SortOrder: 20},
+	} {
+		require.NoError(t, repo.Create(ctx, site))
+	}
+	for _, group := range []struct {
+		siteID   int64
+		name     string
+		platform string
+	}{
+		{1, "A GPT", "OpenAI"}, {2, "B Claude", "Anthropic"}, {3, "C Gemini", "Gemini"},
+	} {
+		_, err = client.UpstreamGroup.Create().SetSiteID(group.siteID).SetRemoteID(group.name).SetName(group.name).SetPlatform(group.platform).Save(ctx)
+		require.NoError(t, err)
+	}
+	require.NoError(t, client.UpstreamSite.UpdateOneID(1).SetBalanceUsd(10).SetTodayTokens(300).Exec(ctx))
+	require.NoError(t, client.UpstreamSite.UpdateOneID(2).SetBalanceUsd(30).SetTodayTokens(100).Exec(ctx))
+	require.NoError(t, client.UpstreamSite.UpdateOneID(3).SetBalanceUsd(20).SetTodayTokens(200).Exec(ctx))
+
+	items, total, err := repo.List(ctx, service.UpstreamListParams{Page: 1, PageSize: 20, GroupPlatform: "OpenAI"})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Len(t, items, 1)
+	require.Equal(t, "站点 A", items[0].Name)
+
+	items, _, err = repo.List(ctx, service.UpstreamListParams{Page: 1, PageSize: 20, SortBy: "balance_usd", SortOrder: "desc"})
+	require.NoError(t, err)
+	require.Equal(t, []string{"站点 B", "站点 C", "站点 A"}, []string{items[0].Name, items[1].Name, items[2].Name})
+	items, _, err = repo.List(ctx, service.UpstreamListParams{Page: 1, PageSize: 20, SortBy: "today_tokens", SortOrder: "asc"})
+	require.NoError(t, err)
+	require.Equal(t, []string{"站点 B", "站点 C", "站点 A"}, []string{items[0].Name, items[1].Name, items[2].Name})
+
+	require.NoError(t, repo.UpdateSortOrder(ctx, []service.UpstreamSortOrderUpdate{{ID: 3, SortOrder: 0}, {ID: 1, SortOrder: 10}, {ID: 2, SortOrder: 20}}))
+	items, _, err = repo.List(ctx, service.UpstreamListParams{Page: 1, PageSize: 20})
+	require.NoError(t, err)
+	require.Equal(t, []string{"站点 C", "站点 A", "站点 B"}, []string{items[0].Name, items[1].Name, items[2].Name})
+}
+
 func TestUpstreamRepositoryMissingDatesBackfillsLegacyCostBasisWithin366Days(t *testing.T) {
 	db, err := sql.Open("sqlite", fmt.Sprintf("file:upstream-missing-%d?mode=memory&cache=shared&_pragma=foreign_keys(1)&_time_format=sqlite", time.Now().UnixNano()))
 	require.NoError(t, err)

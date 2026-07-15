@@ -35,6 +35,7 @@ func (UpstreamSite) Fields() []ent.Field {
 		field.Enum("auth_mode").Values("password", "token"),
 		field.String("account").Default("").MaxLen(255),
 		field.String("credential_encrypted").NotEmpty().Sensitive(),
+		field.Int("sort_order").Default(0),
 		field.Bool("enabled").Default(true),
 		field.Enum("status").Values("pending", "syncing", "healthy", "error").Default("pending"),
 		field.String("error_message").Optional().Nillable().MaxLen(500),
@@ -64,5 +65,6 @@ func (UpstreamSite) Indexes() []ent.Index {
 		index.Fields("platform"),
 		index.Fields("status"),
 		index.Fields("created_at"),
+		index.Fields("sort_order"),
 	}
 }

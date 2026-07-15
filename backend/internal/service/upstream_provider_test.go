@@ -281,11 +281,13 @@ func TestNewAPIUpstreamProviderDoesNotReturnPartialPagination(t *testing.T) {
 
 func TestParseNewAPIGroupsResolvesPlatform(t *testing.T) {
 	groups := parseNewAPIGroups(map[string]any{
-		"claude-aws": map[string]any{"ratio": 0.3, "desc": "AWS 渠道 99% 高缓存"},
-		"cheap-gpt":  map[string]any{"ratio": 0.02, "desc": "稳定低价 GPT 分组"},
-		"gemini":     map[string]any{"ratio": 0.1, "provider": "google"},
-		"explicit":   map[string]any{"ratio": 1, "provider_type": "anthropic"},
-		"unknown":    map[string]any{"ratio": 1, "platform": "New API"},
+		"claude-aws":  map[string]any{"ratio": 0.3, "desc": "AWS 渠道 99% 高缓存"},
+		"cheap-gpt":   map[string]any{"ratio": 0.02, "desc": "稳定低价 GPT 分组"},
+		"gemini":      map[string]any{"ratio": 0.1, "provider": "google"},
+		"explicit":    map[string]any{"ratio": 1, "provider_type": "anthropic"},
+		"unknown":     map[string]any{"ratio": 1, "platform": "New API"},
+		"kiro-night":  map[string]any{"ratio": 0.04, "platform": "New API"},
+		"antigravity": map[string]any{"ratio": 0.2, "platform": "google antigravity"},
 	})
 
 	platforms := make(map[string]string, len(groups))
@@ -297,4 +299,6 @@ func TestParseNewAPIGroupsResolvesPlatform(t *testing.T) {
 	require.Equal(t, "Gemini", platforms["gemini"])
 	require.Equal(t, "Anthropic", platforms["explicit"])
 	require.Equal(t, "New API", platforms["unknown"])
+	require.Equal(t, "Anthropic", platforms["kiro-night"])
+	require.Equal(t, "Antigravity", platforms["antigravity"])
 }
