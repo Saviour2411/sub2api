@@ -87,6 +87,13 @@ export interface UpstreamWritePayload {
   enabled: boolean
 }
 
+export interface UpstreamCapabilities {
+  base_url: string
+  platform: UpstreamPlatform
+  turnstile_enabled: boolean
+  token_auth_recommended: boolean
+}
+
 export interface UpstreamListParams {
   page?: number
   page_size?: number
@@ -118,6 +125,11 @@ export async function listAll(params: Omit<UpstreamListParams, 'page' | 'page_si
 
 export async function updateSortOrder(updates: Array<{ id: number; sort_order: number }>): Promise<{ updated: number }> {
   const { data } = await apiClient.put<{ updated: number }>('/admin/custom-features/upstreams/sort-order', { updates })
+  return data
+}
+
+export async function probeCapabilities(payload: Pick<UpstreamWritePayload, 'base_url' | 'platform'>): Promise<UpstreamCapabilities> {
+  const { data } = await apiClient.post<UpstreamCapabilities>('/admin/custom-features/upstreams/probe', payload)
   return data
 }
 
@@ -192,4 +204,4 @@ export async function multiplierHistory(id: number, days: 7 | 30 | 90): Promise<
   return data
 }
 
-export default { list, listAll, updateSortOrder, create, update, setEnabled, remove, sync, syncAll, groups, setGroupDisplayed, history, multiplierHistory }
+export default { list, listAll, updateSortOrder, probeCapabilities, create, update, setEnabled, remove, sync, syncAll, groups, setGroupDisplayed, history, multiplierHistory }

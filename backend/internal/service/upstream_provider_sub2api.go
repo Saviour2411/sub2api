@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -263,6 +264,9 @@ func (p *sub2APIUpstreamProvider) login(ctx context.Context, site *UpstreamSite,
 		"email": site.Account, "username": site.Account, "password": credential.Password,
 	})
 	if err != nil {
+		if isSub2APITurnstileError(err) {
+			return credential, nil, ErrUpstreamTurnstileRequired.WithCause(err)
+		}
 		return credential, nil, fmt.Errorf("登录 Sub2API: %w", err)
 	}
 	credential.AccessToken = stringValue(valueByKeys(apiData(payload), "access_token", "token"))
@@ -273,6 +277,15 @@ func (p *sub2APIUpstreamProvider) login(ctx context.Context, site *UpstreamSite,
 		return credential, nil, fmt.Errorf("Sub2API 未返回访问令牌")
 	}
 	return credential, map[string]string{"Authorization": "Bearer " + credential.AccessToken}, nil
+}
+
+func isSub2APITurnstileError(err error) bool {
+	var statusErr *upstreamHTTPStatusError
+	if !errors.As(err, &statusErr) || statusErr.StatusCode != http.StatusBadRequest {
+		return false
+	}
+	message := strings.ToLower(statusErr.Message)
+	return strings.Contains(message, "turnstile") || strings.Contains(message, "turnstile_verification_failed")
 }
 
 func (p *sub2APIUpstreamProvider) refresh(ctx context.Context, site *UpstreamSite, credential UpstreamCredential) (UpstreamCredential, map[string]string, error) {

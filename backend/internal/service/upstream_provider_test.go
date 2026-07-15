@@ -185,6 +185,24 @@ func TestSub2APIUpstreamProviderRefreshToken(t *testing.T) {
 	require.Equal(t, "refreshed", credential.AccessToken)
 }
 
+func TestSub2APIUpstreamProviderMapsTurnstileLoginFailure(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/auth/login", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"code":400,"message":"turnstile verification failed","reason":"TURNSTILE_VERIFICATION_FAILED"}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	provider := newSub2APIUpstreamProvider(newTestUpstreamHTTPClient(t))
+	_, err := provider.Validate(context.Background(), &UpstreamSite{
+		BaseURL: server.URL, Platform: UpstreamPlatformSub2API, AuthMode: UpstreamAuthPassword, Account: "admin@example.com",
+	}, UpstreamCredential{Password: "secret"})
+	require.ErrorIs(t, err, ErrUpstreamTurnstileRequired)
+	require.ErrorIs(t, upstreamValidationError(err), ErrUpstreamTurnstileRequired)
+}
+
 func TestNewAPIUpstreamProviderPaginationTokenFallbackAndUSD(t *testing.T) {
 	loc := time.FixedZone("Asia/Shanghai", 8*60*60)
 	today := time.Now().In(loc)

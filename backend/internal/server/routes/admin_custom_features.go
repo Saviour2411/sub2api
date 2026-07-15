@@ -18,6 +18,7 @@ func registerCustomFeatureRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		{
 			upstreams.GET("", h.Admin.CustomFeature.ListUpstreams)
 			upstreams.GET("/all", h.Admin.CustomFeature.ListAllUpstreams)
+			upstreams.POST("/probe", h.Admin.CustomFeature.ProbeUpstreamCapabilities)
 			upstreams.POST("", h.Admin.CustomFeature.CreateUpstream)
 			upstreams.PUT("/sort-order", h.Admin.CustomFeature.UpdateUpstreamSortOrder)
 			upstreams.POST("/sync-all", h.Admin.CustomFeature.SyncAllUpstreams)

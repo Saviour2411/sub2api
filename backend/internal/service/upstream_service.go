@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -114,6 +115,33 @@ func (s *UpstreamService) Get(ctx context.Context, id int64) (*UpstreamSiteView,
 	return &view, nil
 }
 
+func (s *UpstreamService) ProbeCapabilities(ctx context.Context, input UpstreamProbeInput) (*UpstreamCapabilities, error) {
+	platform := strings.ToLower(strings.TrimSpace(input.Platform))
+	if platform != UpstreamPlatformSub2API && platform != UpstreamPlatformNewAPI {
+		return nil, ErrUpstreamInvalidInput.WithCause(fmt.Errorf("platform 仅支持 sub2api 或 newapi"))
+	}
+	baseURL, err := s.http.normalizeBaseURL(strings.TrimSpace(input.BaseURL))
+	if err != nil {
+		return nil, ErrUpstreamInvalidInput.WithCause(err)
+	}
+	capabilities := &UpstreamCapabilities{BaseURL: baseURL, Platform: platform}
+	if platform != UpstreamPlatformSub2API {
+		return capabilities, nil
+	}
+	payload, _, err := s.http.doJSON(ctx, "GET", baseURL, "/api/v1/settings/public", nil, "", nil)
+	if err != nil {
+		return nil, ErrUpstreamConnectionFailed.WithCause(fmt.Errorf("读取 Sub2API 公开设置: %w", err))
+	}
+	settings := asMap(apiData(payload))
+	if settings == nil {
+		return nil, ErrUpstreamConnectionFailed.WithCause(errors.New("Sub2API 公开设置响应无效"))
+	}
+	turnstileEnabled, _ := settings["turnstile_enabled"].(bool)
+	capabilities.TurnstileEnabled = turnstileEnabled
+	capabilities.TokenAuthRecommended = turnstileEnabled
+	return capabilities, nil
+}
+
 func (s *UpstreamService) Create(ctx context.Context, input UpstreamCreateInput) (*UpstreamSiteView, error) {
 	site, credential, err := s.prepareCreate(input)
 	if err != nil {
@@ -122,7 +150,7 @@ func (s *UpstreamService) Create(ctx context.Context, input UpstreamCreateInput)
 	provider := s.providers[site.Platform]
 	updatedCredential, err := provider.Validate(ctx, site, credential)
 	if err != nil {
-		return nil, ErrUpstreamConnectionFailed.WithCause(err)
+		return nil, upstreamValidationError(err)
 	}
 	if updatedCredential != nil {
 		credential = *updatedCredential
@@ -167,7 +195,7 @@ func (s *UpstreamService) Update(ctx context.Context, id int64, input UpstreamUp
 	site.BaseURL = normalizedURL
 	updatedCredential, err := s.providers[site.Platform].Validate(ctx, site, credential)
 	if err != nil {
-		return nil, ErrUpstreamConnectionFailed.WithCause(err)
+		return nil, upstreamValidationError(err)
 	}
 	if updatedCredential != nil {
 		credential = *updatedCredential
@@ -190,6 +218,13 @@ func (s *UpstreamService) Update(ctx context.Context, id int64, input UpstreamUp
 	s.enqueue(site.ID)
 	view := s.toView(site)
 	return &view, nil
+}
+
+func upstreamValidationError(err error) error {
+	if errors.Is(err, ErrUpstreamTurnstileRequired) {
+		return ErrUpstreamTurnstileRequired.WithCause(err)
+	}
+	return ErrUpstreamConnectionFailed.WithCause(err)
 }
 
 func (s *UpstreamService) SetEnabled(ctx context.Context, id int64, enabled bool) (*UpstreamSiteView, error) {
@@ -394,6 +429,7 @@ func (s *UpstreamService) validateSite(site *UpstreamSite, credential UpstreamCr
 
 func mergeUpstreamUpdate(site *UpstreamSite, credential *UpstreamCredential, input UpstreamUpdateInput) bool {
 	changed := false
+	previousAuthMode := site.AuthMode
 	apply := func(target *string, value *string, normalize func(string) string) {
 		if value == nil {
 			return
@@ -411,6 +447,16 @@ func mergeUpstreamUpdate(site *UpstreamSite, credential *UpstreamCredential, inp
 	apply(&site.Platform, input.Platform, lower)
 	apply(&site.AuthMode, input.AuthMode, lower)
 	apply(&site.Account, input.Account, trim)
+	if previousAuthMode != site.AuthMode {
+		if site.AuthMode == UpstreamAuthToken {
+			credential.Password = ""
+			credential.Cookie = ""
+		} else {
+			credential.AccessToken = ""
+			credential.RefreshToken = ""
+			credential.Cookie = ""
+		}
+	}
 	if input.Enabled != nil {
 		site.Enabled = *input.Enabled
 	}

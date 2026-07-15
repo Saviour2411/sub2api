@@ -308,7 +308,18 @@
         </div>
         <div>
           <label for="upstream-url" class="input-label">{{ t('admin.customFeatures.upstream.baseUrl') }}</label>
-          <input id="upstream-url" v-model="form.base_url" class="input" type="url" required placeholder="https://example.com" />
+          <input
+            id="upstream-url"
+            v-model="form.base_url"
+            class="input"
+            type="url"
+            required
+            placeholder="https://example.com"
+            @input="handleBaseURLInput"
+            @blur="probeSiteCapabilities()"
+          />
+          <p v-if="capabilityProbeLoading" class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.customFeatures.upstream.probingCapabilities') }}</p>
+          <p v-else-if="capabilityProbeError" class="mt-1 text-xs text-red-600 dark:text-red-300">{{ capabilityProbeError }}</p>
         </div>
         <div>
           <label for="upstream-platform" class="input-label">{{ t('admin.customFeatures.upstream.platform') }}</label>
@@ -319,10 +330,34 @@
         </div>
         <div>
           <label for="upstream-auth-mode" class="input-label">{{ t('admin.customFeatures.upstream.authMode') }}</label>
-          <select id="upstream-auth-mode" v-model="form.auth_mode" class="input" :disabled="form.platform === 'newapi'">
-            <option value="password">{{ t('admin.customFeatures.upstream.passwordAuth') }}</option>
+          <select id="upstream-auth-mode" v-model="form.auth_mode" class="input" :disabled="form.platform === 'newapi'" @change="handleAuthModeChange">
+            <option value="password" :disabled="turnstileDetected">{{ t('admin.customFeatures.upstream.passwordAuth') }}</option>
             <option v-if="form.platform === 'sub2api'" value="token">{{ t('admin.customFeatures.upstream.tokenAuth') }}</option>
           </select>
+        </div>
+        <div
+          v-if="turnstileDetected"
+          class="flex flex-col gap-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-3 text-amber-900 dark:border-amber-800 dark:bg-amber-950/20 dark:text-amber-200 md:col-span-2 sm:flex-row sm:items-start sm:justify-between"
+          data-test="upstream-turnstile-notice"
+        >
+          <div class="flex min-w-0 items-start gap-2">
+            <Icon name="shield" size="sm" class="mt-0.5 flex-shrink-0" />
+            <div class="min-w-0">
+              <p class="text-sm font-semibold">{{ t('admin.customFeatures.upstream.turnstileDetectedTitle') }}</p>
+              <p class="mt-1 text-xs leading-5">{{ t('admin.customFeatures.upstream.turnstileDetectedDescription') }}</p>
+            </div>
+          </div>
+          <a
+            v-if="upstreamLoginURL"
+            :href="upstreamLoginURL"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="btn btn-secondary inline-flex flex-shrink-0 items-center justify-center gap-2"
+            data-test="upstream-open-login"
+          >
+            <Icon name="externalLink" size="sm" />
+            {{ t('admin.customFeatures.upstream.openLoginPage') }}
+          </a>
         </div>
         <div v-if="form.auth_mode === 'password'">
           <label for="upstream-account" class="input-label">{{ t('admin.customFeatures.upstream.account') }}</label>
@@ -330,16 +365,36 @@
         </div>
         <div v-if="form.auth_mode === 'password'">
           <label for="upstream-password" class="input-label">{{ t('admin.customFeatures.upstream.password') }}</label>
-          <input id="upstream-password" v-model="form.password" class="input" type="password" autocomplete="new-password" :required="!editingSite" :placeholder="editingSite ? t('admin.customFeatures.upstream.keepCredential') : ''" />
+          <input id="upstream-password" v-model="form.password" class="input" type="password" autocomplete="new-password" :required="!editingSite || editingSite.auth_mode !== 'password' || !editingSite.has_password" :placeholder="editingSite?.auth_mode === 'password' && editingSite.has_password ? t('admin.customFeatures.upstream.keepCredential') : ''" />
         </div>
         <template v-else>
           <div>
             <label for="upstream-access-token" class="input-label">{{ t('admin.customFeatures.upstream.accessToken') }}</label>
-            <input id="upstream-access-token" v-model="form.access_token" class="input" type="password" autocomplete="off" :placeholder="editingSite ? t('admin.customFeatures.upstream.keepCredential') : ''" />
+            <input id="upstream-access-token" v-model="form.access_token" class="input" type="password" autocomplete="off" :placeholder="editingSite?.auth_mode === 'token' && editingSite.has_token ? t('admin.customFeatures.upstream.keepCredential') : ''" />
           </div>
           <div>
             <label for="upstream-refresh-token" class="input-label">{{ t('admin.customFeatures.upstream.refreshToken') }}</label>
-            <input id="upstream-refresh-token" v-model="form.refresh_token" class="input" type="password" autocomplete="off" :placeholder="editingSite ? t('admin.customFeatures.upstream.keepCredential') : ''" />
+            <input id="upstream-refresh-token" v-model="form.refresh_token" class="input" type="password" autocomplete="off" :placeholder="editingSite?.auth_mode === 'token' && editingSite.has_token ? t('admin.customFeatures.upstream.keepCredential') : ''" />
+          </div>
+          <div v-if="turnstileDetected" class="md:col-span-2">
+            <label for="upstream-login-response" class="input-label">{{ t('admin.customFeatures.upstream.loginResponse') }}</label>
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+              <textarea
+                id="upstream-login-response"
+                v-model="loginResponseJSON"
+                class="input min-h-20 flex-1 resize-y font-mono text-xs"
+                autocomplete="off"
+                spellcheck="false"
+                :placeholder="t('admin.customFeatures.upstream.loginResponsePlaceholder')"
+                data-test="upstream-login-response"
+              ></textarea>
+              <button type="button" class="btn btn-secondary inline-flex items-center justify-center gap-2 sm:self-start" data-test="upstream-import-login-response" @click="importLoginResponseTokens">
+                <Icon name="clipboard" size="sm" />
+                {{ t('admin.customFeatures.upstream.importTokens') }}
+              </button>
+            </div>
+            <p v-if="loginResponseError" class="mt-1 text-xs text-red-600 dark:text-red-300">{{ loginResponseError }}</p>
+            <p v-else class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.customFeatures.upstream.loginResponseHint') }}</p>
           </div>
         </template>
         <div class="flex items-center justify-between gap-4 md:col-span-2">
@@ -483,6 +538,7 @@ import Toggle from '@/components/common/Toggle.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { Column } from '@/components/common/types'
 import upstreamsAPI, {
+  type UpstreamCapabilities,
   type UpstreamDailyStat,
   type UpstreamGroup,
   type UpstreamGroupMultiplierHistory,
@@ -492,7 +548,7 @@ import upstreamsAPI, {
   type UpstreamWritePayload
 } from '@/api/admin/upstreams'
 import { useAppStore } from '@/stores/app'
-import { extractApiErrorMessage } from '@/utils/apiError'
+import { extractApiErrorCode, extractApiErrorMessage } from '@/utils/apiError'
 import { formatCompactNumber } from '@/utils/format'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend)
@@ -520,6 +576,12 @@ const sortableSites = ref<UpstreamSite[]>([])
 const formOpen = ref(false)
 const editingSite = ref<UpstreamSite | null>(null)
 const saving = ref(false)
+const capabilityProbeLoading = ref(false)
+const capabilityProbeError = ref('')
+const probedCapabilities = ref<UpstreamCapabilities | null>(null)
+const probedBaseURL = ref('')
+const loginResponseJSON = ref('')
+const loginResponseError = ref('')
 const deleteTarget = ref<UpstreamSite | null>(null)
 const deleting = ref(false)
 const expandedSiteIDs = ref<Set<number>>(new Set())
@@ -556,10 +618,27 @@ let multiplierRequestVersion = 0
 let detailRequestVersion = 0
 let historyRequestVersion = 0
 let siteListRequestVersion = 0
+let capabilityProbeRequestVersion = 0
 
 const form = reactive<UpstreamWritePayload>({
   name: '', base_url: '', platform: 'sub2api', auth_mode: 'password', account: '',
   password: '', access_token: '', refresh_token: '', enabled: true
+})
+
+const turnstileDetected = computed(() => (
+  form.platform === 'sub2api' && probedCapabilities.value?.turnstile_enabled === true
+))
+const upstreamLoginURL = computed(() => {
+  try {
+    const parsed = new URL(form.base_url.trim())
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return ''
+    parsed.pathname = `${parsed.pathname.replace(/\/$/, '')}/login`
+    parsed.search = ''
+    parsed.hash = ''
+    return parsed.toString()
+  } catch {
+    return ''
+  }
 })
 
 const columns = computed<Column[]>(() => [
@@ -819,32 +898,176 @@ async function saveSortOrder() {
 }
 
 function resetForm() {
+  resetCapabilityProbe()
   Object.assign(form, { name: '', base_url: '', platform: 'sub2api', auth_mode: 'password', account: '', password: '', access_token: '', refresh_token: '', enabled: true })
 }
 
 function openCreate() { editingSite.value = null; resetForm(); formOpen.value = true }
 function openEdit(site: UpstreamSite) {
+  resetCapabilityProbe()
   editingSite.value = site
   Object.assign(form, { name: site.name, base_url: site.base_url, platform: site.platform, auth_mode: site.auth_mode, account: site.account, password: '', access_token: '', refresh_token: '', enabled: site.enabled })
   formOpen.value = true
+  void probeSiteCapabilities()
 }
-function closeForm() { if (!saving.value) formOpen.value = false }
-function handlePlatformChange() { if (form.platform === 'newapi') form.auth_mode = 'password' }
+function closeForm() {
+  if (saving.value) return
+  formOpen.value = false
+  resetCapabilityProbe()
+}
+function handlePlatformChange() {
+  resetCapabilityProbe()
+  if (form.platform === 'newapi') {
+    form.auth_mode = 'password'
+    return
+  }
+  void probeSiteCapabilities()
+}
+function handleAuthModeChange() {
+  if (turnstileDetected.value && form.auth_mode === 'password') form.auth_mode = 'token'
+  loginResponseError.value = ''
+}
+function handleBaseURLInput() {
+  const current = normalizeProbeURL(form.base_url)
+  if (!probedBaseURL.value || current === probedBaseURL.value) return
+  resetCapabilityProbe()
+}
+
+function normalizeProbeURL(value: string) {
+  try {
+    const parsed = new URL(value.trim())
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return ''
+    parsed.search = ''
+    parsed.hash = ''
+    return parsed.toString().replace(/\/$/, '')
+  } catch {
+    return ''
+  }
+}
+
+function resetCapabilityProbe() {
+  capabilityProbeRequestVersion += 1
+  capabilityProbeLoading.value = false
+  capabilityProbeError.value = ''
+  probedCapabilities.value = null
+  probedBaseURL.value = ''
+  loginResponseJSON.value = ''
+  loginResponseError.value = ''
+}
+
+function markTurnstileDetected(baseURL: string) {
+  const normalized = normalizeProbeURL(baseURL)
+  probedBaseURL.value = normalized
+  probedCapabilities.value = {
+    base_url: normalized,
+    platform: 'sub2api',
+    turnstile_enabled: true,
+    token_auth_recommended: true,
+  }
+  form.auth_mode = 'token'
+}
+
+async function probeSiteCapabilities(force = false): Promise<UpstreamCapabilities | null> {
+  if (form.platform !== 'sub2api') return null
+  const baseURL = normalizeProbeURL(form.base_url)
+  if (!baseURL) return null
+  if (!force && probedCapabilities.value && probedBaseURL.value === baseURL) return probedCapabilities.value
+
+  const requestVersion = ++capabilityProbeRequestVersion
+  capabilityProbeLoading.value = true
+  capabilityProbeError.value = ''
+  try {
+    const capabilities = await upstreamsAPI.probeCapabilities({ base_url: baseURL, platform: form.platform })
+    if (requestVersion !== capabilityProbeRequestVersion || normalizeProbeURL(form.base_url) !== baseURL || form.platform !== 'sub2api') return null
+    probedCapabilities.value = capabilities
+    probedBaseURL.value = normalizeProbeURL(capabilities.base_url)
+    if (capabilities.turnstile_enabled) form.auth_mode = 'token'
+    return capabilities
+  } catch (error) {
+    if (requestVersion === capabilityProbeRequestVersion) {
+      capabilityProbeError.value = extractApiErrorMessage(error, t('admin.customFeatures.upstream.capabilityProbeFailed'))
+    }
+    return null
+  } finally {
+    if (requestVersion === capabilityProbeRequestVersion) capabilityProbeLoading.value = false
+  }
+}
+
+function asTokenRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
+}
+
+function firstTokenValue(records: Array<Record<string, unknown> | null>, keys: string[]) {
+  for (const record of records) {
+    if (!record) continue
+    for (const key of keys) {
+      const value = record[key]
+      if (typeof value === 'string' && value.trim()) return value.trim()
+    }
+  }
+  return ''
+}
+
+function importLoginResponseTokens() {
+  loginResponseError.value = ''
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(loginResponseJSON.value)
+  } catch {
+    loginResponseError.value = t('admin.customFeatures.upstream.loginResponseInvalid')
+    return
+  }
+  const root = asTokenRecord(parsed)
+  const data = asTokenRecord(root?.data)
+  const nestedToken = asTokenRecord(data?.token) || asTokenRecord(root?.token)
+  const records = [data, root, nestedToken]
+  const accessToken = firstTokenValue(records, ['access_token', 'accessToken', 'token'])
+  const refreshToken = firstTokenValue(records, ['refresh_token', 'refreshToken'])
+  if (!accessToken && !refreshToken) {
+    loginResponseError.value = t('admin.customFeatures.upstream.loginResponseMissingTokens')
+    return
+  }
+  if (accessToken) form.access_token = accessToken
+  if (refreshToken) form.refresh_token = refreshToken
+  loginResponseJSON.value = ''
+  appStore.showSuccess(t('admin.customFeatures.upstream.tokensImported'))
+}
 
 async function submitForm() {
-  if (form.auth_mode === 'token' && !editingSite.value && !form.access_token?.trim() && !form.refresh_token?.trim()) {
+  if (form.platform === 'sub2api' && form.auth_mode === 'password') {
+    const capabilities = await probeSiteCapabilities(true)
+    if (capabilities?.turnstile_enabled) {
+      appStore.showError(t('admin.customFeatures.upstream.turnstileRequiresToken'))
+      return
+    }
+  }
+  const keepsExistingToken = editingSite.value?.auth_mode === 'token' && editingSite.value.has_token
+  if (form.auth_mode === 'token' && !keepsExistingToken && !form.access_token?.trim() && !form.refresh_token?.trim()) {
     appStore.showError(t('admin.customFeatures.upstream.tokenRequired'))
     return
   }
   saving.value = true
   try {
-    const payload: UpstreamWritePayload = { ...form, name: form.name.trim(), base_url: form.base_url.trim(), account: form.account.trim(), password: form.password?.trim(), access_token: form.access_token?.trim(), refresh_token: form.refresh_token?.trim() }
+    const payload: UpstreamWritePayload = {
+      ...form,
+      name: form.name.trim(),
+      base_url: form.base_url.trim(),
+      account: form.auth_mode === 'password' ? form.account.trim() : '',
+      password: form.auth_mode === 'password' ? form.password?.trim() : undefined,
+      access_token: form.auth_mode === 'token' ? form.access_token?.trim() : undefined,
+      refresh_token: form.auth_mode === 'token' ? form.refresh_token?.trim() : undefined,
+    }
     if (editingSite.value) await upstreamsAPI.update(editingSite.value.id, payload)
     else await upstreamsAPI.create(payload)
     appStore.showSuccess(t('admin.customFeatures.upstream.saved'))
     formOpen.value = false
     await loadSites(true)
   } catch (error) {
+    if (extractApiErrorCode(error) === 'UPSTREAM_TURNSTILE_REQUIRED') {
+      markTurnstileDetected(form.base_url)
+      appStore.showError(t('admin.customFeatures.upstream.turnstileRequiresToken'))
+      return
+    }
     appStore.showError(extractApiErrorMessage(error, t('admin.customFeatures.upstream.saveFailed')))
   } finally { saving.value = false }
 }

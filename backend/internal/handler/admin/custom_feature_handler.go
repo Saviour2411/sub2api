@@ -142,6 +142,20 @@ func (h *CustomFeatureHandler) UpdateUpstreamSortOrder(c *gin.Context) {
 	response.Success(c, gin.H{"updated": len(input.Updates)})
 }
 
+func (h *CustomFeatureHandler) ProbeUpstreamCapabilities(c *gin.Context) {
+	var input service.UpstreamProbeInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		response.BadRequest(c, "请求格式无效")
+		return
+	}
+	capabilities, err := h.upstreamService.ProbeCapabilities(c.Request.Context(), input)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, capabilities)
+}
+
 func parseUpstreamListParams(c *gin.Context) (service.UpstreamListParams, bool) {
 	params := service.UpstreamListParams{
 		Search:        c.Query("search"),

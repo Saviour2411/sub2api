@@ -6,13 +6,16 @@ import UpstreamManagementPanel from '../UpstreamManagementPanel.vue'
 
 const api = vi.hoisted(() => ({
   list: vi.fn(), create: vi.fn(), update: vi.fn(), setEnabled: vi.fn(), remove: vi.fn(),
-  listAll: vi.fn(), updateSortOrder: vi.fn(), sync: vi.fn(), syncAll: vi.fn(), groups: vi.fn(), setGroupDisplayed: vi.fn(), history: vi.fn(), multiplierHistory: vi.fn(),
+  listAll: vi.fn(), updateSortOrder: vi.fn(), probeCapabilities: vi.fn(), sync: vi.fn(), syncAll: vi.fn(), groups: vi.fn(), setGroupDisplayed: vi.fn(), history: vi.fn(), multiplierHistory: vi.fn(),
   showSuccess: vi.fn(), showError: vi.fn(),
 }))
 
 vi.mock('@/api/admin/upstreams', () => ({ default: api }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showSuccess: api.showSuccess, showError: api.showError }) }))
-vi.mock('@/utils/apiError', () => ({ extractApiErrorMessage: (_error: unknown, fallback: string) => fallback }))
+vi.mock('@/utils/apiError', () => ({
+  extractApiErrorMessage: (_error: unknown, fallback: string) => fallback,
+  extractApiErrorCode: (error: unknown) => error && typeof error === 'object' && 'reason' in error ? String((error as { reason: unknown }).reason) : undefined,
+}))
 vi.mock('vue-chartjs', () => ({
   Line: {
     props: ['data', 'options'],
@@ -121,6 +124,7 @@ describe('UpstreamManagementPanel', () => {
     Object.values(api).forEach((mock) => mock.mockReset())
     api.list.mockResolvedValue({ items: [siteFixture()], total: 1, page: 1, page_size: 20, pages: 1 })
     api.create.mockResolvedValue(siteFixture({ id: 2 }))
+    api.probeCapabilities.mockResolvedValue({ base_url: 'https://upstream.example.com', platform: 'sub2api', turnstile_enabled: false, token_auth_recommended: false })
     api.listAll.mockResolvedValue([siteFixture(), siteFixture({ id: 2, name: '上游二号' })])
     api.updateSortOrder.mockResolvedValue({ updated: 2 })
     api.update.mockResolvedValue(siteFixture())
@@ -250,6 +254,93 @@ describe('UpstreamManagementPanel', () => {
       auth_mode: 'password',
       account: 'admin',
       password: 'secret',
+    }))
+    wrapper.unmount()
+  })
+
+  it('检测 Turnstile 后自动切换令牌认证并从登录响应导入令牌', async () => {
+    api.probeCapabilities.mockResolvedValue({
+      base_url: 'https://walkcoding.top', platform: 'sub2api', turnstile_enabled: true, token_auth_recommended: true,
+    })
+    const wrapper = mountPanel()
+    await flushPromises()
+    await wrapper.get('[data-test="upstream-add"]').trigger('click')
+    await wrapper.get('#upstream-name').setValue('Walk Coding')
+    await wrapper.get('#upstream-url').setValue('https://walkcoding.top')
+    await wrapper.get('#upstream-url').trigger('blur')
+    await flushPromises()
+
+    expect(api.probeCapabilities).toHaveBeenCalledWith({ base_url: 'https://walkcoding.top', platform: 'sub2api' })
+    expect(wrapper.get<HTMLSelectElement>('#upstream-auth-mode').element.value).toBe('token')
+    expect(wrapper.find('[data-test="upstream-turnstile-notice"]').exists()).toBe(true)
+    expect(wrapper.get('[data-test="upstream-open-login"]').attributes('href')).toBe('https://walkcoding.top/login')
+    expect(wrapper.find('#upstream-password').exists()).toBe(false)
+
+    await wrapper.get('[data-test="upstream-login-response"]').setValue(JSON.stringify({
+      code: 0,
+      data: { access_token: 'access-from-login', refresh_token: 'refresh-from-login' },
+    }))
+    await wrapper.get('[data-test="upstream-import-login-response"]').trigger('click')
+    expect(wrapper.get<HTMLInputElement>('#upstream-access-token').element.value).toBe('access-from-login')
+    expect(wrapper.get<HTMLInputElement>('#upstream-refresh-token').element.value).toBe('refresh-from-login')
+    expect(wrapper.get<HTMLTextAreaElement>('[data-test="upstream-login-response"]').element.value).toBe('')
+
+    await wrapper.get('[data-test="upstream-form"]').trigger('submit')
+    await flushPromises()
+    expect(api.create).toHaveBeenCalledWith(expect.objectContaining({
+      base_url: 'https://walkcoding.top',
+      platform: 'sub2api',
+      auth_mode: 'token',
+      access_token: 'access-from-login',
+      refresh_token: 'refresh-from-login',
+    }))
+    wrapper.unmount()
+  })
+
+  it('创建接口返回 Turnstile 专用错误时保留表单并切换令牌认证', async () => {
+    api.probeCapabilities.mockRejectedValue(new Error('旧版本无公开设置'))
+    api.create.mockRejectedValue({ reason: 'UPSTREAM_TURNSTILE_REQUIRED' })
+    const wrapper = mountPanel()
+    await flushPromises()
+    await wrapper.get('[data-test="upstream-add"]').trigger('click')
+    await wrapper.get('#upstream-name').setValue('Turnstile 上游')
+    await wrapper.get('#upstream-url').setValue('https://turnstile.example.com')
+    await wrapper.get('#upstream-account').setValue('admin@example.com')
+    await wrapper.get('#upstream-password').setValue('secret')
+    await wrapper.get('[data-test="upstream-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(api.create).toHaveBeenCalledOnce()
+    expect(wrapper.find('[data-test="upstream-turnstile-notice"]').exists()).toBe(true)
+    expect(wrapper.get<HTMLSelectElement>('#upstream-auth-mode').element.value).toBe('token')
+    expect(api.showError).toHaveBeenCalledWith('admin.customFeatures.upstream.turnstileRequiresToken')
+    wrapper.unmount()
+  })
+
+  it('编辑密码站点切换令牌认证后要求新令牌并移除密码载荷', async () => {
+    api.probeCapabilities.mockResolvedValue({
+      base_url: 'https://upstream.example.com', platform: 'sub2api', turnstile_enabled: true, token_auth_recommended: true,
+    })
+    const wrapper = mountPanel()
+    await flushPromises()
+    await wrapper.get('button[title="admin.customFeatures.upstream.edit"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get<HTMLSelectElement>('#upstream-auth-mode').element.value).toBe('token')
+    expect(wrapper.get('#upstream-access-token').attributes('placeholder')).toBe('')
+    await wrapper.get('[data-test="upstream-form"]').trigger('submit')
+    await flushPromises()
+    expect(api.update).not.toHaveBeenCalled()
+    expect(api.showError).toHaveBeenCalledWith('admin.customFeatures.upstream.tokenRequired')
+
+    await wrapper.get('#upstream-access-token').setValue('new-access-token')
+    await wrapper.get('[data-test="upstream-form"]').trigger('submit')
+    await flushPromises()
+    expect(api.update).toHaveBeenCalledWith(1, expect.objectContaining({
+      auth_mode: 'token',
+      account: '',
+      password: undefined,
+      access_token: 'new-access-token',
     }))
     wrapper.unmount()
   })

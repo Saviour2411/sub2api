@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -136,6 +138,39 @@ func TestMergeUpstreamUpdateKeepsBlankCredential(t *testing.T) {
 	require.Equal(t, "old-token", credential.AccessToken)
 }
 
+func TestMergeUpstreamUpdateClearsCredentialFromPreviousAuthMode(t *testing.T) {
+	t.Run("密码切换为令牌", func(t *testing.T) {
+		site := &UpstreamSite{AuthMode: UpstreamAuthPassword, Account: "admin"}
+		credential := UpstreamCredential{Password: "old-password", Cookie: "old-cookie"}
+		authMode := UpstreamAuthToken
+		accessToken := "new-token"
+		changed := mergeUpstreamUpdate(site, &credential, UpstreamUpdateInput{
+			AuthMode: &authMode, AccessToken: &accessToken,
+		})
+
+		require.True(t, changed)
+		require.Empty(t, credential.Password)
+		require.Empty(t, credential.Cookie)
+		require.Equal(t, "new-token", credential.AccessToken)
+	})
+
+	t.Run("令牌切换为密码", func(t *testing.T) {
+		site := &UpstreamSite{AuthMode: UpstreamAuthToken}
+		credential := UpstreamCredential{AccessToken: "old-access", RefreshToken: "old-refresh", Cookie: "old-cookie"}
+		authMode := UpstreamAuthPassword
+		password := "new-password"
+		changed := mergeUpstreamUpdate(site, &credential, UpstreamUpdateInput{
+			AuthMode: &authMode, Password: &password,
+		})
+
+		require.True(t, changed)
+		require.Empty(t, credential.AccessToken)
+		require.Empty(t, credential.RefreshToken)
+		require.Empty(t, credential.Cookie)
+		require.Equal(t, "new-password", credential.Password)
+	})
+}
+
 func TestUpstreamServiceRejectsNewAPITokenMode(t *testing.T) {
 	service := &UpstreamService{}
 	err := service.validateSite(&UpstreamSite{
@@ -232,4 +267,27 @@ func TestUpstreamServiceUpdateSortOrderValidatesInput(t *testing.T) {
 		require.ErrorIs(t, svc.UpdateSortOrder(context.Background(), invalid), ErrUpstreamInvalidInput)
 		require.Empty(t, repo.updates)
 	}
+}
+
+func TestUpstreamServiceProbeCapabilitiesDetectsTurnstile(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/settings/public", func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodGet, r.Method)
+		writeUpstreamJSON(t, w, map[string]any{
+			"turnstile_enabled":  true,
+			"turnstile_site_key": "site-key",
+		})
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	svc := &UpstreamService{http: newTestUpstreamHTTPClient(t)}
+	capabilities, err := svc.ProbeCapabilities(context.Background(), UpstreamProbeInput{
+		BaseURL: server.URL + "/", Platform: " SUB2API ",
+	})
+	require.NoError(t, err)
+	require.Equal(t, server.URL, capabilities.BaseURL)
+	require.Equal(t, UpstreamPlatformSub2API, capabilities.Platform)
+	require.True(t, capabilities.TurnstileEnabled)
+	require.True(t, capabilities.TokenAuthRecommended)
 }

@@ -33,6 +33,9 @@ var (
 	ErrUpstreamConnectionFailed = infraerrors.BadRequest(
 		"UPSTREAM_CONNECTION_FAILED", "无法连接或认证上游站点",
 	)
+	ErrUpstreamTurnstileRequired = infraerrors.BadRequest(
+		"UPSTREAM_TURNSTILE_REQUIRED", "目标站点开启了 Cloudflare Turnstile，请使用访问令牌认证",
+	).WithMetadata(map[string]string{"recommended_auth_mode": UpstreamAuthToken})
 	ErrUpstreamCredentialDecrypt = infraerrors.InternalServer(
 		"UPSTREAM_CREDENTIAL_DECRYPT_FAILED", "上游凭证解密失败，请重新编辑站点凭证",
 	)
@@ -120,6 +123,18 @@ type UpstreamListParams struct {
 type UpstreamSortOrderUpdate struct {
 	ID        int64 `json:"id"`
 	SortOrder int   `json:"sort_order"`
+}
+
+type UpstreamProbeInput struct {
+	BaseURL  string `json:"base_url"`
+	Platform string `json:"platform"`
+}
+
+type UpstreamCapabilities struct {
+	BaseURL              string `json:"base_url"`
+	Platform             string `json:"platform"`
+	TurnstileEnabled     bool   `json:"turnstile_enabled"`
+	TokenAuthRecommended bool   `json:"token_auth_recommended"`
 }
 
 type UpstreamCreateInput struct {
