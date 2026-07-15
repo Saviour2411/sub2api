@@ -44,7 +44,7 @@ func newUpstreamHTTPClient(cfg *config.Config) (*upstreamHTTPClient, error) {
 	shared, err := httpclient.GetClient(httpclient.Options{
 		Timeout:               45 * time.Second,
 		ResponseHeaderTimeout: 20 * time.Second,
-		ValidateResolvedIP:    true,
+		ValidateResolvedIP:    cfg.Security.URLAllowlist.Enabled,
 		AllowPrivateHosts:     cfg.Security.URLAllowlist.AllowPrivateHosts,
 		MaxConnsPerHost:       4,
 	})
@@ -71,11 +71,17 @@ func newUpstreamHTTPClient(cfg *config.Config) (*upstreamHTTPClient, error) {
 }
 
 func (c *upstreamHTTPClient) normalizeBaseURL(raw string) (string, error) {
-	normalized, err := urlvalidator.ValidateHTTPURL(raw, c.allowInsecureHTTP, urlvalidator.ValidationOptions{
-		AllowedHosts:     c.allowedUpstreamHost,
-		RequireAllowlist: c.requireAllowlist,
-		AllowPrivate:     c.allowPrivateHosts,
-	})
+	var normalized string
+	var err error
+	if c.requireAllowlist {
+		normalized, err = urlvalidator.ValidateHTTPSURL(raw, urlvalidator.ValidationOptions{
+			AllowedHosts:     c.allowedUpstreamHost,
+			RequireAllowlist: true,
+			AllowPrivate:     c.allowPrivateHosts,
+		})
+	} else {
+		normalized, err = urlvalidator.ValidateURLFormat(raw, c.allowInsecureHTTP)
+	}
 	if err != nil {
 		return "", err
 	}

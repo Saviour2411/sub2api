@@ -24,6 +24,90 @@ func newTestUpstreamHTTPClient(t *testing.T) *upstreamHTTPClient {
 	return client
 }
 
+func TestUpstreamHTTPClientNormalizeBaseURLWhenAllowlistDisabled(t *testing.T) {
+	tests := []struct {
+		name          string
+		upstreamHosts []string
+		raw           string
+		want          string
+	}{
+		{
+			name: "空白名单允许任意公网 HTTPS 地址",
+			raw:  "https://upstream.example.com/api///",
+			want: "https://upstream.example.com/api",
+		},
+		{
+			name:          "非空默认白名单不限制公网 HTTPS 地址",
+			upstreamHosts: []string{"api.openai.com", "api.anthropic.com"},
+			raw:           "https://www.xiaobaishu.org///",
+			want:          "https://www.xiaobaishu.org",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, err := newUpstreamHTTPClient(&config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{
+				Enabled:       false,
+				UpstreamHosts: tt.upstreamHosts,
+			}}})
+			require.NoError(t, err)
+
+			normalized, err := client.normalizeBaseURL(tt.raw)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, normalized)
+		})
+	}
+}
+
+func TestUpstreamHTTPClientNormalizeBaseURLWhenAllowlistEnabled(t *testing.T) {
+	client, err := newUpstreamHTTPClient(&config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{
+		Enabled:           true,
+		UpstreamHosts:     []string{"allowed.example.com"},
+		AllowPrivateHosts: true,
+		AllowInsecureHTTP: true,
+	}}})
+	require.NoError(t, err)
+
+	t.Run("拒绝未列入白名单的地址", func(t *testing.T) {
+		_, err := client.normalizeBaseURL("https://denied.example.com")
+		require.Error(t, err)
+	})
+
+	t.Run("允许列入白名单的地址并移除尾斜杠", func(t *testing.T) {
+		normalized, err := client.normalizeBaseURL("https://allowed.example.com/api///")
+		require.NoError(t, err)
+		require.Equal(t, "https://allowed.example.com/api", normalized)
+	})
+
+	t.Run("启用白名单时始终拒绝 HTTP 地址", func(t *testing.T) {
+		_, err := client.normalizeBaseURL("http://allowed.example.com")
+		require.Error(t, err)
+	})
+}
+
+func TestUpstreamHTTPClientAllowsLocalRequestWhenAllowlistDisabled(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeUpstreamJSON(t, w, map[string]any{"status": "ok"})
+	}))
+	defer server.Close()
+
+	client, err := newUpstreamHTTPClient(&config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{
+		Enabled:           false,
+		UpstreamHosts:     []string{"api.openai.com"},
+		AllowPrivateHosts: false,
+		AllowInsecureHTTP: true,
+	}}})
+	require.NoError(t, err)
+
+	normalized, err := client.normalizeBaseURL(server.URL + "/")
+	require.NoError(t, err)
+	require.Equal(t, server.URL, normalized)
+
+	payload, _, err := client.doJSON(context.Background(), http.MethodGet, normalized, "/health", nil, "", nil)
+	require.NoError(t, err)
+	require.Equal(t, "ok", stringValue(valueByKeys(payload, "status")))
+}
+
 func writeUpstreamJSON(t *testing.T, w http.ResponseWriter, data any) {
 	t.Helper()
 	w.Header().Set("Content-Type", "application/json")
