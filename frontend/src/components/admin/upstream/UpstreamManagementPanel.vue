@@ -169,38 +169,53 @@
           <p v-else-if="displayedGroups(row.id).length === 0" class="py-5 text-center text-sm text-gray-500 dark:text-gray-400">
             {{ t('admin.customFeatures.upstream.noDisplayedGroups') }}
           </p>
-          <div v-else class="grid grid-cols-1 gap-2 md:grid-cols-2 2xl:grid-cols-3" data-test="expanded-groups-grid">
+          <div v-else class="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4" data-test="expanded-groups-grid">
             <article
               v-for="group in displayedGroups(row.id)"
               :key="group.remote_id"
-              class="rounded-md border bg-white p-3 dark:bg-dark-900"
+              class="rounded-md border bg-white p-2.5 dark:bg-dark-900"
               :class="group.available ? 'border-gray-200 dark:border-dark-700' : 'border-amber-300 bg-amber-50/40 dark:border-amber-800 dark:bg-amber-950/10'"
             >
-              <div class="flex min-w-0 items-start justify-between gap-2">
+              <div class="flex min-w-0 items-start justify-between gap-1.5">
                 <div class="min-w-0">
-                  <div class="flex flex-wrap items-center gap-1.5">
-                    <h4 class="break-words text-sm font-semibold text-gray-900 dark:text-gray-100" :title="group.name">{{ group.name }}</h4>
-                    <span v-if="!group.available" class="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">{{ t('admin.customFeatures.upstream.unavailable') }}</span>
+                  <div class="flex flex-wrap items-center gap-1">
+                    <h4 class="break-words text-xs font-semibold leading-4 text-gray-900 dark:text-gray-100" :title="group.name">{{ group.name }}</h4>
+                    <span v-if="!group.available" class="rounded bg-amber-100 px-1 py-0.5 text-[10px] font-semibold leading-3 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">{{ t('admin.customFeatures.upstream.unavailable') }}</span>
                   </div>
-                  <p v-if="group.description" class="mt-0.5 line-clamp-2 break-words text-xs text-gray-500 dark:text-gray-400" :title="group.description">{{ group.description }}</p>
+                  <p v-if="group.description" class="mt-0.5 line-clamp-1 break-words text-[10px] leading-4 text-gray-500 dark:text-gray-400" :title="group.description">{{ group.description }}</p>
                 </div>
-                <span class="flex-shrink-0 rounded px-2 py-1 text-xs font-semibold" :class="groupPlatformClass(group.platform)">{{ group.platform || '—' }}</span>
+                <span
+                  class="flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold leading-4"
+                  :class="groupPlatformClass(displayGroupPlatform(group))"
+                  :data-test="`upstream-group-platform-${row.id}-${group.remote_id}`"
+                >{{ displayGroupPlatform(group) }}</span>
               </div>
-              <dl class="mt-2 grid grid-cols-3 gap-2 border-t border-gray-100 pt-2 dark:border-dark-700">
+              <dl class="mt-1.5 grid grid-cols-3 gap-1.5 border-t border-gray-100 pt-1.5 dark:border-dark-700">
                 <div>
-                  <dt class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.customFeatures.upstream.groupColumns.multiplier') }}</dt>
-                  <dd class="mt-0.5"><span class="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">{{ formatMultiplier(group.multiplier) }}</span></dd>
+                  <dt class="text-[10px] leading-4 text-gray-500 dark:text-gray-400">{{ t('admin.customFeatures.upstream.groupColumns.multiplier') }}</dt>
+                  <dd class="mt-0.5">
+                    <button
+                      type="button"
+                      class="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold leading-4 text-amber-800 transition-colors hover:bg-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-1 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50"
+                      :title="t('admin.customFeatures.upstream.viewMultiplierTrend')"
+                      :aria-label="t('admin.customFeatures.upstream.viewMultiplierTrendFor', { name: group.name })"
+                      :data-test="`upstream-group-multiplier-${row.id}-${group.remote_id}`"
+                      @click.stop="openMultiplierTrend(row, group)"
+                    >
+                      {{ formatMultiplier(group.multiplier) }}
+                    </button>
+                  </dd>
                 </div>
                 <div>
-                  <dt class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.customFeatures.upstream.groupColumns.tokens') }}</dt>
-                  <dd class="mt-0.5 text-sm font-medium text-gray-900 dark:text-gray-100" :title="formatExactTokens(group.today_tokens)">{{ formatTokens(group.today_tokens) }}</dd>
+                  <dt class="text-[10px] leading-4 text-gray-500 dark:text-gray-400">{{ t('admin.customFeatures.upstream.groupColumns.tokens') }}</dt>
+                  <dd class="mt-0.5 text-xs font-medium leading-4 text-gray-900 dark:text-gray-100" :title="formatExactTokens(group.today_tokens)">{{ formatTokens(group.today_tokens) }}</dd>
                 </div>
                 <div>
-                  <dt class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.customFeatures.upstream.groupColumns.cost') }}</dt>
-                  <dd class="mt-0.5 text-sm font-medium text-gray-900 dark:text-gray-100">{{ formatMoney(group.today_cost_usd) }}</dd>
+                  <dt class="text-[10px] leading-4 text-gray-500 dark:text-gray-400">{{ t('admin.customFeatures.upstream.groupColumns.cost') }}</dt>
+                  <dd class="mt-0.5 text-xs font-medium leading-4 text-gray-900 dark:text-gray-100">{{ formatMoney(group.today_cost_usd) }}</dd>
                 </div>
               </dl>
-              <p v-if="!group.available" class="mt-2 text-[11px] text-amber-700 dark:text-amber-300">
+              <p v-if="!group.available" class="mt-1.5 text-[10px] leading-4 text-amber-700 dark:text-amber-300">
                 {{ t('admin.customFeatures.upstream.lastSeenAt', { time: formatDateTime(group.last_synced_at) }) }}
               </p>
             </article>
@@ -298,7 +313,7 @@
                 <p v-if="row.description" class="mt-1 line-clamp-2 break-words text-xs text-gray-500 dark:text-gray-400" :title="row.description">{{ row.description }}</p>
               </div>
             </template>
-            <template #cell-platform="{ row }"><span class="rounded px-2 py-1 text-xs font-semibold" :class="groupPlatformClass(row.platform)">{{ row.platform || '—' }}</span></template>
+            <template #cell-platform="{ row }"><span class="rounded px-2 py-1 text-xs font-semibold" :class="groupPlatformClass(displayGroupPlatform(row))">{{ displayGroupPlatform(row) }}</span></template>
             <template #cell-status="{ row }">
               <span class="rounded px-2 py-1 text-xs font-semibold" :class="row.available ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'">
                 {{ row.available ? t('admin.customFeatures.upstream.available') : t('admin.customFeatures.upstream.unavailable') }}
@@ -360,7 +375,7 @@
             <div class="border-b border-gray-100 pb-3 dark:border-dark-700">
               <div class="flex flex-wrap items-center gap-2">
                 <h4 class="break-words text-sm font-semibold text-gray-900 dark:text-gray-100">{{ selectedMultiplierHistory.name }}</h4>
-                <span class="rounded bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600 dark:bg-dark-700 dark:text-gray-300">{{ selectedMultiplierHistory.platform || '—' }}</span>
+                <span data-test="multiplier-history-platform" class="rounded px-2 py-1 text-xs font-medium" :class="groupPlatformClass(displayGroupPlatform(selectedMultiplierHistory))">{{ displayGroupPlatform(selectedMultiplierHistory) }}</span>
                 <span class="text-sm font-medium text-primary-600 dark:text-primary-400">{{ formatMultiplier(selectedMultiplierHistory.current_multiplier) }}</span>
               </div>
               <p v-if="selectedMultiplierHistory.description" class="mt-2 break-words text-sm text-gray-500 dark:text-gray-400">{{ selectedMultiplierHistory.description }}</p>
@@ -789,6 +804,14 @@ async function openDetails(site: UpstreamSite) {
   }
 }
 
+async function openMultiplierTrend(site: UpstreamSite, group: UpstreamGroup) {
+  await openDetails(site)
+  if (detailSite.value?.id !== site.id) return
+  detailTab.value = 'multiplier'
+  selectedMultiplierRemoteID.value = group.remote_id
+  await loadMultiplierHistory()
+}
+
 function groupDisplayLoadingKey(siteID: number, remoteID: string) {
   return `${siteID}:${remoteID}`
 }
@@ -927,6 +950,16 @@ function groupPlatformClass(platform: string) {
   if (normalized.includes('anthropic') || normalized.includes('claude')) return 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300'
   if (normalized.includes('gemini') || normalized.includes('google')) return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
   return 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-300'
+}
+function displayGroupPlatform(group: Pick<UpstreamGroup, 'name' | 'description' | 'platform'>) {
+  const platform = group.platform.trim()
+  if (platform && !['newapi', 'new api'].includes(platform.toLowerCase())) return platform
+  const text = `${group.name} ${group.description}`.toLowerCase()
+  if (text.includes('claude') || text.includes('anthropic')) return 'Anthropic'
+  if (text.includes('gpt') || text.includes('openai')) return 'OpenAI'
+  if (text.includes('gemini') || text.includes('google ai')) return 'Gemini'
+  if (text.includes('grok') || text.includes('x.ai')) return 'Grok'
+  return platform || '—'
 }
 function formatMoney(value: number | null | undefined) { return value == null ? '—' : `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}` }
 function formatTokens(value: number) { return formatCompactNumber(Number(value || 0)) }

@@ -278,3 +278,23 @@ func TestNewAPIUpstreamProviderDoesNotReturnPartialPagination(t *testing.T) {
 	require.Nil(t, result)
 	require.Contains(t, err.Error(), fmt.Sprintf("第 %d 页", 2))
 }
+
+func TestParseNewAPIGroupsResolvesPlatform(t *testing.T) {
+	groups := parseNewAPIGroups(map[string]any{
+		"claude-aws": map[string]any{"ratio": 0.3, "desc": "AWS 渠道 99% 高缓存"},
+		"cheap-gpt":  map[string]any{"ratio": 0.02, "desc": "稳定低价 GPT 分组"},
+		"gemini":     map[string]any{"ratio": 0.1, "provider": "google"},
+		"explicit":   map[string]any{"ratio": 1, "provider_type": "anthropic"},
+		"unknown":    map[string]any{"ratio": 1, "platform": "New API"},
+	})
+
+	platforms := make(map[string]string, len(groups))
+	for _, group := range groups {
+		platforms[group.RemoteID] = group.Platform
+	}
+	require.Equal(t, "Anthropic", platforms["claude-aws"])
+	require.Equal(t, "OpenAI", platforms["cheap-gpt"])
+	require.Equal(t, "Gemini", platforms["gemini"])
+	require.Equal(t, "Anthropic", platforms["explicit"])
+	require.Equal(t, "New API", platforms["unknown"])
+}

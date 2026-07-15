@@ -244,6 +244,8 @@ export default {
         unavailable: 'Unavailable',
         addGroupDisplay: 'Add to Display',
         hideGroup: 'Hide',
+        viewMultiplierTrend: 'View multiplier trend',
+        viewMultiplierTrendFor: 'View multiplier trend for {name}',
         lastSeenAt: 'Last synced: {time}',
         noHistory: 'No history in the selected date range',
         noMultiplierHistory: 'No multiplier history in the selected date range',

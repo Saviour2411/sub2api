@@ -296,7 +296,47 @@ describe('UpstreamManagementPanel', () => {
     await wrapper.get('[data-test="upstream-expand-1"]').trigger('click')
     await flushPromises()
     expect(api.groups.mock.calls.filter(([id]) => id === 1)).toHaveLength(1)
-    expect(wrapper.get('[data-test="expanded-groups-grid"]').classes()).toContain('md:grid-cols-2')
+    const gridClasses = wrapper.get('[data-test="expanded-groups-grid"]').classes()
+    expect(gridClasses).toContain('lg:grid-cols-3')
+    expect(gridClasses).toContain('2xl:grid-cols-4')
+    wrapper.unmount()
+  })
+
+  it('点击账号下方生效倍率直接打开并选中对应倍率趋势', async () => {
+    api.list.mockResolvedValue(siteListResult(siteFixture({ displayed_group_count: 1 })))
+    api.groups.mockResolvedValue([{ id: 1, site_id: 1, remote_id: 'vip', name: 'VIP', platform: 'OpenAI', description: '', multiplier: 1.5, today_tokens: 100, today_cost_usd: 0.1, displayed: true, available: true, last_synced_at: '2026-07-15T00:00:00Z' }])
+    const wrapper = mountPanel()
+    await flushPromises()
+
+    await wrapper.get('[data-test="upstream-group-multiplier-1-vip"]').trigger('click')
+    await flushPromises()
+
+    expect(api.history).toHaveBeenCalledWith(1, 30)
+    expect(api.multiplierHistory).toHaveBeenCalledWith(1, 30)
+    expect(wrapper.get<HTMLSelectElement>('#upstream-multiplier-group').element.value).toBe('vip')
+    const multiplierTab = wrapper.findAll('button').find((button) => button.text() === 'admin.customFeatures.upstream.detailTabs.multiplier')
+    expect(multiplierTab?.classes()).toContain('border-primary-500')
+    wrapper.unmount()
+  })
+
+  it('修正旧同步数据中被标记为 New API 的明确模型平台', async () => {
+    api.list.mockResolvedValue(siteListResult(siteFixture({ platform: 'newapi', displayed_group_count: 2 })))
+    api.groups.mockResolvedValue([
+      { id: 1, site_id: 1, remote_id: 'claude-aws', name: 'Claude-AWS 99%高缓存', platform: 'New API', description: 'AWS 渠道', multiplier: 0.3, today_tokens: 293, today_cost_usd: 0.0027, displayed: true, available: true, last_synced_at: '' },
+      { id: 2, site_id: 1, remote_id: 'cheap-gpt', name: '临时GPT低价分组', platform: 'New API', description: '稳定低价分组', multiplier: 0.02, today_tokens: 100, today_cost_usd: 0.1, displayed: true, available: true, last_synced_at: '' },
+    ])
+    api.multiplierHistory.mockResolvedValue([
+      { remote_id: 'claude-aws', name: 'Claude-AWS 99%高缓存', platform: 'New API', description: 'AWS 渠道', current_multiplier: 0.3, points: [{ recorded_at: '2026-07-15T00:00:00Z', multiplier: 0.3 }] },
+      { remote_id: 'cheap-gpt', name: '临时GPT低价分组', platform: 'New API', description: '稳定低价分组', current_multiplier: 0.02, points: [{ recorded_at: '2026-07-15T00:00:00Z', multiplier: 0.02 }] },
+    ])
+    const wrapper = mountPanel()
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="upstream-group-platform-1-claude-aws"]').text()).toBe('Anthropic')
+    expect(wrapper.get('[data-test="upstream-group-platform-1-cheap-gpt"]').text()).toBe('OpenAI')
+    await wrapper.get('[data-test="upstream-group-multiplier-1-claude-aws"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-test="multiplier-history-platform"]').text()).toBe('Anthropic')
     wrapper.unmount()
   })
 

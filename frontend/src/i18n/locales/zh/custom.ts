@@ -244,6 +244,8 @@ export default {
         unavailable: '暂不可用',
         addGroupDisplay: '添加展示',
         hideGroup: '隐藏',
+        viewMultiplierTrend: '查看倍率趋势',
+        viewMultiplierTrendFor: '查看{name}的倍率趋势',
         lastSeenAt: '末次同步：{time}',
         noHistory: '所选日期范围暂无历史数据',
         noMultiplierHistory: '所选日期范围暂无倍率记录',

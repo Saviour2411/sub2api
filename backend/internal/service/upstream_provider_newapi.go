@@ -257,14 +257,13 @@ func parseNewAPIGroups(value any) []UpstreamGroupSnapshot {
 				}
 				multiplier = floatPointer(valueByKeys(item, "ratio", "rate", "multiplier"))
 			}
-			platform := newAPIUpstreamPlatformName
 			description := ""
+			platform := ""
 			if item := asMap(raw); item != nil {
-				if value := stringValue(valueByKeys(item, "platform")); value != "" {
-					platform = value
-				}
 				description = stringValue(valueByKeys(item, "description", "desc"))
+				platform = stringValue(valueByKeys(item, "platform", "provider", "provider_type"))
 			}
+			platform = resolveNewAPIGroupPlatform(platform, name, description)
 			groups = append(groups, UpstreamGroupSnapshot{
 				RemoteID: remoteID, Name: name, Platform: platform,
 				Description: description, Multiplier: multiplier,
@@ -289,19 +288,65 @@ func parseNewAPIGroups(value any) []UpstreamGroupSnapshot {
 				remoteID = fmt.Sprintf("group-%d", index+1)
 				name = remoteID
 			}
-			platform := stringValue(valueByKeys(item, "platform"))
-			if platform == "" {
-				platform = newAPIUpstreamPlatformName
-			}
+			description := stringValue(valueByKeys(item, "description", "desc"))
+			platform := resolveNewAPIGroupPlatform(
+				stringValue(valueByKeys(item, "platform", "provider", "provider_type")),
+				name,
+				description,
+			)
 			groups = append(groups, UpstreamGroupSnapshot{
 				RemoteID: remoteID, Name: name, Platform: platform,
-				Description: stringValue(valueByKeys(item, "description", "desc")),
+				Description: description,
 				Multiplier:  floatPointer(valueByKeys(item, "ratio", "rate", "multiplier")),
 			})
 		}
 	}
 	sort.Slice(groups, func(i, j int) bool { return groups[i].Name < groups[j].Name })
 	return groups
+}
+
+func resolveNewAPIGroupPlatform(explicit, name, description string) string {
+	if platform := canonicalNewAPIGroupPlatform(explicit); platform != "" {
+		return platform
+	}
+	if platform := inferNewAPIGroupPlatform(name + " " + description); platform != "" {
+		return platform
+	}
+	return newAPIUpstreamPlatformName
+}
+
+func canonicalNewAPIGroupPlatform(value string) string {
+	trimmed := strings.TrimSpace(value)
+	switch strings.ToLower(trimmed) {
+	case "openai", "open ai":
+		return "OpenAI"
+	case "anthropic", "claude":
+		return "Anthropic"
+	case "gemini", "google", "google ai":
+		return "Gemini"
+	case "grok", "xai", "x.ai":
+		return "Grok"
+	case "newapi", "new api":
+		return ""
+	default:
+		return trimmed
+	}
+}
+
+func inferNewAPIGroupPlatform(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	switch {
+	case strings.Contains(normalized, "claude"), strings.Contains(normalized, "anthropic"):
+		return "Anthropic"
+	case strings.Contains(normalized, "gpt"), strings.Contains(normalized, "openai"):
+		return "OpenAI"
+	case strings.Contains(normalized, "gemini"), strings.Contains(normalized, "google ai"):
+		return "Gemini"
+	case strings.Contains(normalized, "grok"), strings.Contains(normalized, "x.ai"):
+		return "Grok"
+	default:
+		return ""
+	}
 }
 
 func collectNewAPIPricingRates(value any) map[string]float64 {
