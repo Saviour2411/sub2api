@@ -105,6 +105,16 @@ func TodayCostUsd(v float64) predicate.UpstreamGroup {
 	return predicate.UpstreamGroup(sql.FieldEQ(FieldTodayCostUsd, v))
 }
 
+// Displayed applies equality check predicate on the "displayed" field. It's identical to DisplayedEQ.
+func Displayed(v bool) predicate.UpstreamGroup {
+	return predicate.UpstreamGroup(sql.FieldEQ(FieldDisplayed, v))
+}
+
+// Available applies equality check predicate on the "available" field. It's identical to AvailableEQ.
+func Available(v bool) predicate.UpstreamGroup {
+	return predicate.UpstreamGroup(sql.FieldEQ(FieldAvailable, v))
+}
+
 // LastSyncedAt applies equality check predicate on the "last_synced_at" field. It's identical to LastSyncedAtEQ.
 func LastSyncedAt(v time.Time) predicate.UpstreamGroup {
 	return predicate.UpstreamGroup(sql.FieldEQ(FieldLastSyncedAt, v))
@@ -598,6 +608,26 @@ func TodayCostUsdLT(v float64) predicate.UpstreamGroup {
 // TodayCostUsdLTE applies the LTE predicate on the "today_cost_usd" field.
 func TodayCostUsdLTE(v float64) predicate.UpstreamGroup {
 	return predicate.UpstreamGroup(sql.FieldLTE(FieldTodayCostUsd, v))
+}
+
+// DisplayedEQ applies the EQ predicate on the "displayed" field.
+func DisplayedEQ(v bool) predicate.UpstreamGroup {
+	return predicate.UpstreamGroup(sql.FieldEQ(FieldDisplayed, v))
+}
+
+// DisplayedNEQ applies the NEQ predicate on the "displayed" field.
+func DisplayedNEQ(v bool) predicate.UpstreamGroup {
+	return predicate.UpstreamGroup(sql.FieldNEQ(FieldDisplayed, v))
+}
+
+// AvailableEQ applies the EQ predicate on the "available" field.
+func AvailableEQ(v bool) predicate.UpstreamGroup {
+	return predicate.UpstreamGroup(sql.FieldEQ(FieldAvailable, v))
+}
+
+// AvailableNEQ applies the NEQ predicate on the "available" field.
+func AvailableNEQ(v bool) predicate.UpstreamGroup {
+	return predicate.UpstreamGroup(sql.FieldNEQ(FieldAvailable, v))
 }
 
 // LastSyncedAtEQ applies the EQ predicate on the "last_synced_at" field.

@@ -1555,6 +1555,8 @@ var (
 		{Name: "multiplier", Type: field.TypeFloat64, Nullable: true},
 		{Name: "today_tokens", Type: field.TypeInt64, Default: 0},
 		{Name: "today_cost_usd", Type: field.TypeFloat64, Default: 0},
+		{Name: "displayed", Type: field.TypeBool, Default: false},
+		{Name: "available", Type: field.TypeBool, Default: true},
 		{Name: "last_synced_at", Type: field.TypeTime},
 		{Name: "site_id", Type: field.TypeInt64},
 	}
@@ -1566,7 +1568,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "upstream_groups_upstream_sites_groups",
-				Columns:    []*schema.Column{UpstreamGroupsColumns[11]},
+				Columns:    []*schema.Column{UpstreamGroupsColumns[13]},
 				RefColumns: []*schema.Column{UpstreamSitesColumns[0]},
 				OnDelete:   schema.Cascade,
 			},
@@ -1575,12 +1577,22 @@ var (
 			{
 				Name:    "upstreamgroup_site_id_remote_id",
 				Unique:  true,
-				Columns: []*schema.Column{UpstreamGroupsColumns[11], UpstreamGroupsColumns[3]},
+				Columns: []*schema.Column{UpstreamGroupsColumns[13], UpstreamGroupsColumns[3]},
 			},
 			{
 				Name:    "upstreamgroup_site_id_name",
 				Unique:  false,
-				Columns: []*schema.Column{UpstreamGroupsColumns[11], UpstreamGroupsColumns[4]},
+				Columns: []*schema.Column{UpstreamGroupsColumns[13], UpstreamGroupsColumns[4]},
+			},
+			{
+				Name:    "upstreamgroup_site_id_displayed",
+				Unique:  false,
+				Columns: []*schema.Column{UpstreamGroupsColumns[13], UpstreamGroupsColumns[10]},
+			},
+			{
+				Name:    "upstreamgroup_site_id_available_name",
+				Unique:  false,
+				Columns: []*schema.Column{UpstreamGroupsColumns[13], UpstreamGroupsColumns[11], UpstreamGroupsColumns[4]},
 			},
 		},
 	}

@@ -6,7 +6,7 @@ import UpstreamManagementPanel from '../UpstreamManagementPanel.vue'
 
 const api = vi.hoisted(() => ({
   list: vi.fn(), create: vi.fn(), update: vi.fn(), setEnabled: vi.fn(), remove: vi.fn(),
-  sync: vi.fn(), syncAll: vi.fn(), groups: vi.fn(), history: vi.fn(), multiplierHistory: vi.fn(),
+  sync: vi.fn(), syncAll: vi.fn(), groups: vi.fn(), setGroupDisplayed: vi.fn(), history: vi.fn(), multiplierHistory: vi.fn(),
   showSuccess: vi.fn(), showError: vi.fn(),
 }))
 
@@ -89,6 +89,7 @@ function siteFixture(overrides = {}) {
     updated_at: '2026-07-15T00:00:00Z',
     has_password: true,
     has_token: false,
+    displayed_group_count: 0,
     ...overrides,
   }
 }
@@ -122,7 +123,11 @@ describe('UpstreamManagementPanel', () => {
     api.remove.mockResolvedValue(undefined)
     api.sync.mockResolvedValue(undefined)
     api.syncAll.mockResolvedValue({ queued: 1 })
-    api.groups.mockResolvedValue([{ id: 1, site_id: 1, remote_id: 'vip', name: 'VIP', platform: 'OpenAI', description: '高优先级分组', multiplier: 1.5, today_tokens: 100, today_cost_usd: 0.1, last_synced_at: '2026-07-15T00:00:00Z' }])
+    api.groups.mockResolvedValue([{ id: 1, site_id: 1, remote_id: 'vip', name: 'VIP', platform: 'OpenAI', description: '高优先级分组', multiplier: 1.5, today_tokens: 100, today_cost_usd: 0.1, displayed: false, available: true, last_synced_at: '2026-07-15T00:00:00Z' }])
+    api.setGroupDisplayed.mockImplementation((_id: number, _remoteID: string, displayed: boolean) => Promise.resolve({
+      group: { id: 1, site_id: 1, remote_id: 'vip', name: 'VIP', platform: 'OpenAI', description: '高优先级分组', multiplier: 1.5, today_tokens: 100, today_cost_usd: 0.1, displayed, available: true, last_synced_at: '2026-07-15T00:00:00Z' },
+      displayed_group_count: displayed ? 1 : 0,
+    }))
     api.history.mockResolvedValue([{ id: 1, site_id: 1, date: '2026-07-15T00:00:00Z', balance_usd: 10, tokens: 100, cost_usd: 0.1, created_at: '', updated_at: '' }])
     api.multiplierHistory.mockResolvedValue([
       { remote_id: 'vip', name: 'VIP', platform: 'OpenAI', description: '高优先级分组', current_multiplier: 1.5, points: [{ recorded_at: '2026-07-15T00:00:00Z', multiplier: 1.5 }] },
@@ -132,6 +137,16 @@ describe('UpstreamManagementPanel', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('默认不在账号下方展示未添加分组', async () => {
+    const wrapper = mountPanel()
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="upstream-expand-1"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="upstream-groups-1"]').exists()).toBe(false)
+    expect(api.groups).not.toHaveBeenCalled()
+    wrapper.unmount()
   })
 
   it('展示安全外链并支持同步、启停和详情数据', async () => {
@@ -157,6 +172,52 @@ describe('UpstreamManagementPanel', () => {
     expect(api.groups).toHaveBeenCalledWith(1)
     expect(api.history).toHaveBeenCalledWith(1, 30)
     expect(wrapper.text()).toContain('1.5×')
+    wrapper.unmount()
+  })
+
+  it('从可用分组添加展示并隐藏最后一个分组', async () => {
+    const wrapper = mountPanel()
+    await flushPromises()
+    await wrapper.get('button[title="admin.customFeatures.upstream.details"]').trigger('click')
+    await flushPromises()
+
+    const displayButton = wrapper.get('[data-test="upstream-group-display-vip"]')
+    expect(displayButton.text()).toContain('admin.customFeatures.upstream.addGroupDisplay')
+    await displayButton.trigger('click')
+    await flushPromises()
+    expect(api.setGroupDisplayed).toHaveBeenCalledWith(1, 'vip', true)
+    expect(wrapper.find('[data-test="upstream-groups-1"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('VIP')
+
+    await wrapper.get('[data-test="upstream-group-display-vip"]').trigger('click')
+    await flushPromises()
+    expect(api.setGroupDisplayed).toHaveBeenLastCalledWith(1, 'vip', false)
+    expect(wrapper.find('[data-test="upstream-groups-1"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('展示暂不可用分组的末次指标并允许隐藏', async () => {
+    api.list.mockResolvedValue(siteListResult(siteFixture({ displayed_group_count: 1 })))
+    api.groups.mockResolvedValue([{
+      id: 1, site_id: 1, remote_id: 'vip', name: 'VIP', platform: 'OpenAI', description: '末次描述',
+      multiplier: 1.5, today_tokens: 10_388_595_898, today_cost_usd: 71.56, displayed: true, available: false,
+      last_synced_at: '2026-07-14T12:00:00Z',
+    }])
+    api.setGroupDisplayed.mockResolvedValue({
+      group: { id: 1, site_id: 1, remote_id: 'vip', name: 'VIP', platform: 'OpenAI', description: '末次描述', multiplier: 1.5, today_tokens: 10_388_595_898, today_cost_usd: 71.56, displayed: false, available: false, last_synced_at: '2026-07-14T12:00:00Z' },
+      displayed_group_count: 0,
+    })
+    const wrapper = mountPanel()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('admin.customFeatures.upstream.unavailable')
+    expect(wrapper.text()).toContain('10.4B')
+    expect(wrapper.text()).toContain('$71.56')
+    await wrapper.get('button[title="admin.customFeatures.upstream.details"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="upstream-group-display-vip"]').trigger('click')
+    await flushPromises()
+    expect(api.setGroupDisplayed).toHaveBeenCalledWith(1, 'vip', false)
     wrapper.unmount()
   })
 
@@ -218,21 +279,20 @@ describe('UpstreamManagementPanel', () => {
 
   it('支持多个站点独立展开，并缓存已加载分组', async () => {
     api.list.mockResolvedValue({
-      items: [siteFixture(), siteFixture({ id: 2, name: '上游二号', base_url: 'https://two.example.com' })],
+      items: [siteFixture({ displayed_group_count: 1 }), siteFixture({ id: 2, name: '上游二号', base_url: 'https://two.example.com', displayed_group_count: 1 })],
       total: 2, page: 1, page_size: 20, pages: 1,
     })
+    api.groups.mockResolvedValue([{ id: 1, site_id: 1, remote_id: 'vip', name: 'VIP', platform: 'OpenAI', description: '', multiplier: 1.5, today_tokens: 100, today_cost_usd: 0.1, displayed: true, available: true, last_synced_at: '2026-07-15T00:00:00Z' }])
     const wrapper = mountPanel()
     await flushPromises()
 
-    await wrapper.get('[data-test="upstream-expand-1"]').trigger('click')
-    await wrapper.get('[data-test="upstream-expand-2"]').trigger('click')
-    await flushPromises()
     expect(wrapper.find('[data-test="upstream-groups-1"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="upstream-groups-2"]').exists()).toBe(true)
     expect(api.groups).toHaveBeenCalledWith(1)
     expect(api.groups).toHaveBeenCalledWith(2)
 
     await wrapper.get('[data-test="upstream-expand-1"]').trigger('click')
+    expect(wrapper.find('[data-test="upstream-groups-1"]').exists()).toBe(false)
     await wrapper.get('[data-test="upstream-expand-1"]').trigger('click')
     await flushPromises()
     expect(api.groups.mock.calls.filter(([id]) => id === 1)).toHaveLength(1)
@@ -242,14 +302,13 @@ describe('UpstreamManagementPanel', () => {
 
   it('站点尚未同步时首次展开仍会加载并缓存分组', async () => {
     api.list.mockResolvedValue({
-      items: [siteFixture({ status: 'pending', last_synced_at: null })],
+      items: [siteFixture({ status: 'pending', last_synced_at: null, displayed_group_count: 1 })],
       total: 1, page: 1, page_size: 20, pages: 1,
     })
+    api.groups.mockResolvedValue([{ id: 1, site_id: 1, remote_id: 'vip', name: 'VIP', platform: 'OpenAI', description: '', multiplier: 1.5, today_tokens: 100, today_cost_usd: 0.1, displayed: true, available: true, last_synced_at: '' }])
     const wrapper = mountPanel()
     await flushPromises()
 
-    await wrapper.get('[data-test="upstream-expand-1"]').trigger('click')
-    await flushPromises()
     expect(api.groups).toHaveBeenCalledTimes(1)
     expect(api.groups).toHaveBeenCalledWith(1)
     expect(wrapper.text()).toContain('VIP')
@@ -290,6 +349,23 @@ describe('UpstreamManagementPanel', () => {
     wrapper.unmount()
   })
 
+  it('轮询刷新不会重新展开本次会话手动收起的账号', async () => {
+    vi.useFakeTimers()
+    api.list.mockResolvedValue(siteListResult(siteFixture({ displayed_group_count: 1 })))
+    api.groups.mockResolvedValue([{ id: 1, site_id: 1, remote_id: 'vip', name: 'VIP', platform: 'OpenAI', description: '', multiplier: 1.5, today_tokens: 1, today_cost_usd: 0.1, displayed: true, available: true, last_synced_at: '2026-07-15T00:00:00Z' }])
+    const wrapper = mountPanel()
+    await flushPromises()
+    expect(wrapper.find('[data-test="upstream-groups-1"]').exists()).toBe(true)
+
+    await wrapper.get('[data-test="upstream-expand-1"]').trigger('click')
+    expect(wrapper.find('[data-test="upstream-groups-1"]').exists()).toBe(false)
+    await vi.advanceTimersByTimeAsync(30_000)
+    await flushPromises()
+    expect(api.list).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[data-test="upstream-groups-1"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('旧列表请求失败时不覆盖新请求的错误和 loading 状态', async () => {
     const stale = deferred<ReturnType<typeof siteListResult>>()
     const current = deferred<ReturnType<typeof siteListResult>>()
@@ -315,14 +391,12 @@ describe('UpstreamManagementPanel', () => {
   it('站点同步时间变化后刷新展开缓存，单站失败可重试', async () => {
     vi.useFakeTimers()
     api.list
-      .mockResolvedValueOnce({ items: [siteFixture()], total: 1, page: 1, page_size: 20, pages: 1 })
-      .mockResolvedValue({ items: [siteFixture({ last_synced_at: '2026-07-15T01:00:00Z' })], total: 1, page: 1, page_size: 20, pages: 1 })
+      .mockResolvedValueOnce({ items: [siteFixture({ displayed_group_count: 1 })], total: 1, page: 1, page_size: 20, pages: 1 })
+      .mockResolvedValue({ items: [siteFixture({ last_synced_at: '2026-07-15T01:00:00Z', displayed_group_count: 1 })], total: 1, page: 1, page_size: 20, pages: 1 })
     api.groups.mockRejectedValueOnce(new Error('network')).mockResolvedValue([])
     const wrapper = mountPanel()
     await flushPromises()
 
-    await wrapper.get('[data-test="upstream-expand-1"]').trigger('click')
-    await flushPromises()
     expect(wrapper.find('[data-test="upstream-groups-retry-1"]').exists()).toBe(true)
     await wrapper.get('[data-test="upstream-groups-retry-1"]').trigger('click')
     await flushPromises()
@@ -336,7 +410,7 @@ describe('UpstreamManagementPanel', () => {
 
   it('展示分组描述和空倍率，切换倍率分组不会重复请求', async () => {
     api.groups.mockResolvedValue([
-      { id: 1, site_id: 1, remote_id: 'free', name: 'Free', platform: 'OpenAI', description: '免费分组描述', multiplier: null, today_tokens: 10_388_595_898, today_cost_usd: 71.56, last_synced_at: '2026-07-15T00:00:00Z' },
+      { id: 1, site_id: 1, remote_id: 'free', name: 'Free', platform: 'OpenAI', description: '免费分组描述', multiplier: null, today_tokens: 10_388_595_898, today_cost_usd: 71.56, displayed: false, available: true, last_synced_at: '2026-07-15T00:00:00Z' },
     ])
     const wrapper = mountPanel()
     await flushPromises()
@@ -388,12 +462,12 @@ describe('UpstreamManagementPanel', () => {
     const detailButtons = wrapper.findAll('button[title="admin.customFeatures.upstream.details"]')
     await detailButtons[0].trigger('click')
     await detailButtons[1].trigger('click')
-    groupsB.resolve([{ id: 2, site_id: 2, remote_id: 'b', name: 'B 当前分组', platform: 'New API', description: '', multiplier: 1, today_tokens: 1, today_cost_usd: 0.1, last_synced_at: '' }])
+    groupsB.resolve([{ id: 2, site_id: 2, remote_id: 'b', name: 'B 当前分组', platform: 'New API', description: '', multiplier: 1, today_tokens: 1, today_cost_usd: 0.1, displayed: false, available: true, last_synced_at: '' }])
     historyB.resolve([])
     await flushPromises()
     expect(wrapper.text()).toContain('B 当前分组')
 
-    groupsA.resolve([{ id: 1, site_id: 1, remote_id: 'a', name: 'A 延迟分组', platform: 'OpenAI', description: '', multiplier: 1, today_tokens: 1, today_cost_usd: 0.1, last_synced_at: '' }])
+    groupsA.resolve([{ id: 1, site_id: 1, remote_id: 'a', name: 'A 延迟分组', platform: 'OpenAI', description: '', multiplier: 1, today_tokens: 1, today_cost_usd: 0.1, displayed: false, available: true, last_synced_at: '' }])
     historyA.resolve([])
     await flushPromises()
     expect(wrapper.text()).toContain('B 当前分组')

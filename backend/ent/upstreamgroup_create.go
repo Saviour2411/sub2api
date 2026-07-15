@@ -139,6 +139,34 @@ func (_c *UpstreamGroupCreate) SetNillableTodayCostUsd(v *float64) *UpstreamGrou
 	return _c
 }
 
+// SetDisplayed sets the "displayed" field.
+func (_c *UpstreamGroupCreate) SetDisplayed(v bool) *UpstreamGroupCreate {
+	_c.mutation.SetDisplayed(v)
+	return _c
+}
+
+// SetNillableDisplayed sets the "displayed" field if the given value is not nil.
+func (_c *UpstreamGroupCreate) SetNillableDisplayed(v *bool) *UpstreamGroupCreate {
+	if v != nil {
+		_c.SetDisplayed(*v)
+	}
+	return _c
+}
+
+// SetAvailable sets the "available" field.
+func (_c *UpstreamGroupCreate) SetAvailable(v bool) *UpstreamGroupCreate {
+	_c.mutation.SetAvailable(v)
+	return _c
+}
+
+// SetNillableAvailable sets the "available" field if the given value is not nil.
+func (_c *UpstreamGroupCreate) SetNillableAvailable(v *bool) *UpstreamGroupCreate {
+	if v != nil {
+		_c.SetAvailable(*v)
+	}
+	return _c
+}
+
 // SetLastSyncedAt sets the "last_synced_at" field.
 func (_c *UpstreamGroupCreate) SetLastSyncedAt(v time.Time) *UpstreamGroupCreate {
 	_c.mutation.SetLastSyncedAt(v)
@@ -217,6 +245,14 @@ func (_c *UpstreamGroupCreate) defaults() {
 		v := upstreamgroup.DefaultTodayCostUsd
 		_c.mutation.SetTodayCostUsd(v)
 	}
+	if _, ok := _c.mutation.Displayed(); !ok {
+		v := upstreamgroup.DefaultDisplayed
+		_c.mutation.SetDisplayed(v)
+	}
+	if _, ok := _c.mutation.Available(); !ok {
+		v := upstreamgroup.DefaultAvailable
+		_c.mutation.SetAvailable(v)
+	}
 	if _, ok := _c.mutation.LastSyncedAt(); !ok {
 		v := upstreamgroup.DefaultLastSyncedAt()
 		_c.mutation.SetLastSyncedAt(v)
@@ -266,6 +302,12 @@ func (_c *UpstreamGroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.TodayCostUsd(); !ok {
 		return &ValidationError{Name: "today_cost_usd", err: errors.New(`ent: missing required field "UpstreamGroup.today_cost_usd"`)}
+	}
+	if _, ok := _c.mutation.Displayed(); !ok {
+		return &ValidationError{Name: "displayed", err: errors.New(`ent: missing required field "UpstreamGroup.displayed"`)}
+	}
+	if _, ok := _c.mutation.Available(); !ok {
+		return &ValidationError{Name: "available", err: errors.New(`ent: missing required field "UpstreamGroup.available"`)}
 	}
 	if _, ok := _c.mutation.LastSyncedAt(); !ok {
 		return &ValidationError{Name: "last_synced_at", err: errors.New(`ent: missing required field "UpstreamGroup.last_synced_at"`)}
@@ -335,6 +377,14 @@ func (_c *UpstreamGroupCreate) createSpec() (*UpstreamGroup, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.TodayCostUsd(); ok {
 		_spec.SetField(upstreamgroup.FieldTodayCostUsd, field.TypeFloat64, value)
 		_node.TodayCostUsd = value
+	}
+	if value, ok := _c.mutation.Displayed(); ok {
+		_spec.SetField(upstreamgroup.FieldDisplayed, field.TypeBool, value)
+		_node.Displayed = value
+	}
+	if value, ok := _c.mutation.Available(); ok {
+		_spec.SetField(upstreamgroup.FieldAvailable, field.TypeBool, value)
+		_node.Available = value
 	}
 	if value, ok := _c.mutation.LastSyncedAt(); ok {
 		_spec.SetField(upstreamgroup.FieldLastSyncedAt, field.TypeTime, value)
@@ -538,6 +588,30 @@ func (u *UpstreamGroupUpsert) UpdateTodayCostUsd() *UpstreamGroupUpsert {
 // AddTodayCostUsd adds v to the "today_cost_usd" field.
 func (u *UpstreamGroupUpsert) AddTodayCostUsd(v float64) *UpstreamGroupUpsert {
 	u.Add(upstreamgroup.FieldTodayCostUsd, v)
+	return u
+}
+
+// SetDisplayed sets the "displayed" field.
+func (u *UpstreamGroupUpsert) SetDisplayed(v bool) *UpstreamGroupUpsert {
+	u.Set(upstreamgroup.FieldDisplayed, v)
+	return u
+}
+
+// UpdateDisplayed sets the "displayed" field to the value that was provided on create.
+func (u *UpstreamGroupUpsert) UpdateDisplayed() *UpstreamGroupUpsert {
+	u.SetExcluded(upstreamgroup.FieldDisplayed)
+	return u
+}
+
+// SetAvailable sets the "available" field.
+func (u *UpstreamGroupUpsert) SetAvailable(v bool) *UpstreamGroupUpsert {
+	u.Set(upstreamgroup.FieldAvailable, v)
+	return u
+}
+
+// UpdateAvailable sets the "available" field to the value that was provided on create.
+func (u *UpstreamGroupUpsert) UpdateAvailable() *UpstreamGroupUpsert {
+	u.SetExcluded(upstreamgroup.FieldAvailable)
 	return u
 }
 
@@ -749,6 +823,34 @@ func (u *UpstreamGroupUpsertOne) AddTodayCostUsd(v float64) *UpstreamGroupUpsert
 func (u *UpstreamGroupUpsertOne) UpdateTodayCostUsd() *UpstreamGroupUpsertOne {
 	return u.Update(func(s *UpstreamGroupUpsert) {
 		s.UpdateTodayCostUsd()
+	})
+}
+
+// SetDisplayed sets the "displayed" field.
+func (u *UpstreamGroupUpsertOne) SetDisplayed(v bool) *UpstreamGroupUpsertOne {
+	return u.Update(func(s *UpstreamGroupUpsert) {
+		s.SetDisplayed(v)
+	})
+}
+
+// UpdateDisplayed sets the "displayed" field to the value that was provided on create.
+func (u *UpstreamGroupUpsertOne) UpdateDisplayed() *UpstreamGroupUpsertOne {
+	return u.Update(func(s *UpstreamGroupUpsert) {
+		s.UpdateDisplayed()
+	})
+}
+
+// SetAvailable sets the "available" field.
+func (u *UpstreamGroupUpsertOne) SetAvailable(v bool) *UpstreamGroupUpsertOne {
+	return u.Update(func(s *UpstreamGroupUpsert) {
+		s.SetAvailable(v)
+	})
+}
+
+// UpdateAvailable sets the "available" field to the value that was provided on create.
+func (u *UpstreamGroupUpsertOne) UpdateAvailable() *UpstreamGroupUpsertOne {
+	return u.Update(func(s *UpstreamGroupUpsert) {
+		s.UpdateAvailable()
 	})
 }
 
@@ -1128,6 +1230,34 @@ func (u *UpstreamGroupUpsertBulk) AddTodayCostUsd(v float64) *UpstreamGroupUpser
 func (u *UpstreamGroupUpsertBulk) UpdateTodayCostUsd() *UpstreamGroupUpsertBulk {
 	return u.Update(func(s *UpstreamGroupUpsert) {
 		s.UpdateTodayCostUsd()
+	})
+}
+
+// SetDisplayed sets the "displayed" field.
+func (u *UpstreamGroupUpsertBulk) SetDisplayed(v bool) *UpstreamGroupUpsertBulk {
+	return u.Update(func(s *UpstreamGroupUpsert) {
+		s.SetDisplayed(v)
+	})
+}
+
+// UpdateDisplayed sets the "displayed" field to the value that was provided on create.
+func (u *UpstreamGroupUpsertBulk) UpdateDisplayed() *UpstreamGroupUpsertBulk {
+	return u.Update(func(s *UpstreamGroupUpsert) {
+		s.UpdateDisplayed()
+	})
+}
+
+// SetAvailable sets the "available" field.
+func (u *UpstreamGroupUpsertBulk) SetAvailable(v bool) *UpstreamGroupUpsertBulk {
+	return u.Update(func(s *UpstreamGroupUpsert) {
+		s.SetAvailable(v)
+	})
+}
+
+// UpdateAvailable sets the "available" field to the value that was provided on create.
+func (u *UpstreamGroupUpsertBulk) UpdateAvailable() *UpstreamGroupUpsertBulk {
+	return u.Update(func(s *UpstreamGroupUpsert) {
+		s.UpdateAvailable()
 	})
 }
 

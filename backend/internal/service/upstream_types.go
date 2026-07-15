@@ -36,6 +36,12 @@ var (
 	ErrUpstreamCredentialDecrypt = infraerrors.InternalServer(
 		"UPSTREAM_CREDENTIAL_DECRYPT_FAILED", "上游凭证解密失败，请重新编辑站点凭证",
 	)
+	ErrUpstreamGroupNotFound = infraerrors.NotFound(
+		"UPSTREAM_GROUP_NOT_FOUND", "上游分组不存在",
+	)
+	ErrUpstreamGroupUnavailable = infraerrors.BadRequest(
+		"UPSTREAM_GROUP_UNAVAILABLE", "暂不可用的上游分组不能添加展示",
+	)
 )
 
 // UpstreamCredential 是 AES-GCM 加密信封中的明文结构，仅在服务内部流转。
@@ -70,30 +76,32 @@ type UpstreamSite struct {
 	CreatedAt             time.Time
 	UpdatedAt             time.Time
 	CredentialDecryptFail bool
+	DisplayedGroupCount   int
 }
 
 // UpstreamSiteView 是管理 API 的脱敏响应。
 type UpstreamSiteView struct {
-	ID                int64      `json:"id"`
-	Name              string     `json:"name"`
-	BaseURL           string     `json:"base_url"`
-	Platform          string     `json:"platform"`
-	AuthMode          string     `json:"auth_mode"`
-	Account           string     `json:"account"`
-	Enabled           bool       `json:"enabled"`
-	Status            string     `json:"status"`
-	ErrorMessage      *string    `json:"error_message"`
-	BalanceUSD        *float64   `json:"balance_usd"`
-	TodayTokens       int64      `json:"today_tokens"`
-	TodayCostUSD      float64    `json:"today_cost_usd"`
-	TotalTokens       int64      `json:"total_tokens"`
-	TotalCostUSD      float64    `json:"total_cost_usd"`
-	TrackingStartedAt time.Time  `json:"tracking_started_at"`
-	LastSyncedAt      *time.Time `json:"last_synced_at"`
-	CreatedAt         time.Time  `json:"created_at"`
-	UpdatedAt         time.Time  `json:"updated_at"`
-	HasPassword       bool       `json:"has_password"`
-	HasToken          bool       `json:"has_token"`
+	ID                  int64      `json:"id"`
+	Name                string     `json:"name"`
+	BaseURL             string     `json:"base_url"`
+	Platform            string     `json:"platform"`
+	AuthMode            string     `json:"auth_mode"`
+	Account             string     `json:"account"`
+	Enabled             bool       `json:"enabled"`
+	Status              string     `json:"status"`
+	ErrorMessage        *string    `json:"error_message"`
+	BalanceUSD          *float64   `json:"balance_usd"`
+	TodayTokens         int64      `json:"today_tokens"`
+	TodayCostUSD        float64    `json:"today_cost_usd"`
+	TotalTokens         int64      `json:"total_tokens"`
+	TotalCostUSD        float64    `json:"total_cost_usd"`
+	TrackingStartedAt   time.Time  `json:"tracking_started_at"`
+	LastSyncedAt        *time.Time `json:"last_synced_at"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
+	HasPassword         bool       `json:"has_password"`
+	HasToken            bool       `json:"has_token"`
+	DisplayedGroupCount int        `json:"displayed_group_count"`
 }
 
 type UpstreamListParams struct {
@@ -140,7 +148,19 @@ type UpstreamGroup struct {
 	Multiplier   *float64  `json:"multiplier"`
 	TodayTokens  int64     `json:"today_tokens"`
 	TodayCostUSD float64   `json:"today_cost_usd"`
+	Displayed    bool      `json:"displayed"`
+	Available    bool      `json:"available"`
 	LastSyncedAt time.Time `json:"last_synced_at"`
+}
+
+type UpstreamGroupDisplayInput struct {
+	RemoteID  string `json:"remote_id"`
+	Displayed *bool  `json:"displayed"`
+}
+
+type UpstreamGroupDisplayResult struct {
+	Group               UpstreamGroup `json:"group"`
+	DisplayedGroupCount int           `json:"displayed_group_count"`
 }
 
 type UpstreamDailyStat struct {
@@ -223,6 +243,7 @@ type UpstreamRepository interface {
 	MissingDates(ctx context.Context, id int64, from, through time.Time, loc *time.Location) ([]time.Time, error)
 	CommitSync(ctx context.Context, id int64, result *UpstreamSyncResult, encryptedCredential string, syncedAt time.Time, nextSyncAt *time.Time) error
 	ListGroups(ctx context.Context, siteID int64) ([]UpstreamGroup, error)
+	SetGroupDisplayed(ctx context.Context, siteID int64, remoteID string, displayed bool) (*UpstreamGroupDisplayResult, error)
 	ListHistory(ctx context.Context, siteID int64, from, through time.Time) ([]UpstreamDailyStat, error)
 	ListMultiplierHistory(ctx context.Context, siteID int64, from, through time.Time) ([]UpstreamGroupMultiplierHistory, error)
 }

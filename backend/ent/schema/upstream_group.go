@@ -37,6 +37,8 @@ func (UpstreamGroup) Fields() []ent.Field {
 		field.Float("multiplier").Optional().Nillable(),
 		field.Int64("today_tokens").Default(0),
 		field.Float("today_cost_usd").Default(0),
+		field.Bool("displayed").Default(false),
+		field.Bool("available").Default(true),
 		field.Time("last_synced_at").Default(time.Now),
 	}
 }
@@ -51,5 +53,7 @@ func (UpstreamGroup) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("site_id", "remote_id").Unique(),
 		index.Fields("site_id", "name"),
+		index.Fields("site_id", "displayed"),
+		index.Fields("site_id", "available", "name"),
 	}
 }

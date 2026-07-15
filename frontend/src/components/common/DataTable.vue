@@ -1,13 +1,13 @@
 <template>
-  <div v-if="!isDesktopViewport" class="space-y-3">
+  <div v-if="!isDesktopViewport" :class="compact ? 'space-y-2' : 'space-y-3'">
     <template v-if="loading">
-      <div v-for="i in 5" :key="i" class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900">
-        <div class="space-y-3">
+      <div v-for="i in 5" :key="i" class="rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-900" :class="compact ? 'p-3' : 'p-4'">
+        <div :class="compact ? 'space-y-2' : 'space-y-3'">
           <div v-for="column in dataColumns" :key="column.key" class="flex justify-between">
             <div class="h-4 w-20 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
             <div class="h-4 w-32 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
           </div>
-          <div v-if="hasActionsColumn" class="border-t border-gray-200 pt-3 dark:border-dark-700">
+          <div v-if="hasActionsColumn" class="border-t border-gray-200 dark:border-dark-700" :class="compact ? 'pt-2' : 'pt-3'">
             <div class="h-8 w-full animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
           </div>
         </div>
@@ -15,7 +15,7 @@
     </template>
 
     <template v-else-if="!data || data.length === 0">
-      <div class="rounded-lg border border-gray-200 bg-white p-12 text-center dark:border-dark-700 dark:bg-dark-900">
+      <div class="rounded-lg border border-gray-200 bg-white text-center dark:border-dark-700 dark:bg-dark-900" :class="compact ? 'p-8' : 'p-12'">
         <slot name="empty">
           <div class="flex flex-col items-center">
             <Icon
@@ -35,15 +35,16 @@
       <div
         v-for="(row, index) in sortedData"
         :key="resolveRowKey(row, index)"
-        class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900"
-        :class="{ 'cursor-pointer': clickableRows }"
+        class="rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-900"
+        :class="[compact ? 'p-3' : 'p-4', { 'cursor-pointer': clickableRows }]"
         @click="clickableRows && emit('rowClick', row)"
       >
-        <div class="space-y-3">
+        <div :class="compact ? 'space-y-2' : 'space-y-3'">
           <div
             v-for="column in dataColumns"
             :key="column.key"
-            class="flex items-start justify-between gap-4"
+            class="flex items-start justify-between"
+            :class="compact ? 'gap-3' : 'gap-4'"
           >
             <span class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-dark-400">
               {{ column.label }}
@@ -54,13 +55,14 @@
               </slot>
             </div>
           </div>
-          <div v-if="hasActionsColumn" class="border-t border-gray-200 pt-3 dark:border-dark-700">
+          <div v-if="hasActionsColumn" class="border-t border-gray-200 dark:border-dark-700" :class="compact ? 'pt-2' : 'pt-3'">
             <slot name="cell-actions" :row="row" :value="row['actions']" :expanded="actionsExpanded"></slot>
           </div>
         </div>
         <div
           v-if="isRowExpanded(row, index)"
-          class="data-table-row-details mt-4 border-t border-gray-200 pt-4 dark:border-dark-700"
+          class="data-table-row-details border-t border-gray-200 dark:border-dark-700"
+          :class="compact ? 'mt-3 pt-3' : 'mt-4 pt-4'"
           @click.stop
         >
           <slot name="row-details" :row="row"></slot>
@@ -89,7 +91,8 @@
             scope="col"
             :aria-sort="column.sortable ? getColumnAriaSort(column.key) : undefined"
             :class="[
-              'sticky-header-cell py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-dark-400',
+              'sticky-header-cell text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-dark-400',
+              compact ? 'py-2' : 'py-3',
               getAdaptivePaddingClass(),
               { 'cursor-pointer hover:bg-gray-100 dark:hover:bg-dark-700': column.sortable },
               getStickyColumnClass(column, index),
@@ -135,7 +138,7 @@
       <tbody class="table-body divide-y divide-gray-200 bg-white dark:divide-dark-700 dark:bg-dark-900">
         <!-- Loading skeleton -->
         <tr v-if="loading" v-for="i in 5" :key="i">
-          <td v-for="column in columns" :key="column.key" :class="['whitespace-nowrap py-4', getAdaptivePaddingClass()]">
+          <td v-for="column in columns" :key="column.key" :class="['whitespace-nowrap', compact ? 'py-2.5' : 'py-4', getAdaptivePaddingClass()]">
             <div class="animate-pulse">
               <div class="h-4 w-3/4 rounded bg-gray-200 dark:bg-dark-700"></div>
             </div>
@@ -186,7 +189,8 @@
                 v-for="(column, colIndex) in columns"
                 :key="column.key"
                 :class="[
-                  'whitespace-nowrap py-4 text-sm text-gray-900 dark:text-gray-100',
+                  'whitespace-nowrap text-sm text-gray-900 dark:text-gray-100',
+                  compact ? 'py-2.5' : 'py-4',
                   getAdaptivePaddingClass(),
                   getStickyColumnClass(column, colIndex),
                   column.class
@@ -208,7 +212,7 @@
             >
               <td
                 :colspan="columns.length"
-                :class="['py-4', getAdaptivePaddingClass()]"
+                :class="[compact ? 'py-2' : 'py-4', getAdaptivePaddingClass()]"
               >
                 <slot name="row-details" :row="item.row"></slot>
               </td>
@@ -427,6 +431,8 @@ interface Props {
   scrollResetKey?: string
   /** Row keys whose row-details slot should be rendered */
   expandedRowKeys?: ReadonlyArray<string | number>
+  /** Reduce table and mobile-card spacing without changing the default appearance. */
+  compact?: boolean
   /**
    * Only virtualize when the row count exceeds this threshold (default 100).
    * Smaller lists render in full, avoiding the scroll-compensation jank caused by
@@ -442,7 +448,8 @@ const props = withDefaults(defineProps<Props>(), {
   expandableActions: true,
   defaultSortOrder: 'asc',
   serverSideSort: false,
-  virtualized: true
+  virtualized: true,
+  compact: false
 })
 
 const sortKey = ref<string>('')

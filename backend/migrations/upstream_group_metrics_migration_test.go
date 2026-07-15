@@ -22,3 +22,14 @@ func TestMigration179BackfillsActualCostAndMultiplierHistory(t *testing.T) {
 	require.Contains(t, sql, "set status = 'pending', error_message = null, next_sync_at = now()")
 	require.Contains(t, sql, "where platform = 'sub2api' and enabled = true")
 }
+
+func TestMigration180AddsUpstreamGroupDisplayState(t *testing.T) {
+	content, err := FS.ReadFile("180_upstream_group_display.sql")
+	require.NoError(t, err)
+
+	sql := strings.Join(strings.Fields(strings.ToLower(string(content))), " ")
+	require.Contains(t, sql, "add column if not exists displayed boolean not null default false")
+	require.Contains(t, sql, "add column if not exists available boolean not null default true")
+	require.Contains(t, sql, "idx_upstream_groups_site_displayed")
+	require.Contains(t, sql, "idx_upstream_groups_site_available_name")
+}

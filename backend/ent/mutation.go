@@ -42115,6 +42115,8 @@ type UpstreamGroupMutation struct {
 	addtoday_tokens   *int64
 	today_cost_usd    *float64
 	addtoday_cost_usd *float64
+	displayed         *bool
+	available         *bool
 	last_synced_at    *time.Time
 	clearedFields     map[string]struct{}
 	site              *int64
@@ -42656,6 +42658,78 @@ func (m *UpstreamGroupMutation) ResetTodayCostUsd() {
 	m.addtoday_cost_usd = nil
 }
 
+// SetDisplayed sets the "displayed" field.
+func (m *UpstreamGroupMutation) SetDisplayed(b bool) {
+	m.displayed = &b
+}
+
+// Displayed returns the value of the "displayed" field in the mutation.
+func (m *UpstreamGroupMutation) Displayed() (r bool, exists bool) {
+	v := m.displayed
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDisplayed returns the old "displayed" field's value of the UpstreamGroup entity.
+// If the UpstreamGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamGroupMutation) OldDisplayed(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDisplayed is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDisplayed requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDisplayed: %w", err)
+	}
+	return oldValue.Displayed, nil
+}
+
+// ResetDisplayed resets all changes to the "displayed" field.
+func (m *UpstreamGroupMutation) ResetDisplayed() {
+	m.displayed = nil
+}
+
+// SetAvailable sets the "available" field.
+func (m *UpstreamGroupMutation) SetAvailable(b bool) {
+	m.available = &b
+}
+
+// Available returns the value of the "available" field in the mutation.
+func (m *UpstreamGroupMutation) Available() (r bool, exists bool) {
+	v := m.available
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAvailable returns the old "available" field's value of the UpstreamGroup entity.
+// If the UpstreamGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamGroupMutation) OldAvailable(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAvailable is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAvailable requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAvailable: %w", err)
+	}
+	return oldValue.Available, nil
+}
+
+// ResetAvailable resets all changes to the "available" field.
+func (m *UpstreamGroupMutation) ResetAvailable() {
+	m.available = nil
+}
+
 // SetLastSyncedAt sets the "last_synced_at" field.
 func (m *UpstreamGroupMutation) SetLastSyncedAt(t time.Time) {
 	m.last_synced_at = &t
@@ -42753,7 +42827,7 @@ func (m *UpstreamGroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UpstreamGroupMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 13)
 	if m.created_at != nil {
 		fields = append(fields, upstreamgroup.FieldCreatedAt)
 	}
@@ -42783,6 +42857,12 @@ func (m *UpstreamGroupMutation) Fields() []string {
 	}
 	if m.today_cost_usd != nil {
 		fields = append(fields, upstreamgroup.FieldTodayCostUsd)
+	}
+	if m.displayed != nil {
+		fields = append(fields, upstreamgroup.FieldDisplayed)
+	}
+	if m.available != nil {
+		fields = append(fields, upstreamgroup.FieldAvailable)
 	}
 	if m.last_synced_at != nil {
 		fields = append(fields, upstreamgroup.FieldLastSyncedAt)
@@ -42815,6 +42895,10 @@ func (m *UpstreamGroupMutation) Field(name string) (ent.Value, bool) {
 		return m.TodayTokens()
 	case upstreamgroup.FieldTodayCostUsd:
 		return m.TodayCostUsd()
+	case upstreamgroup.FieldDisplayed:
+		return m.Displayed()
+	case upstreamgroup.FieldAvailable:
+		return m.Available()
 	case upstreamgroup.FieldLastSyncedAt:
 		return m.LastSyncedAt()
 	}
@@ -42846,6 +42930,10 @@ func (m *UpstreamGroupMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldTodayTokens(ctx)
 	case upstreamgroup.FieldTodayCostUsd:
 		return m.OldTodayCostUsd(ctx)
+	case upstreamgroup.FieldDisplayed:
+		return m.OldDisplayed(ctx)
+	case upstreamgroup.FieldAvailable:
+		return m.OldAvailable(ctx)
 	case upstreamgroup.FieldLastSyncedAt:
 		return m.OldLastSyncedAt(ctx)
 	}
@@ -42926,6 +43014,20 @@ func (m *UpstreamGroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetTodayCostUsd(v)
+		return nil
+	case upstreamgroup.FieldDisplayed:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDisplayed(v)
+		return nil
+	case upstreamgroup.FieldAvailable:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAvailable(v)
 		return nil
 	case upstreamgroup.FieldLastSyncedAt:
 		v, ok := value.(time.Time)
@@ -43060,6 +43162,12 @@ func (m *UpstreamGroupMutation) ResetField(name string) error {
 		return nil
 	case upstreamgroup.FieldTodayCostUsd:
 		m.ResetTodayCostUsd()
+		return nil
+	case upstreamgroup.FieldDisplayed:
+		m.ResetDisplayed()
+		return nil
+	case upstreamgroup.FieldAvailable:
+		m.ResetAvailable()
 		return nil
 	case upstreamgroup.FieldLastSyncedAt:
 		m.ResetLastSyncedAt()

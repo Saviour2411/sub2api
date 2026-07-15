@@ -54,7 +54,15 @@ func (r *upstreamRepository) GetByID(ctx context.Context, id int64) (*service.Up
 	if err != nil {
 		return nil, fmt.Errorf("查询上游站点: %w", err)
 	}
-	return upstreamSiteFromEnt(row), nil
+	displayedGroupCount, err := clientFromContext(ctx, r.client).UpstreamGroup.Query().
+		Where(upstreamgroup.SiteIDEQ(id), upstreamgroup.DisplayedEQ(true)).
+		Count(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("统计已展示上游分组: %w", err)
+	}
+	site := upstreamSiteFromEnt(row)
+	site.DisplayedGroupCount = displayedGroupCount
+	return site, nil
 }
 
 func (r *upstreamRepository) Update(ctx context.Context, site *service.UpstreamSite) error {
@@ -141,9 +149,27 @@ func (r *upstreamRepository) List(ctx context.Context, params service.UpstreamLi
 	if err != nil {
 		return nil, 0, fmt.Errorf("列出上游站点: %w", err)
 	}
+	displayedCounts := make(map[int64]int, len(rows))
+	if len(rows) > 0 {
+		siteIDs := make([]int64, 0, len(rows))
+		for _, row := range rows {
+			siteIDs = append(siteIDs, row.ID)
+		}
+		groups, groupErr := clientFromContext(ctx, r.client).UpstreamGroup.Query().
+			Where(upstreamgroup.SiteIDIn(siteIDs...), upstreamgroup.DisplayedEQ(true)).
+			All(ctx)
+		if groupErr != nil {
+			return nil, 0, fmt.Errorf("统计已展示上游分组: %w", groupErr)
+		}
+		for _, group := range groups {
+			displayedCounts[group.SiteID]++
+		}
+	}
 	items := make([]*service.UpstreamSite, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, upstreamSiteFromEnt(row))
+		item := upstreamSiteFromEnt(row)
+		item.DisplayedGroupCount = displayedCounts[row.ID]
+		items = append(items, item)
 	}
 	return items, int64(total), nil
 }
@@ -293,7 +319,7 @@ func (r *upstreamRepository) CommitSync(ctx context.Context, id int64, result *s
 		return cause
 	}
 
-	if _, err = tx.UpstreamSite.Query().Where(upstreamsite.IDEQ(id)).Only(ctx); err != nil {
+	if err = lockUpstreamSite(ctx, tx, id); err != nil {
 		if dbent.IsNotFound(err) {
 			return rollback(service.ErrUpstreamNotFound)
 		}
@@ -334,29 +360,62 @@ func (r *upstreamRepository) CommitSync(ctx context.Context, id int64, result *s
 			return rollback(fmt.Errorf("记录上游分组倍率: %w", err))
 		}
 	}
-	if _, err = tx.UpstreamGroup.Delete().Where(upstreamgroup.SiteIDEQ(id)).Exec(ctx); err != nil {
-		return rollback(fmt.Errorf("替换上游分组: %w", err))
+	if err = tx.UpstreamGroup.Update().Where(upstreamgroup.SiteIDEQ(id)).SetAvailable(false).Exec(ctx); err != nil {
+		return rollback(fmt.Errorf("标记上游分组不可用: %w", err))
 	}
-	if len(result.Groups) > 0 {
-		builders := make([]*dbent.UpstreamGroupCreate, 0, len(result.Groups))
-		for _, group := range result.Groups {
-			b := tx.UpstreamGroup.Create().
-				SetSiteID(id).
-				SetRemoteID(group.RemoteID).
+	existingGroups, err := tx.UpstreamGroup.Query().Where(upstreamgroup.SiteIDEQ(id)).All(ctx)
+	if err != nil {
+		return rollback(fmt.Errorf("查询上游分组: %w", err))
+	}
+	existingByRemoteID := make(map[string]*dbent.UpstreamGroup, len(existingGroups))
+	for _, group := range existingGroups {
+		existingByRemoteID[group.RemoteID] = group
+	}
+	for _, group := range result.Groups {
+		if existing := existingByRemoteID[group.RemoteID]; existing != nil {
+			update := tx.UpstreamGroup.UpdateOneID(existing.ID).
 				SetName(group.Name).
 				SetPlatform(group.Platform).
 				SetDescription(group.Description).
 				SetTodayTokens(group.TodayTokens).
 				SetTodayCostUsd(group.TodayCostUSD).
+				SetAvailable(true).
 				SetLastSyncedAt(syncedAt)
 			if group.Multiplier != nil {
-				b = b.SetMultiplier(*group.Multiplier)
+				update = update.SetMultiplier(*group.Multiplier)
+			} else {
+				update = update.ClearMultiplier()
 			}
-			builders = append(builders, b)
+			if err = update.Exec(ctx); err != nil {
+				return rollback(fmt.Errorf("更新上游分组: %w", err))
+			}
+			continue
 		}
-		if _, err = tx.UpstreamGroup.CreateBulk(builders...).Save(ctx); err != nil {
-			return rollback(fmt.Errorf("保存上游分组: %w", err))
+		create := tx.UpstreamGroup.Create().
+			SetSiteID(id).
+			SetRemoteID(group.RemoteID).
+			SetName(group.Name).
+			SetPlatform(group.Platform).
+			SetDescription(group.Description).
+			SetTodayTokens(group.TodayTokens).
+			SetTodayCostUsd(group.TodayCostUSD).
+			SetAvailable(true).
+			SetLastSyncedAt(syncedAt)
+		if group.Multiplier != nil {
+			create = create.SetMultiplier(*group.Multiplier)
 		}
+		created, createErr := create.Save(ctx)
+		if createErr != nil {
+			return rollback(fmt.Errorf("保存上游分组: %w", createErr))
+		}
+		existingByRemoteID[group.RemoteID] = created
+	}
+	if _, err = tx.UpstreamGroup.Delete().Where(
+		upstreamgroup.SiteIDEQ(id),
+		upstreamgroup.AvailableEQ(false),
+		upstreamgroup.DisplayedEQ(false),
+	).Exec(ctx); err != nil {
+		return rollback(fmt.Errorf("清理失效上游分组: %w", err))
 	}
 
 	for _, daily := range result.Daily {
@@ -432,8 +491,11 @@ func (r *upstreamRepository) ListGroups(ctx context.Context, siteID int64) ([]se
 		return nil, err
 	}
 	rows, err := clientFromContext(ctx, r.client).UpstreamGroup.Query().
-		Where(upstreamgroup.SiteIDEQ(siteID)).
-		Order(dbent.Asc(upstreamgroup.FieldName)).
+		Where(
+			upstreamgroup.SiteIDEQ(siteID),
+			upstreamgroup.Or(upstreamgroup.AvailableEQ(true), upstreamgroup.DisplayedEQ(true)),
+		).
+		Order(dbent.Desc(upstreamgroup.FieldAvailable), dbent.Asc(upstreamgroup.FieldName)).
 		All(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("查询上游分组: %w", err)
@@ -443,10 +505,79 @@ func (r *upstreamRepository) ListGroups(ctx context.Context, siteID int64) ([]se
 		items = append(items, service.UpstreamGroup{
 			ID: row.ID, SiteID: row.SiteID, RemoteID: row.RemoteID, Name: row.Name,
 			Platform: row.Platform, Description: row.Description, Multiplier: row.Multiplier, TodayTokens: row.TodayTokens,
-			TodayCostUSD: row.TodayCostUsd, LastSyncedAt: row.LastSyncedAt,
+			TodayCostUSD: row.TodayCostUsd, Displayed: row.Displayed, Available: row.Available, LastSyncedAt: row.LastSyncedAt,
 		})
 	}
 	return items, nil
+}
+
+func (r *upstreamRepository) SetGroupDisplayed(ctx context.Context, siteID int64, remoteID string, displayed bool) (*service.UpstreamGroupDisplayResult, error) {
+	tx, err := r.client.Tx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("开启上游分组展示事务: %w", err)
+	}
+	rollback := func(cause error) (*service.UpstreamGroupDisplayResult, error) {
+		if rbErr := tx.Rollback(); rbErr != nil {
+			return nil, fmt.Errorf("%v；回滚失败: %w", cause, rbErr)
+		}
+		return nil, cause
+	}
+	if err = lockUpstreamSite(ctx, tx, siteID); err != nil {
+		if dbent.IsNotFound(err) {
+			return rollback(service.ErrUpstreamNotFound)
+		}
+		return rollback(fmt.Errorf("锁定上游站点: %w", err))
+	}
+	row, err := tx.UpstreamGroup.Query().Where(
+		upstreamgroup.SiteIDEQ(siteID),
+		upstreamgroup.RemoteIDEQ(remoteID),
+	).Only(ctx)
+	if dbent.IsNotFound(err) {
+		return rollback(service.ErrUpstreamGroupNotFound)
+	}
+	if err != nil {
+		return rollback(fmt.Errorf("查询上游分组: %w", err))
+	}
+	if displayed && !row.Available {
+		return rollback(service.ErrUpstreamGroupUnavailable)
+	}
+	item := upstreamGroupFromEnt(row)
+	item.Displayed = displayed
+	if !displayed && !row.Available {
+		if err = tx.UpstreamGroup.DeleteOneID(row.ID).Exec(ctx); err != nil {
+			return rollback(fmt.Errorf("删除失效上游分组: %w", err))
+		}
+	} else if err = tx.UpstreamGroup.UpdateOneID(row.ID).SetDisplayed(displayed).Exec(ctx); err != nil {
+		return rollback(fmt.Errorf("更新上游分组展示状态: %w", err))
+	}
+	count, err := tx.UpstreamGroup.Query().Where(
+		upstreamgroup.SiteIDEQ(siteID),
+		upstreamgroup.DisplayedEQ(true),
+	).Count(ctx)
+	if err != nil {
+		return rollback(fmt.Errorf("统计已展示上游分组: %w", err))
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("提交上游分组展示事务: %w", err)
+	}
+	return &service.UpstreamGroupDisplayResult{Group: item, DisplayedGroupCount: count}, nil
+}
+
+func upstreamGroupFromEnt(row *dbent.UpstreamGroup) service.UpstreamGroup {
+	return service.UpstreamGroup{
+		ID: row.ID, SiteID: row.SiteID, RemoteID: row.RemoteID, Name: row.Name,
+		Platform: row.Platform, Description: row.Description, Multiplier: row.Multiplier,
+		TodayTokens: row.TodayTokens, TodayCostUSD: row.TodayCostUsd, Displayed: row.Displayed,
+		Available: row.Available, LastSyncedAt: row.LastSyncedAt,
+	}
+}
+
+func lockUpstreamSite(ctx context.Context, tx *dbent.Tx, siteID int64) error {
+	_, err := tx.UpstreamSite.Query().Where(upstreamsite.IDEQ(siteID)).ForUpdate().Only(ctx)
+	if err != nil && strings.Contains(err.Error(), "not supported in SQLite") {
+		_, err = tx.UpstreamSite.Query().Where(upstreamsite.IDEQ(siteID)).Only(ctx)
+	}
+	return err
 }
 
 func (r *upstreamRepository) ListHistory(ctx context.Context, siteID int64, from, through time.Time) ([]service.UpstreamDailyStat, error) {

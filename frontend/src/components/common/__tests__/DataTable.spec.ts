@@ -214,4 +214,27 @@ describe('DataTable', () => {
     expect(wrapper.find('.table-wrapper').attributes('data-virtualized')).toBe('false')
     expect(wrapper.findAll('tbody tr[data-index]')).toHaveLength(data.length)
   })
+
+  it('applies compact spacing only when requested', async () => {
+    const compact = mount(DataTable, {
+      props: {
+        columns: [{ key: 'name', label: 'Name' }],
+        data: [{ id: 1, name: 'Alpha' }],
+        compact: true
+      }
+    })
+    await compact.vm.$nextTick()
+    expect(compact.get('th').classes()).toContain('py-2')
+    expect(compact.get('tbody td').classes()).toContain('py-2.5')
+
+    const regular = mount(DataTable, {
+      props: {
+        columns: [{ key: 'name', label: 'Name' }],
+        data: [{ id: 1, name: 'Alpha' }]
+      }
+    })
+    await regular.vm.$nextTick()
+    expect(regular.get('th').classes()).toContain('py-3')
+    expect(regular.get('tbody td').classes()).toContain('py-4')
+  })
 })

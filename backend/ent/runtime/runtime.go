@@ -1914,8 +1914,16 @@ func init() {
 	upstreamgroupDescTodayCostUsd := upstreamgroupFields[7].Descriptor()
 	// upstreamgroup.DefaultTodayCostUsd holds the default value on creation for the today_cost_usd field.
 	upstreamgroup.DefaultTodayCostUsd = upstreamgroupDescTodayCostUsd.Default.(float64)
+	// upstreamgroupDescDisplayed is the schema descriptor for displayed field.
+	upstreamgroupDescDisplayed := upstreamgroupFields[8].Descriptor()
+	// upstreamgroup.DefaultDisplayed holds the default value on creation for the displayed field.
+	upstreamgroup.DefaultDisplayed = upstreamgroupDescDisplayed.Default.(bool)
+	// upstreamgroupDescAvailable is the schema descriptor for available field.
+	upstreamgroupDescAvailable := upstreamgroupFields[9].Descriptor()
+	// upstreamgroup.DefaultAvailable holds the default value on creation for the available field.
+	upstreamgroup.DefaultAvailable = upstreamgroupDescAvailable.Default.(bool)
 	// upstreamgroupDescLastSyncedAt is the schema descriptor for last_synced_at field.
-	upstreamgroupDescLastSyncedAt := upstreamgroupFields[8].Descriptor()
+	upstreamgroupDescLastSyncedAt := upstreamgroupFields[10].Descriptor()
 	// upstreamgroup.DefaultLastSyncedAt holds the default value on creation for the last_synced_at field.
 	upstreamgroup.DefaultLastSyncedAt = upstreamgroupDescLastSyncedAt.Default.(func() time.Time)
 	upstreamgroupmultiplierhistoryFields := schema.UpstreamGroupMultiplierHistory{}.Fields()

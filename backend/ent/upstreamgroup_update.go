@@ -174,6 +174,34 @@ func (_u *UpstreamGroupUpdate) AddTodayCostUsd(v float64) *UpstreamGroupUpdate {
 	return _u
 }
 
+// SetDisplayed sets the "displayed" field.
+func (_u *UpstreamGroupUpdate) SetDisplayed(v bool) *UpstreamGroupUpdate {
+	_u.mutation.SetDisplayed(v)
+	return _u
+}
+
+// SetNillableDisplayed sets the "displayed" field if the given value is not nil.
+func (_u *UpstreamGroupUpdate) SetNillableDisplayed(v *bool) *UpstreamGroupUpdate {
+	if v != nil {
+		_u.SetDisplayed(*v)
+	}
+	return _u
+}
+
+// SetAvailable sets the "available" field.
+func (_u *UpstreamGroupUpdate) SetAvailable(v bool) *UpstreamGroupUpdate {
+	_u.mutation.SetAvailable(v)
+	return _u
+}
+
+// SetNillableAvailable sets the "available" field if the given value is not nil.
+func (_u *UpstreamGroupUpdate) SetNillableAvailable(v *bool) *UpstreamGroupUpdate {
+	if v != nil {
+		_u.SetAvailable(*v)
+	}
+	return _u
+}
+
 // SetLastSyncedAt sets the "last_synced_at" field.
 func (_u *UpstreamGroupUpdate) SetLastSyncedAt(v time.Time) *UpstreamGroupUpdate {
 	_u.mutation.SetLastSyncedAt(v)
@@ -310,6 +338,12 @@ func (_u *UpstreamGroupUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	}
 	if value, ok := _u.mutation.AddedTodayCostUsd(); ok {
 		_spec.AddField(upstreamgroup.FieldTodayCostUsd, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.Displayed(); ok {
+		_spec.SetField(upstreamgroup.FieldDisplayed, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Available(); ok {
+		_spec.SetField(upstreamgroup.FieldAvailable, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.LastSyncedAt(); ok {
 		_spec.SetField(upstreamgroup.FieldLastSyncedAt, field.TypeTime, value)
@@ -508,6 +542,34 @@ func (_u *UpstreamGroupUpdateOne) AddTodayCostUsd(v float64) *UpstreamGroupUpdat
 	return _u
 }
 
+// SetDisplayed sets the "displayed" field.
+func (_u *UpstreamGroupUpdateOne) SetDisplayed(v bool) *UpstreamGroupUpdateOne {
+	_u.mutation.SetDisplayed(v)
+	return _u
+}
+
+// SetNillableDisplayed sets the "displayed" field if the given value is not nil.
+func (_u *UpstreamGroupUpdateOne) SetNillableDisplayed(v *bool) *UpstreamGroupUpdateOne {
+	if v != nil {
+		_u.SetDisplayed(*v)
+	}
+	return _u
+}
+
+// SetAvailable sets the "available" field.
+func (_u *UpstreamGroupUpdateOne) SetAvailable(v bool) *UpstreamGroupUpdateOne {
+	_u.mutation.SetAvailable(v)
+	return _u
+}
+
+// SetNillableAvailable sets the "available" field if the given value is not nil.
+func (_u *UpstreamGroupUpdateOne) SetNillableAvailable(v *bool) *UpstreamGroupUpdateOne {
+	if v != nil {
+		_u.SetAvailable(*v)
+	}
+	return _u
+}
+
 // SetLastSyncedAt sets the "last_synced_at" field.
 func (_u *UpstreamGroupUpdateOne) SetLastSyncedAt(v time.Time) *UpstreamGroupUpdateOne {
 	_u.mutation.SetLastSyncedAt(v)
@@ -674,6 +736,12 @@ func (_u *UpstreamGroupUpdateOne) sqlSave(ctx context.Context) (_node *UpstreamG
 	}
 	if value, ok := _u.mutation.AddedTodayCostUsd(); ok {
 		_spec.AddField(upstreamgroup.FieldTodayCostUsd, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.Displayed(); ok {
+		_spec.SetField(upstreamgroup.FieldDisplayed, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Available(); ok {
+		_spec.SetField(upstreamgroup.FieldAvailable, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.LastSyncedAt(); ok {
 		_spec.SetField(upstreamgroup.FieldLastSyncedAt, field.TypeTime, value)

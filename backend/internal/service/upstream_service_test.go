@@ -72,6 +72,18 @@ type upstreamMultiplierHistoryRangeRepo struct {
 	through time.Time
 }
 
+type upstreamGroupDisplayRepo struct {
+	UpstreamRepository
+	remoteID  string
+	displayed bool
+}
+
+func (r *upstreamGroupDisplayRepo) SetGroupDisplayed(_ context.Context, _ int64, remoteID string, displayed bool) (*UpstreamGroupDisplayResult, error) {
+	r.remoteID = remoteID
+	r.displayed = displayed
+	return &UpstreamGroupDisplayResult{}, nil
+}
+
 func (r *upstreamMultiplierHistoryRangeRepo) ListMultiplierHistory(
 	_ context.Context,
 	_ int64,
@@ -171,4 +183,24 @@ func TestUpstreamServiceListMultiplierHistoryDateRangeBoundary(t *testing.T) {
 	require.Nil(t, items)
 	require.Contains(t, err.Error(), "1 到 366 天")
 	require.Equal(t, 1, repo.called, "367 天范围不得查询仓储")
+}
+
+func TestUpstreamServiceSetGroupDisplayedValidatesInput(t *testing.T) {
+	repo := &upstreamGroupDisplayRepo{}
+	svc := &UpstreamService{repo: repo}
+	show := true
+
+	_, err := svc.SetGroupDisplayed(context.Background(), 1, UpstreamGroupDisplayInput{RemoteID: " vip ", Displayed: &show})
+	require.NoError(t, err)
+	require.Equal(t, "vip", repo.remoteID)
+	require.True(t, repo.displayed)
+
+	for _, input := range []UpstreamGroupDisplayInput{
+		{RemoteID: "", Displayed: &show},
+		{RemoteID: "vip", Displayed: nil},
+		{RemoteID: strings.Repeat("x", 101), Displayed: &show},
+	} {
+		_, err = svc.SetGroupDisplayed(context.Background(), 1, input)
+		require.ErrorIs(t, err, ErrUpstreamInvalidInput)
+	}
 }

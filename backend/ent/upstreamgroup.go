@@ -38,6 +38,10 @@ type UpstreamGroup struct {
 	TodayTokens int64 `json:"today_tokens,omitempty"`
 	// TodayCostUsd holds the value of the "today_cost_usd" field.
 	TodayCostUsd float64 `json:"today_cost_usd,omitempty"`
+	// Displayed holds the value of the "displayed" field.
+	Displayed bool `json:"displayed,omitempty"`
+	// Available holds the value of the "available" field.
+	Available bool `json:"available,omitempty"`
 	// LastSyncedAt holds the value of the "last_synced_at" field.
 	LastSyncedAt time.Time `json:"last_synced_at,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
@@ -71,6 +75,8 @@ func (*UpstreamGroup) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case upstreamgroup.FieldDisplayed, upstreamgroup.FieldAvailable:
+			values[i] = new(sql.NullBool)
 		case upstreamgroup.FieldMultiplier, upstreamgroup.FieldTodayCostUsd:
 			values[i] = new(sql.NullFloat64)
 		case upstreamgroup.FieldID, upstreamgroup.FieldSiteID, upstreamgroup.FieldTodayTokens:
@@ -161,6 +167,18 @@ func (_m *UpstreamGroup) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.TodayCostUsd = value.Float64
 			}
+		case upstreamgroup.FieldDisplayed:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field displayed", values[i])
+			} else if value.Valid {
+				_m.Displayed = value.Bool
+			}
+		case upstreamgroup.FieldAvailable:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field available", values[i])
+			} else if value.Valid {
+				_m.Available = value.Bool
+			}
 		case upstreamgroup.FieldLastSyncedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field last_synced_at", values[i])
@@ -239,6 +257,12 @@ func (_m *UpstreamGroup) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("today_cost_usd=")
 	builder.WriteString(fmt.Sprintf("%v", _m.TodayCostUsd))
+	builder.WriteString(", ")
+	builder.WriteString("displayed=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Displayed))
+	builder.WriteString(", ")
+	builder.WriteString("available=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Available))
 	builder.WriteString(", ")
 	builder.WriteString("last_synced_at=")
 	builder.WriteString(_m.LastSyncedAt.Format(time.ANSIC))

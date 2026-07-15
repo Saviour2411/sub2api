@@ -225,6 +225,14 @@ func (s *UpstreamService) ListGroups(ctx context.Context, id int64) ([]UpstreamG
 	return s.repo.ListGroups(ctx, id)
 }
 
+func (s *UpstreamService) SetGroupDisplayed(ctx context.Context, id int64, input UpstreamGroupDisplayInput) (*UpstreamGroupDisplayResult, error) {
+	remoteID := strings.TrimSpace(input.RemoteID)
+	if id <= 0 || remoteID == "" || len(remoteID) > 100 || input.Displayed == nil {
+		return nil, ErrUpstreamInvalidInput
+	}
+	return s.repo.SetGroupDisplayed(ctx, id, remoteID, *input.Displayed)
+}
+
 func (s *UpstreamService) ListHistory(ctx context.Context, id int64, from, through time.Time) ([]UpstreamDailyStat, error) {
 	from = dayStartInLocation(from, s.location)
 	through = dayStartInLocation(through, s.location)
@@ -420,6 +428,7 @@ func (s *UpstreamService) toView(site *UpstreamSite) UpstreamSiteView {
 		BalanceUSD: site.BalanceUSD, TodayTokens: site.TodayTokens, TodayCostUSD: site.TodayCostUSD,
 		TotalTokens: site.TotalTokens, TotalCostUSD: site.TotalCostUSD, TrackingStartedAt: site.TrackingStartedAt,
 		LastSyncedAt: site.LastSyncedAt, CreatedAt: site.CreatedAt, UpdatedAt: site.UpdatedAt,
+		DisplayedGroupCount: site.DisplayedGroupCount,
 	}
 	credential, err := s.decryptCredential(site.CredentialEncrypted)
 	if err == nil {

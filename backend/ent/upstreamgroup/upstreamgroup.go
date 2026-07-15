@@ -34,6 +34,10 @@ const (
 	FieldTodayTokens = "today_tokens"
 	// FieldTodayCostUsd holds the string denoting the today_cost_usd field in the database.
 	FieldTodayCostUsd = "today_cost_usd"
+	// FieldDisplayed holds the string denoting the displayed field in the database.
+	FieldDisplayed = "displayed"
+	// FieldAvailable holds the string denoting the available field in the database.
+	FieldAvailable = "available"
 	// FieldLastSyncedAt holds the string denoting the last_synced_at field in the database.
 	FieldLastSyncedAt = "last_synced_at"
 	// EdgeSite holds the string denoting the site edge name in mutations.
@@ -62,6 +66,8 @@ var Columns = []string{
 	FieldMultiplier,
 	FieldTodayTokens,
 	FieldTodayCostUsd,
+	FieldDisplayed,
+	FieldAvailable,
 	FieldLastSyncedAt,
 }
 
@@ -96,6 +102,10 @@ var (
 	DefaultTodayTokens int64
 	// DefaultTodayCostUsd holds the default value on creation for the "today_cost_usd" field.
 	DefaultTodayCostUsd float64
+	// DefaultDisplayed holds the default value on creation for the "displayed" field.
+	DefaultDisplayed bool
+	// DefaultAvailable holds the default value on creation for the "available" field.
+	DefaultAvailable bool
 	// DefaultLastSyncedAt holds the default value on creation for the "last_synced_at" field.
 	DefaultLastSyncedAt func() time.Time
 )
@@ -156,6 +166,16 @@ func ByTodayTokens(opts ...sql.OrderTermOption) OrderOption {
 // ByTodayCostUsd orders the results by the today_cost_usd field.
 func ByTodayCostUsd(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTodayCostUsd, opts...).ToFunc()
+}
+
+// ByDisplayed orders the results by the displayed field.
+func ByDisplayed(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDisplayed, opts...).ToFunc()
+}
+
+// ByAvailable orders the results by the available field.
+func ByAvailable(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAvailable, opts...).ToFunc()
 }
 
 // ByLastSyncedAt orders the results by the last_synced_at field.

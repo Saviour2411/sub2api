@@ -1,6 +1,6 @@
 <template>
-  <section data-test="upstream-management-panel" class="space-y-4">
-    <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+  <section data-test="upstream-management-panel" class="space-y-3">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div>
         <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
           {{ t('admin.customFeatures.upstream.title') }}
@@ -26,7 +26,7 @@
       </div>
     </div>
 
-    <div class="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_160px_160px]">
+    <div class="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_150px_150px]">
       <div class="relative">
         <Icon name="search" size="sm" class="pointer-events-none absolute left-3 top-3 text-gray-400" />
         <input
@@ -69,10 +69,12 @@
       :sticky-actions-column="true"
       :actions-count="6"
       :expanded-row-keys="expandedSiteKeys"
+      compact
     >
       <template #cell-site="{ row }">
         <div class="flex max-w-64 items-start gap-1 whitespace-normal">
           <button
+            v-if="row.displayed_group_count > 0"
             type="button"
             class="icon-action mt-[-0.25rem] flex-shrink-0"
             :title="isSiteExpanded(row.id) ? t('admin.customFeatures.upstream.hideGroups') : t('admin.customFeatures.upstream.showGroups')"
@@ -98,16 +100,16 @@
         </div>
       </template>
       <template #cell-platform="{ row }">
-        <span class="rounded bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700 dark:bg-dark-700 dark:text-gray-200">
+        <span class="rounded px-2 py-1 text-xs font-semibold" :class="sitePlatformClass(row.platform)">
           {{ platformLabel(row.platform) }}
         </span>
       </template>
       <template #cell-status="{ row }">
-        <div class="flex flex-col items-start gap-1">
+        <div class="flex flex-wrap items-center gap-1">
           <span :class="statusClass(row.status)" class="rounded px-2 py-1 text-xs font-medium" :title="row.error_message || undefined">
             {{ t(`admin.customFeatures.upstream.status.${row.status}`) }}
           </span>
-          <span class="text-xs" :class="row.enabled ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'">
+          <span class="rounded px-1.5 py-1 text-xs font-medium" :class="row.enabled ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300' : 'bg-gray-100 text-gray-500 dark:bg-dark-700 dark:text-gray-400'">
             {{ row.enabled ? t('admin.customFeatures.upstream.enabled') : t('admin.customFeatures.upstream.disabled') }}
           </span>
         </div>
@@ -153,7 +155,7 @@
         </div>
       </template>
       <template #row-details="{ row }">
-        <section :id="`upstream-groups-${row.id}`" class="bg-gray-50/80 px-1 py-3 dark:bg-dark-800/40" :data-test="`upstream-groups-${row.id}`">
+        <section :id="`upstream-groups-${row.id}`" class="bg-gray-50/80 px-1 py-1 dark:bg-dark-800/40" :data-test="`upstream-groups-${row.id}`">
           <div v-if="groupState(row.id).loading" class="flex min-h-24 items-center justify-center">
             <span class="h-6 w-6 animate-spin rounded-full border-b-2 border-primary-600"></span>
           </div>
@@ -164,36 +166,43 @@
               {{ t('common.tryAgain') }}
             </button>
           </div>
-          <p v-else-if="groupState(row.id).groups.length === 0" class="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-            {{ t('admin.customFeatures.upstream.noGroups') }}
+          <p v-else-if="displayedGroups(row.id).length === 0" class="py-5 text-center text-sm text-gray-500 dark:text-gray-400">
+            {{ t('admin.customFeatures.upstream.noDisplayedGroups') }}
           </p>
-          <div v-else class="grid grid-cols-1 md:grid-cols-2 md:gap-3" data-test="expanded-groups-grid">
+          <div v-else class="grid grid-cols-1 gap-2 md:grid-cols-2 2xl:grid-cols-3" data-test="expanded-groups-grid">
             <article
-              v-for="group in groupState(row.id).groups"
+              v-for="group in displayedGroups(row.id)"
               :key="group.remote_id"
-              class="border-b border-gray-200 py-4 last:border-b-0 dark:border-dark-700 md:rounded-md md:border md:bg-white md:p-4 md:last:border-b md:dark:bg-dark-900"
+              class="rounded-md border bg-white p-3 dark:bg-dark-900"
+              :class="group.available ? 'border-gray-200 dark:border-dark-700' : 'border-amber-300 bg-amber-50/40 dark:border-amber-800 dark:bg-amber-950/10'"
             >
-              <div class="flex min-w-0 items-start justify-between gap-3">
+              <div class="flex min-w-0 items-start justify-between gap-2">
                 <div class="min-w-0">
-                  <h4 class="break-words text-sm font-semibold text-gray-900 dark:text-gray-100" :title="group.name">{{ group.name }}</h4>
-                  <p v-if="group.description" class="mt-1 line-clamp-2 break-words text-xs text-gray-500 dark:text-gray-400" :title="group.description">{{ group.description }}</p>
+                  <div class="flex flex-wrap items-center gap-1.5">
+                    <h4 class="break-words text-sm font-semibold text-gray-900 dark:text-gray-100" :title="group.name">{{ group.name }}</h4>
+                    <span v-if="!group.available" class="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">{{ t('admin.customFeatures.upstream.unavailable') }}</span>
+                  </div>
+                  <p v-if="group.description" class="mt-0.5 line-clamp-2 break-words text-xs text-gray-500 dark:text-gray-400" :title="group.description">{{ group.description }}</p>
                 </div>
-                <span class="flex-shrink-0 rounded bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600 dark:bg-dark-700 dark:text-gray-300">{{ group.platform || '—' }}</span>
+                <span class="flex-shrink-0 rounded px-2 py-1 text-xs font-semibold" :class="groupPlatformClass(group.platform)">{{ group.platform || '—' }}</span>
               </div>
-              <dl class="mt-4 grid grid-cols-3 gap-3">
+              <dl class="mt-2 grid grid-cols-3 gap-2 border-t border-gray-100 pt-2 dark:border-dark-700">
                 <div>
                   <dt class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.customFeatures.upstream.groupColumns.multiplier') }}</dt>
-                  <dd class="mt-1 text-sm font-medium text-gray-900 dark:text-gray-100">{{ formatMultiplier(group.multiplier) }}</dd>
+                  <dd class="mt-0.5"><span class="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">{{ formatMultiplier(group.multiplier) }}</span></dd>
                 </div>
                 <div>
                   <dt class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.customFeatures.upstream.groupColumns.tokens') }}</dt>
-                  <dd class="mt-1 text-sm font-medium text-gray-900 dark:text-gray-100" :title="formatExactTokens(group.today_tokens)">{{ formatTokens(group.today_tokens) }}</dd>
+                  <dd class="mt-0.5 text-sm font-medium text-gray-900 dark:text-gray-100" :title="formatExactTokens(group.today_tokens)">{{ formatTokens(group.today_tokens) }}</dd>
                 </div>
                 <div>
                   <dt class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.customFeatures.upstream.groupColumns.cost') }}</dt>
-                  <dd class="mt-1 text-sm font-medium text-gray-900 dark:text-gray-100">{{ formatMoney(group.today_cost_usd) }}</dd>
+                  <dd class="mt-0.5 text-sm font-medium text-gray-900 dark:text-gray-100">{{ formatMoney(group.today_cost_usd) }}</dd>
                 </div>
               </dl>
+              <p v-if="!group.available" class="mt-2 text-[11px] text-amber-700 dark:text-amber-300">
+                {{ t('admin.customFeatures.upstream.lastSeenAt', { time: formatDateTime(group.last_synced_at) }) }}
+              </p>
             </article>
           </div>
         </section>
@@ -282,16 +291,35 @@
           <span class="h-8 w-8 animate-spin rounded-full border-b-2 border-primary-600"></span>
         </div>
         <template v-else-if="detailTab === 'groups'">
-          <DataTable :columns="groupColumns" :data="detailGroups" row-key="remote_id" :sticky-actions-column="false" :expandable-actions="false">
+          <DataTable :columns="groupColumns" :data="detailGroups" row-key="remote_id" :sticky-actions-column="true" :expandable-actions="false" compact>
             <template #cell-name="{ row }">
               <div class="max-w-72 whitespace-normal">
                 <p class="font-medium" :title="row.name">{{ row.name }}</p>
                 <p v-if="row.description" class="mt-1 line-clamp-2 break-words text-xs text-gray-500 dark:text-gray-400" :title="row.description">{{ row.description }}</p>
               </div>
             </template>
-            <template #cell-multiplier="{ row }">{{ formatMultiplier(row.multiplier) }}</template>
+            <template #cell-platform="{ row }"><span class="rounded px-2 py-1 text-xs font-semibold" :class="groupPlatformClass(row.platform)">{{ row.platform || '—' }}</span></template>
+            <template #cell-status="{ row }">
+              <span class="rounded px-2 py-1 text-xs font-semibold" :class="row.available ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'">
+                {{ row.available ? t('admin.customFeatures.upstream.available') : t('admin.customFeatures.upstream.unavailable') }}
+              </span>
+            </template>
+            <template #cell-multiplier="{ row }"><span class="rounded bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">{{ formatMultiplier(row.multiplier) }}</span></template>
             <template #cell-today_tokens="{ row }"><span :title="formatExactTokens(row.today_tokens)">{{ formatTokens(row.today_tokens) }}</span></template>
             <template #cell-today_cost_usd="{ row }">{{ formatMoney(row.today_cost_usd) }}</template>
+            <template #cell-actions="{ row }">
+              <button
+                type="button"
+                class="btn inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs"
+                :class="row.displayed ? 'btn-secondary' : 'btn-primary'"
+                :disabled="isGroupDisplayLoading(row.remote_id) || (!row.available && !row.displayed)"
+                :data-test="`upstream-group-display-${row.remote_id}`"
+                @click="setGroupDisplayed(row, !row.displayed)"
+              >
+                <Icon :name="isGroupDisplayLoading(row.remote_id) ? 'refresh' : row.displayed ? 'eyeOff' : 'plus'" size="xs" :class="{ 'animate-spin': isGroupDisplayLoading(row.remote_id) }" />
+                {{ row.displayed ? t('admin.customFeatures.upstream.hideGroup') : t('admin.customFeatures.upstream.addGroupDisplay') }}
+              </button>
+            </template>
             <template #empty><p class="py-8 text-center text-sm text-gray-500">{{ t('admin.customFeatures.upstream.noGroups') }}</p></template>
           </DataTable>
         </template>
@@ -409,6 +437,8 @@ const saving = ref(false)
 const deleteTarget = ref<UpstreamSite | null>(null)
 const deleting = ref(false)
 const expandedSiteIDs = ref<Set<number>>(new Set())
+const manuallyCollapsedSiteIDs = new Set<number>()
+const groupDisplayLoadingIDs = ref<Set<string>>(new Set())
 interface SiteGroupState {
   groups: UpstreamGroup[]
   loaded: boolean
@@ -447,14 +477,14 @@ const form = reactive<UpstreamWritePayload>({
 })
 
 const columns = computed<Column[]>(() => [
-  { key: 'site', label: t('admin.customFeatures.upstream.columns.site'), class: 'min-w-56' },
+  { key: 'site', label: t('admin.customFeatures.upstream.columns.site'), class: 'min-w-48' },
   { key: 'platform', label: t('admin.customFeatures.upstream.platform') },
   { key: 'status', label: t('admin.customFeatures.upstream.columns.status') },
   { key: 'balance_usd', label: t('admin.customFeatures.upstream.columns.balance') },
   { key: 'today', label: t('admin.customFeatures.upstream.columns.today') },
   { key: 'total', label: t('admin.customFeatures.upstream.columns.total') },
   { key: 'last_synced_at', label: t('admin.customFeatures.upstream.columns.lastSync') },
-  { key: 'actions', label: t('admin.customFeatures.upstream.columns.actions'), class: 'min-w-56' }
+  { key: 'actions', label: t('admin.customFeatures.upstream.columns.actions'), class: 'min-w-48' }
 ])
 
 const expandedSiteKeys = computed(() => Array.from(expandedSiteIDs.value))
@@ -462,9 +492,11 @@ const expandedSiteKeys = computed(() => Array.from(expandedSiteIDs.value))
 const groupColumns = computed<Column[]>(() => [
   { key: 'name', label: t('admin.customFeatures.upstream.groupColumns.name') },
   { key: 'platform', label: t('admin.customFeatures.upstream.platform') },
+  { key: 'status', label: t('admin.customFeatures.upstream.groupColumns.status') },
   { key: 'multiplier', label: t('admin.customFeatures.upstream.groupColumns.multiplier') },
   { key: 'today_tokens', label: t('admin.customFeatures.upstream.groupColumns.tokens') },
-  { key: 'today_cost_usd', label: t('admin.customFeatures.upstream.groupColumns.cost') }
+  { key: 'today_cost_usd', label: t('admin.customFeatures.upstream.groupColumns.cost') },
+  { key: 'actions', label: t('admin.customFeatures.upstream.columns.actions'), class: 'min-w-28' }
 ])
 
 const historyChartData = computed(() => ({
@@ -565,12 +597,18 @@ function isSiteExpanded(siteID: number) {
   return expandedSiteIDs.value.has(siteID)
 }
 
+function displayedGroups(siteID: number) {
+  return groupState(siteID).groups.filter((group) => group.displayed)
+}
+
 function toggleSiteGroups(site: UpstreamSite) {
   const next = new Set(expandedSiteIDs.value)
   if (next.has(site.id)) {
     next.delete(site.id)
+    manuallyCollapsedSiteIDs.add(site.id)
   } else {
     next.add(site.id)
+    manuallyCollapsedSiteIDs.delete(site.id)
     void loadSiteGroups(site)
   }
   expandedSiteIDs.value = next
@@ -614,6 +652,16 @@ async function loadSites(silent = false) {
     total.value = result.total
     pages.value = result.pages || 1
     loadError.value = ''
+    const nextExpanded = new Set(expandedSiteIDs.value)
+    for (const site of sites.value) {
+      if (site.displayed_group_count <= 0) {
+        nextExpanded.delete(site.id)
+        manuallyCollapsedSiteIDs.delete(site.id)
+      } else if (!manuallyCollapsedSiteIDs.has(site.id)) {
+        nextExpanded.add(site.id)
+      }
+    }
+    expandedSiteIDs.value = nextExpanded
     for (const site of sites.value) {
       const state = groupState(site.id)
       if (isSiteExpanded(site.id) && (!state.loaded || state.syncedAt !== site.last_synced_at)) {
@@ -678,7 +726,12 @@ async function syncAllSites() {
 }
 
 async function toggleSite(site: UpstreamSite) {
-  try { const updated = await upstreamsAPI.setEnabled(site.id, !site.enabled); Object.assign(site, updated); scheduleRefresh() }
+  try {
+    const displayedGroupCount = site.displayed_group_count
+    const updated = await upstreamsAPI.setEnabled(site.id, !site.enabled)
+    Object.assign(site, updated, { displayed_group_count: displayedGroupCount })
+    scheduleRefresh()
+  }
   catch (error) { appStore.showError(extractApiErrorMessage(error, t('admin.customFeatures.upstream.saveFailed'))) }
 }
 
@@ -735,6 +788,61 @@ async function openDetails(site: UpstreamSite) {
     if (requestVersion === detailRequestVersion) detailLoading.value = false
   }
 }
+
+function groupDisplayLoadingKey(siteID: number, remoteID: string) {
+  return `${siteID}:${remoteID}`
+}
+
+function isGroupDisplayLoading(remoteID: string) {
+  return detailSite.value ? groupDisplayLoadingIDs.value.has(groupDisplayLoadingKey(detailSite.value.id, remoteID)) : false
+}
+
+function updateGroupCollection(groups: UpstreamGroup[], updated: UpstreamGroup) {
+  const index = groups.findIndex((group) => group.remote_id === updated.remote_id)
+  if (!updated.available && !updated.displayed) {
+    if (index >= 0) groups.splice(index, 1)
+    return
+  }
+  if (index >= 0) groups.splice(index, 1, updated)
+  else groups.push(updated)
+}
+
+async function setGroupDisplayed(group: UpstreamGroup, displayed: boolean) {
+  const site = detailSite.value
+  if (!site) return
+  const key = groupDisplayLoadingKey(site.id, group.remote_id)
+  if (groupDisplayLoadingIDs.value.has(key)) return
+  groupDisplayLoadingIDs.value = new Set(groupDisplayLoadingIDs.value).add(key)
+  try {
+    const result = await upstreamsAPI.setGroupDisplayed(site.id, group.remote_id, displayed)
+    updateGroupCollection(detailGroups.value, result.group)
+    const state = groupState(site.id)
+    updateGroupCollection(state.groups, result.group)
+    state.loaded = true
+    state.error = ''
+    site.displayed_group_count = result.displayed_group_count
+    const listSite = sites.value.find((item) => item.id === site.id)
+    if (listSite) listSite.displayed_group_count = result.displayed_group_count
+
+    const nextExpanded = new Set(expandedSiteIDs.value)
+    if (displayed) {
+      manuallyCollapsedSiteIDs.delete(site.id)
+      nextExpanded.add(site.id)
+    } else if (result.displayed_group_count === 0) {
+      manuallyCollapsedSiteIDs.delete(site.id)
+      nextExpanded.delete(site.id)
+    }
+    expandedSiteIDs.value = nextExpanded
+    appStore.showSuccess(t(displayed ? 'admin.customFeatures.upstream.groupDisplayed' : 'admin.customFeatures.upstream.groupHidden'))
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.customFeatures.upstream.groupDisplayFailed')))
+  } finally {
+    const next = new Set(groupDisplayLoadingIDs.value)
+    next.delete(key)
+    groupDisplayLoadingIDs.value = next
+  }
+}
+
 function closeDetails() {
   detailRequestVersion++
   historyRequestVersion++
@@ -749,6 +857,7 @@ function closeDetails() {
   multiplierLoadedDays.value = null
   multiplierLoading.value = false
   detailLoading.value = false
+  groupDisplayLoadingIDs.value = new Set()
 }
 
 function selectDetailTab(tab: typeof detailTabs[number]) {
@@ -807,6 +916,18 @@ function changeMultiplierRange(days: 7 | 30 | 90) {
 }
 
 function platformLabel(platform: UpstreamPlatform) { return platform === 'newapi' ? 'New API' : 'Sub2API' }
+function sitePlatformClass(platform: UpstreamPlatform) {
+  return platform === 'newapi'
+    ? 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-300'
+    : 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300'
+}
+function groupPlatformClass(platform: string) {
+  const normalized = platform.trim().toLowerCase()
+  if (normalized.includes('openai')) return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
+  if (normalized.includes('anthropic') || normalized.includes('claude')) return 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300'
+  if (normalized.includes('gemini') || normalized.includes('google')) return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
+  return 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-300'
+}
 function formatMoney(value: number | null | undefined) { return value == null ? '—' : `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}` }
 function formatTokens(value: number) { return formatCompactNumber(Number(value || 0)) }
 function formatExactTokens(value: number) { return Number(value || 0).toLocaleString('en-US') }

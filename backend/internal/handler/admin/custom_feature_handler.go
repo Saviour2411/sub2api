@@ -221,6 +221,24 @@ func (h *CustomFeatureHandler) ListUpstreamGroups(c *gin.Context) {
 	response.Success(c, items)
 }
 
+func (h *CustomFeatureHandler) SetUpstreamGroupDisplayed(c *gin.Context) {
+	id, ok := parseUpstreamID(c)
+	if !ok {
+		return
+	}
+	var input service.UpstreamGroupDisplayInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		response.BadRequest(c, "请求格式无效")
+		return
+	}
+	result, err := h.upstreamService.SetGroupDisplayed(c.Request.Context(), id, input)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
 func (h *CustomFeatureHandler) ListUpstreamHistory(c *gin.Context) {
 	id, ok := parseUpstreamID(c)
 	if !ok {

@@ -25,6 +25,7 @@ export interface UpstreamSite {
   updated_at: string
   has_password: boolean
   has_token: boolean
+  displayed_group_count: number
 }
 
 export interface UpstreamGroup {
@@ -37,7 +38,14 @@ export interface UpstreamGroup {
   multiplier: number | null
   today_tokens: number
   today_cost_usd: number
+  displayed: boolean
+  available: boolean
   last_synced_at: string
+}
+
+export interface UpstreamGroupDisplayResult {
+  group: UpstreamGroup
+  displayed_group_count: number
 }
 
 export interface UpstreamGroupMultiplierPoint {
@@ -131,6 +139,14 @@ export async function groups(id: number): Promise<UpstreamGroup[]> {
   return data
 }
 
+export async function setGroupDisplayed(id: number, remoteID: string, displayed: boolean): Promise<UpstreamGroupDisplayResult> {
+  const { data } = await apiClient.patch<UpstreamGroupDisplayResult>(`/admin/custom-features/upstreams/${id}/groups/display`, {
+    remote_id: remoteID,
+    displayed
+  })
+  return data
+}
+
 function dateRange(days: 7 | 30 | 90) {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Shanghai',
@@ -161,4 +177,4 @@ export async function multiplierHistory(id: number, days: 7 | 30 | 90): Promise<
   return data
 }
 
-export default { list, create, update, setEnabled, remove, sync, syncAll, groups, history, multiplierHistory }
+export default { list, create, update, setEnabled, remove, sync, syncAll, groups, setGroupDisplayed, history, multiplierHistory }

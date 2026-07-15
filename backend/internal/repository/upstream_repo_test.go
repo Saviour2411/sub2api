@@ -145,6 +145,72 @@ func TestUpstreamRepositoryCommitSyncIdempotentAndCascadeDelete(t *testing.T) {
 	require.Zero(t, historyPointCount)
 }
 
+func TestUpstreamRepositoryGroupDisplayLifecycle(t *testing.T) {
+	db, err := sql.Open("sqlite", fmt.Sprintf("file:upstream-display-%d?mode=memory&cache=shared&_pragma=foreign_keys(1)&_time_format=sqlite", time.Now().UnixNano()))
+	require.NoError(t, err)
+	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(entsql.OpenDB(dialect.SQLite, db))))
+	t.Cleanup(func() { require.NoError(t, client.Close()) })
+	repo := NewUpstreamRepository(client)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	site := &service.UpstreamSite{
+		Name: "展示测试站点", BaseURL: "https://example.com", Platform: service.UpstreamPlatformSub2API,
+		AuthMode: service.UpstreamAuthPassword, Account: "admin", CredentialEncrypted: "encrypted",
+		Enabled: true, Status: service.UpstreamStatusPending, TrackingStartedAt: now, CreatedBy: 1,
+	}
+	require.NoError(t, repo.Create(ctx, site))
+	balance := 10.0
+	result := &service.UpstreamSyncResult{
+		BalanceUSD: &balance,
+		Groups: []service.UpstreamGroupSnapshot{{
+			RemoteID: "vip", Name: "VIP", Platform: "OpenAI", Description: "高优先级",
+			Multiplier: float64Ptr(1.5), TodayTokens: 123, TodayCostUSD: 4.5,
+		}},
+	}
+	next := now.Add(5 * time.Minute)
+	require.NoError(t, repo.CommitSync(ctx, site.ID, result, "", now, &next))
+
+	groups, err := repo.ListGroups(ctx, site.ID)
+	require.NoError(t, err)
+	require.Len(t, groups, 1)
+	require.False(t, groups[0].Displayed, "新同步分组默认不展示")
+	require.True(t, groups[0].Available)
+
+	displayed, err := repo.SetGroupDisplayed(ctx, site.ID, "vip", true)
+	require.NoError(t, err)
+	require.Equal(t, 1, displayed.DisplayedGroupCount)
+	require.True(t, displayed.Group.Displayed)
+
+	result.Groups[0].TodayTokens = 456
+	require.NoError(t, repo.CommitSync(ctx, site.ID, result, "", now.Add(time.Minute), &next))
+	groups, err = repo.ListGroups(ctx, site.ID)
+	require.NoError(t, err)
+	require.True(t, groups[0].Displayed, "同步更新不能覆盖展示选择")
+	require.Equal(t, int64(456), groups[0].TodayTokens)
+
+	require.NoError(t, repo.CommitSync(ctx, site.ID, &service.UpstreamSyncResult{BalanceUSD: &balance}, "", now.Add(2*time.Minute), &next))
+	groups, err = repo.ListGroups(ctx, site.ID)
+	require.NoError(t, err)
+	require.Len(t, groups, 1)
+	require.True(t, groups[0].Displayed)
+	require.False(t, groups[0].Available)
+	require.Equal(t, int64(456), groups[0].TodayTokens, "暂不可用占位保留末次指标")
+
+	items, _, err := repo.List(ctx, service.UpstreamListParams{Page: 1, PageSize: 20})
+	require.NoError(t, err)
+	require.Equal(t, 1, items[0].DisplayedGroupCount)
+
+	hidden, err := repo.SetGroupDisplayed(ctx, site.ID, "vip", false)
+	require.NoError(t, err)
+	require.Zero(t, hidden.DisplayedGroupCount)
+	groups, err = repo.ListGroups(ctx, site.ID)
+	require.NoError(t, err)
+	require.Empty(t, groups, "隐藏暂不可用分组后应清理占位记录")
+
+	_, err = repo.SetGroupDisplayed(ctx, site.ID, "vip", true)
+	require.ErrorIs(t, err, service.ErrUpstreamGroupNotFound)
+}
+
 func TestUpstreamRepositoryListMultiplierHistoryIncludesDisappearedGroups(t *testing.T) {
 	db, err := sql.Open("sqlite", fmt.Sprintf("file:upstream-multiplier-history-%d?mode=memory&cache=shared&_pragma=foreign_keys(1)&_time_format=sqlite", time.Now().UnixNano()))
 	require.NoError(t, err)
