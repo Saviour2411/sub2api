@@ -2178,6 +2178,29 @@ func HasAllowedUsersWith(preds ...predicate.User) predicate.Group {
 	})
 }
 
+// HasUpstreamGroupAccountBindings applies the HasEdge predicate on the "upstream_group_account_bindings" edge.
+func HasUpstreamGroupAccountBindings() predicate.Group {
+	return predicate.Group(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, UpstreamGroupAccountBindingsTable, UpstreamGroupAccountBindingsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasUpstreamGroupAccountBindingsWith applies the HasEdge predicate on the "upstream_group_account_bindings" edge with a given conditions (other predicates).
+func HasUpstreamGroupAccountBindingsWith(preds ...predicate.UpstreamGroupAccountBinding) predicate.Group {
+	return predicate.Group(func(s *sql.Selector) {
+		step := newUpstreamGroupAccountBindingsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasAccountGroups applies the HasEdge predicate on the "account_groups" edge.
 func HasAccountGroups() predicate.Group {
 	return predicate.Group(func(s *sql.Selector) {

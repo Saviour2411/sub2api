@@ -38,6 +38,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamdailystat"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamgroup"
+	"github.com/Wei-Shaw/sub2api/ent/upstreamgroupaccountbinding"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamgroupmultiplierhistory"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamsite"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
@@ -1926,6 +1927,12 @@ func init() {
 	upstreamgroupDescLastSyncedAt := upstreamgroupFields[10].Descriptor()
 	// upstreamgroup.DefaultLastSyncedAt holds the default value on creation for the last_synced_at field.
 	upstreamgroup.DefaultLastSyncedAt = upstreamgroupDescLastSyncedAt.Default.(func() time.Time)
+	upstreamgroupaccountbindingFields := schema.UpstreamGroupAccountBinding{}.Fields()
+	_ = upstreamgroupaccountbindingFields
+	// upstreamgroupaccountbindingDescCreatedAt is the schema descriptor for created_at field.
+	upstreamgroupaccountbindingDescCreatedAt := upstreamgroupaccountbindingFields[3].Descriptor()
+	// upstreamgroupaccountbinding.DefaultCreatedAt holds the default value on creation for the created_at field.
+	upstreamgroupaccountbinding.DefaultCreatedAt = upstreamgroupaccountbindingDescCreatedAt.Default.(func() time.Time)
 	upstreamgroupmultiplierhistoryFields := schema.UpstreamGroupMultiplierHistory{}.Fields()
 	_ = upstreamgroupmultiplierhistoryFields
 	// upstreamgroupmultiplierhistoryDescRemoteID is the schema descriptor for remote_id field.

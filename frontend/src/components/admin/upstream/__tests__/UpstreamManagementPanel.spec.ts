@@ -6,11 +6,18 @@ import UpstreamManagementPanel from '../UpstreamManagementPanel.vue'
 
 const api = vi.hoisted(() => ({
   list: vi.fn(), create: vi.fn(), update: vi.fn(), setEnabled: vi.fn(), remove: vi.fn(),
-  listAll: vi.fn(), updateSortOrder: vi.fn(), probeCapabilities: vi.fn(), sync: vi.fn(), syncAll: vi.fn(), groups: vi.fn(), setGroupDisplayed: vi.fn(), history: vi.fn(), multiplierHistory: vi.fn(),
+  listAll: vi.fn(), updateSortOrder: vi.fn(), probeCapabilities: vi.fn(), sync: vi.fn(), syncAll: vi.fn(), groups: vi.fn(), setGroupDisplayed: vi.fn(), replaceGroupBindings: vi.fn(), history: vi.fn(), multiplierHistory: vi.fn(),
   showSuccess: vi.fn(), showError: vi.fn(),
 }))
 
+const bindingAPIs = vi.hoisted(() => ({
+  getGroups: vi.fn(),
+  listAccounts: vi.fn(),
+}))
+
 vi.mock('@/api/admin/upstreams', () => ({ default: api }))
+vi.mock('@/api/admin/groups', () => ({ default: { getAll: bindingAPIs.getGroups } }))
+vi.mock('@/api/admin/accounts', () => ({ default: { list: bindingAPIs.listAccounts } }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showSuccess: api.showSuccess, showError: api.showError }) }))
 vi.mock('@/utils/apiError', () => ({
   extractApiErrorMessage: (_error: unknown, fallback: string) => fallback,
@@ -27,7 +34,10 @@ vi.mock('vue-i18n', async (importOriginal) => {
   return {
     ...actual,
     useI18n: () => ({
-      t: (key: string, params?: Record<string, unknown>) => key.replace(/\{(\w+)\}/g, (_match, token) => String(params?.[token] ?? `{${token}}`)),
+      t: (key: string, params?: Record<string, unknown>) => {
+        if (key === 'admin.customFeatures.upstream.bindings.deleteWarning') return `${key}:${params?.count}`
+        return key.replace(/\{(\w+)\}/g, (_match, token) => String(params?.[token] ?? `{${token}}`))
+      },
     }),
   }
 })
@@ -51,6 +61,11 @@ const DataTableStub = defineComponent({
         <slot name="cell-last_synced_at" :row="row" />
         <slot name="cell-actions" :row="row" />
         <slot name="cell-name" :row="row" />
+        <slot name="cell-account" :row="row" />
+        <slot name="cell-local_group_name" :row="row" />
+        <slot name="cell-account_status" :row="row" />
+        <slot name="cell-account_priority" :row="row" />
+        <slot name="cell-priority" :row="row" />
         <slot name="cell-multiplier" :row="row" />
         <slot name="cell-today_tokens" :row="row" />
         <slot name="cell-today_cost_usd" :row="row" />
@@ -96,12 +111,48 @@ function siteFixture(overrides = {}) {
     has_password: true,
     has_token: false,
     displayed_group_count: 0,
+    binding_count: 0,
     ...overrides,
   }
 }
 
 function siteListResult(site = siteFixture()) {
   return { items: [site], total: 1, page: 1, page_size: 20, pages: 1 }
+}
+
+function bindingFixture(overrides = {}) {
+  return {
+    id: 1,
+    upstream_group_id: 1,
+    local_group_id: 10,
+    local_group_name: '本地 OpenAI',
+    account_id: 101,
+    account_name: '账号一',
+    account_platform: 'openai',
+    account_status: 'active',
+    account_priority: 10,
+    created_at: '2026-07-16T00:00:00Z',
+    ...overrides,
+  }
+}
+
+function displayedGroupFixture(overrides = {}) {
+  return {
+    id: 1,
+    site_id: 1,
+    remote_id: 'vip',
+    name: 'VIP',
+    platform: 'OpenAI',
+    description: '低倍率分组',
+    multiplier: 0.5,
+    today_tokens: 100,
+    today_cost_usd: 0.1,
+    displayed: true,
+    available: true,
+    last_synced_at: '2026-07-15T00:00:00Z',
+    bindings: [],
+    ...overrides,
+  }
 }
 
 function mountPanel() {
@@ -122,6 +173,7 @@ function deferred<T>() {
 describe('UpstreamManagementPanel', () => {
   beforeEach(() => {
     Object.values(api).forEach((mock) => mock.mockReset())
+    Object.values(bindingAPIs).forEach((mock) => mock.mockReset())
     api.list.mockResolvedValue({ items: [siteFixture()], total: 1, page: 1, page_size: 20, pages: 1 })
     api.create.mockResolvedValue(siteFixture({ id: 2 }))
     api.probeCapabilities.mockResolvedValue({ base_url: 'https://upstream.example.com', platform: 'sub2api', turnstile_enabled: false, token_auth_recommended: false })
@@ -132,6 +184,9 @@ describe('UpstreamManagementPanel', () => {
     api.remove.mockResolvedValue(undefined)
     api.sync.mockResolvedValue(undefined)
     api.syncAll.mockResolvedValue({ queued: 1 })
+    api.replaceGroupBindings.mockResolvedValue({})
+    bindingAPIs.getGroups.mockResolvedValue([])
+    bindingAPIs.listAccounts.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 10, pages: 1 })
     api.groups.mockResolvedValue([{ id: 1, site_id: 1, remote_id: 'vip', name: 'VIP', platform: 'OpenAI', description: '高优先级分组', multiplier: 1.5, today_tokens: 100, today_cost_usd: 0.1, displayed: false, available: true, last_synced_at: '2026-07-15T00:00:00Z' }])
     api.setGroupDisplayed.mockImplementation((_id: number, _remoteID: string, displayed: boolean) => Promise.resolve({
       group: { id: 1, site_id: 1, remote_id: 'vip', name: 'VIP', platform: 'OpenAI', description: '高优先级分组', multiplier: 1.5, today_tokens: 100, today_cost_usd: 0.1, displayed, available: true, last_synced_at: '2026-07-15T00:00:00Z' },
@@ -672,6 +727,214 @@ describe('UpstreamManagementPanel', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('B 当前分组')
     expect(wrapper.text()).not.toContain('A 延迟分组')
+    wrapper.unmount()
+  })
+
+  it('从已展示分组跨本地分组暂存账号并统一保存绑定', async () => {
+    const upstreamGroup = displayedGroupFixture()
+    api.list.mockResolvedValue(siteListResult(siteFixture({ displayed_group_count: 1 })))
+    api.groups.mockResolvedValue([upstreamGroup])
+    bindingAPIs.getGroups.mockResolvedValue([
+      { id: 10, name: '本地 OpenAI', status: 'active' },
+      { id: 20, name: '本地 Anthropic', status: 'active' },
+      { id: 30, name: '停用分组', status: 'inactive' },
+    ])
+    bindingAPIs.listAccounts.mockImplementation((_page: number, _pageSize: number, filters: { group: string }) => Promise.resolve({
+      items: filters.group === '20'
+        ? [{ id: 202, name: '账号二', platform: 'anthropic', status: 'active', priority: 20 }]
+        : [{ id: 101, name: '账号一', platform: 'openai', status: 'active', priority: 10 }],
+      total: 1,
+      page: 1,
+      page_size: 10,
+      pages: 1,
+    }))
+    const updatedGroup = displayedGroupFixture({
+      bindings: [bindingFixture(), bindingFixture({ id: 2, local_group_id: 20, local_group_name: '本地 Anthropic', account_id: 202, account_name: '账号二', account_platform: 'anthropic', account_priority: 15 })],
+    })
+    api.replaceGroupBindings.mockResolvedValue(updatedGroup)
+
+    const wrapper = mountPanel()
+    await flushPromises()
+
+    const bindingButton = wrapper.get('[data-test="upstream-group-bindings-1-vip"]')
+    expect(bindingButton.text()).toContain('0')
+    await bindingButton.trigger('click')
+    await flushPromises()
+
+    expect(bindingAPIs.getGroups).toHaveBeenCalledOnce()
+    expect(bindingAPIs.listAccounts).toHaveBeenCalledWith(1, 10, { group: '10', search: '' })
+    expect(wrapper.text()).toContain('admin.customFeatures.upstream.bindings.globalPriorityWarning')
+
+    await wrapper.get('#upstream-binding-account-search').setValue('账号一')
+    await wrapper.get('#upstream-binding-account-search').trigger('keyup', { key: 'Enter' })
+    await flushPromises()
+    expect(bindingAPIs.listAccounts).toHaveBeenLastCalledWith(1, 10, { group: '10', search: '账号一' })
+
+    await wrapper.get('[data-test="add-upstream-binding-101"]').trigger('click')
+    await wrapper.get('#upstream-binding-local-group').setValue('20')
+    await flushPromises()
+    expect(bindingAPIs.listAccounts).toHaveBeenLastCalledWith(1, 10, { group: '20', search: '' })
+    await wrapper.get('[data-test="add-upstream-binding-202"]').trigger('click')
+    await wrapper.get('[data-test="save-upstream-bindings"]').trigger('click')
+    await flushPromises()
+
+    expect(api.replaceGroupBindings).toHaveBeenCalledWith(1, 1, [
+      { local_group_id: 10, account_id: 101 },
+      { local_group_id: 20, account_id: 202 },
+    ])
+    expect(wrapper.get('[data-test="upstream-group-bindings-1-vip"]').text()).toContain('2')
+    wrapper.unmount()
+  })
+
+  it('打开绑定弹窗前刷新服务端最新绑定', async () => {
+    const staleGroup = displayedGroupFixture()
+    const latestGroup = displayedGroupFixture({ bindings: [bindingFixture()] })
+    api.list.mockResolvedValue(siteListResult(siteFixture({ displayed_group_count: 1, binding_count: 1 })))
+    api.groups.mockReset().mockResolvedValueOnce([staleGroup]).mockResolvedValueOnce([latestGroup])
+    bindingAPIs.getGroups.mockResolvedValue([{ id: 10, name: '本地 OpenAI', status: 'active' }])
+
+    const wrapper = mountPanel()
+    await flushPromises()
+    expect(wrapper.get('[data-test="upstream-group-bindings-1-vip"]').text()).toContain('0')
+
+    await wrapper.get('[data-test="upstream-group-bindings-1-vip"]').trigger('click')
+    await flushPromises()
+
+    expect(api.groups).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[data-test="remove-upstream-binding-101"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('忽略被后续站点打开操作抢占的绑定刷新', async () => {
+    const firstOpen = deferred<Array<Record<string, unknown>>>()
+    let firstSiteCalls = 0
+    api.list.mockResolvedValue({
+      items: [
+        siteFixture({ id: 1, displayed_group_count: 1 }),
+        siteFixture({ id: 2, name: '上游二号', base_url: 'https://two.example.com', displayed_group_count: 1 }),
+      ],
+      total: 2, page: 1, page_size: 20, pages: 1,
+    })
+    api.groups.mockImplementation((siteID: number) => {
+      if (siteID === 1) {
+        firstSiteCalls++
+        if (firstSiteCalls > 1) return firstOpen.promise
+        return Promise.resolve([displayedGroupFixture({ id: 1, site_id: 1, remote_id: 'first', multiplier: 1 })])
+      }
+      return Promise.resolve([displayedGroupFixture({ id: 2, site_id: 2, remote_id: 'second', multiplier: 2 })])
+    })
+
+    const wrapper = mountPanel()
+    await flushPromises()
+    await wrapper.get('[data-test="upstream-group-bindings-1-first"]').trigger('click')
+    await wrapper.get('[data-test="upstream-group-bindings-2-second"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-test="upstream-bindings-dialog"]').text()).toContain('2×')
+
+    firstOpen.resolve([displayedGroupFixture({ id: 1, site_id: 1, remote_id: 'first', multiplier: 1 })])
+    await flushPromises()
+    expect(wrapper.get('[data-test="upstream-bindings-dialog"]').text()).toContain('2×')
+    wrapper.unmount()
+  })
+
+  it('弹窗打开后服务端绑定变化时关闭旧草稿', async () => {
+    const initialGroup = displayedGroupFixture()
+    const changedGroup = displayedGroupFixture({ bindings: [bindingFixture()] })
+    api.list.mockResolvedValue(siteListResult(siteFixture({ displayed_group_count: 1 })))
+    api.groups.mockReset()
+      .mockResolvedValueOnce([initialGroup])
+      .mockResolvedValueOnce([initialGroup])
+      .mockResolvedValueOnce([changedGroup])
+
+    const wrapper = mountPanel()
+    await flushPromises()
+    const button = wrapper.get('[data-test="upstream-group-bindings-1-vip"]')
+    await button.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-test="upstream-bindings-dialog"]').exists()).toBe(true)
+
+    await wrapper.get('[data-test="upstream-group-bindings-1-vip"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-test="upstream-bindings-dialog"]').exists()).toBe(false)
+    expect(api.showError).toHaveBeenCalledWith('admin.customFeatures.upstream.bindings.dataChanged')
+    wrapper.unmount()
+  })
+
+  it('首次账号请求未完成时不锁定本地分组选择器', async () => {
+    const accountsRequest = deferred<{ items: never[]; total: number; page: number; page_size: number; pages: number }>()
+    api.list.mockResolvedValue(siteListResult(siteFixture({ displayed_group_count: 1 })))
+    api.groups.mockResolvedValue([displayedGroupFixture()])
+    bindingAPIs.getGroups.mockResolvedValue([{ id: 10, name: '本地 OpenAI', status: 'active' }])
+    bindingAPIs.listAccounts.mockReturnValue(accountsRequest.promise)
+
+    const wrapper = mountPanel()
+    await flushPromises()
+    await wrapper.get('[data-test="upstream-group-bindings-1-vip"]').trigger('click')
+    await flushPromises()
+
+    const selector = wrapper.get('#upstream-binding-local-group').element as HTMLSelectElement
+    expect(selector.disabled).toBe(false)
+
+    accountsRequest.resolve({ items: [], total: 0, page: 1, page_size: 10, pages: 1 })
+    await flushPromises()
+    wrapper.unmount()
+  })
+
+  it('倍率冻结时只允许解除已有绑定', async () => {
+    const upstreamGroup = displayedGroupFixture({ available: false, bindings: [bindingFixture()] })
+    api.list.mockResolvedValue(siteListResult(siteFixture({ displayed_group_count: 1, binding_count: 1 })))
+    api.groups.mockResolvedValue([upstreamGroup])
+    api.replaceGroupBindings.mockResolvedValue(displayedGroupFixture({ available: false, bindings: [] }))
+    const wrapper = mountPanel()
+    await flushPromises()
+
+    await wrapper.get('[data-test="upstream-group-bindings-1-vip"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-test="upstream-bindings-frozen"]').exists()).toBe(true)
+    expect(wrapper.find('#upstream-binding-local-group').exists()).toBe(false)
+    expect(bindingAPIs.getGroups).not.toHaveBeenCalled()
+
+    await wrapper.get('[data-test="remove-upstream-binding-101"]').trigger('click')
+    await wrapper.get('[data-test="save-upstream-bindings"]').trigger('click')
+    await flushPromises()
+    expect(api.replaceGroupBindings).toHaveBeenCalledWith(1, 1, [])
+    wrapper.unmount()
+  })
+
+  it('账号已绑定其他上游分组时保留弹窗并显示冲突提示', async () => {
+    api.list.mockResolvedValue(siteListResult(siteFixture({ displayed_group_count: 1 })))
+    api.groups.mockResolvedValue([displayedGroupFixture()])
+    bindingAPIs.getGroups.mockResolvedValue([{ id: 10, name: '本地 OpenAI', status: 'active' }])
+    bindingAPIs.listAccounts.mockResolvedValue({
+      items: [{ id: 101, name: '账号一', platform: 'openai', status: 'active', priority: 10 }],
+      total: 1,
+      page: 1,
+      page_size: 10,
+      pages: 1,
+    })
+    api.replaceGroupBindings.mockRejectedValue({ reason: 'UPSTREAM_BINDING_CONFLICT' })
+    const wrapper = mountPanel()
+    await flushPromises()
+
+    await wrapper.get('[data-test="upstream-group-bindings-1-vip"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="add-upstream-binding-101"]').trigger('click')
+    await wrapper.get('[data-test="save-upstream-bindings"]').trigger('click')
+    await flushPromises()
+
+    expect(api.showError).toHaveBeenCalledWith('admin.customFeatures.upstream.bindings.conflict')
+    expect(wrapper.find('[data-test="upstream-bindings-dialog"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('删除站点时提示将同步解除的账号绑定数量', async () => {
+    api.list.mockResolvedValue(siteListResult(siteFixture({ binding_count: 3 })))
+    const wrapper = mountPanel()
+    await flushPromises()
+
+    await wrapper.get('button[title="admin.customFeatures.upstream.delete"]').trigger('click')
+    const warning = wrapper.get('[data-test="upstream-delete-binding-warning"]')
+    expect(warning.text()).toContain('3')
     wrapper.unmount()
   })
 })

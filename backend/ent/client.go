@@ -47,6 +47,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamdailystat"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamgroup"
+	"github.com/Wei-Shaw/sub2api/ent/upstreamgroupaccountbinding"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamgroupmultiplierhistory"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamsite"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
@@ -130,6 +131,8 @@ type Client struct {
 	UpstreamDailyStat *UpstreamDailyStatClient
 	// UpstreamGroup is the client for interacting with the UpstreamGroup builders.
 	UpstreamGroup *UpstreamGroupClient
+	// UpstreamGroupAccountBinding is the client for interacting with the UpstreamGroupAccountBinding builders.
+	UpstreamGroupAccountBinding *UpstreamGroupAccountBindingClient
 	// UpstreamGroupMultiplierHistory is the client for interacting with the UpstreamGroupMultiplierHistory builders.
 	UpstreamGroupMultiplierHistory *UpstreamGroupMultiplierHistoryClient
 	// UpstreamSite is the client for interacting with the UpstreamSite builders.
@@ -193,6 +196,7 @@ func (c *Client) init() {
 	c.TLSFingerprintProfile = NewTLSFingerprintProfileClient(c.config)
 	c.UpstreamDailyStat = NewUpstreamDailyStatClient(c.config)
 	c.UpstreamGroup = NewUpstreamGroupClient(c.config)
+	c.UpstreamGroupAccountBinding = NewUpstreamGroupAccountBindingClient(c.config)
 	c.UpstreamGroupMultiplierHistory = NewUpstreamGroupMultiplierHistoryClient(c.config)
 	c.UpstreamSite = NewUpstreamSiteClient(c.config)
 	c.UsageCleanupTask = NewUsageCleanupTaskClient(c.config)
@@ -327,6 +331,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		TLSFingerprintProfile:          NewTLSFingerprintProfileClient(cfg),
 		UpstreamDailyStat:              NewUpstreamDailyStatClient(cfg),
 		UpstreamGroup:                  NewUpstreamGroupClient(cfg),
+		UpstreamGroupAccountBinding:    NewUpstreamGroupAccountBindingClient(cfg),
 		UpstreamGroupMultiplierHistory: NewUpstreamGroupMultiplierHistoryClient(cfg),
 		UpstreamSite:                   NewUpstreamSiteClient(cfg),
 		UsageCleanupTask:               NewUsageCleanupTaskClient(cfg),
@@ -388,6 +393,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		TLSFingerprintProfile:          NewTLSFingerprintProfileClient(cfg),
 		UpstreamDailyStat:              NewUpstreamDailyStatClient(cfg),
 		UpstreamGroup:                  NewUpstreamGroupClient(cfg),
+		UpstreamGroupAccountBinding:    NewUpstreamGroupAccountBindingClient(cfg),
 		UpstreamGroupMultiplierHistory: NewUpstreamGroupMultiplierHistoryClient(cfg),
 		UpstreamSite:                   NewUpstreamSiteClient(cfg),
 		UsageCleanupTask:               NewUsageCleanupTaskClient(cfg),
@@ -436,9 +442,10 @@ func (c *Client) Use(hooks ...Hook) {
 		c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage,
 		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
 		c.TLSFingerprintProfile, c.UpstreamDailyStat, c.UpstreamGroup,
-		c.UpstreamGroupMultiplierHistory, c.UpstreamSite, c.UsageCleanupTask,
-		c.UsageLog, c.User, c.UserAllowedGroup, c.UserAttributeDefinition,
-		c.UserAttributeValue, c.UserPlatformQuota, c.UserSubscription,
+		c.UpstreamGroupAccountBinding, c.UpstreamGroupMultiplierHistory,
+		c.UpstreamSite, c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
+		c.UserAttributeDefinition, c.UserAttributeValue, c.UserPlatformQuota,
+		c.UserSubscription,
 	} {
 		n.Use(hooks...)
 	}
@@ -457,9 +464,10 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage,
 		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
 		c.TLSFingerprintProfile, c.UpstreamDailyStat, c.UpstreamGroup,
-		c.UpstreamGroupMultiplierHistory, c.UpstreamSite, c.UsageCleanupTask,
-		c.UsageLog, c.User, c.UserAllowedGroup, c.UserAttributeDefinition,
-		c.UserAttributeValue, c.UserPlatformQuota, c.UserSubscription,
+		c.UpstreamGroupAccountBinding, c.UpstreamGroupMultiplierHistory,
+		c.UpstreamSite, c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
+		c.UserAttributeDefinition, c.UserAttributeValue, c.UserPlatformQuota,
+		c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -532,6 +540,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.UpstreamDailyStat.mutate(ctx, m)
 	case *UpstreamGroupMutation:
 		return c.UpstreamGroup.mutate(ctx, m)
+	case *UpstreamGroupAccountBindingMutation:
+		return c.UpstreamGroupAccountBinding.mutate(ctx, m)
 	case *UpstreamGroupMultiplierHistoryMutation:
 		return c.UpstreamGroupMultiplierHistory.mutate(ctx, m)
 	case *UpstreamSiteMutation:
@@ -921,6 +931,22 @@ func (c *AccountClient) QueryUsageLogs(_m *Account) *UsageLogQuery {
 			sqlgraph.From(account.Table, account.FieldID, id),
 			sqlgraph.To(usagelog.Table, usagelog.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, account.UsageLogsTable, account.UsageLogsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryUpstreamGroupAccountBindings queries the upstream_group_account_bindings edge of a Account.
+func (c *AccountClient) QueryUpstreamGroupAccountBindings(_m *Account) *UpstreamGroupAccountBindingQuery {
+	query := (&UpstreamGroupAccountBindingClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(account.Table, account.FieldID, id),
+			sqlgraph.To(upstreamgroupaccountbinding.Table, upstreamgroupaccountbinding.FieldID),
+			sqlgraph.Edge(sqlgraph.O2O, false, account.UpstreamGroupAccountBindingsTable, account.UpstreamGroupAccountBindingsColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -3088,6 +3114,22 @@ func (c *GroupClient) QueryAllowedUsers(_m *Group) *UserQuery {
 			sqlgraph.From(group.Table, group.FieldID, id),
 			sqlgraph.To(user.Table, user.FieldID),
 			sqlgraph.Edge(sqlgraph.M2M, true, group.AllowedUsersTable, group.AllowedUsersPrimaryKey...),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryUpstreamGroupAccountBindings queries the upstream_group_account_bindings edge of a Group.
+func (c *GroupClient) QueryUpstreamGroupAccountBindings(_m *Group) *UpstreamGroupAccountBindingQuery {
+	query := (&UpstreamGroupAccountBindingClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(group.Table, group.FieldID, id),
+			sqlgraph.To(upstreamgroupaccountbinding.Table, upstreamgroupaccountbinding.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, group.UpstreamGroupAccountBindingsTable, group.UpstreamGroupAccountBindingsColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -5483,6 +5525,22 @@ func (c *UpstreamGroupClient) QuerySite(_m *UpstreamGroup) *UpstreamSiteQuery {
 	return query
 }
 
+// QueryAccountBindings queries the account_bindings edge of a UpstreamGroup.
+func (c *UpstreamGroupClient) QueryAccountBindings(_m *UpstreamGroup) *UpstreamGroupAccountBindingQuery {
+	query := (&UpstreamGroupAccountBindingClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(upstreamgroup.Table, upstreamgroup.FieldID, id),
+			sqlgraph.To(upstreamgroupaccountbinding.Table, upstreamgroupaccountbinding.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, upstreamgroup.AccountBindingsTable, upstreamgroup.AccountBindingsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // Hooks returns the client hooks.
 func (c *UpstreamGroupClient) Hooks() []Hook {
 	return c.hooks.UpstreamGroup
@@ -5505,6 +5563,187 @@ func (c *UpstreamGroupClient) mutate(ctx context.Context, m *UpstreamGroupMutati
 		return (&UpstreamGroupDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown UpstreamGroup mutation op: %q", m.Op())
+	}
+}
+
+// UpstreamGroupAccountBindingClient is a client for the UpstreamGroupAccountBinding schema.
+type UpstreamGroupAccountBindingClient struct {
+	config
+}
+
+// NewUpstreamGroupAccountBindingClient returns a client for the UpstreamGroupAccountBinding from the given config.
+func NewUpstreamGroupAccountBindingClient(c config) *UpstreamGroupAccountBindingClient {
+	return &UpstreamGroupAccountBindingClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `upstreamgroupaccountbinding.Hooks(f(g(h())))`.
+func (c *UpstreamGroupAccountBindingClient) Use(hooks ...Hook) {
+	c.hooks.UpstreamGroupAccountBinding = append(c.hooks.UpstreamGroupAccountBinding, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `upstreamgroupaccountbinding.Intercept(f(g(h())))`.
+func (c *UpstreamGroupAccountBindingClient) Intercept(interceptors ...Interceptor) {
+	c.inters.UpstreamGroupAccountBinding = append(c.inters.UpstreamGroupAccountBinding, interceptors...)
+}
+
+// Create returns a builder for creating a UpstreamGroupAccountBinding entity.
+func (c *UpstreamGroupAccountBindingClient) Create() *UpstreamGroupAccountBindingCreate {
+	mutation := newUpstreamGroupAccountBindingMutation(c.config, OpCreate)
+	return &UpstreamGroupAccountBindingCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of UpstreamGroupAccountBinding entities.
+func (c *UpstreamGroupAccountBindingClient) CreateBulk(builders ...*UpstreamGroupAccountBindingCreate) *UpstreamGroupAccountBindingCreateBulk {
+	return &UpstreamGroupAccountBindingCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *UpstreamGroupAccountBindingClient) MapCreateBulk(slice any, setFunc func(*UpstreamGroupAccountBindingCreate, int)) *UpstreamGroupAccountBindingCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &UpstreamGroupAccountBindingCreateBulk{err: fmt.Errorf("calling to UpstreamGroupAccountBindingClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*UpstreamGroupAccountBindingCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &UpstreamGroupAccountBindingCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for UpstreamGroupAccountBinding.
+func (c *UpstreamGroupAccountBindingClient) Update() *UpstreamGroupAccountBindingUpdate {
+	mutation := newUpstreamGroupAccountBindingMutation(c.config, OpUpdate)
+	return &UpstreamGroupAccountBindingUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *UpstreamGroupAccountBindingClient) UpdateOne(_m *UpstreamGroupAccountBinding) *UpstreamGroupAccountBindingUpdateOne {
+	mutation := newUpstreamGroupAccountBindingMutation(c.config, OpUpdateOne, withUpstreamGroupAccountBinding(_m))
+	return &UpstreamGroupAccountBindingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *UpstreamGroupAccountBindingClient) UpdateOneID(id int64) *UpstreamGroupAccountBindingUpdateOne {
+	mutation := newUpstreamGroupAccountBindingMutation(c.config, OpUpdateOne, withUpstreamGroupAccountBindingID(id))
+	return &UpstreamGroupAccountBindingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for UpstreamGroupAccountBinding.
+func (c *UpstreamGroupAccountBindingClient) Delete() *UpstreamGroupAccountBindingDelete {
+	mutation := newUpstreamGroupAccountBindingMutation(c.config, OpDelete)
+	return &UpstreamGroupAccountBindingDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *UpstreamGroupAccountBindingClient) DeleteOne(_m *UpstreamGroupAccountBinding) *UpstreamGroupAccountBindingDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *UpstreamGroupAccountBindingClient) DeleteOneID(id int64) *UpstreamGroupAccountBindingDeleteOne {
+	builder := c.Delete().Where(upstreamgroupaccountbinding.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &UpstreamGroupAccountBindingDeleteOne{builder}
+}
+
+// Query returns a query builder for UpstreamGroupAccountBinding.
+func (c *UpstreamGroupAccountBindingClient) Query() *UpstreamGroupAccountBindingQuery {
+	return &UpstreamGroupAccountBindingQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeUpstreamGroupAccountBinding},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a UpstreamGroupAccountBinding entity by its id.
+func (c *UpstreamGroupAccountBindingClient) Get(ctx context.Context, id int64) (*UpstreamGroupAccountBinding, error) {
+	return c.Query().Where(upstreamgroupaccountbinding.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *UpstreamGroupAccountBindingClient) GetX(ctx context.Context, id int64) *UpstreamGroupAccountBinding {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryUpstreamGroup queries the upstream_group edge of a UpstreamGroupAccountBinding.
+func (c *UpstreamGroupAccountBindingClient) QueryUpstreamGroup(_m *UpstreamGroupAccountBinding) *UpstreamGroupQuery {
+	query := (&UpstreamGroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(upstreamgroupaccountbinding.Table, upstreamgroupaccountbinding.FieldID, id),
+			sqlgraph.To(upstreamgroup.Table, upstreamgroup.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, upstreamgroupaccountbinding.UpstreamGroupTable, upstreamgroupaccountbinding.UpstreamGroupColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryLocalGroup queries the local_group edge of a UpstreamGroupAccountBinding.
+func (c *UpstreamGroupAccountBindingClient) QueryLocalGroup(_m *UpstreamGroupAccountBinding) *GroupQuery {
+	query := (&GroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(upstreamgroupaccountbinding.Table, upstreamgroupaccountbinding.FieldID, id),
+			sqlgraph.To(group.Table, group.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, upstreamgroupaccountbinding.LocalGroupTable, upstreamgroupaccountbinding.LocalGroupColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryAccount queries the account edge of a UpstreamGroupAccountBinding.
+func (c *UpstreamGroupAccountBindingClient) QueryAccount(_m *UpstreamGroupAccountBinding) *AccountQuery {
+	query := (&AccountClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(upstreamgroupaccountbinding.Table, upstreamgroupaccountbinding.FieldID, id),
+			sqlgraph.To(account.Table, account.FieldID),
+			sqlgraph.Edge(sqlgraph.O2O, true, upstreamgroupaccountbinding.AccountTable, upstreamgroupaccountbinding.AccountColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *UpstreamGroupAccountBindingClient) Hooks() []Hook {
+	return c.hooks.UpstreamGroupAccountBinding
+}
+
+// Interceptors returns the client interceptors.
+func (c *UpstreamGroupAccountBindingClient) Interceptors() []Interceptor {
+	return c.inters.UpstreamGroupAccountBinding
+}
+
+func (c *UpstreamGroupAccountBindingClient) mutate(ctx context.Context, m *UpstreamGroupAccountBindingMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&UpstreamGroupAccountBindingCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&UpstreamGroupAccountBindingUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&UpstreamGroupAccountBindingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&UpstreamGroupAccountBindingDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown UpstreamGroupAccountBinding mutation op: %q", m.Op())
 	}
 }
 
@@ -7335,9 +7574,10 @@ type (
 		IdentityAdoptionDecision, PaymentAuditLog, PaymentOrder,
 		PaymentProviderInstance, PendingAuthSession, PromoCode, PromoCodeUsage, Proxy,
 		RedeemCode, SecuritySecret, Setting, SubscriptionPlan, TLSFingerprintProfile,
-		UpstreamDailyStat, UpstreamGroup, UpstreamGroupMultiplierHistory, UpstreamSite,
-		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
-		UserAttributeValue, UserPlatformQuota, UserSubscription []ent.Hook
+		UpstreamDailyStat, UpstreamGroup, UpstreamGroupAccountBinding,
+		UpstreamGroupMultiplierHistory, UpstreamSite, UsageCleanupTask, UsageLog, User,
+		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserPlatformQuota, UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
@@ -7347,9 +7587,10 @@ type (
 		IdentityAdoptionDecision, PaymentAuditLog, PaymentOrder,
 		PaymentProviderInstance, PendingAuthSession, PromoCode, PromoCodeUsage, Proxy,
 		RedeemCode, SecuritySecret, Setting, SubscriptionPlan, TLSFingerprintProfile,
-		UpstreamDailyStat, UpstreamGroup, UpstreamGroupMultiplierHistory, UpstreamSite,
-		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
-		UserAttributeValue, UserPlatformQuota, UserSubscription []ent.Interceptor
+		UpstreamDailyStat, UpstreamGroup, UpstreamGroupAccountBinding,
+		UpstreamGroupMultiplierHistory, UpstreamSite, UsageCleanupTask, UsageLog, User,
+		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserPlatformQuota, UserSubscription []ent.Interceptor
 	}
 )
 

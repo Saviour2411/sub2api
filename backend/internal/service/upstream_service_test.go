@@ -85,9 +85,31 @@ type upstreamSortOrderRepo struct {
 	updates []UpstreamSortOrderUpdate
 }
 
+type upstreamGroupBindingsRepo struct {
+	UpstreamRepository
+	called          int
+	siteID          int64
+	upstreamGroupID int64
+	inputs          []UpstreamGroupAccountBindingInput
+	result          *UpstreamGroup
+	err             error
+}
+
 func (r *upstreamSortOrderRepo) UpdateSortOrder(_ context.Context, updates []UpstreamSortOrderUpdate) error {
 	r.updates = append([]UpstreamSortOrderUpdate(nil), updates...)
 	return nil
+}
+
+func (r *upstreamGroupBindingsRepo) ReplaceGroupBindings(
+	_ context.Context,
+	siteID, upstreamGroupID int64,
+	inputs []UpstreamGroupAccountBindingInput,
+) (*UpstreamGroup, error) {
+	r.called++
+	r.siteID = siteID
+	r.upstreamGroupID = upstreamGroupID
+	r.inputs = append([]UpstreamGroupAccountBindingInput(nil), inputs...)
+	return r.result, r.err
 }
 
 func (r *upstreamGroupDisplayRepo) SetGroupDisplayed(_ context.Context, _ int64, remoteID string, displayed bool) (*UpstreamGroupDisplayResult, error) {
@@ -115,10 +137,11 @@ func TestUpstreamServiceCredentialEnvelopeAndMaskedView(t *testing.T) {
 	require.NotContains(t, encrypted, `"has_password"`)
 
 	view := service.toView(&UpstreamSite{
-		ID: 1, Name: "站点", AuthMode: UpstreamAuthPassword, CredentialEncrypted: encrypted,
+		ID: 1, Name: "站点", AuthMode: UpstreamAuthPassword, CredentialEncrypted: encrypted, BindingCount: 3,
 	})
 	require.True(t, view.HasPassword)
 	require.False(t, view.HasToken)
+	require.Equal(t, 3, view.BindingCount)
 	raw, err := json.Marshal(view)
 	require.NoError(t, err)
 	require.NotContains(t, string(raw), "secret")
@@ -308,6 +331,57 @@ func TestUpstreamServiceUpdateSortOrderValidatesInput(t *testing.T) {
 		repo.updates = nil
 		require.ErrorIs(t, svc.UpdateSortOrder(context.Background(), invalid), ErrUpstreamInvalidInput)
 		require.Empty(t, repo.updates)
+	}
+}
+
+func TestUpstreamServiceReplaceGroupBindingsValidatesInput(t *testing.T) {
+	repo := &upstreamGroupBindingsRepo{result: &UpstreamGroup{ID: 7, SiteID: 3}}
+	svc := &UpstreamService{repo: repo}
+	inputs := []UpstreamGroupAccountBindingInput{
+		{LocalGroupID: 10, AccountID: 100},
+		{LocalGroupID: 10, AccountID: 101},
+	}
+
+	group, err := svc.ReplaceGroupBindings(context.Background(), 3, 7, inputs)
+	require.NoError(t, err)
+	require.Same(t, repo.result, group)
+	require.Equal(t, 1, repo.called)
+	require.Equal(t, int64(3), repo.siteID)
+	require.Equal(t, int64(7), repo.upstreamGroupID)
+	require.Equal(t, inputs, repo.inputs)
+
+	group, err = svc.ReplaceGroupBindings(context.Background(), 3, 7, nil)
+	require.NoError(t, err, "空绑定集合应表示全部解绑")
+	require.Same(t, repo.result, group)
+	require.NotNil(t, group.Bindings, "响应应稳定序列化为空数组，而不是 null")
+	require.Equal(t, 2, repo.called)
+	require.Empty(t, repo.inputs)
+
+	tooMany := make([]UpstreamGroupAccountBindingInput, maxUpstreamGroupBindings+1)
+	for i := range tooMany {
+		tooMany[i] = UpstreamGroupAccountBindingInput{LocalGroupID: 1, AccountID: int64(i + 1)}
+	}
+	invalidCases := []struct {
+		name            string
+		siteID          int64
+		upstreamGroupID int64
+		inputs          []UpstreamGroupAccountBindingInput
+	}{
+		{name: "站点 ID 非正数", siteID: 0, upstreamGroupID: 7},
+		{name: "上游分组 ID 非正数", siteID: 3, upstreamGroupID: -1},
+		{name: "本地分组 ID 非正数", siteID: 3, upstreamGroupID: 7, inputs: []UpstreamGroupAccountBindingInput{{LocalGroupID: 0, AccountID: 1}}},
+		{name: "账号 ID 非正数", siteID: 3, upstreamGroupID: 7, inputs: []UpstreamGroupAccountBindingInput{{LocalGroupID: 1, AccountID: 0}}},
+		{name: "请求内账号重复", siteID: 3, upstreamGroupID: 7, inputs: []UpstreamGroupAccountBindingInput{{LocalGroupID: 1, AccountID: 9}, {LocalGroupID: 2, AccountID: 9}}},
+		{name: "绑定数量超限", siteID: 3, upstreamGroupID: 7, inputs: tooMany},
+	}
+	for _, tt := range invalidCases {
+		t.Run(tt.name, func(t *testing.T) {
+			called := repo.called
+			group, err := svc.ReplaceGroupBindings(context.Background(), tt.siteID, tt.upstreamGroupID, tt.inputs)
+			require.Nil(t, group)
+			require.ErrorIs(t, err, ErrUpstreamInvalidInput)
+			require.Equal(t, called, repo.called, "无效参数不得调用仓储")
+		})
 	}
 }
 

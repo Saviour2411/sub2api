@@ -78,6 +78,8 @@ type Tx struct {
 	UpstreamDailyStat *UpstreamDailyStatClient
 	// UpstreamGroup is the client for interacting with the UpstreamGroup builders.
 	UpstreamGroup *UpstreamGroupClient
+	// UpstreamGroupAccountBinding is the client for interacting with the UpstreamGroupAccountBinding builders.
+	UpstreamGroupAccountBinding *UpstreamGroupAccountBindingClient
 	// UpstreamGroupMultiplierHistory is the client for interacting with the UpstreamGroupMultiplierHistory builders.
 	UpstreamGroupMultiplierHistory *UpstreamGroupMultiplierHistoryClient
 	// UpstreamSite is the client for interacting with the UpstreamSite builders.
@@ -261,6 +263,7 @@ func (tx *Tx) init() {
 	tx.TLSFingerprintProfile = NewTLSFingerprintProfileClient(tx.config)
 	tx.UpstreamDailyStat = NewUpstreamDailyStatClient(tx.config)
 	tx.UpstreamGroup = NewUpstreamGroupClient(tx.config)
+	tx.UpstreamGroupAccountBinding = NewUpstreamGroupAccountBindingClient(tx.config)
 	tx.UpstreamGroupMultiplierHistory = NewUpstreamGroupMultiplierHistoryClient(tx.config)
 	tx.UpstreamSite = NewUpstreamSiteClient(tx.config)
 	tx.UsageCleanupTask = NewUsageCleanupTaskClient(tx.config)

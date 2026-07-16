@@ -54,9 +54,11 @@ type UpstreamGroup struct {
 type UpstreamGroupEdges struct {
 	// Site holds the value of the site edge.
 	Site *UpstreamSite `json:"site,omitempty"`
+	// AccountBindings holds the value of the account_bindings edge.
+	AccountBindings []*UpstreamGroupAccountBinding `json:"account_bindings,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [1]bool
+	loadedTypes [2]bool
 }
 
 // SiteOrErr returns the Site value or an error if the edge
@@ -68,6 +70,15 @@ func (e UpstreamGroupEdges) SiteOrErr() (*UpstreamSite, error) {
 		return nil, &NotFoundError{label: upstreamsite.Label}
 	}
 	return nil, &NotLoadedError{edge: "site"}
+}
+
+// AccountBindingsOrErr returns the AccountBindings value or an error if the edge
+// was not loaded in eager-loading.
+func (e UpstreamGroupEdges) AccountBindingsOrErr() ([]*UpstreamGroupAccountBinding, error) {
+	if e.loadedTypes[1] {
+		return e.AccountBindings, nil
+	}
+	return nil, &NotLoadedError{edge: "account_bindings"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -201,6 +212,11 @@ func (_m *UpstreamGroup) Value(name string) (ent.Value, error) {
 // QuerySite queries the "site" edge of the UpstreamGroup entity.
 func (_m *UpstreamGroup) QuerySite() *UpstreamSiteQuery {
 	return NewUpstreamGroupClient(_m.config).QuerySite(_m)
+}
+
+// QueryAccountBindings queries the "account_bindings" edge of the UpstreamGroup entity.
+func (_m *UpstreamGroup) QueryAccountBindings() *UpstreamGroupAccountBindingQuery {
+	return NewUpstreamGroupClient(_m.config).QueryAccountBindings(_m)
 }
 
 // Update returns a builder for updating this UpstreamGroup.

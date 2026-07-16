@@ -393,6 +393,18 @@ func (f UpstreamGroupFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Valu
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UpstreamGroupMutation", m)
 }
 
+// The UpstreamGroupAccountBindingFunc type is an adapter to allow the use of ordinary
+// function as UpstreamGroupAccountBinding mutator.
+type UpstreamGroupAccountBindingFunc func(context.Context, *ent.UpstreamGroupAccountBindingMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f UpstreamGroupAccountBindingFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.UpstreamGroupAccountBindingMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UpstreamGroupAccountBindingMutation", m)
+}
+
 // The UpstreamGroupMultiplierHistoryFunc type is an adapter to allow the use of ordinary
 // function as UpstreamGroupMultiplierHistory mutator.
 type UpstreamGroupMultiplierHistoryFunc func(context.Context, *ent.UpstreamGroupMultiplierHistoryMutation) (ent.Value, error)

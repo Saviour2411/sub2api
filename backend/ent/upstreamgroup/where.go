@@ -693,6 +693,29 @@ func HasSiteWith(preds ...predicate.UpstreamSite) predicate.UpstreamGroup {
 	})
 }
 
+// HasAccountBindings applies the HasEdge predicate on the "account_bindings" edge.
+func HasAccountBindings() predicate.UpstreamGroup {
+	return predicate.UpstreamGroup(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, AccountBindingsTable, AccountBindingsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasAccountBindingsWith applies the HasEdge predicate on the "account_bindings" edge with a given conditions (other predicates).
+func HasAccountBindingsWith(preds ...predicate.UpstreamGroupAccountBinding) predicate.UpstreamGroup {
+	return predicate.UpstreamGroup(func(s *sql.Selector) {
+		step := newAccountBindingsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // And groups predicates with the AND operator between them.
 func And(predicates ...predicate.UpstreamGroup) predicate.UpstreamGroup {
 	return predicate.UpstreamGroup(sql.AndPredicates(predicates...))

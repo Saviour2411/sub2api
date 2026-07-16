@@ -126,6 +126,8 @@ const (
 	EdgeAccounts = "accounts"
 	// EdgeAllowedUsers holds the string denoting the allowed_users edge name in mutations.
 	EdgeAllowedUsers = "allowed_users"
+	// EdgeUpstreamGroupAccountBindings holds the string denoting the upstream_group_account_bindings edge name in mutations.
+	EdgeUpstreamGroupAccountBindings = "upstream_group_account_bindings"
 	// EdgeAccountGroups holds the string denoting the account_groups edge name in mutations.
 	EdgeAccountGroups = "account_groups"
 	// EdgeUserAllowedGroups holds the string denoting the user_allowed_groups edge name in mutations.
@@ -170,6 +172,13 @@ const (
 	// AllowedUsersInverseTable is the table name for the User entity.
 	// It exists in this package in order to avoid circular dependency with the "user" package.
 	AllowedUsersInverseTable = "users"
+	// UpstreamGroupAccountBindingsTable is the table that holds the upstream_group_account_bindings relation/edge.
+	UpstreamGroupAccountBindingsTable = "upstream_group_account_bindings"
+	// UpstreamGroupAccountBindingsInverseTable is the table name for the UpstreamGroupAccountBinding entity.
+	// It exists in this package in order to avoid circular dependency with the "upstreamgroupaccountbinding" package.
+	UpstreamGroupAccountBindingsInverseTable = "upstream_group_account_bindings"
+	// UpstreamGroupAccountBindingsColumn is the table column denoting the upstream_group_account_bindings relation/edge.
+	UpstreamGroupAccountBindingsColumn = "local_group_id"
 	// AccountGroupsTable is the table that holds the account_groups relation/edge.
 	AccountGroupsTable = "account_groups"
 	// AccountGroupsInverseTable is the table name for the AccountGroup entity.
@@ -668,6 +677,20 @@ func ByAllowedUsers(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByUpstreamGroupAccountBindingsCount orders the results by upstream_group_account_bindings count.
+func ByUpstreamGroupAccountBindingsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newUpstreamGroupAccountBindingsStep(), opts...)
+	}
+}
+
+// ByUpstreamGroupAccountBindings orders the results by upstream_group_account_bindings terms.
+func ByUpstreamGroupAccountBindings(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newUpstreamGroupAccountBindingsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByAccountGroupsCount orders the results by account_groups count.
 func ByAccountGroupsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -735,6 +758,13 @@ func newAllowedUsersStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(AllowedUsersInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2M, true, AllowedUsersTable, AllowedUsersPrimaryKey...),
+	)
+}
+func newUpstreamGroupAccountBindingsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(UpstreamGroupAccountBindingsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, UpstreamGroupAccountBindingsTable, UpstreamGroupAccountBindingsColumn),
 	)
 }
 func newAccountGroupsStep() *sqlgraph.Step {

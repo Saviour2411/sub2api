@@ -294,6 +294,33 @@ func (h *CustomFeatureHandler) SetUpstreamGroupDisplayed(c *gin.Context) {
 	response.Success(c, result)
 }
 
+func (h *CustomFeatureHandler) ReplaceUpstreamGroupBindings(c *gin.Context) {
+	siteID, ok := parseUpstreamID(c)
+	if !ok {
+		return
+	}
+	groupID, err := strconv.ParseInt(c.Param("groupID"), 10, 64)
+	if err != nil || groupID <= 0 {
+		response.BadRequest(c, "上游分组 ID 无效")
+		return
+	}
+	var input service.UpstreamGroupBindingsInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		response.BadRequest(c, "请求格式无效")
+		return
+	}
+	if input.Bindings == nil {
+		response.BadRequest(c, "bindings 字段必填")
+		return
+	}
+	group, err := h.upstreamService.ReplaceGroupBindings(c.Request.Context(), siteID, groupID, input.Bindings)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, group)
+}
+
 func (h *CustomFeatureHandler) ListUpstreamHistory(c *gin.Context) {
 	id, ok := parseUpstreamID(c)
 	if !ok {

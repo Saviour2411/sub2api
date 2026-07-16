@@ -41,6 +41,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamdailystat"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamgroup"
+	"github.com/Wei-Shaw/sub2api/ent/upstreamgroupaccountbinding"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamgroupmultiplierhistory"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamsite"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
@@ -973,6 +974,33 @@ func (f TraverseUpstreamGroup) Traverse(ctx context.Context, q ent.Query) error 
 	return fmt.Errorf("unexpected query type %T. expect *ent.UpstreamGroupQuery", q)
 }
 
+// The UpstreamGroupAccountBindingFunc type is an adapter to allow the use of ordinary function as a Querier.
+type UpstreamGroupAccountBindingFunc func(context.Context, *ent.UpstreamGroupAccountBindingQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f UpstreamGroupAccountBindingFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.UpstreamGroupAccountBindingQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.UpstreamGroupAccountBindingQuery", q)
+}
+
+// The TraverseUpstreamGroupAccountBinding type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseUpstreamGroupAccountBinding func(context.Context, *ent.UpstreamGroupAccountBindingQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseUpstreamGroupAccountBinding) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseUpstreamGroupAccountBinding) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.UpstreamGroupAccountBindingQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.UpstreamGroupAccountBindingQuery", q)
+}
+
 // The UpstreamGroupMultiplierHistoryFunc type is an adapter to allow the use of ordinary function as a Querier.
 type UpstreamGroupMultiplierHistoryFunc func(context.Context, *ent.UpstreamGroupMultiplierHistoryQuery) (ent.Value, error)
 
@@ -1310,6 +1338,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.UpstreamDailyStatQuery, predicate.UpstreamDailyStat, upstreamdailystat.OrderOption]{typ: ent.TypeUpstreamDailyStat, tq: q}, nil
 	case *ent.UpstreamGroupQuery:
 		return &query[*ent.UpstreamGroupQuery, predicate.UpstreamGroup, upstreamgroup.OrderOption]{typ: ent.TypeUpstreamGroup, tq: q}, nil
+	case *ent.UpstreamGroupAccountBindingQuery:
+		return &query[*ent.UpstreamGroupAccountBindingQuery, predicate.UpstreamGroupAccountBinding, upstreamgroupaccountbinding.OrderOption]{typ: ent.TypeUpstreamGroupAccountBinding, tq: q}, nil
 	case *ent.UpstreamGroupMultiplierHistoryQuery:
 		return &query[*ent.UpstreamGroupMultiplierHistoryQuery, predicate.UpstreamGroupMultiplierHistory, upstreamgroupmultiplierhistory.OrderOption]{typ: ent.TypeUpstreamGroupMultiplierHistory, tq: q}, nil
 	case *ent.UpstreamSiteQuery:

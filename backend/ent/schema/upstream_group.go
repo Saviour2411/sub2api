@@ -46,6 +46,8 @@ func (UpstreamGroup) Fields() []ent.Field {
 func (UpstreamGroup) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.From("site", UpstreamSite.Type).Ref("groups").Field("site_id").Unique().Required(),
+		edge.To("account_bindings", UpstreamGroupAccountBinding.Type).
+			Annotations(entsql.OnDelete(entsql.Cascade)),
 	}
 }
 

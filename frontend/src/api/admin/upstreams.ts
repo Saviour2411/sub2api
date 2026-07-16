@@ -28,6 +28,20 @@ export interface UpstreamSite {
   has_password: boolean
   has_token: boolean
   displayed_group_count: number
+  binding_count: number
+}
+
+export interface UpstreamGroupAccountBinding {
+  id: number
+  upstream_group_id: number
+  local_group_id: number
+  local_group_name: string
+  account_id: number
+  account_name: string
+  account_platform: string
+  account_status: string
+  account_priority: number
+  created_at: string
 }
 
 export interface UpstreamGroup {
@@ -43,6 +57,12 @@ export interface UpstreamGroup {
   displayed: boolean
   available: boolean
   last_synced_at: string
+  bindings: UpstreamGroupAccountBinding[]
+}
+
+export interface UpstreamGroupBindingInput {
+  local_group_id: number
+  account_id: number
 }
 
 export interface UpstreamGroupDisplayResult {
@@ -174,6 +194,18 @@ export async function setGroupDisplayed(id: number, remoteID: string, displayed:
   return data
 }
 
+export async function replaceGroupBindings(
+  siteID: number,
+  upstreamGroupID: number,
+  bindings: UpstreamGroupBindingInput[]
+): Promise<UpstreamGroup> {
+  const { data } = await apiClient.put<UpstreamGroup>(
+    `/admin/custom-features/upstreams/${siteID}/groups/${upstreamGroupID}/bindings`,
+    { bindings }
+  )
+  return data
+}
+
 function dateRange(days: 7 | 30 | 90) {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Shanghai',
@@ -204,4 +236,4 @@ export async function multiplierHistory(id: number, days: 7 | 30 | 90): Promise<
   return data
 }
 
-export default { list, listAll, updateSortOrder, probeCapabilities, create, update, setEnabled, remove, sync, syncAll, groups, setGroupDisplayed, history, multiplierHistory }
+export default { list, listAll, updateSortOrder, probeCapabilities, create, update, setEnabled, remove, sync, syncAll, groups, setGroupDisplayed, replaceGroupBindings, history, multiplierHistory }

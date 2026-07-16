@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamgroup"
+	"github.com/Wei-Shaw/sub2api/ent/upstreamgroupaccountbinding"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamsite"
 )
 
@@ -184,6 +185,21 @@ func (_c *UpstreamGroupCreate) SetNillableLastSyncedAt(v *time.Time) *UpstreamGr
 // SetSite sets the "site" edge to the UpstreamSite entity.
 func (_c *UpstreamGroupCreate) SetSite(v *UpstreamSite) *UpstreamGroupCreate {
 	return _c.SetSiteID(v.ID)
+}
+
+// AddAccountBindingIDs adds the "account_bindings" edge to the UpstreamGroupAccountBinding entity by IDs.
+func (_c *UpstreamGroupCreate) AddAccountBindingIDs(ids ...int64) *UpstreamGroupCreate {
+	_c.mutation.AddAccountBindingIDs(ids...)
+	return _c
+}
+
+// AddAccountBindings adds the "account_bindings" edges to the UpstreamGroupAccountBinding entity.
+func (_c *UpstreamGroupCreate) AddAccountBindings(v ...*UpstreamGroupAccountBinding) *UpstreamGroupCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddAccountBindingIDs(ids...)
 }
 
 // Mutation returns the UpstreamGroupMutation object of the builder.
@@ -405,6 +421,22 @@ func (_c *UpstreamGroupCreate) createSpec() (*UpstreamGroup, *sqlgraph.CreateSpe
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_node.SiteID = nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.AccountBindingsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   upstreamgroup.AccountBindingsTable,
+			Columns: []string{upstreamgroup.AccountBindingsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(upstreamgroupaccountbinding.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec

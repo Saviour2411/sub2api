@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamgroup"
+	"github.com/Wei-Shaw/sub2api/ent/upstreamgroupaccountbinding"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamsite"
 )
 
@@ -221,6 +222,21 @@ func (_u *UpstreamGroupUpdate) SetSite(v *UpstreamSite) *UpstreamGroupUpdate {
 	return _u.SetSiteID(v.ID)
 }
 
+// AddAccountBindingIDs adds the "account_bindings" edge to the UpstreamGroupAccountBinding entity by IDs.
+func (_u *UpstreamGroupUpdate) AddAccountBindingIDs(ids ...int64) *UpstreamGroupUpdate {
+	_u.mutation.AddAccountBindingIDs(ids...)
+	return _u
+}
+
+// AddAccountBindings adds the "account_bindings" edges to the UpstreamGroupAccountBinding entity.
+func (_u *UpstreamGroupUpdate) AddAccountBindings(v ...*UpstreamGroupAccountBinding) *UpstreamGroupUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddAccountBindingIDs(ids...)
+}
+
 // Mutation returns the UpstreamGroupMutation object of the builder.
 func (_u *UpstreamGroupUpdate) Mutation() *UpstreamGroupMutation {
 	return _u.mutation
@@ -230,6 +246,27 @@ func (_u *UpstreamGroupUpdate) Mutation() *UpstreamGroupMutation {
 func (_u *UpstreamGroupUpdate) ClearSite() *UpstreamGroupUpdate {
 	_u.mutation.ClearSite()
 	return _u
+}
+
+// ClearAccountBindings clears all "account_bindings" edges to the UpstreamGroupAccountBinding entity.
+func (_u *UpstreamGroupUpdate) ClearAccountBindings() *UpstreamGroupUpdate {
+	_u.mutation.ClearAccountBindings()
+	return _u
+}
+
+// RemoveAccountBindingIDs removes the "account_bindings" edge to UpstreamGroupAccountBinding entities by IDs.
+func (_u *UpstreamGroupUpdate) RemoveAccountBindingIDs(ids ...int64) *UpstreamGroupUpdate {
+	_u.mutation.RemoveAccountBindingIDs(ids...)
+	return _u
+}
+
+// RemoveAccountBindings removes "account_bindings" edges to UpstreamGroupAccountBinding entities.
+func (_u *UpstreamGroupUpdate) RemoveAccountBindings(v ...*UpstreamGroupAccountBinding) *UpstreamGroupUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveAccountBindingIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -370,6 +407,51 @@ func (_u *UpstreamGroupUpdate) sqlSave(ctx context.Context) (_node int, err erro
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(upstreamsite.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.AccountBindingsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   upstreamgroup.AccountBindingsTable,
+			Columns: []string{upstreamgroup.AccountBindingsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(upstreamgroupaccountbinding.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedAccountBindingsIDs(); len(nodes) > 0 && !_u.mutation.AccountBindingsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   upstreamgroup.AccountBindingsTable,
+			Columns: []string{upstreamgroup.AccountBindingsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(upstreamgroupaccountbinding.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.AccountBindingsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   upstreamgroup.AccountBindingsTable,
+			Columns: []string{upstreamgroup.AccountBindingsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(upstreamgroupaccountbinding.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
@@ -589,6 +671,21 @@ func (_u *UpstreamGroupUpdateOne) SetSite(v *UpstreamSite) *UpstreamGroupUpdateO
 	return _u.SetSiteID(v.ID)
 }
 
+// AddAccountBindingIDs adds the "account_bindings" edge to the UpstreamGroupAccountBinding entity by IDs.
+func (_u *UpstreamGroupUpdateOne) AddAccountBindingIDs(ids ...int64) *UpstreamGroupUpdateOne {
+	_u.mutation.AddAccountBindingIDs(ids...)
+	return _u
+}
+
+// AddAccountBindings adds the "account_bindings" edges to the UpstreamGroupAccountBinding entity.
+func (_u *UpstreamGroupUpdateOne) AddAccountBindings(v ...*UpstreamGroupAccountBinding) *UpstreamGroupUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddAccountBindingIDs(ids...)
+}
+
 // Mutation returns the UpstreamGroupMutation object of the builder.
 func (_u *UpstreamGroupUpdateOne) Mutation() *UpstreamGroupMutation {
 	return _u.mutation
@@ -598,6 +695,27 @@ func (_u *UpstreamGroupUpdateOne) Mutation() *UpstreamGroupMutation {
 func (_u *UpstreamGroupUpdateOne) ClearSite() *UpstreamGroupUpdateOne {
 	_u.mutation.ClearSite()
 	return _u
+}
+
+// ClearAccountBindings clears all "account_bindings" edges to the UpstreamGroupAccountBinding entity.
+func (_u *UpstreamGroupUpdateOne) ClearAccountBindings() *UpstreamGroupUpdateOne {
+	_u.mutation.ClearAccountBindings()
+	return _u
+}
+
+// RemoveAccountBindingIDs removes the "account_bindings" edge to UpstreamGroupAccountBinding entities by IDs.
+func (_u *UpstreamGroupUpdateOne) RemoveAccountBindingIDs(ids ...int64) *UpstreamGroupUpdateOne {
+	_u.mutation.RemoveAccountBindingIDs(ids...)
+	return _u
+}
+
+// RemoveAccountBindings removes "account_bindings" edges to UpstreamGroupAccountBinding entities.
+func (_u *UpstreamGroupUpdateOne) RemoveAccountBindings(v ...*UpstreamGroupAccountBinding) *UpstreamGroupUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveAccountBindingIDs(ids...)
 }
 
 // Where appends a list predicates to the UpstreamGroupUpdate builder.
@@ -768,6 +886,51 @@ func (_u *UpstreamGroupUpdateOne) sqlSave(ctx context.Context) (_node *UpstreamG
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(upstreamsite.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.AccountBindingsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   upstreamgroup.AccountBindingsTable,
+			Columns: []string{upstreamgroup.AccountBindingsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(upstreamgroupaccountbinding.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedAccountBindingsIDs(); len(nodes) > 0 && !_u.mutation.AccountBindingsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   upstreamgroup.AccountBindingsTable,
+			Columns: []string{upstreamgroup.AccountBindingsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(upstreamgroupaccountbinding.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.AccountBindingsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   upstreamgroup.AccountBindingsTable,
+			Columns: []string{upstreamgroup.AccountBindingsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(upstreamgroupaccountbinding.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

@@ -4,6 +4,7 @@ package ent
 
 import (
 	"context"
+	"database/sql/driver"
 	"fmt"
 	"math"
 
@@ -14,18 +15,20 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamgroup"
+	"github.com/Wei-Shaw/sub2api/ent/upstreamgroupaccountbinding"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamsite"
 )
 
 // UpstreamGroupQuery is the builder for querying UpstreamGroup entities.
 type UpstreamGroupQuery struct {
 	config
-	ctx        *QueryContext
-	order      []upstreamgroup.OrderOption
-	inters     []Interceptor
-	predicates []predicate.UpstreamGroup
-	withSite   *UpstreamSiteQuery
-	modifiers  []func(*sql.Selector)
+	ctx                 *QueryContext
+	order               []upstreamgroup.OrderOption
+	inters              []Interceptor
+	predicates          []predicate.UpstreamGroup
+	withSite            *UpstreamSiteQuery
+	withAccountBindings *UpstreamGroupAccountBindingQuery
+	modifiers           []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -77,6 +80,28 @@ func (_q *UpstreamGroupQuery) QuerySite() *UpstreamSiteQuery {
 			sqlgraph.From(upstreamgroup.Table, upstreamgroup.FieldID, selector),
 			sqlgraph.To(upstreamsite.Table, upstreamsite.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, true, upstreamgroup.SiteTable, upstreamgroup.SiteColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryAccountBindings chains the current query on the "account_bindings" edge.
+func (_q *UpstreamGroupQuery) QueryAccountBindings() *UpstreamGroupAccountBindingQuery {
+	query := (&UpstreamGroupAccountBindingClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(upstreamgroup.Table, upstreamgroup.FieldID, selector),
+			sqlgraph.To(upstreamgroupaccountbinding.Table, upstreamgroupaccountbinding.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, upstreamgroup.AccountBindingsTable, upstreamgroup.AccountBindingsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -271,12 +296,13 @@ func (_q *UpstreamGroupQuery) Clone() *UpstreamGroupQuery {
 		return nil
 	}
 	return &UpstreamGroupQuery{
-		config:     _q.config,
-		ctx:        _q.ctx.Clone(),
-		order:      append([]upstreamgroup.OrderOption{}, _q.order...),
-		inters:     append([]Interceptor{}, _q.inters...),
-		predicates: append([]predicate.UpstreamGroup{}, _q.predicates...),
-		withSite:   _q.withSite.Clone(),
+		config:              _q.config,
+		ctx:                 _q.ctx.Clone(),
+		order:               append([]upstreamgroup.OrderOption{}, _q.order...),
+		inters:              append([]Interceptor{}, _q.inters...),
+		predicates:          append([]predicate.UpstreamGroup{}, _q.predicates...),
+		withSite:            _q.withSite.Clone(),
+		withAccountBindings: _q.withAccountBindings.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -291,6 +317,17 @@ func (_q *UpstreamGroupQuery) WithSite(opts ...func(*UpstreamSiteQuery)) *Upstre
 		opt(query)
 	}
 	_q.withSite = query
+	return _q
+}
+
+// WithAccountBindings tells the query-builder to eager-load the nodes that are connected to
+// the "account_bindings" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UpstreamGroupQuery) WithAccountBindings(opts ...func(*UpstreamGroupAccountBindingQuery)) *UpstreamGroupQuery {
+	query := (&UpstreamGroupAccountBindingClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withAccountBindings = query
 	return _q
 }
 
@@ -372,8 +409,9 @@ func (_q *UpstreamGroupQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([
 	var (
 		nodes       = []*UpstreamGroup{}
 		_spec       = _q.querySpec()
-		loadedTypes = [1]bool{
+		loadedTypes = [2]bool{
 			_q.withSite != nil,
+			_q.withAccountBindings != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -400,6 +438,15 @@ func (_q *UpstreamGroupQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([
 	if query := _q.withSite; query != nil {
 		if err := _q.loadSite(ctx, query, nodes, nil,
 			func(n *UpstreamGroup, e *UpstreamSite) { n.Edges.Site = e }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withAccountBindings; query != nil {
+		if err := _q.loadAccountBindings(ctx, query, nodes,
+			func(n *UpstreamGroup) { n.Edges.AccountBindings = []*UpstreamGroupAccountBinding{} },
+			func(n *UpstreamGroup, e *UpstreamGroupAccountBinding) {
+				n.Edges.AccountBindings = append(n.Edges.AccountBindings, e)
+			}); err != nil {
 			return nil, err
 		}
 	}
@@ -432,6 +479,36 @@ func (_q *UpstreamGroupQuery) loadSite(ctx context.Context, query *UpstreamSiteQ
 		for i := range nodes {
 			assign(nodes[i], n)
 		}
+	}
+	return nil
+}
+func (_q *UpstreamGroupQuery) loadAccountBindings(ctx context.Context, query *UpstreamGroupAccountBindingQuery, nodes []*UpstreamGroup, init func(*UpstreamGroup), assign func(*UpstreamGroup, *UpstreamGroupAccountBinding)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int64]*UpstreamGroup)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(upstreamgroupaccountbinding.FieldUpstreamGroupID)
+	}
+	query.Where(predicate.UpstreamGroupAccountBinding(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(upstreamgroup.AccountBindingsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.UpstreamGroupID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "upstream_group_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
 	}
 	return nil
 }

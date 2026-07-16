@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
+	"github.com/Wei-Shaw/sub2api/ent/upstreamgroupaccountbinding"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 )
 
@@ -488,6 +489,25 @@ func (_c *AccountCreate) AddUsageLogs(v ...*UsageLog) *AccountCreate {
 	return _c.AddUsageLogIDs(ids...)
 }
 
+// SetUpstreamGroupAccountBindingsID sets the "upstream_group_account_bindings" edge to the UpstreamGroupAccountBinding entity by ID.
+func (_c *AccountCreate) SetUpstreamGroupAccountBindingsID(id int64) *AccountCreate {
+	_c.mutation.SetUpstreamGroupAccountBindingsID(id)
+	return _c
+}
+
+// SetNillableUpstreamGroupAccountBindingsID sets the "upstream_group_account_bindings" edge to the UpstreamGroupAccountBinding entity by ID if the given value is not nil.
+func (_c *AccountCreate) SetNillableUpstreamGroupAccountBindingsID(id *int64) *AccountCreate {
+	if id != nil {
+		_c = _c.SetUpstreamGroupAccountBindingsID(*id)
+	}
+	return _c
+}
+
+// SetUpstreamGroupAccountBindings sets the "upstream_group_account_bindings" edge to the UpstreamGroupAccountBinding entity.
+func (_c *AccountCreate) SetUpstreamGroupAccountBindings(v *UpstreamGroupAccountBinding) *AccountCreate {
+	return _c.SetUpstreamGroupAccountBindingsID(v.ID)
+}
+
 // Mutation returns the AccountMutation object of the builder.
 func (_c *AccountCreate) Mutation() *AccountMutation {
 	return _c.mutation
@@ -880,6 +900,22 @@ func (_c *AccountCreate) createSpec() (*Account, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.UpstreamGroupAccountBindingsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   account.UpstreamGroupAccountBindingsTable,
+			Columns: []string{account.UpstreamGroupAccountBindingsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(upstreamgroupaccountbinding.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

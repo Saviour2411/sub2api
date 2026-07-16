@@ -1596,6 +1596,52 @@ var (
 			},
 		},
 	}
+	// UpstreamGroupAccountBindingsColumns holds the columns for the "upstream_group_account_bindings" table.
+	UpstreamGroupAccountBindingsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "account_id", Type: field.TypeInt64, Unique: true},
+		{Name: "local_group_id", Type: field.TypeInt64},
+		{Name: "upstream_group_id", Type: field.TypeInt64},
+	}
+	// UpstreamGroupAccountBindingsTable holds the schema information for the "upstream_group_account_bindings" table.
+	UpstreamGroupAccountBindingsTable = &schema.Table{
+		Name:       "upstream_group_account_bindings",
+		Columns:    UpstreamGroupAccountBindingsColumns,
+		PrimaryKey: []*schema.Column{UpstreamGroupAccountBindingsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "upstream_group_account_bindings_accounts_upstream_group_account_bindings",
+				Columns:    []*schema.Column{UpstreamGroupAccountBindingsColumns[2]},
+				RefColumns: []*schema.Column{AccountsColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+			{
+				Symbol:     "upstream_group_account_bindings_groups_upstream_group_account_bindings",
+				Columns:    []*schema.Column{UpstreamGroupAccountBindingsColumns[3]},
+				RefColumns: []*schema.Column{GroupsColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+			{
+				Symbol:     "upstream_group_account_bindings_upstream_groups_account_bindings",
+				Columns:    []*schema.Column{UpstreamGroupAccountBindingsColumns[4]},
+				RefColumns: []*schema.Column{UpstreamGroupsColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "upstreamgroupaccountbinding_upstream_group_id",
+				Unique:  false,
+				Columns: []*schema.Column{UpstreamGroupAccountBindingsColumns[4]},
+			},
+			{
+				Name:    "upstreamgroupaccountbinding_local_group_id",
+				Unique:  false,
+				Columns: []*schema.Column{UpstreamGroupAccountBindingsColumns[3]},
+			},
+		},
+	}
 	// UpstreamGroupMultiplierHistoryColumns holds the columns for the "upstream_group_multiplier_history" table.
 	UpstreamGroupMultiplierHistoryColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -2208,6 +2254,7 @@ var (
 		TLSFingerprintProfilesTable,
 		UpstreamDailyStatsTable,
 		UpstreamGroupsTable,
+		UpstreamGroupAccountBindingsTable,
 		UpstreamGroupMultiplierHistoryTable,
 		UpstreamSitesTable,
 		UsageCleanupTasksTable,
@@ -2341,6 +2388,12 @@ func init() {
 	UpstreamGroupsTable.ForeignKeys[0].RefTable = UpstreamSitesTable
 	UpstreamGroupsTable.Annotation = &entsql.Annotation{
 		Table: "upstream_groups",
+	}
+	UpstreamGroupAccountBindingsTable.ForeignKeys[0].RefTable = AccountsTable
+	UpstreamGroupAccountBindingsTable.ForeignKeys[1].RefTable = GroupsTable
+	UpstreamGroupAccountBindingsTable.ForeignKeys[2].RefTable = UpstreamGroupsTable
+	UpstreamGroupAccountBindingsTable.Annotation = &entsql.Annotation{
+		Table: "upstream_group_account_bindings",
 	}
 	UpstreamGroupMultiplierHistoryTable.ForeignKeys[0].RefTable = UpstreamSitesTable
 	UpstreamGroupMultiplierHistoryTable.Annotation = &entsql.Annotation{

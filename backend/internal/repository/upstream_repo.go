@@ -9,8 +9,12 @@ import (
 
 	entsql "entgo.io/ent/dialect/sql"
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	dbaccount "github.com/Wei-Shaw/sub2api/ent/account"
+	dbaccountgroup "github.com/Wei-Shaw/sub2api/ent/accountgroup"
+	dbgroup "github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamdailystat"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamgroup"
+	"github.com/Wei-Shaw/sub2api/ent/upstreamgroupaccountbinding"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamgroupmultiplierhistory"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamsite"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -73,8 +77,15 @@ func (r *upstreamRepository) GetByID(ctx context.Context, id int64) (*service.Up
 	if err != nil {
 		return nil, fmt.Errorf("统计已展示上游分组: %w", err)
 	}
+	bindingCount, err := clientFromContext(ctx, r.client).UpstreamGroupAccountBinding.Query().
+		Where(upstreamgroupaccountbinding.HasUpstreamGroupWith(upstreamgroup.SiteIDEQ(id))).
+		Count(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("统计上游账号绑定: %w", err)
+	}
 	site := upstreamSiteFromEnt(row)
 	site.DisplayedGroupCount = displayedGroupCount
+	site.BindingCount = bindingCount
 	return site, nil
 }
 
@@ -123,12 +134,42 @@ func (r *upstreamRepository) SetEnabled(ctx context.Context, id int64, enabled b
 }
 
 func (r *upstreamRepository) Delete(ctx context.Context, id int64) error {
-	err := clientFromContext(ctx, r.client).UpstreamSite.DeleteOneID(id).Exec(ctx)
-	if dbent.IsNotFound(err) {
-		return service.ErrUpstreamNotFound
-	}
+	tx, err := r.client.Tx(ctx)
 	if err != nil {
+		return fmt.Errorf("开启删除上游站点事务: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := lockUpstreamSite(ctx, tx, id); err != nil {
+		if dbent.IsNotFound(err) {
+			return service.ErrUpstreamNotFound
+		}
+		return fmt.Errorf("锁定上游站点: %w", err)
+	}
+	bindings, err := tx.UpstreamGroupAccountBinding.Query().
+		Where(upstreamgroupaccountbinding.HasUpstreamGroupWith(upstreamgroup.SiteIDEQ(id))).
+		All(ctx)
+	if err != nil {
+		return fmt.Errorf("查询站点账号绑定: %w", err)
+	}
+	affectedGroupIDs := make([]int64, 0, len(bindings))
+	for _, binding := range bindings {
+		affectedGroupIDs = append(affectedGroupIDs, binding.LocalGroupID)
+	}
+	affectedGroupIDs = uniqueSortedPositiveInt64s(affectedGroupIDs)
+	if err := lockLocalGroupsByID(ctx, tx.Client(), affectedGroupIDs); err != nil {
+		return fmt.Errorf("锁定绑定本地分组: %w", err)
+	}
+	if err := tx.UpstreamSite.DeleteOneID(id).Exec(ctx); err != nil {
+		if dbent.IsNotFound(err) {
+			return service.ErrUpstreamNotFound
+		}
 		return fmt.Errorf("删除上游站点: %w", err)
+	}
+	if _, err := recalculateUpstreamBindingPriorities(ctx, tx.Client(), affectedGroupIDs); err != nil {
+		return fmt.Errorf("重排站点解绑账号: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("提交删除上游站点事务: %w", err)
 	}
 	return nil
 }
@@ -204,6 +245,7 @@ func upstreamSiteOrder(params service.UpstreamListParams) []upstreamsite.OrderOp
 
 func (r *upstreamRepository) buildSiteList(ctx context.Context, rows []*dbent.UpstreamSite) ([]*service.UpstreamSite, error) {
 	displayedCounts := make(map[int64]int, len(rows))
+	bindingCounts := make(map[int64]int, len(rows))
 	if len(rows) > 0 {
 		siteIDs := make([]int64, 0, len(rows))
 		for _, row := range rows {
@@ -218,11 +260,24 @@ func (r *upstreamRepository) buildSiteList(ctx context.Context, rows []*dbent.Up
 		for _, group := range groups {
 			displayedCounts[group.SiteID]++
 		}
+		bindings, bindingErr := clientFromContext(ctx, r.client).UpstreamGroupAccountBinding.Query().
+			Where(upstreamgroupaccountbinding.HasUpstreamGroupWith(upstreamgroup.SiteIDIn(siteIDs...))).
+			WithUpstreamGroup().
+			All(ctx)
+		if bindingErr != nil {
+			return nil, fmt.Errorf("统计上游账号绑定: %w", bindingErr)
+		}
+		for _, binding := range bindings {
+			if binding.Edges.UpstreamGroup != nil {
+				bindingCounts[binding.Edges.UpstreamGroup.SiteID]++
+			}
+		}
 	}
 	items := make([]*service.UpstreamSite, 0, len(rows))
 	for _, row := range rows {
 		item := upstreamSiteFromEnt(row)
 		item.DisplayedGroupCount = displayedCounts[row.ID]
+		item.BindingCount = bindingCounts[row.ID]
 		items = append(items, item)
 	}
 	return items, nil
@@ -387,6 +442,24 @@ func (r *upstreamRepository) MissingDates(ctx context.Context, id int64, from, t
 }
 
 func (r *upstreamRepository) CommitSync(ctx context.Context, id int64, result *service.UpstreamSyncResult, encryptedCredential string, syncedAt time.Time, nextSyncAt *time.Time) error {
+	if result == nil {
+		return service.ErrUpstreamInvalidInput.WithCause(fmt.Errorf("同步结果为空"))
+	}
+	seenRemoteIDs := make(map[string]struct{}, len(result.Groups))
+	for _, group := range result.Groups {
+		if strings.TrimSpace(group.RemoteID) == "" {
+			return service.ErrUpstreamInvalidInput.WithCause(fmt.Errorf("上游分组 remote_id 为空"))
+		}
+		if _, exists := seenRemoteIDs[group.RemoteID]; exists {
+			return service.ErrUpstreamInvalidInput.WithCause(fmt.Errorf("上游分组 remote_id 重复: %s", group.RemoteID))
+		}
+		seenRemoteIDs[group.RemoteID] = struct{}{}
+		if group.Multiplier != nil {
+			if _, ok := normalizeUpstreamBindingMultiplier(*group.Multiplier); !ok {
+				return service.ErrUpstreamInvalidInput.WithCause(fmt.Errorf("上游分组 %s 倍率无效", group.RemoteID))
+			}
+		}
+	}
 	tx, err := r.client.Tx(ctx)
 	if err != nil {
 		return fmt.Errorf("开启上游同步事务: %w", err)
@@ -403,6 +476,14 @@ func (r *upstreamRepository) CommitSync(ctx context.Context, id int64, result *s
 			return rollback(service.ErrUpstreamNotFound)
 		}
 		return rollback(fmt.Errorf("锁定上游站点: %w", err))
+	}
+	existingGroups, err := tx.UpstreamGroup.Query().Where(upstreamgroup.SiteIDEQ(id)).All(ctx)
+	if err != nil {
+		return rollback(fmt.Errorf("查询上游分组: %w", err))
+	}
+	existingByRemoteID := make(map[string]*dbent.UpstreamGroup, len(existingGroups))
+	for _, group := range existingGroups {
+		existingByRemoteID[group.RemoteID] = group
 	}
 	historyRows, err := tx.UpstreamGroupMultiplierHistory.Query().
 		Where(upstreamgroupmultiplierhistory.SiteIDEQ(id)).
@@ -422,7 +503,7 @@ func (r *upstreamRepository) CommitSync(ctx context.Context, id int64, result *s
 	}
 	for _, group := range result.Groups {
 		existing, exists := latestHistoryByRemoteID[group.RemoteID]
-		if exists && equalOptionalFloat(existing.Multiplier, group.Multiplier) {
+		if exists && equalNormalizedOptionalFloat(existing.Multiplier, group.Multiplier) {
 			continue
 		}
 		builder := tx.UpstreamGroupMultiplierHistory.Create().
@@ -442,16 +523,12 @@ func (r *upstreamRepository) CommitSync(ctx context.Context, id int64, result *s
 	if err = tx.UpstreamGroup.Update().Where(upstreamgroup.SiteIDEQ(id)).SetAvailable(false).Exec(ctx); err != nil {
 		return rollback(fmt.Errorf("标记上游分组不可用: %w", err))
 	}
-	existingGroups, err := tx.UpstreamGroup.Query().Where(upstreamgroup.SiteIDEQ(id)).All(ctx)
-	if err != nil {
-		return rollback(fmt.Errorf("查询上游分组: %w", err))
-	}
-	existingByRemoteID := make(map[string]*dbent.UpstreamGroup, len(existingGroups))
-	for _, group := range existingGroups {
-		existingByRemoteID[group.RemoteID] = group
-	}
+	priorityTriggerUpstreamGroupIDs := make([]int64, 0)
 	for _, group := range result.Groups {
 		if existing := existingByRemoteID[group.RemoteID]; existing != nil {
+			if !existing.Available || !equalNormalizedOptionalFloat(existing.Multiplier, group.Multiplier) {
+				priorityTriggerUpstreamGroupIDs = append(priorityTriggerUpstreamGroupIDs, existing.ID)
+			}
 			update := tx.UpstreamGroup.UpdateOneID(existing.ID).
 				SetName(group.Name).
 				SetPlatform(group.Platform).
@@ -495,6 +572,25 @@ func (r *upstreamRepository) CommitSync(ctx context.Context, id int64, result *s
 		upstreamgroup.DisplayedEQ(false),
 	).Exec(ctx); err != nil {
 		return rollback(fmt.Errorf("清理失效上游分组: %w", err))
+	}
+	if priorityTriggerUpstreamGroupIDs = uniqueSortedPositiveInt64s(priorityTriggerUpstreamGroupIDs); len(priorityTriggerUpstreamGroupIDs) > 0 {
+		bindings, bindingErr := tx.UpstreamGroupAccountBinding.Query().
+			Where(upstreamgroupaccountbinding.UpstreamGroupIDIn(priorityTriggerUpstreamGroupIDs...)).
+			All(ctx)
+		if bindingErr != nil {
+			return rollback(fmt.Errorf("查询倍率变化账号绑定: %w", bindingErr))
+		}
+		affectedLocalGroupIDs := make([]int64, 0, len(bindings))
+		for _, binding := range bindings {
+			affectedLocalGroupIDs = append(affectedLocalGroupIDs, binding.LocalGroupID)
+		}
+		affectedLocalGroupIDs = uniqueSortedPositiveInt64s(affectedLocalGroupIDs)
+		if err := lockLocalGroupsByID(ctx, tx.Client(), affectedLocalGroupIDs); err != nil {
+			return rollback(fmt.Errorf("锁定倍率变化本地分组: %w", err))
+		}
+		if _, err := recalculateUpstreamBindingPriorities(ctx, tx.Client(), affectedLocalGroupIDs); err != nil {
+			return rollback(fmt.Errorf("按上游倍率重排账号: %w", err))
+		}
 	}
 
 	for _, daily := range result.Daily {
@@ -579,15 +675,58 @@ func (r *upstreamRepository) ListGroups(ctx context.Context, siteID int64) ([]se
 	if err != nil {
 		return nil, fmt.Errorf("查询上游分组: %w", err)
 	}
+	groupIDs := make([]int64, 0, len(rows))
+	for _, row := range rows {
+		groupIDs = append(groupIDs, row.ID)
+	}
+	bindingsByGroup, err := loadUpstreamBindingViews(ctx, clientFromContext(ctx, r.client), groupIDs)
+	if err != nil {
+		return nil, fmt.Errorf("查询上游分组账号绑定: %w", err)
+	}
 	items := make([]service.UpstreamGroup, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, service.UpstreamGroup{
+		item := service.UpstreamGroup{
 			ID: row.ID, SiteID: row.SiteID, RemoteID: row.RemoteID, Name: row.Name,
 			Platform: row.Platform, Description: row.Description, Multiplier: row.Multiplier, TodayTokens: row.TodayTokens,
 			TodayCostUSD: row.TodayCostUsd, Displayed: row.Displayed, Available: row.Available, LastSyncedAt: row.LastSyncedAt,
-		})
+			Bindings: bindingsByGroup[row.ID],
+		}
+		if item.Bindings == nil {
+			item.Bindings = []service.UpstreamGroupAccountBinding{}
+		}
+		items = append(items, item)
 	}
 	return items, nil
+}
+
+func loadUpstreamBindingViews(ctx context.Context, client *dbent.Client, upstreamGroupIDs []int64) (map[int64][]service.UpstreamGroupAccountBinding, error) {
+	result := make(map[int64][]service.UpstreamGroupAccountBinding, len(upstreamGroupIDs))
+	upstreamGroupIDs = uniqueSortedPositiveInt64s(upstreamGroupIDs)
+	if len(upstreamGroupIDs) == 0 {
+		return result, nil
+	}
+	rows, err := client.UpstreamGroupAccountBinding.Query().
+		Where(upstreamgroupaccountbinding.UpstreamGroupIDIn(upstreamGroupIDs...)).
+		Order(upstreamgroupaccountbinding.ByLocalGroupID(), upstreamgroupaccountbinding.ByAccountID()).
+		WithLocalGroup().
+		WithAccount().
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		if row.Edges.LocalGroup == nil || row.Edges.Account == nil {
+			continue
+		}
+		result[row.UpstreamGroupID] = append(result[row.UpstreamGroupID], service.UpstreamGroupAccountBinding{
+			ID: row.ID, UpstreamGroupID: row.UpstreamGroupID,
+			LocalGroupID: row.LocalGroupID, LocalGroupName: row.Edges.LocalGroup.Name,
+			AccountID: row.AccountID, AccountName: row.Edges.Account.Name,
+			AccountPlatform: row.Edges.Account.Platform, AccountStatus: row.Edges.Account.Status,
+			AccountPriority: row.Edges.Account.Priority, CreatedAt: row.CreatedAt,
+		})
+	}
+	return result, nil
 }
 
 func (r *upstreamRepository) SetGroupDisplayed(ctx context.Context, siteID int64, remoteID string, displayed bool) (*service.UpstreamGroupDisplayResult, error) {
@@ -617,6 +756,17 @@ func (r *upstreamRepository) SetGroupDisplayed(ctx context.Context, siteID int64
 	if err != nil {
 		return rollback(fmt.Errorf("查询上游分组: %w", err))
 	}
+	if !displayed {
+		bindingCount, countErr := tx.UpstreamGroupAccountBinding.Query().
+			Where(upstreamgroupaccountbinding.UpstreamGroupIDEQ(row.ID)).
+			Count(ctx)
+		if countErr != nil {
+			return rollback(fmt.Errorf("统计上游分组账号绑定: %w", countErr))
+		}
+		if bindingCount > 0 {
+			return rollback(service.ErrUpstreamGroupHasBindings)
+		}
+	}
 	if displayed && !row.Available {
 		return rollback(service.ErrUpstreamGroupUnavailable)
 	}
@@ -636,10 +786,194 @@ func (r *upstreamRepository) SetGroupDisplayed(ctx context.Context, siteID int64
 	if err != nil {
 		return rollback(fmt.Errorf("统计已展示上游分组: %w", err))
 	}
+	bindingsByGroup, bindingErr := loadUpstreamBindingViews(ctx, tx.Client(), []int64{row.ID})
+	if bindingErr != nil {
+		return rollback(fmt.Errorf("读取上游分组账号绑定: %w", bindingErr))
+	}
+	item.Bindings = bindingsByGroup[row.ID]
+	if item.Bindings == nil {
+		item.Bindings = []service.UpstreamGroupAccountBinding{}
+	}
 	if err = tx.Commit(); err != nil {
 		return nil, fmt.Errorf("提交上游分组展示事务: %w", err)
 	}
 	return &service.UpstreamGroupDisplayResult{Group: item, DisplayedGroupCount: count}, nil
+}
+
+func (r *upstreamRepository) ReplaceGroupBindings(
+	ctx context.Context,
+	siteID, upstreamGroupID int64,
+	inputs []service.UpstreamGroupAccountBindingInput,
+) (*service.UpstreamGroup, error) {
+	requestedAccountIDs := make([]int64, 0, len(inputs))
+	for _, input := range inputs {
+		requestedAccountIDs = append(requestedAccountIDs, input.AccountID)
+	}
+	tx, err := r.client.Tx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("开启上游账号绑定事务: %w", err)
+	}
+	rollback := func(cause error) (*service.UpstreamGroup, error) {
+		if rbErr := tx.Rollback(); rbErr != nil {
+			return nil, fmt.Errorf("%v；回滚失败: %w", cause, rbErr)
+		}
+		return nil, cause
+	}
+	if err := lockUpstreamBindingAccountsByID(ctx, tx.Client(), requestedAccountIDs); err != nil {
+		return rollback(fmt.Errorf("锁定待绑定账号: %w", err))
+	}
+	if err := lockUpstreamSite(ctx, tx, siteID); err != nil {
+		if dbent.IsNotFound(err) {
+			return rollback(service.ErrUpstreamNotFound)
+		}
+		return rollback(fmt.Errorf("锁定上游站点: %w", err))
+	}
+	groupRow, err := tx.UpstreamGroup.Query().Where(
+		upstreamgroup.IDEQ(upstreamGroupID),
+		upstreamgroup.SiteIDEQ(siteID),
+	).Only(ctx)
+	if dbent.IsNotFound(err) {
+		return rollback(service.ErrUpstreamGroupNotFound)
+	}
+	if err != nil {
+		return rollback(fmt.Errorf("查询上游分组: %w", err))
+	}
+	existingBindings, err := tx.UpstreamGroupAccountBinding.Query().
+		Where(upstreamgroupaccountbinding.UpstreamGroupIDEQ(upstreamGroupID)).
+		All(ctx)
+	if err != nil {
+		return rollback(fmt.Errorf("查询现有账号绑定: %w", err))
+	}
+	existingByAccount := make(map[int64]*dbent.UpstreamGroupAccountBinding, len(existingBindings))
+	affectedLocalGroupIDs := make([]int64, 0, len(existingBindings)+len(inputs))
+	for _, binding := range existingBindings {
+		existingByAccount[binding.AccountID] = binding
+		affectedLocalGroupIDs = append(affectedLocalGroupIDs, binding.LocalGroupID)
+	}
+
+	accountIDs := make([]int64, 0, len(inputs))
+	localGroupIDs := make([]int64, 0, len(inputs))
+	desiredByAccount := make(map[int64]service.UpstreamGroupAccountBindingInput, len(inputs))
+	hasAddition := false
+	for _, input := range inputs {
+		accountIDs = append(accountIDs, input.AccountID)
+		localGroupIDs = append(localGroupIDs, input.LocalGroupID)
+		affectedLocalGroupIDs = append(affectedLocalGroupIDs, input.LocalGroupID)
+		desiredByAccount[input.AccountID] = input
+		if existing := existingByAccount[input.AccountID]; existing == nil || existing.LocalGroupID != input.LocalGroupID {
+			hasAddition = true
+		}
+	}
+	accountIDs = uniqueSortedPositiveInt64s(accountIDs)
+	localGroupIDs = uniqueSortedPositiveInt64s(localGroupIDs)
+	affectedLocalGroupIDs = uniqueSortedPositiveInt64s(affectedLocalGroupIDs)
+	if hasAddition {
+		if !groupRow.Displayed || !groupRow.Available || groupRow.Multiplier == nil {
+			return rollback(service.ErrUpstreamGroupMultiplierUnavailable)
+		}
+		if _, ok := normalizeUpstreamBindingMultiplier(*groupRow.Multiplier); !ok {
+			return rollback(service.ErrUpstreamGroupMultiplierUnavailable)
+		}
+	}
+	if len(localGroupIDs) > 0 {
+		groups, groupErr := tx.Group.Query().Where(dbgroup.IDIn(localGroupIDs...)).All(ctx)
+		if groupErr != nil {
+			return rollback(fmt.Errorf("查询待绑定本地分组: %w", groupErr))
+		}
+		if len(groups) != len(localGroupIDs) {
+			return rollback(service.ErrGroupNotFound)
+		}
+	}
+	if err := lockLocalGroupsByID(ctx, tx.Client(), affectedLocalGroupIDs); err != nil {
+		return rollback(fmt.Errorf("锁定绑定本地分组: %w", err))
+	}
+
+	if len(accountIDs) > 0 {
+		accounts, accountErr := tx.Account.Query().Where(dbaccount.IDIn(accountIDs...)).All(ctx)
+		if accountErr != nil {
+			return rollback(fmt.Errorf("查询待绑定账号: %w", accountErr))
+		}
+		if len(accounts) != len(accountIDs) {
+			return rollback(service.ErrAccountNotFound)
+		}
+		memberships, membershipErr := tx.AccountGroup.Query().Where(
+			dbaccountgroup.AccountIDIn(accountIDs...),
+			dbaccountgroup.GroupIDIn(localGroupIDs...),
+		).All(ctx)
+		if membershipErr != nil {
+			return rollback(fmt.Errorf("查询账号本地分组关系: %w", membershipErr))
+		}
+		membershipSet := make(map[[2]int64]struct{}, len(memberships))
+		for _, membership := range memberships {
+			membershipSet[[2]int64{membership.AccountID, membership.GroupID}] = struct{}{}
+		}
+		for _, input := range inputs {
+			if _, exists := membershipSet[[2]int64{input.AccountID, input.LocalGroupID}]; !exists {
+				return rollback(service.ErrUpstreamAccountNotInGroup.WithCause(
+					fmt.Errorf("账号 %d 不属于本地分组 %d", input.AccountID, input.LocalGroupID),
+				))
+			}
+		}
+		conflict, conflictErr := tx.UpstreamGroupAccountBinding.Query().Where(
+			upstreamgroupaccountbinding.AccountIDIn(accountIDs...),
+			upstreamgroupaccountbinding.UpstreamGroupIDNEQ(upstreamGroupID),
+		).First(ctx)
+		if conflictErr != nil && !dbent.IsNotFound(conflictErr) {
+			return rollback(fmt.Errorf("检查账号重复绑定: %w", conflictErr))
+		}
+		if conflict != nil {
+			return rollback(service.ErrUpstreamBindingConflict.WithCause(
+				fmt.Errorf("账号 %d 已绑定上游分组 %d", conflict.AccountID, conflict.UpstreamGroupID),
+			))
+		}
+	}
+	deleteIDs := make([]int64, 0)
+	for accountID, existing := range existingByAccount {
+		desired, keep := desiredByAccount[accountID]
+		if !keep || desired.LocalGroupID != existing.LocalGroupID {
+			deleteIDs = append(deleteIDs, existing.ID)
+		}
+	}
+	if len(deleteIDs) > 0 {
+		if _, err := tx.UpstreamGroupAccountBinding.Delete().
+			Where(upstreamgroupaccountbinding.IDIn(deleteIDs...)).
+			Exec(ctx); err != nil {
+			return rollback(fmt.Errorf("删除旧账号绑定: %w", err))
+		}
+	}
+	creates := make([]*dbent.UpstreamGroupAccountBindingCreate, 0)
+	for _, input := range inputs {
+		if existing := existingByAccount[input.AccountID]; existing != nil && existing.LocalGroupID == input.LocalGroupID {
+			continue
+		}
+		creates = append(creates, tx.UpstreamGroupAccountBinding.Create().
+			SetUpstreamGroupID(upstreamGroupID).
+			SetLocalGroupID(input.LocalGroupID).
+			SetAccountID(input.AccountID))
+	}
+	if len(creates) > 0 {
+		if _, err := tx.UpstreamGroupAccountBinding.CreateBulk(creates...).Save(ctx); err != nil {
+			return rollback(translatePersistenceError(err, nil, service.ErrUpstreamBindingConflict))
+		}
+	}
+	if len(deleteIDs) > 0 || len(creates) > 0 {
+		if _, err := recalculateUpstreamBindingPriorities(ctx, tx.Client(), affectedLocalGroupIDs); err != nil {
+			return rollback(fmt.Errorf("重排绑定账号优先级: %w", err))
+		}
+	}
+	bindingsByGroup, err := loadUpstreamBindingViews(ctx, tx.Client(), []int64{upstreamGroupID})
+	if err != nil {
+		return rollback(fmt.Errorf("读取更新后账号绑定: %w", err))
+	}
+	item := upstreamGroupFromEnt(groupRow)
+	item.Bindings = bindingsByGroup[upstreamGroupID]
+	if item.Bindings == nil {
+		item.Bindings = []service.UpstreamGroupAccountBinding{}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("提交上游账号绑定事务: %w", err)
+	}
+	return &item, nil
 }
 
 func upstreamGroupFromEnt(row *dbent.UpstreamGroup) service.UpstreamGroup {
@@ -785,13 +1119,6 @@ func multiplierHistoryPoints(rows []*dbent.UpstreamGroupMultiplierHistory, from,
 	return points
 }
 
-func equalOptionalFloat(left, right *float64) bool {
-	if left == nil || right == nil {
-		return left == nil && right == nil
-	}
-	return *left == *right
-}
-
 func upstreamSiteFromEnt(row *dbent.UpstreamSite) *service.UpstreamSite {
 	site := &service.UpstreamSite{}
 	assignUpstreamSite(site, row)
@@ -799,14 +1126,17 @@ func upstreamSiteFromEnt(row *dbent.UpstreamSite) *service.UpstreamSite {
 }
 
 func assignUpstreamSite(site *service.UpstreamSite, row *dbent.UpstreamSite) {
+	displayedGroupCount := site.DisplayedGroupCount
+	bindingCount := site.BindingCount
 	*site = service.UpstreamSite{
-		ID: row.ID, Name: row.Name, BaseURL: row.BaseURL, Platform: string(row.Platform),
+		ID: row.ID, SortOrder: row.SortOrder, Name: row.Name, BaseURL: row.BaseURL, Platform: string(row.Platform),
 		AuthMode: string(row.AuthMode), Account: row.Account, CredentialEncrypted: row.CredentialEncrypted,
 		Enabled: row.Enabled, Status: string(row.Status), ErrorMessage: row.ErrorMessage,
 		BalanceUSD: row.BalanceUsd, TodayTokens: row.TodayTokens, TodayCostUSD: row.TodayCostUsd,
 		TotalTokens: row.TotalTokens, TotalCostUSD: row.TotalCostUsd,
 		TrackingStartedAt: row.TrackingStartedAt, LastSyncedAt: row.LastSyncedAt,
 		NextSyncAt: row.NextSyncAt, CreatedBy: row.CreatedBy, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		DisplayedGroupCount: displayedGroupCount, BindingCount: bindingCount,
 	}
 }
 

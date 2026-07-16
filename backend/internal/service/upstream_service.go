@@ -14,6 +14,8 @@ import (
 
 const upstreamSyncInterval = 5 * time.Minute
 
+const maxUpstreamGroupBindings = 1000
+
 // UpstreamService 提供独立上游管理的 CRUD、脱敏和同步编排。
 type UpstreamService struct {
 	repo       UpstreamRepository
@@ -289,7 +291,14 @@ func (s *UpstreamService) QueueAll(ctx context.Context) (int, error) {
 }
 
 func (s *UpstreamService) ListGroups(ctx context.Context, id int64) ([]UpstreamGroup, error) {
-	return s.repo.ListGroups(ctx, id)
+	groups, err := s.repo.ListGroups(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	for index := range groups {
+		normalizeUpstreamGroupBindings(&groups[index])
+	}
+	return groups, nil
 }
 
 func (s *UpstreamService) SetGroupDisplayed(ctx context.Context, id int64, input UpstreamGroupDisplayInput) (*UpstreamGroupDisplayResult, error) {
@@ -298,6 +307,39 @@ func (s *UpstreamService) SetGroupDisplayed(ctx context.Context, id int64, input
 		return nil, ErrUpstreamInvalidInput
 	}
 	return s.repo.SetGroupDisplayed(ctx, id, remoteID, *input.Displayed)
+}
+
+// ReplaceGroupBindings 原子替换指定上游分组的全部账号绑定；空数组表示全部解绑。
+func (s *UpstreamService) ReplaceGroupBindings(
+	ctx context.Context,
+	siteID, upstreamGroupID int64,
+	inputs []UpstreamGroupAccountBindingInput,
+) (*UpstreamGroup, error) {
+	if siteID <= 0 || upstreamGroupID <= 0 || len(inputs) > maxUpstreamGroupBindings {
+		return nil, ErrUpstreamInvalidInput
+	}
+	seenAccounts := make(map[int64]struct{}, len(inputs))
+	for _, input := range inputs {
+		if input.LocalGroupID <= 0 || input.AccountID <= 0 {
+			return nil, ErrUpstreamInvalidInput
+		}
+		if _, exists := seenAccounts[input.AccountID]; exists {
+			return nil, ErrUpstreamInvalidInput.WithCause(fmt.Errorf("请求内存在重复账号 ID: %d", input.AccountID))
+		}
+		seenAccounts[input.AccountID] = struct{}{}
+	}
+	group, err := s.repo.ReplaceGroupBindings(ctx, siteID, upstreamGroupID, inputs)
+	if err != nil {
+		return nil, err
+	}
+	normalizeUpstreamGroupBindings(group)
+	return group, nil
+}
+
+func normalizeUpstreamGroupBindings(group *UpstreamGroup) {
+	if group != nil && group.Bindings == nil {
+		group.Bindings = make([]UpstreamGroupAccountBinding, 0)
+	}
 }
 
 func (s *UpstreamService) ListHistory(ctx context.Context, id int64, from, through time.Time) ([]UpstreamDailyStat, error) {
@@ -520,6 +562,7 @@ func (s *UpstreamService) toView(site *UpstreamSite) UpstreamSiteView {
 		TotalTokens: site.TotalTokens, TotalCostUSD: site.TotalCostUSD, TrackingStartedAt: site.TrackingStartedAt,
 		LastSyncedAt: site.LastSyncedAt, CreatedAt: site.CreatedAt, UpdatedAt: site.UpdatedAt,
 		DisplayedGroupCount: site.DisplayedGroupCount,
+		BindingCount:        site.BindingCount,
 	}
 	credential, err := s.decryptCredential(site.CredentialEncrypted)
 	if err == nil {

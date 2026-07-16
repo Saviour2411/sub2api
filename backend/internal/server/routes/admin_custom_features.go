@@ -28,6 +28,7 @@ func registerCustomFeatureRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 			upstreams.POST("/:id/sync", h.Admin.CustomFeature.SyncUpstream)
 			upstreams.GET("/:id/groups", h.Admin.CustomFeature.ListUpstreamGroups)
 			upstreams.PATCH("/:id/groups/display", h.Admin.CustomFeature.SetUpstreamGroupDisplayed)
+			upstreams.PUT("/:id/groups/:groupID/bindings", h.Admin.CustomFeature.ReplaceUpstreamGroupBindings)
 			upstreams.GET("/:id/history", h.Admin.CustomFeature.ListUpstreamHistory)
 			upstreams.GET("/:id/multiplier-history", h.Admin.CustomFeature.ListUpstreamMultiplierHistory)
 		}

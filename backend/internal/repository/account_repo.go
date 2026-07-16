@@ -15,6 +15,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -442,10 +443,6 @@ func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, cre
 }
 
 func (r *accountRepository) Delete(ctx context.Context, id int64) error {
-	groupIDs, err := r.loadAccountGroupIDs(ctx, id)
-	if err != nil {
-		return err
-	}
 	// 使用事务保证账号与关联分组的删除原子性
 	tx, err := r.client.Tx(ctx)
 	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
@@ -458,9 +455,19 @@ func (r *accountRepository) Delete(ctx context.Context, id int64) error {
 		txClient = tx.Client()
 	} else {
 		// 已处于外部事务中（ErrTxStarted），复用当前 client
-		txClient = r.client
+		txClient = clientFromContext(ctx, r.client)
+	}
+	if err := lockUpstreamBindingAccountsByID(ctx, txClient, []int64{id}); err != nil {
+		return fmt.Errorf("锁定待删除账号: %w", err)
+	}
+	groupIDs, err := loadAccountGroupIDsWithClient(ctx, txClient, id)
+	if err != nil {
+		return err
 	}
 
+	if err := removeUpstreamBindingsForAccount(ctx, txClient, id, groupIDs); err != nil {
+		return fmt.Errorf("清理账号上游倍率绑定: %w", err)
+	}
 	if _, err := txClient.AccountGroup.Delete().Where(dbaccountgroup.AccountIDEQ(id)).Exec(ctx); err != nil {
 		return err
 	}
@@ -964,14 +971,31 @@ func (r *accountRepository) AddToGroup(ctx context.Context, accountID, groupID i
 }
 
 func (r *accountRepository) RemoveFromGroup(ctx context.Context, accountID, groupID int64) error {
-	_, err := r.client.AccountGroup.Delete().
-		Where(
-			dbaccountgroup.AccountIDEQ(accountID),
-			dbaccountgroup.GroupIDEQ(groupID),
-		).
-		Exec(ctx)
+	tx, err := r.client.Tx(ctx)
+	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+		return err
+	}
+	var txClient *dbent.Client
+	if err == nil {
+		defer func() { _ = tx.Rollback() }()
+		txClient = tx.Client()
+	} else {
+		txClient = clientFromContext(ctx, r.client)
+	}
+	if err := removeUpstreamBindingsForAccount(ctx, txClient, accountID, []int64{groupID}); err != nil {
+		return fmt.Errorf("清理账号上游倍率绑定: %w", err)
+	}
+	_, err = txClient.AccountGroup.Delete().Where(
+		dbaccountgroup.AccountIDEQ(accountID),
+		dbaccountgroup.GroupIDEQ(groupID),
+	).Exec(ctx)
 	if err != nil {
 		return err
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return err
+		}
 	}
 	payload := buildSchedulerGroupPayload([]int64{groupID})
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountGroupsChanged, &accountID, nil, payload); err != nil {
@@ -1002,6 +1026,34 @@ func (r *accountRepository) BindGroups(ctx context.Context, accountID int64, gro
 	if err != nil {
 		return err
 	}
+	desiredGroupIDs := make([]int64, 0, len(groupIDs))
+	desiredSet := make(map[int64]struct{}, len(groupIDs))
+	for _, groupID := range groupIDs {
+		if groupID <= 0 {
+			continue
+		}
+		if _, exists := desiredSet[groupID]; exists {
+			continue
+		}
+		desiredSet[groupID] = struct{}{}
+		desiredGroupIDs = append(desiredGroupIDs, groupID)
+	}
+	existingSet := make(map[int64]struct{}, len(existingGroupIDs))
+	for _, groupID := range existingGroupIDs {
+		existingSet[groupID] = struct{}{}
+	}
+	removedGroupIDs := make([]int64, 0)
+	for _, groupID := range existingGroupIDs {
+		if _, keep := desiredSet[groupID]; !keep {
+			removedGroupIDs = append(removedGroupIDs, groupID)
+		}
+	}
+	addedGroupIDs := make([]int64, 0)
+	for _, groupID := range desiredGroupIDs {
+		if _, exists := existingSet[groupID]; !exists {
+			addedGroupIDs = append(addedGroupIDs, groupID)
+		}
+	}
 	// 使用事务保证删除旧绑定与创建新绑定的原子性
 	tx, err := r.client.Tx(ctx)
 	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
@@ -1014,31 +1066,39 @@ func (r *accountRepository) BindGroups(ctx context.Context, accountID int64, gro
 		txClient = tx.Client()
 	} else {
 		// 已处于外部事务中（ErrTxStarted），复用当前 client
-		txClient = r.client
+		txClient = clientFromContext(ctx, r.client)
 	}
 
-	if _, err := txClient.AccountGroup.Delete().Where(dbaccountgroup.AccountIDEQ(accountID)).Exec(ctx); err != nil {
-		return err
-	}
-
-	if len(groupIDs) == 0 {
-		if tx != nil {
-			return tx.Commit()
+	if len(removedGroupIDs) > 0 {
+		if err := removeUpstreamBindingsForAccount(ctx, txClient, accountID, removedGroupIDs); err != nil {
+			return fmt.Errorf("清理账号上游倍率绑定: %w", err)
 		}
-		return nil
+	}
+	if len(removedGroupIDs) > 0 {
+		if _, err := txClient.AccountGroup.Delete().Where(
+			dbaccountgroup.AccountIDEQ(accountID),
+			dbaccountgroup.GroupIDIn(removedGroupIDs...),
+		).Exec(ctx); err != nil {
+			return err
+		}
 	}
 
-	builders := make([]*dbent.AccountGroupCreate, 0, len(groupIDs))
-	for i, groupID := range groupIDs {
+	priorityByGroup := make(map[int64]int, len(desiredGroupIDs))
+	for index, groupID := range desiredGroupIDs {
+		priorityByGroup[groupID] = index + 1
+	}
+	// 已有关系的 priority 是管理员维护的分组内配置；差量更新只为新增关系设置默认值。
+	builders := make([]*dbent.AccountGroupCreate, 0, len(addedGroupIDs))
+	for _, groupID := range addedGroupIDs {
 		builders = append(builders, txClient.AccountGroup.Create().
 			SetAccountID(accountID).
 			SetGroupID(groupID).
-			SetPriority(i+1),
-		)
+			SetPriority(priorityByGroup[groupID]))
 	}
-
-	if _, err := txClient.AccountGroup.CreateBulk(builders...).Save(ctx); err != nil {
-		return err
+	if len(builders) > 0 {
+		if _, err := txClient.AccountGroup.CreateBulk(builders...).Save(ctx); err != nil {
+			return err
+		}
 	}
 
 	if tx != nil {
@@ -1046,7 +1106,7 @@ func (r *accountRepository) BindGroups(ctx context.Context, accountID int64, gro
 			return err
 		}
 	}
-	payload := buildSchedulerGroupPayload(mergeGroupIDs(existingGroupIDs, groupIDs))
+	payload := buildSchedulerGroupPayload(mergeGroupIDs(existingGroupIDs, desiredGroupIDs))
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountGroupsChanged, &accountID, nil, payload); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue bind groups failed: account=%d err=%v", accountID, err)
 	}
@@ -2254,7 +2314,11 @@ func uniquePositiveInt64s(ids []int64) []int64 {
 }
 
 func (r *accountRepository) loadAccountGroupIDs(ctx context.Context, accountID int64) ([]int64, error) {
-	entries, err := r.client.AccountGroup.
+	return loadAccountGroupIDsWithClient(ctx, clientFromContext(ctx, r.client), accountID)
+}
+
+func loadAccountGroupIDsWithClient(ctx context.Context, client *dbent.Client, accountID int64) ([]int64, error) {
+	entries, err := client.AccountGroup.
 		Query().
 		Where(dbaccountgroup.AccountIDEQ(accountID)).
 		All(ctx)

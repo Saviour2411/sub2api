@@ -45,6 +45,18 @@ var (
 	ErrUpstreamGroupUnavailable = infraerrors.BadRequest(
 		"UPSTREAM_GROUP_UNAVAILABLE", "暂不可用的上游分组不能添加展示",
 	)
+	ErrUpstreamBindingConflict = infraerrors.Conflict(
+		"UPSTREAM_BINDING_CONFLICT", "账号已绑定其他上游分组",
+	)
+	ErrUpstreamAccountNotInGroup = infraerrors.BadRequest(
+		"UPSTREAM_ACCOUNT_NOT_IN_GROUP", "账号不属于指定本地分组",
+	)
+	ErrUpstreamGroupMultiplierUnavailable = infraerrors.BadRequest(
+		"UPSTREAM_GROUP_MULTIPLIER_UNAVAILABLE", "上游分组倍率不可用，不能新增绑定",
+	)
+	ErrUpstreamGroupHasBindings = infraerrors.Conflict(
+		"UPSTREAM_GROUP_HAS_BINDINGS", "上游分组已有账号绑定，请先解除绑定",
+	)
 )
 
 // UpstreamCredential 是 AES-GCM 加密信封中的明文结构，仅在服务内部流转。
@@ -82,6 +94,7 @@ type UpstreamSite struct {
 	UpdatedAt             time.Time
 	CredentialDecryptFail bool
 	DisplayedGroupCount   int
+	BindingCount          int
 }
 
 // UpstreamSiteView 是管理 API 的脱敏响应。
@@ -108,6 +121,7 @@ type UpstreamSiteView struct {
 	HasPassword         bool       `json:"has_password"`
 	HasToken            bool       `json:"has_token"`
 	DisplayedGroupCount int        `json:"displayed_group_count"`
+	BindingCount        int        `json:"binding_count"`
 }
 
 type UpstreamListParams struct {
@@ -165,18 +179,43 @@ type UpstreamUpdateInput struct {
 }
 
 type UpstreamGroup struct {
-	ID           int64     `json:"id"`
-	SiteID       int64     `json:"site_id"`
-	RemoteID     string    `json:"remote_id"`
-	Name         string    `json:"name"`
-	Platform     string    `json:"platform"`
-	Description  string    `json:"description"`
-	Multiplier   *float64  `json:"multiplier"`
-	TodayTokens  int64     `json:"today_tokens"`
-	TodayCostUSD float64   `json:"today_cost_usd"`
-	Displayed    bool      `json:"displayed"`
-	Available    bool      `json:"available"`
-	LastSyncedAt time.Time `json:"last_synced_at"`
+	ID           int64                         `json:"id"`
+	SiteID       int64                         `json:"site_id"`
+	RemoteID     string                        `json:"remote_id"`
+	Name         string                        `json:"name"`
+	Platform     string                        `json:"platform"`
+	Description  string                        `json:"description"`
+	Multiplier   *float64                      `json:"multiplier"`
+	TodayTokens  int64                         `json:"today_tokens"`
+	TodayCostUSD float64                       `json:"today_cost_usd"`
+	Displayed    bool                          `json:"displayed"`
+	Available    bool                          `json:"available"`
+	LastSyncedAt time.Time                     `json:"last_synced_at"`
+	Bindings     []UpstreamGroupAccountBinding `json:"bindings"`
+}
+
+// UpstreamGroupAccountBinding 是上游分组与本地账号的管理 API 响应。
+type UpstreamGroupAccountBinding struct {
+	ID              int64     `json:"id"`
+	UpstreamGroupID int64     `json:"upstream_group_id"`
+	LocalGroupID    int64     `json:"local_group_id"`
+	LocalGroupName  string    `json:"local_group_name"`
+	AccountID       int64     `json:"account_id"`
+	AccountName     string    `json:"account_name"`
+	AccountPlatform string    `json:"account_platform"`
+	AccountStatus   string    `json:"account_status"`
+	AccountPriority int       `json:"account_priority"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+// UpstreamGroupAccountBindingInput 描述一个待替换的本地账号绑定。
+type UpstreamGroupAccountBindingInput struct {
+	LocalGroupID int64 `json:"local_group_id"`
+	AccountID    int64 `json:"account_id"`
+}
+
+type UpstreamGroupBindingsInput struct {
+	Bindings []UpstreamGroupAccountBindingInput `json:"bindings"`
 }
 
 type UpstreamGroupDisplayInput struct {
@@ -272,6 +311,7 @@ type UpstreamRepository interface {
 	CommitSync(ctx context.Context, id int64, result *UpstreamSyncResult, encryptedCredential string, syncedAt time.Time, nextSyncAt *time.Time) error
 	ListGroups(ctx context.Context, siteID int64) ([]UpstreamGroup, error)
 	SetGroupDisplayed(ctx context.Context, siteID int64, remoteID string, displayed bool) (*UpstreamGroupDisplayResult, error)
+	ReplaceGroupBindings(ctx context.Context, siteID, upstreamGroupID int64, inputs []UpstreamGroupAccountBindingInput) (*UpstreamGroup, error)
 	ListHistory(ctx context.Context, siteID int64, from, through time.Time) ([]UpstreamDailyStat, error)
 	ListMultiplierHistory(ctx context.Context, siteID int64, from, through time.Time) ([]UpstreamGroupMultiplierHistory, error)
 }

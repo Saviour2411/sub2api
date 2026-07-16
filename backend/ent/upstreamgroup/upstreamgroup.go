@@ -42,6 +42,8 @@ const (
 	FieldLastSyncedAt = "last_synced_at"
 	// EdgeSite holds the string denoting the site edge name in mutations.
 	EdgeSite = "site"
+	// EdgeAccountBindings holds the string denoting the account_bindings edge name in mutations.
+	EdgeAccountBindings = "account_bindings"
 	// Table holds the table name of the upstreamgroup in the database.
 	Table = "upstream_groups"
 	// SiteTable is the table that holds the site relation/edge.
@@ -51,6 +53,13 @@ const (
 	SiteInverseTable = "upstream_sites"
 	// SiteColumn is the table column denoting the site relation/edge.
 	SiteColumn = "site_id"
+	// AccountBindingsTable is the table that holds the account_bindings relation/edge.
+	AccountBindingsTable = "upstream_group_account_bindings"
+	// AccountBindingsInverseTable is the table name for the UpstreamGroupAccountBinding entity.
+	// It exists in this package in order to avoid circular dependency with the "upstreamgroupaccountbinding" package.
+	AccountBindingsInverseTable = "upstream_group_account_bindings"
+	// AccountBindingsColumn is the table column denoting the account_bindings relation/edge.
+	AccountBindingsColumn = "upstream_group_id"
 )
 
 // Columns holds all SQL columns for upstreamgroup fields.
@@ -189,10 +198,31 @@ func BySiteField(field string, opts ...sql.OrderTermOption) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newSiteStep(), sql.OrderByField(field, opts...))
 	}
 }
+
+// ByAccountBindingsCount orders the results by account_bindings count.
+func ByAccountBindingsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newAccountBindingsStep(), opts...)
+	}
+}
+
+// ByAccountBindings orders the results by account_bindings terms.
+func ByAccountBindings(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newAccountBindingsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newSiteStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(SiteInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, true, SiteTable, SiteColumn),
+	)
+}
+func newAccountBindingsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(AccountBindingsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, AccountBindingsTable, AccountBindingsColumn),
 	)
 }

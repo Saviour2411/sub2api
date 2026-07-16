@@ -4,13 +4,16 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 	"time"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
+	"github.com/DATA-DOG/go-sqlmock"
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	dbaccountgroup "github.com/Wei-Shaw/sub2api/ent/accountgroup"
 	"github.com/Wei-Shaw/sub2api/ent/enttest"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
@@ -378,6 +381,390 @@ func containsUpstreamDate(dates []time.Time, target time.Time, loc *time.Locatio
 		}
 	}
 	return false
+}
+
+func TestUpstreamRepositoryBindingsReorderFreezeAndLifecycle(t *testing.T) {
+	db, err := sql.Open("sqlite", fmt.Sprintf("file:upstream-bindings-%d?mode=memory&cache=shared&_pragma=foreign_keys(1)&_time_format=sqlite", time.Now().UnixNano()))
+	require.NoError(t, err)
+	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(entsql.OpenDB(dialect.SQLite, db))))
+	t.Cleanup(func() { require.NoError(t, client.Close()) })
+	_, err = db.Exec(`CREATE TABLE scheduler_outbox (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		event_type TEXT NOT NULL,
+		account_id INTEGER,
+		group_id INTEGER,
+		payload BLOB,
+		dedup_key TEXT,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+	)`)
+	require.NoError(t, err)
+	repo := NewUpstreamRepository(client)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	createSite := func(name, baseURL string) *service.UpstreamSite {
+		site := &service.UpstreamSite{
+			Name: name, BaseURL: baseURL, Platform: service.UpstreamPlatformSub2API,
+			AuthMode: service.UpstreamAuthPassword, Account: "admin", CredentialEncrypted: "encrypted",
+			Enabled: true, Status: service.UpstreamStatusPending, TrackingStartedAt: now, CreatedBy: 1,
+		}
+		require.NoError(t, repo.Create(ctx, site))
+		return site
+	}
+	localGroup, err := client.Group.Create().SetName("本地调度组").SetPlatform(service.PlatformOpenAI).Save(ctx)
+	require.NoError(t, err)
+	createAccount := func(name string, priority int, bindToLocalGroup bool) *dbent.Account {
+		account, createErr := client.Account.Create().
+			SetName(name).
+			SetPlatform(service.PlatformOpenAI).
+			SetType(service.AccountTypeAPIKey).
+			SetCredentials(map[string]any{"api_key": "sk-test"}).
+			SetPriority(priority).
+			Save(ctx)
+		require.NoError(t, createErr)
+		if bindToLocalGroup {
+			_, createErr = client.AccountGroup.Create().
+				SetAccountID(account.ID).
+				SetGroupID(localGroup.ID).
+				SetPriority(50).
+				Save(ctx)
+			require.NoError(t, createErr)
+		}
+		return account
+	}
+	high := createAccount("高倍率", 70, true)
+	lowA := createAccount("低倍率 A", 71, true)
+	lowB := createAccount("低倍率 B", 72, true)
+	unbound := createAccount("未绑定", 3, true)
+
+	highSite := createSite("高倍率站点", "https://high.example.com")
+	lowSite := createSite("低倍率站点", "https://low.example.com")
+	syncGroup := func(site *service.UpstreamSite, remoteID, name string, multiplier *float64, syncedAt time.Time) {
+		require.NoError(t, repo.CommitSync(ctx, site.ID, &service.UpstreamSyncResult{Groups: []service.UpstreamGroupSnapshot{{
+			RemoteID: remoteID, Name: name, Platform: "OpenAI", Multiplier: multiplier,
+		}}}, "", syncedAt, nil))
+	}
+	syncGroup(highSite, "high", "高倍率组", float64Ptr(2), now)
+	syncGroup(lowSite, "low", "低倍率组", float64Ptr(0.5), now)
+	highGroups, err := repo.ListGroups(ctx, highSite.ID)
+	require.NoError(t, err)
+	lowGroups, err := repo.ListGroups(ctx, lowSite.ID)
+	require.NoError(t, err)
+	highGroupID := highGroups[0].ID
+	lowGroupID := lowGroups[0].ID
+	_, err = repo.SetGroupDisplayed(ctx, highSite.ID, "high", true)
+	require.NoError(t, err)
+	_, err = repo.SetGroupDisplayed(ctx, lowSite.ID, "low", true)
+	require.NoError(t, err)
+
+	_, err = repo.ReplaceGroupBindings(ctx, highSite.ID, highGroupID, []service.UpstreamGroupAccountBindingInput{{
+		LocalGroupID: localGroup.ID, AccountID: high.ID,
+	}})
+	require.NoError(t, err)
+	updatedHigh, err := client.Account.Get(ctx, high.ID)
+	require.NoError(t, err)
+	require.Equal(t, 10, updatedHigh.Priority)
+
+	lowView, err := repo.ReplaceGroupBindings(ctx, lowSite.ID, lowGroupID, []service.UpstreamGroupAccountBindingInput{
+		{LocalGroupID: localGroup.ID, AccountID: lowA.ID},
+		{LocalGroupID: localGroup.ID, AccountID: lowB.ID},
+	})
+	require.NoError(t, err)
+	require.Len(t, lowView.Bindings, 2)
+	for _, accountID := range []int64{lowA.ID, lowB.ID} {
+		account, getErr := client.Account.Get(ctx, accountID)
+		require.NoError(t, getErr)
+		require.Equal(t, 10, account.Priority)
+	}
+	updatedHigh, err = client.Account.Get(ctx, high.ID)
+	require.NoError(t, err)
+	require.Equal(t, 15, updatedHigh.Priority)
+	unchanged, err := client.Account.Get(ctx, unbound.ID)
+	require.NoError(t, err)
+	require.Equal(t, 3, unchanged.Priority, "未绑定账号不能被自动重排")
+	lowSiteView, err := repo.GetByID(ctx, lowSite.ID)
+	require.NoError(t, err)
+	require.Equal(t, 2, lowSiteView.BindingCount)
+
+	_, err = repo.SetGroupDisplayed(ctx, lowSite.ID, "low", false)
+	require.ErrorIs(t, err, service.ErrUpstreamGroupHasBindings)
+	_, err = repo.ReplaceGroupBindings(ctx, lowSite.ID, lowGroupID, []service.UpstreamGroupAccountBindingInput{
+		{LocalGroupID: localGroup.ID, AccountID: lowA.ID},
+		{LocalGroupID: localGroup.ID, AccountID: lowB.ID},
+		{LocalGroupID: localGroup.ID, AccountID: high.ID},
+	})
+	require.ErrorIs(t, err, service.ErrUpstreamBindingConflict)
+
+	invalidMultiplier := math.NaN()
+	err = repo.CommitSync(ctx, highSite.ID, &service.UpstreamSyncResult{Groups: []service.UpstreamGroupSnapshot{{
+		RemoteID: "high", Name: "高倍率组", Multiplier: &invalidMultiplier,
+	}}}, "", now.Add(time.Minute), nil)
+	require.Error(t, err)
+
+	require.NoError(t, repo.CommitSync(ctx, lowSite.ID, &service.UpstreamSyncResult{}, "", now.Add(2*time.Minute), nil))
+	require.NoError(t, client.Account.UpdateOneID(lowA.ID).SetPriority(77).Exec(ctx))
+	syncGroup(highSite, "high", "高倍率组", float64Ptr(4), now.Add(3*time.Minute))
+	frozenLow, err := client.Account.Get(ctx, lowA.ID)
+	require.NoError(t, err)
+	require.Equal(t, 77, frozenLow.Priority, "同组存在不可用绑定时必须冻结整组优先级")
+
+	syncGroup(lowSite, "low", "低倍率组", float64Ptr(0.5), now.Add(4*time.Minute))
+	for _, accountID := range []int64{lowA.ID, lowB.ID} {
+		account, getErr := client.Account.Get(ctx, accountID)
+		require.NoError(t, getErr)
+		require.Equal(t, 10, account.Priority, "上游分组恢复后必须重新排序")
+	}
+	updatedHigh, err = client.Account.Get(ctx, high.ID)
+	require.NoError(t, err)
+	require.Equal(t, 15, updatedHigh.Priority)
+	require.NoError(t, client.Account.UpdateOneID(lowA.ID).SetPriority(77).Exec(ctx))
+	_, err = repo.ReplaceGroupBindings(ctx, lowSite.ID, lowGroupID, []service.UpstreamGroupAccountBindingInput{
+		{LocalGroupID: localGroup.ID, AccountID: lowA.ID},
+		{LocalGroupID: localGroup.ID, AccountID: lowB.ID},
+	})
+	require.NoError(t, err)
+	manualLow, err := client.Account.Get(ctx, lowA.ID)
+	require.NoError(t, err)
+	require.Equal(t, 77, manualLow.Priority, "无变化的绑定保存不能覆盖管理员手工优先级")
+
+	_, err = repo.ReplaceGroupBindings(ctx, lowSite.ID, lowGroupID, nil)
+	require.NoError(t, err)
+	manualLow, err = client.Account.Get(ctx, lowA.ID)
+	require.NoError(t, err)
+	require.Equal(t, 77, manualLow.Priority, "解绑账号应保留当前手工优先级")
+	lowBAfterUnbind, err := client.Account.Get(ctx, lowB.ID)
+	require.NoError(t, err)
+	require.Equal(t, 10, lowBAfterUnbind.Priority, "解绑账号应保留最后一次自动优先级")
+	updatedHigh, err = client.Account.Get(ctx, high.ID)
+	require.NoError(t, err)
+	require.Equal(t, 10, updatedHigh.Priority, "剩余绑定账号应从 10 重新排名")
+
+	require.NoError(t, repo.Delete(ctx, highSite.ID))
+	updatedHigh, err = client.Account.Get(ctx, high.ID)
+	require.NoError(t, err)
+	require.Equal(t, 10, updatedHigh.Priority, "站点删除解绑后应保留账号当前优先级")
+	var outboxCount int
+	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM scheduler_outbox").Scan(&outboxCount))
+	require.Greater(t, outboxCount, 0)
+	var bulkOutboxCount int
+	require.NoError(t, db.QueryRow(
+		"SELECT COUNT(*) FROM scheduler_outbox WHERE event_type = ?",
+		service.SchedulerOutboxEventAccountBulkChanged,
+	).Scan(&bulkOutboxCount))
+	require.Greater(t, bulkOutboxCount, 0, "优先级变化必须发送账号批量刷新事件")
+}
+
+func TestNormalizeUpstreamBindingMultiplier(t *testing.T) {
+	left := 1.0000001
+	right := 1.0000002
+	require.True(t, equalNormalizedOptionalFloat(&left, &right))
+	_, ok := normalizeUpstreamBindingMultiplier(math.Inf(1))
+	require.False(t, ok)
+	_, ok = normalizeUpstreamBindingMultiplier(-0.1)
+	require.False(t, ok)
+	zero, ok := normalizeUpstreamBindingMultiplier(0)
+	require.True(t, ok)
+	require.Zero(t, zero)
+}
+
+func TestLockUpstreamBindingAccountsByIDPostgres(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	client := dbent.NewClient(dbent.Driver(entsql.OpenDB(dialect.Postgres, db)))
+	mock.ExpectQuery("SELECT pg_advisory_xact_lock").
+		WithArgs(sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"pg_advisory_xact_lock"}).AddRow(nil).AddRow(nil))
+	mock.ExpectClose()
+
+	require.NoError(t, lockUpstreamBindingAccountsByID(context.Background(), client, []int64{9, 3, 9}))
+	require.NoError(t, client.Close())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestAccountRepositoryCleansBindingsOnMembershipChangeAndDelete(t *testing.T) {
+	db, err := sql.Open("sqlite", fmt.Sprintf("file:account-upstream-bindings-%d?mode=memory&cache=shared&_pragma=foreign_keys(1)&_time_format=sqlite", time.Now().UnixNano()))
+	require.NoError(t, err)
+	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(entsql.OpenDB(dialect.SQLite, db))))
+	t.Cleanup(func() { require.NoError(t, client.Close()) })
+	_, err = db.Exec(`CREATE TABLE scheduler_outbox (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		event_type TEXT NOT NULL,
+		account_id INTEGER,
+		group_id INTEGER,
+		payload BLOB,
+		dedup_key TEXT,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+	)`)
+	require.NoError(t, err)
+	_, err = db.Exec(`CREATE UNIQUE INDEX scheduler_outbox_dedup_unique
+		ON scheduler_outbox (dedup_key) WHERE dedup_key IS NOT NULL`)
+	require.NoError(t, err)
+	_, err = db.Exec(`CREATE TABLE scheduled_test_plans (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		account_id INTEGER NOT NULL
+	)`)
+	require.NoError(t, err)
+	ctx := context.Background()
+	upstreamRepo := NewUpstreamRepository(client)
+	accountRepo := newAccountRepositoryWithSQL(client, db, nil)
+	now := time.Now().UTC().Truncate(time.Second)
+	site := &service.UpstreamSite{
+		Name: "账号生命周期站点", BaseURL: "https://lifecycle.example.com", Platform: service.UpstreamPlatformSub2API,
+		AuthMode: service.UpstreamAuthPassword, CredentialEncrypted: "encrypted", Enabled: true,
+		Status: service.UpstreamStatusPending, TrackingStartedAt: now, CreatedBy: 1,
+	}
+	require.NoError(t, upstreamRepo.Create(ctx, site))
+	require.NoError(t, upstreamRepo.CommitSync(ctx, site.ID, &service.UpstreamSyncResult{Groups: []service.UpstreamGroupSnapshot{
+		{RemoteID: "first", Name: "第一组", Multiplier: float64Ptr(1)},
+		{RemoteID: "second", Name: "第二组", Multiplier: float64Ptr(2)},
+	}}, "", now, nil))
+	_, err = upstreamRepo.SetGroupDisplayed(ctx, site.ID, "first", true)
+	require.NoError(t, err)
+	_, err = upstreamRepo.SetGroupDisplayed(ctx, site.ID, "second", true)
+	require.NoError(t, err)
+	groups, err := upstreamRepo.ListGroups(ctx, site.ID)
+	require.NoError(t, err)
+	require.Len(t, groups, 2)
+	groupIDByRemoteID := map[string]int64{groups[0].RemoteID: groups[0].ID, groups[1].RemoteID: groups[1].ID}
+
+	localGroup, err := client.Group.Create().SetName("生命周期本地组").SetPlatform(service.PlatformOpenAI).Save(ctx)
+	require.NoError(t, err)
+	createBoundAccount := func(name string) *dbent.Account {
+		account, createErr := client.Account.Create().
+			SetName(name).
+			SetPlatform(service.PlatformOpenAI).
+			SetType(service.AccountTypeAPIKey).
+			SetCredentials(map[string]any{"api_key": "sk-test"}).
+			SetPriority(50).
+			Save(ctx)
+		require.NoError(t, createErr)
+		_, createErr = client.AccountGroup.Create().
+			SetAccountID(account.ID).
+			SetGroupID(localGroup.ID).
+			SetPriority(42).
+			Save(ctx)
+		require.NoError(t, createErr)
+		return account
+	}
+	first := createBoundAccount("第一账号")
+	second := createBoundAccount("第二账号")
+	_, err = upstreamRepo.ReplaceGroupBindings(ctx, site.ID, groupIDByRemoteID["first"], []service.UpstreamGroupAccountBindingInput{{
+		LocalGroupID: localGroup.ID, AccountID: first.ID,
+	}})
+	require.NoError(t, err)
+	_, err = upstreamRepo.ReplaceGroupBindings(ctx, site.ID, groupIDByRemoteID["second"], []service.UpstreamGroupAccountBindingInput{{
+		LocalGroupID: localGroup.ID, AccountID: second.ID,
+	}})
+	require.NoError(t, err)
+
+	require.NoError(t, accountRepo.BindGroups(ctx, first.ID, []int64{localGroup.ID}))
+	membership, err := client.AccountGroup.Query().Where(
+		dbaccountgroup.AccountIDEQ(first.ID),
+		dbaccountgroup.GroupIDEQ(localGroup.ID),
+	).Only(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 42, membership.Priority, "未变化的账号分组关系不能被删除重建")
+	bindingCount, err := client.UpstreamGroupAccountBinding.Query().Count(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 2, bindingCount, "未变化的账号分组关系不能误删倍率绑定")
+
+	require.NoError(t, accountRepo.BindGroups(ctx, first.ID, nil))
+	firstAfterUnbind, err := client.Account.Get(ctx, first.ID)
+	require.NoError(t, err)
+	require.Equal(t, 10, firstAfterUnbind.Priority, "移出本地分组后保留最后自动优先级")
+	secondAfterReorder, err := client.Account.Get(ctx, second.ID)
+	require.NoError(t, err)
+	require.Equal(t, 10, secondAfterReorder.Priority, "移除绑定后剩余账号必须重排")
+	bindingCount, err = client.UpstreamGroupAccountBinding.Query().Count(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, bindingCount)
+	_, err = upstreamRepo.ReplaceGroupBindings(ctx, site.ID, groupIDByRemoteID["first"], []service.UpstreamGroupAccountBindingInput{{
+		LocalGroupID: localGroup.ID, AccountID: first.ID,
+	}})
+	require.ErrorIs(t, err, service.ErrUpstreamAccountNotInGroup)
+
+	require.NoError(t, accountRepo.Delete(ctx, second.ID))
+	bindingCount, err = client.UpstreamGroupAccountBinding.Query().Count(ctx)
+	require.NoError(t, err)
+	require.Zero(t, bindingCount, "账号删除必须清理倍率绑定")
+}
+
+func TestGroupRepositoryCleansBindingsAndReusesTransaction(t *testing.T) {
+	db, err := sql.Open("sqlite", fmt.Sprintf("file:group-upstream-bindings-%d?mode=memory&cache=shared&_pragma=foreign_keys(1)&_time_format=sqlite", time.Now().UnixNano()))
+	require.NoError(t, err)
+	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(entsql.OpenDB(dialect.SQLite, db))))
+	t.Cleanup(func() { require.NoError(t, client.Close()) })
+	_, err = db.Exec(`CREATE TABLE scheduler_outbox (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		event_type TEXT NOT NULL,
+		account_id INTEGER,
+		group_id INTEGER,
+		payload BLOB,
+		dedup_key TEXT,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+	)`)
+	require.NoError(t, err)
+	_, err = db.Exec(`CREATE UNIQUE INDEX scheduler_outbox_dedup_unique
+		ON scheduler_outbox (dedup_key) WHERE dedup_key IS NOT NULL`)
+	require.NoError(t, err)
+	ctx := context.Background()
+	upstreamRepo := NewUpstreamRepository(client)
+	groupRepo := newGroupRepositoryWithSQL(client, db)
+	now := time.Now().UTC().Truncate(time.Second)
+	site := &service.UpstreamSite{
+		Name: "分组生命周期站点", BaseURL: "https://group-lifecycle.example.com", Platform: service.UpstreamPlatformSub2API,
+		AuthMode: service.UpstreamAuthPassword, CredentialEncrypted: "encrypted", Enabled: true,
+		Status: service.UpstreamStatusPending, TrackingStartedAt: now, CreatedBy: 1,
+	}
+	require.NoError(t, upstreamRepo.Create(ctx, site))
+	require.NoError(t, upstreamRepo.CommitSync(ctx, site.ID, &service.UpstreamSyncResult{Groups: []service.UpstreamGroupSnapshot{{
+		RemoteID: "bound", Name: "绑定组", Multiplier: float64Ptr(1),
+	}}}, "", now, nil))
+	_, err = upstreamRepo.SetGroupDisplayed(ctx, site.ID, "bound", true)
+	require.NoError(t, err)
+	upstreamGroups, err := upstreamRepo.ListGroups(ctx, site.ID)
+	require.NoError(t, err)
+	require.Len(t, upstreamGroups, 1)
+
+	localGroup, err := client.Group.Create().SetName("待清理本地组").SetPlatform(service.PlatformOpenAI).Save(ctx)
+	require.NoError(t, err)
+	account, err := client.Account.Create().
+		SetName("待清理账号").
+		SetPlatform(service.PlatformOpenAI).
+		SetType(service.AccountTypeAPIKey).
+		SetCredentials(map[string]any{"api_key": "sk-test"}).
+		SetPriority(50).
+		Save(ctx)
+	require.NoError(t, err)
+	bind := func() {
+		_, bindErr := client.AccountGroup.Create().SetAccountID(account.ID).SetGroupID(localGroup.ID).SetPriority(42).Save(ctx)
+		require.NoError(t, bindErr)
+		_, bindErr = upstreamRepo.ReplaceGroupBindings(ctx, site.ID, upstreamGroups[0].ID, []service.UpstreamGroupAccountBindingInput{{
+			LocalGroupID: localGroup.ID, AccountID: account.ID,
+		}})
+		require.NoError(t, bindErr)
+	}
+	bind()
+
+	tx, err := client.Tx(ctx)
+	require.NoError(t, err)
+	txRepo := newGroupRepositoryWithSQL(tx.Client(), tx.Client())
+	affected, err := txRepo.DeleteAccountGroupsByGroupID(ctx, localGroup.ID)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, affected)
+	require.NoError(t, tx.Commit())
+	bindingCount, err := client.UpstreamGroupAccountBinding.Query().Count(ctx)
+	require.NoError(t, err)
+	require.Zero(t, bindingCount, "清空分组账号时必须同步清理倍率绑定")
+
+	bind()
+	require.NoError(t, groupRepo.Delete(ctx, localGroup.ID))
+	bindingCount, err = client.UpstreamGroupAccountBinding.Query().Count(ctx)
+	require.NoError(t, err)
+	require.Zero(t, bindingCount, "软删除本地分组前必须显式清理倍率绑定")
+	priority, err := client.Account.Get(ctx, account.ID)
+	require.NoError(t, err)
+	require.Equal(t, 10, priority.Priority, "解除绑定应保留账号最后一次自动优先级")
 }
 
 func float64Ptr(value float64) *float64 { return &value }

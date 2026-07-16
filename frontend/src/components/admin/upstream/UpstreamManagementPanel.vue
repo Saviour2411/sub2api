@@ -240,6 +240,21 @@
               <p v-if="!group.available" class="mt-1.5 text-[10px] leading-4 text-amber-700 dark:text-amber-300">
                 {{ t('admin.customFeatures.upstream.lastSeenAt', { time: formatDateTime(group.last_synced_at) }) }}
               </p>
+              <div class="mt-2 border-t border-gray-100 pt-2 dark:border-dark-700">
+                <button
+                  type="button"
+                  class="btn btn-secondary inline-flex w-full items-center justify-center gap-1.5 px-2 py-1.5 text-xs"
+                  :title="t('admin.customFeatures.upstream.bindings.open')"
+                  :data-test="`upstream-group-bindings-${row.id}-${group.remote_id}`"
+                  @click.stop="openBindings(row, group)"
+                >
+                  <Icon name="link" size="xs" />
+                  <span>{{ t('admin.customFeatures.upstream.bindings.button') }}</span>
+                  <span class="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-semibold text-gray-700 dark:bg-dark-600 dark:text-gray-200">
+                    {{ bindingCount(group) }}
+                  </span>
+                </button>
+              </div>
             </article>
           </div>
         </section>
@@ -444,7 +459,8 @@
                 type="button"
                 class="btn inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs"
                 :class="row.displayed ? 'btn-secondary' : 'btn-primary'"
-                :disabled="isGroupDisplayLoading(row.remote_id) || (!row.available && !row.displayed)"
+                :disabled="isGroupDisplayLoading(row.remote_id) || (!row.available && !row.displayed) || (row.displayed && bindingCount(row) > 0)"
+                :title="row.displayed && bindingCount(row) > 0 ? t('admin.customFeatures.upstream.bindings.unbindBeforeHide') : undefined"
                 :data-test="`upstream-group-display-${row.remote_id}`"
                 @click="setGroupDisplayed(row, !row.displayed)"
               >
@@ -507,8 +523,19 @@
       </div>
     </BaseDialog>
 
+    <UpstreamGroupBindingsDialog
+      :show="Boolean(bindingTarget)"
+      :site="bindingTarget?.site || null"
+      :group="bindingTarget?.group || null"
+      @close="closeBindings"
+      @saved="handleBindingsSaved"
+    />
+
     <BaseDialog :show="Boolean(deleteTarget)" :title="t('admin.customFeatures.upstream.deleteTitle')" width="narrow" @close="deleteTarget = null">
       <p class="text-sm text-gray-600 dark:text-gray-300">{{ t('admin.customFeatures.upstream.deleteMessage', { name: deleteTarget?.name || '' }) }}</p>
+      <p v-if="(deleteTarget?.binding_count || 0) > 0" class="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/20 dark:text-amber-200" data-test="upstream-delete-binding-warning">
+        {{ t('admin.customFeatures.upstream.bindings.deleteWarning', { count: deleteTarget?.binding_count || 0 }) }}
+      </p>
       <template #footer>
         <button type="button" class="btn btn-secondary" @click="deleteTarget = null">{{ t('admin.customFeatures.upstream.cancel') }}</button>
         <button type="button" class="btn btn-danger" :disabled="deleting" @click="confirmDelete">{{ t('admin.customFeatures.upstream.delete') }}</button>
@@ -536,6 +563,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import Icon from '@/components/icons/Icon.vue'
+import UpstreamGroupBindingsDialog from '@/components/admin/upstream/UpstreamGroupBindingsDialog.vue'
 import type { Column } from '@/components/common/types'
 import upstreamsAPI, {
   type UpstreamCapabilities,
@@ -584,6 +612,7 @@ const loginResponseJSON = ref('')
 const loginResponseError = ref('')
 const deleteTarget = ref<UpstreamSite | null>(null)
 const deleting = ref(false)
+const bindingTarget = ref<{ site: UpstreamSite; group: UpstreamGroup } | null>(null)
 const expandedSiteIDs = ref<Set<number>>(new Set())
 const manuallyCollapsedSiteIDs = new Set<number>()
 const groupDisplayLoadingIDs = ref<Set<string>>(new Set())
@@ -594,6 +623,8 @@ interface SiteGroupState {
   error: string
   syncedAt: string | null
   requestedSyncAt: string | null
+  bindingCount: number
+  requestedBindingCount: number
 }
 const siteGroupStates = reactive<Record<number, SiteGroupState>>({})
 const groupRequestVersions = new Map<number, number>()
@@ -619,6 +650,7 @@ let detailRequestVersion = 0
 let historyRequestVersion = 0
 let siteListRequestVersion = 0
 let capabilityProbeRequestVersion = 0
+let bindingOpenRequestVersion = 0
 
 const form = reactive<UpstreamWritePayload>({
   name: '', base_url: '', platform: 'sub2api', auth_mode: 'password', account: '',
@@ -753,7 +785,10 @@ function scheduleRefresh() {
 
 function groupState(siteID: number): SiteGroupState {
   if (!siteGroupStates[siteID]) {
-    siteGroupStates[siteID] = { groups: [], loaded: false, loading: false, error: '', syncedAt: null, requestedSyncAt: null }
+    siteGroupStates[siteID] = {
+      groups: [], loaded: false, loading: false, error: '', syncedAt: null, requestedSyncAt: null,
+      bindingCount: 0, requestedBindingCount: 0
+    }
   }
   return siteGroupStates[siteID]
 }
@@ -784,23 +819,39 @@ function toggleSiteGroups(site: UpstreamSite) {
 async function loadSiteGroups(site: UpstreamSite, force = false) {
   const state = groupState(site.id)
   const syncVersion = site.last_synced_at
-  if (!force && state.loaded && state.syncedAt === syncVersion && !state.error) return
-  if (!force && state.loading && state.requestedSyncAt === syncVersion) return
+  const bindingVersion = site.binding_count || 0
+  if (!force && state.loaded && state.syncedAt === syncVersion && state.bindingCount === bindingVersion && !state.error) return true
+  if (!force && state.loading && state.requestedSyncAt === syncVersion && state.requestedBindingCount === bindingVersion) return false
 
   const requestVersion = (groupRequestVersions.get(site.id) || 0) + 1
   groupRequestVersions.set(site.id, requestVersion)
   state.loading = true
   state.error = ''
   state.requestedSyncAt = syncVersion
+  state.requestedBindingCount = bindingVersion
   try {
     const groups = await upstreamsAPI.groups(site.id)
-    if (groupRequestVersions.get(site.id) !== requestVersion) return
+    if (groupRequestVersions.get(site.id) !== requestVersion) return false
     state.groups = groups || []
     state.loaded = true
     state.syncedAt = syncVersion
+    state.bindingCount = bindingVersion
+    const target = bindingTarget.value
+    if (target?.site.id === site.id) {
+      const latestGroup = state.groups.find((group) => group.id === target.group.id)
+      if (!latestGroup || bindingGroupVersion(latestGroup) !== bindingGroupVersion(target.group)) {
+        bindingOpenRequestVersion++
+        bindingTarget.value = null
+        appStore.showError(t('admin.customFeatures.upstream.bindings.dataChanged'))
+      } else {
+        bindingTarget.value = { site, group: latestGroup }
+      }
+    }
+    return true
   } catch (error) {
-    if (groupRequestVersions.get(site.id) !== requestVersion) return
+    if (groupRequestVersions.get(site.id) !== requestVersion) return false
     state.error = extractApiErrorMessage(error, t('admin.customFeatures.upstream.groupsLoadFailed'))
+    return false
   } finally {
     if (groupRequestVersions.get(site.id) === requestVersion) state.loading = false
   }
@@ -833,7 +884,11 @@ async function loadSites(silent = false) {
     expandedSiteIDs.value = nextExpanded
     for (const site of sites.value) {
       const state = groupState(site.id)
-      if (isSiteExpanded(site.id) && (!state.loaded || state.syncedAt !== site.last_synced_at)) {
+      if (isSiteExpanded(site.id) && (
+        !state.loaded
+        || state.syncedAt !== site.last_synced_at
+        || state.bindingCount !== (site.binding_count || 0)
+      )) {
         void loadSiteGroups(site)
       }
     }
@@ -1087,8 +1142,9 @@ async function syncAllSites() {
 async function toggleSite(site: UpstreamSite) {
   try {
     const displayedGroupCount = site.displayed_group_count
+    const bindingCount = site.binding_count
     const updated = await upstreamsAPI.setEnabled(site.id, !site.enabled)
-    Object.assign(site, updated, { displayed_group_count: displayedGroupCount })
+    Object.assign(site, updated, { displayed_group_count: displayedGroupCount, binding_count: bindingCount })
     scheduleRefresh()
   }
   catch (error) { appStore.showError(extractApiErrorMessage(error, t('admin.customFeatures.upstream.saveFailed'))) }
@@ -1136,6 +1192,7 @@ async function openDetails(site: UpstreamSite) {
     state.groups = detailGroups.value
     state.loaded = true
     state.syncedAt = site.last_synced_at
+    state.bindingCount = site.binding_count || 0
     state.error = ''
   }
   catch (error) {
@@ -1177,6 +1234,10 @@ function updateGroupCollection(groups: UpstreamGroup[], updated: UpstreamGroup) 
 async function setGroupDisplayed(group: UpstreamGroup, displayed: boolean) {
   const site = detailSite.value
   if (!site) return
+  if (!displayed && bindingCount(group) > 0) {
+    appStore.showError(t('admin.customFeatures.upstream.bindings.unbindBeforeHide'))
+    return
+  }
   const key = groupDisplayLoadingKey(site.id, group.remote_id)
   if (groupDisplayLoadingIDs.value.has(key)) return
   groupDisplayLoadingIDs.value = new Set(groupDisplayLoadingIDs.value).add(key)
@@ -1208,6 +1269,55 @@ async function setGroupDisplayed(group: UpstreamGroup, displayed: boolean) {
     next.delete(key)
     groupDisplayLoadingIDs.value = next
   }
+}
+
+function bindingCount(group: Pick<UpstreamGroup, 'bindings'>) {
+  return group.bindings?.length || 0
+}
+
+function bindingGroupVersion(group: UpstreamGroup) {
+  const bindings = (group.bindings || [])
+    .map((binding) => `${binding.local_group_id}:${binding.account_id}`)
+    .sort()
+    .join('|')
+  return `${group.displayed}:${group.available}:${group.multiplier ?? 'null'}:${bindings}`
+}
+
+async function openBindings(site: UpstreamSite, group: UpstreamGroup) {
+  const openVersion = ++bindingOpenRequestVersion
+  const loaded = await loadSiteGroups(site, true)
+  if (!loaded || openVersion !== bindingOpenRequestVersion) return
+  const state = groupState(site.id)
+  if (state.error) {
+    appStore.showError(state.error)
+    return
+  }
+  const latestGroup = state.groups.find((item) => item.id === group.id)
+  if (!latestGroup) {
+    appStore.showError(t('admin.customFeatures.upstream.groupsLoadFailed'))
+    return
+  }
+  bindingTarget.value = { site, group: latestGroup }
+}
+
+function closeBindings() {
+  bindingOpenRequestVersion++
+  bindingTarget.value = null
+}
+
+function handleBindingsSaved(updated: UpstreamGroup) {
+  const target = bindingTarget.value
+  if (!target) return
+  const previousCount = bindingCount(target.group)
+  const nextCount = bindingCount(updated)
+  updateGroupCollection(groupState(target.site.id).groups, updated)
+  if (detailSite.value?.id === target.site.id) updateGroupCollection(detailGroups.value, updated)
+
+  const site = sites.value.find((item) => item.id === target.site.id)
+  if (site) site.binding_count = Math.max(0, (site.binding_count || 0) + nextCount - previousCount)
+  if (detailSite.value?.id === target.site.id) detailSite.value.binding_count = site?.binding_count ?? target.site.binding_count
+  groupState(target.site.id).bindingCount = site?.binding_count ?? Math.max(0, (target.site.binding_count || 0) + nextCount - previousCount)
+  closeBindings()
 }
 
 function closeDetails() {
@@ -1359,7 +1469,7 @@ function statusClass(status: UpstreamSite['status']) {
 }
 
 onMounted(() => loadSites(false))
-onBeforeUnmount(() => { disposed = true; if (refreshTimer) clearTimeout(refreshTimer) })
+onBeforeUnmount(() => { disposed = true; bindingOpenRequestVersion++; if (refreshTimer) clearTimeout(refreshTimer) })
 </script>
 
 <style scoped>

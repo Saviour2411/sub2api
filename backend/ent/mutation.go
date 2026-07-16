@@ -45,6 +45,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamdailystat"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamgroup"
+	"github.com/Wei-Shaw/sub2api/ent/upstreamgroupaccountbinding"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamgroupmultiplierhistory"
 	"github.com/Wei-Shaw/sub2api/ent/upstreamsite"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
@@ -99,6 +100,7 @@ const (
 	TypeTLSFingerprintProfile          = "TLSFingerprintProfile"
 	TypeUpstreamDailyStat              = "UpstreamDailyStat"
 	TypeUpstreamGroup                  = "UpstreamGroup"
+	TypeUpstreamGroupAccountBinding    = "UpstreamGroupAccountBinding"
 	TypeUpstreamGroupMultiplierHistory = "UpstreamGroupMultiplierHistory"
 	TypeUpstreamSite                   = "UpstreamSite"
 	TypeUsageCleanupTask               = "UsageCleanupTask"
@@ -2288,60 +2290,62 @@ func (m *APIKeyMutation) ResetEdge(name string) error {
 // AccountMutation represents an operation that mutates the Account nodes in the graph.
 type AccountMutation struct {
 	config
-	op                          Op
-	typ                         string
-	id                          *int64
-	created_at                  *time.Time
-	updated_at                  *time.Time
-	deleted_at                  *time.Time
-	name                        *string
-	notes                       *string
-	platform                    *string
-	_type                       *string
-	credentials                 *map[string]interface{}
-	extra                       *map[string]interface{}
-	proxy_fallback_origin_id    *int64
-	addproxy_fallback_origin_id *int64
-	concurrency                 *int
-	addconcurrency              *int
-	load_factor                 *int
-	addload_factor              *int
-	priority                    *int
-	addpriority                 *int
-	rate_multiplier             *float64
-	addrate_multiplier          *float64
-	status                      *string
-	error_message               *string
-	last_used_at                *time.Time
-	expires_at                  *time.Time
-	auto_pause_on_expired       *bool
-	schedulable                 *bool
-	rate_limited_at             *time.Time
-	rate_limit_reset_at         *time.Time
-	overload_until              *time.Time
-	temp_unschedulable_until    *time.Time
-	temp_unschedulable_reason   *string
-	session_window_start        *time.Time
-	session_window_end          *time.Time
-	session_window_status       *string
-	quota_dimension             *account.QuotaDimension
-	clearedFields               map[string]struct{}
-	groups                      map[int64]struct{}
-	removedgroups               map[int64]struct{}
-	clearedgroups               bool
-	proxy                       *int64
-	clearedproxy                bool
-	parent                      *int64
-	clearedparent               bool
-	children                    map[int64]struct{}
-	removedchildren             map[int64]struct{}
-	clearedchildren             bool
-	usage_logs                  map[int64]struct{}
-	removedusage_logs           map[int64]struct{}
-	clearedusage_logs           bool
-	done                        bool
-	oldValue                    func(context.Context) (*Account, error)
-	predicates                  []predicate.Account
+	op                                     Op
+	typ                                    string
+	id                                     *int64
+	created_at                             *time.Time
+	updated_at                             *time.Time
+	deleted_at                             *time.Time
+	name                                   *string
+	notes                                  *string
+	platform                               *string
+	_type                                  *string
+	credentials                            *map[string]interface{}
+	extra                                  *map[string]interface{}
+	proxy_fallback_origin_id               *int64
+	addproxy_fallback_origin_id            *int64
+	concurrency                            *int
+	addconcurrency                         *int
+	load_factor                            *int
+	addload_factor                         *int
+	priority                               *int
+	addpriority                            *int
+	rate_multiplier                        *float64
+	addrate_multiplier                     *float64
+	status                                 *string
+	error_message                          *string
+	last_used_at                           *time.Time
+	expires_at                             *time.Time
+	auto_pause_on_expired                  *bool
+	schedulable                            *bool
+	rate_limited_at                        *time.Time
+	rate_limit_reset_at                    *time.Time
+	overload_until                         *time.Time
+	temp_unschedulable_until               *time.Time
+	temp_unschedulable_reason              *string
+	session_window_start                   *time.Time
+	session_window_end                     *time.Time
+	session_window_status                  *string
+	quota_dimension                        *account.QuotaDimension
+	clearedFields                          map[string]struct{}
+	groups                                 map[int64]struct{}
+	removedgroups                          map[int64]struct{}
+	clearedgroups                          bool
+	proxy                                  *int64
+	clearedproxy                           bool
+	parent                                 *int64
+	clearedparent                          bool
+	children                               map[int64]struct{}
+	removedchildren                        map[int64]struct{}
+	clearedchildren                        bool
+	usage_logs                             map[int64]struct{}
+	removedusage_logs                      map[int64]struct{}
+	clearedusage_logs                      bool
+	upstream_group_account_bindings        *int64
+	clearedupstream_group_account_bindings bool
+	done                                   bool
+	oldValue                               func(context.Context) (*Account, error)
+	predicates                             []predicate.Account
 }
 
 var _ ent.Mutation = (*AccountMutation)(nil)
@@ -4110,6 +4114,45 @@ func (m *AccountMutation) ResetUsageLogs() {
 	m.removedusage_logs = nil
 }
 
+// SetUpstreamGroupAccountBindingsID sets the "upstream_group_account_bindings" edge to the UpstreamGroupAccountBinding entity by id.
+func (m *AccountMutation) SetUpstreamGroupAccountBindingsID(id int64) {
+	m.upstream_group_account_bindings = &id
+}
+
+// ClearUpstreamGroupAccountBindings clears the "upstream_group_account_bindings" edge to the UpstreamGroupAccountBinding entity.
+func (m *AccountMutation) ClearUpstreamGroupAccountBindings() {
+	m.clearedupstream_group_account_bindings = true
+}
+
+// UpstreamGroupAccountBindingsCleared reports if the "upstream_group_account_bindings" edge to the UpstreamGroupAccountBinding entity was cleared.
+func (m *AccountMutation) UpstreamGroupAccountBindingsCleared() bool {
+	return m.clearedupstream_group_account_bindings
+}
+
+// UpstreamGroupAccountBindingsID returns the "upstream_group_account_bindings" edge ID in the mutation.
+func (m *AccountMutation) UpstreamGroupAccountBindingsID() (id int64, exists bool) {
+	if m.upstream_group_account_bindings != nil {
+		return *m.upstream_group_account_bindings, true
+	}
+	return
+}
+
+// UpstreamGroupAccountBindingsIDs returns the "upstream_group_account_bindings" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// UpstreamGroupAccountBindingsID instead. It exists only for internal usage by the builders.
+func (m *AccountMutation) UpstreamGroupAccountBindingsIDs() (ids []int64) {
+	if id := m.upstream_group_account_bindings; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetUpstreamGroupAccountBindings resets all changes to the "upstream_group_account_bindings" edge.
+func (m *AccountMutation) ResetUpstreamGroupAccountBindings() {
+	m.upstream_group_account_bindings = nil
+	m.clearedupstream_group_account_bindings = false
+}
+
 // Where appends a list predicates to the AccountMutation builder.
 func (m *AccountMutation) Where(ps ...predicate.Account) {
 	m.predicates = append(m.predicates, ps...)
@@ -4921,7 +4964,7 @@ func (m *AccountMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *AccountMutation) AddedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	if m.groups != nil {
 		edges = append(edges, account.EdgeGroups)
 	}
@@ -4936,6 +4979,9 @@ func (m *AccountMutation) AddedEdges() []string {
 	}
 	if m.usage_logs != nil {
 		edges = append(edges, account.EdgeUsageLogs)
+	}
+	if m.upstream_group_account_bindings != nil {
+		edges = append(edges, account.EdgeUpstreamGroupAccountBindings)
 	}
 	return edges
 }
@@ -4970,13 +5016,17 @@ func (m *AccountMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case account.EdgeUpstreamGroupAccountBindings:
+		if id := m.upstream_group_account_bindings; id != nil {
+			return []ent.Value{*id}
+		}
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *AccountMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	if m.removedgroups != nil {
 		edges = append(edges, account.EdgeGroups)
 	}
@@ -5017,7 +5067,7 @@ func (m *AccountMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *AccountMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	if m.clearedgroups {
 		edges = append(edges, account.EdgeGroups)
 	}
@@ -5032,6 +5082,9 @@ func (m *AccountMutation) ClearedEdges() []string {
 	}
 	if m.clearedusage_logs {
 		edges = append(edges, account.EdgeUsageLogs)
+	}
+	if m.clearedupstream_group_account_bindings {
+		edges = append(edges, account.EdgeUpstreamGroupAccountBindings)
 	}
 	return edges
 }
@@ -5050,6 +5103,8 @@ func (m *AccountMutation) EdgeCleared(name string) bool {
 		return m.clearedchildren
 	case account.EdgeUsageLogs:
 		return m.clearedusage_logs
+	case account.EdgeUpstreamGroupAccountBindings:
+		return m.clearedupstream_group_account_bindings
 	}
 	return false
 }
@@ -5063,6 +5118,9 @@ func (m *AccountMutation) ClearEdge(name string) error {
 		return nil
 	case account.EdgeParent:
 		m.ClearParent()
+		return nil
+	case account.EdgeUpstreamGroupAccountBindings:
+		m.ClearUpstreamGroupAccountBindings()
 		return nil
 	}
 	return fmt.Errorf("unknown Account unique edge %s", name)
@@ -5086,6 +5144,9 @@ func (m *AccountMutation) ResetEdge(name string) error {
 		return nil
 	case account.EdgeUsageLogs:
 		m.ResetUsageLogs()
+		return nil
+	case account.EdgeUpstreamGroupAccountBindings:
+		m.ResetUpstreamGroupAccountBindings()
 		return nil
 	}
 	return fmt.Errorf("unknown Account edge %s", name)
@@ -21000,6 +21061,9 @@ type GroupMutation struct {
 	allowed_users                           map[int64]struct{}
 	removedallowed_users                    map[int64]struct{}
 	clearedallowed_users                    bool
+	upstream_group_account_bindings         map[int64]struct{}
+	removedupstream_group_account_bindings  map[int64]struct{}
+	clearedupstream_group_account_bindings  bool
 	done                                    bool
 	oldValue                                func(context.Context) (*Group, error)
 	predicates                              []predicate.Group
@@ -23833,6 +23897,60 @@ func (m *GroupMutation) ResetAllowedUsers() {
 	m.removedallowed_users = nil
 }
 
+// AddUpstreamGroupAccountBindingIDs adds the "upstream_group_account_bindings" edge to the UpstreamGroupAccountBinding entity by ids.
+func (m *GroupMutation) AddUpstreamGroupAccountBindingIDs(ids ...int64) {
+	if m.upstream_group_account_bindings == nil {
+		m.upstream_group_account_bindings = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.upstream_group_account_bindings[ids[i]] = struct{}{}
+	}
+}
+
+// ClearUpstreamGroupAccountBindings clears the "upstream_group_account_bindings" edge to the UpstreamGroupAccountBinding entity.
+func (m *GroupMutation) ClearUpstreamGroupAccountBindings() {
+	m.clearedupstream_group_account_bindings = true
+}
+
+// UpstreamGroupAccountBindingsCleared reports if the "upstream_group_account_bindings" edge to the UpstreamGroupAccountBinding entity was cleared.
+func (m *GroupMutation) UpstreamGroupAccountBindingsCleared() bool {
+	return m.clearedupstream_group_account_bindings
+}
+
+// RemoveUpstreamGroupAccountBindingIDs removes the "upstream_group_account_bindings" edge to the UpstreamGroupAccountBinding entity by IDs.
+func (m *GroupMutation) RemoveUpstreamGroupAccountBindingIDs(ids ...int64) {
+	if m.removedupstream_group_account_bindings == nil {
+		m.removedupstream_group_account_bindings = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.upstream_group_account_bindings, ids[i])
+		m.removedupstream_group_account_bindings[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedUpstreamGroupAccountBindings returns the removed IDs of the "upstream_group_account_bindings" edge to the UpstreamGroupAccountBinding entity.
+func (m *GroupMutation) RemovedUpstreamGroupAccountBindingsIDs() (ids []int64) {
+	for id := range m.removedupstream_group_account_bindings {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// UpstreamGroupAccountBindingsIDs returns the "upstream_group_account_bindings" edge IDs in the mutation.
+func (m *GroupMutation) UpstreamGroupAccountBindingsIDs() (ids []int64) {
+	for id := range m.upstream_group_account_bindings {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetUpstreamGroupAccountBindings resets all changes to the "upstream_group_account_bindings" edge.
+func (m *GroupMutation) ResetUpstreamGroupAccountBindings() {
+	m.upstream_group_account_bindings = nil
+	m.clearedupstream_group_account_bindings = false
+	m.removedupstream_group_account_bindings = nil
+}
+
 // Where appends a list predicates to the GroupMutation builder.
 func (m *GroupMutation) Where(ps ...predicate.Group) {
 	m.predicates = append(m.predicates, ps...)
@@ -25130,7 +25248,7 @@ func (m *GroupMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *GroupMutation) AddedEdges() []string {
-	edges := make([]string, 0, 6)
+	edges := make([]string, 0, 7)
 	if m.api_keys != nil {
 		edges = append(edges, group.EdgeAPIKeys)
 	}
@@ -25148,6 +25266,9 @@ func (m *GroupMutation) AddedEdges() []string {
 	}
 	if m.allowed_users != nil {
 		edges = append(edges, group.EdgeAllowedUsers)
+	}
+	if m.upstream_group_account_bindings != nil {
+		edges = append(edges, group.EdgeUpstreamGroupAccountBindings)
 	}
 	return edges
 }
@@ -25192,13 +25313,19 @@ func (m *GroupMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case group.EdgeUpstreamGroupAccountBindings:
+		ids := make([]ent.Value, 0, len(m.upstream_group_account_bindings))
+		for id := range m.upstream_group_account_bindings {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *GroupMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 6)
+	edges := make([]string, 0, 7)
 	if m.removedapi_keys != nil {
 		edges = append(edges, group.EdgeAPIKeys)
 	}
@@ -25216,6 +25343,9 @@ func (m *GroupMutation) RemovedEdges() []string {
 	}
 	if m.removedallowed_users != nil {
 		edges = append(edges, group.EdgeAllowedUsers)
+	}
+	if m.removedupstream_group_account_bindings != nil {
+		edges = append(edges, group.EdgeUpstreamGroupAccountBindings)
 	}
 	return edges
 }
@@ -25260,13 +25390,19 @@ func (m *GroupMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case group.EdgeUpstreamGroupAccountBindings:
+		ids := make([]ent.Value, 0, len(m.removedupstream_group_account_bindings))
+		for id := range m.removedupstream_group_account_bindings {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *GroupMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 6)
+	edges := make([]string, 0, 7)
 	if m.clearedapi_keys {
 		edges = append(edges, group.EdgeAPIKeys)
 	}
@@ -25284,6 +25420,9 @@ func (m *GroupMutation) ClearedEdges() []string {
 	}
 	if m.clearedallowed_users {
 		edges = append(edges, group.EdgeAllowedUsers)
+	}
+	if m.clearedupstream_group_account_bindings {
+		edges = append(edges, group.EdgeUpstreamGroupAccountBindings)
 	}
 	return edges
 }
@@ -25304,6 +25443,8 @@ func (m *GroupMutation) EdgeCleared(name string) bool {
 		return m.clearedaccounts
 	case group.EdgeAllowedUsers:
 		return m.clearedallowed_users
+	case group.EdgeUpstreamGroupAccountBindings:
+		return m.clearedupstream_group_account_bindings
 	}
 	return false
 }
@@ -25337,6 +25478,9 @@ func (m *GroupMutation) ResetEdge(name string) error {
 		return nil
 	case group.EdgeAllowedUsers:
 		m.ResetAllowedUsers()
+		return nil
+	case group.EdgeUpstreamGroupAccountBindings:
+		m.ResetUpstreamGroupAccountBindings()
 		return nil
 	}
 	return fmt.Errorf("unknown Group edge %s", name)
@@ -42100,30 +42244,33 @@ func (m *UpstreamDailyStatMutation) ResetEdge(name string) error {
 // UpstreamGroupMutation represents an operation that mutates the UpstreamGroup nodes in the graph.
 type UpstreamGroupMutation struct {
 	config
-	op                Op
-	typ               string
-	id                *int64
-	created_at        *time.Time
-	updated_at        *time.Time
-	remote_id         *string
-	name              *string
-	platform          *string
-	description       *string
-	multiplier        *float64
-	addmultiplier     *float64
-	today_tokens      *int64
-	addtoday_tokens   *int64
-	today_cost_usd    *float64
-	addtoday_cost_usd *float64
-	displayed         *bool
-	available         *bool
-	last_synced_at    *time.Time
-	clearedFields     map[string]struct{}
-	site              *int64
-	clearedsite       bool
-	done              bool
-	oldValue          func(context.Context) (*UpstreamGroup, error)
-	predicates        []predicate.UpstreamGroup
+	op                      Op
+	typ                     string
+	id                      *int64
+	created_at              *time.Time
+	updated_at              *time.Time
+	remote_id               *string
+	name                    *string
+	platform                *string
+	description             *string
+	multiplier              *float64
+	addmultiplier           *float64
+	today_tokens            *int64
+	addtoday_tokens         *int64
+	today_cost_usd          *float64
+	addtoday_cost_usd       *float64
+	displayed               *bool
+	available               *bool
+	last_synced_at          *time.Time
+	clearedFields           map[string]struct{}
+	site                    *int64
+	clearedsite             bool
+	account_bindings        map[int64]struct{}
+	removedaccount_bindings map[int64]struct{}
+	clearedaccount_bindings bool
+	done                    bool
+	oldValue                func(context.Context) (*UpstreamGroup, error)
+	predicates              []predicate.UpstreamGroup
 }
 
 var _ ent.Mutation = (*UpstreamGroupMutation)(nil)
@@ -42793,6 +42940,60 @@ func (m *UpstreamGroupMutation) ResetSite() {
 	m.clearedsite = false
 }
 
+// AddAccountBindingIDs adds the "account_bindings" edge to the UpstreamGroupAccountBinding entity by ids.
+func (m *UpstreamGroupMutation) AddAccountBindingIDs(ids ...int64) {
+	if m.account_bindings == nil {
+		m.account_bindings = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.account_bindings[ids[i]] = struct{}{}
+	}
+}
+
+// ClearAccountBindings clears the "account_bindings" edge to the UpstreamGroupAccountBinding entity.
+func (m *UpstreamGroupMutation) ClearAccountBindings() {
+	m.clearedaccount_bindings = true
+}
+
+// AccountBindingsCleared reports if the "account_bindings" edge to the UpstreamGroupAccountBinding entity was cleared.
+func (m *UpstreamGroupMutation) AccountBindingsCleared() bool {
+	return m.clearedaccount_bindings
+}
+
+// RemoveAccountBindingIDs removes the "account_bindings" edge to the UpstreamGroupAccountBinding entity by IDs.
+func (m *UpstreamGroupMutation) RemoveAccountBindingIDs(ids ...int64) {
+	if m.removedaccount_bindings == nil {
+		m.removedaccount_bindings = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.account_bindings, ids[i])
+		m.removedaccount_bindings[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedAccountBindings returns the removed IDs of the "account_bindings" edge to the UpstreamGroupAccountBinding entity.
+func (m *UpstreamGroupMutation) RemovedAccountBindingsIDs() (ids []int64) {
+	for id := range m.removedaccount_bindings {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// AccountBindingsIDs returns the "account_bindings" edge IDs in the mutation.
+func (m *UpstreamGroupMutation) AccountBindingsIDs() (ids []int64) {
+	for id := range m.account_bindings {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetAccountBindings resets all changes to the "account_bindings" edge.
+func (m *UpstreamGroupMutation) ResetAccountBindings() {
+	m.account_bindings = nil
+	m.clearedaccount_bindings = false
+	m.removedaccount_bindings = nil
+}
+
 // Where appends a list predicates to the UpstreamGroupMutation builder.
 func (m *UpstreamGroupMutation) Where(ps ...predicate.UpstreamGroup) {
 	m.predicates = append(m.predicates, ps...)
@@ -43178,9 +43379,12 @@ func (m *UpstreamGroupMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *UpstreamGroupMutation) AddedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 2)
 	if m.site != nil {
 		edges = append(edges, upstreamgroup.EdgeSite)
+	}
+	if m.account_bindings != nil {
+		edges = append(edges, upstreamgroup.EdgeAccountBindings)
 	}
 	return edges
 }
@@ -43193,27 +43397,47 @@ func (m *UpstreamGroupMutation) AddedIDs(name string) []ent.Value {
 		if id := m.site; id != nil {
 			return []ent.Value{*id}
 		}
+	case upstreamgroup.EdgeAccountBindings:
+		ids := make([]ent.Value, 0, len(m.account_bindings))
+		for id := range m.account_bindings {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *UpstreamGroupMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 2)
+	if m.removedaccount_bindings != nil {
+		edges = append(edges, upstreamgroup.EdgeAccountBindings)
+	}
 	return edges
 }
 
 // RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
 // the given name in this mutation.
 func (m *UpstreamGroupMutation) RemovedIDs(name string) []ent.Value {
+	switch name {
+	case upstreamgroup.EdgeAccountBindings:
+		ids := make([]ent.Value, 0, len(m.removedaccount_bindings))
+		for id := range m.removedaccount_bindings {
+			ids = append(ids, id)
+		}
+		return ids
+	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *UpstreamGroupMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 2)
 	if m.clearedsite {
 		edges = append(edges, upstreamgroup.EdgeSite)
+	}
+	if m.clearedaccount_bindings {
+		edges = append(edges, upstreamgroup.EdgeAccountBindings)
 	}
 	return edges
 }
@@ -43224,6 +43448,8 @@ func (m *UpstreamGroupMutation) EdgeCleared(name string) bool {
 	switch name {
 	case upstreamgroup.EdgeSite:
 		return m.clearedsite
+	case upstreamgroup.EdgeAccountBindings:
+		return m.clearedaccount_bindings
 	}
 	return false
 }
@@ -43246,8 +43472,648 @@ func (m *UpstreamGroupMutation) ResetEdge(name string) error {
 	case upstreamgroup.EdgeSite:
 		m.ResetSite()
 		return nil
+	case upstreamgroup.EdgeAccountBindings:
+		m.ResetAccountBindings()
+		return nil
 	}
 	return fmt.Errorf("unknown UpstreamGroup edge %s", name)
+}
+
+// UpstreamGroupAccountBindingMutation represents an operation that mutates the UpstreamGroupAccountBinding nodes in the graph.
+type UpstreamGroupAccountBindingMutation struct {
+	config
+	op                    Op
+	typ                   string
+	id                    *int64
+	created_at            *time.Time
+	clearedFields         map[string]struct{}
+	upstream_group        *int64
+	clearedupstream_group bool
+	local_group           *int64
+	clearedlocal_group    bool
+	account               *int64
+	clearedaccount        bool
+	done                  bool
+	oldValue              func(context.Context) (*UpstreamGroupAccountBinding, error)
+	predicates            []predicate.UpstreamGroupAccountBinding
+}
+
+var _ ent.Mutation = (*UpstreamGroupAccountBindingMutation)(nil)
+
+// upstreamgroupaccountbindingOption allows management of the mutation configuration using functional options.
+type upstreamgroupaccountbindingOption func(*UpstreamGroupAccountBindingMutation)
+
+// newUpstreamGroupAccountBindingMutation creates new mutation for the UpstreamGroupAccountBinding entity.
+func newUpstreamGroupAccountBindingMutation(c config, op Op, opts ...upstreamgroupaccountbindingOption) *UpstreamGroupAccountBindingMutation {
+	m := &UpstreamGroupAccountBindingMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeUpstreamGroupAccountBinding,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withUpstreamGroupAccountBindingID sets the ID field of the mutation.
+func withUpstreamGroupAccountBindingID(id int64) upstreamgroupaccountbindingOption {
+	return func(m *UpstreamGroupAccountBindingMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *UpstreamGroupAccountBinding
+		)
+		m.oldValue = func(ctx context.Context) (*UpstreamGroupAccountBinding, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().UpstreamGroupAccountBinding.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withUpstreamGroupAccountBinding sets the old UpstreamGroupAccountBinding of the mutation.
+func withUpstreamGroupAccountBinding(node *UpstreamGroupAccountBinding) upstreamgroupaccountbindingOption {
+	return func(m *UpstreamGroupAccountBindingMutation) {
+		m.oldValue = func(context.Context) (*UpstreamGroupAccountBinding, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m UpstreamGroupAccountBindingMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m UpstreamGroupAccountBindingMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *UpstreamGroupAccountBindingMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *UpstreamGroupAccountBindingMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().UpstreamGroupAccountBinding.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetUpstreamGroupID sets the "upstream_group_id" field.
+func (m *UpstreamGroupAccountBindingMutation) SetUpstreamGroupID(i int64) {
+	m.upstream_group = &i
+}
+
+// UpstreamGroupID returns the value of the "upstream_group_id" field in the mutation.
+func (m *UpstreamGroupAccountBindingMutation) UpstreamGroupID() (r int64, exists bool) {
+	v := m.upstream_group
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpstreamGroupID returns the old "upstream_group_id" field's value of the UpstreamGroupAccountBinding entity.
+// If the UpstreamGroupAccountBinding object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamGroupAccountBindingMutation) OldUpstreamGroupID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpstreamGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpstreamGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpstreamGroupID: %w", err)
+	}
+	return oldValue.UpstreamGroupID, nil
+}
+
+// ResetUpstreamGroupID resets all changes to the "upstream_group_id" field.
+func (m *UpstreamGroupAccountBindingMutation) ResetUpstreamGroupID() {
+	m.upstream_group = nil
+}
+
+// SetLocalGroupID sets the "local_group_id" field.
+func (m *UpstreamGroupAccountBindingMutation) SetLocalGroupID(i int64) {
+	m.local_group = &i
+}
+
+// LocalGroupID returns the value of the "local_group_id" field in the mutation.
+func (m *UpstreamGroupAccountBindingMutation) LocalGroupID() (r int64, exists bool) {
+	v := m.local_group
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLocalGroupID returns the old "local_group_id" field's value of the UpstreamGroupAccountBinding entity.
+// If the UpstreamGroupAccountBinding object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamGroupAccountBindingMutation) OldLocalGroupID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLocalGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLocalGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLocalGroupID: %w", err)
+	}
+	return oldValue.LocalGroupID, nil
+}
+
+// ResetLocalGroupID resets all changes to the "local_group_id" field.
+func (m *UpstreamGroupAccountBindingMutation) ResetLocalGroupID() {
+	m.local_group = nil
+}
+
+// SetAccountID sets the "account_id" field.
+func (m *UpstreamGroupAccountBindingMutation) SetAccountID(i int64) {
+	m.account = &i
+}
+
+// AccountID returns the value of the "account_id" field in the mutation.
+func (m *UpstreamGroupAccountBindingMutation) AccountID() (r int64, exists bool) {
+	v := m.account
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAccountID returns the old "account_id" field's value of the UpstreamGroupAccountBinding entity.
+// If the UpstreamGroupAccountBinding object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamGroupAccountBindingMutation) OldAccountID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccountID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccountID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccountID: %w", err)
+	}
+	return oldValue.AccountID, nil
+}
+
+// ResetAccountID resets all changes to the "account_id" field.
+func (m *UpstreamGroupAccountBindingMutation) ResetAccountID() {
+	m.account = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *UpstreamGroupAccountBindingMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *UpstreamGroupAccountBindingMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the UpstreamGroupAccountBinding entity.
+// If the UpstreamGroupAccountBinding object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamGroupAccountBindingMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *UpstreamGroupAccountBindingMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// ClearUpstreamGroup clears the "upstream_group" edge to the UpstreamGroup entity.
+func (m *UpstreamGroupAccountBindingMutation) ClearUpstreamGroup() {
+	m.clearedupstream_group = true
+	m.clearedFields[upstreamgroupaccountbinding.FieldUpstreamGroupID] = struct{}{}
+}
+
+// UpstreamGroupCleared reports if the "upstream_group" edge to the UpstreamGroup entity was cleared.
+func (m *UpstreamGroupAccountBindingMutation) UpstreamGroupCleared() bool {
+	return m.clearedupstream_group
+}
+
+// UpstreamGroupIDs returns the "upstream_group" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// UpstreamGroupID instead. It exists only for internal usage by the builders.
+func (m *UpstreamGroupAccountBindingMutation) UpstreamGroupIDs() (ids []int64) {
+	if id := m.upstream_group; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetUpstreamGroup resets all changes to the "upstream_group" edge.
+func (m *UpstreamGroupAccountBindingMutation) ResetUpstreamGroup() {
+	m.upstream_group = nil
+	m.clearedupstream_group = false
+}
+
+// ClearLocalGroup clears the "local_group" edge to the Group entity.
+func (m *UpstreamGroupAccountBindingMutation) ClearLocalGroup() {
+	m.clearedlocal_group = true
+	m.clearedFields[upstreamgroupaccountbinding.FieldLocalGroupID] = struct{}{}
+}
+
+// LocalGroupCleared reports if the "local_group" edge to the Group entity was cleared.
+func (m *UpstreamGroupAccountBindingMutation) LocalGroupCleared() bool {
+	return m.clearedlocal_group
+}
+
+// LocalGroupIDs returns the "local_group" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// LocalGroupID instead. It exists only for internal usage by the builders.
+func (m *UpstreamGroupAccountBindingMutation) LocalGroupIDs() (ids []int64) {
+	if id := m.local_group; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetLocalGroup resets all changes to the "local_group" edge.
+func (m *UpstreamGroupAccountBindingMutation) ResetLocalGroup() {
+	m.local_group = nil
+	m.clearedlocal_group = false
+}
+
+// ClearAccount clears the "account" edge to the Account entity.
+func (m *UpstreamGroupAccountBindingMutation) ClearAccount() {
+	m.clearedaccount = true
+	m.clearedFields[upstreamgroupaccountbinding.FieldAccountID] = struct{}{}
+}
+
+// AccountCleared reports if the "account" edge to the Account entity was cleared.
+func (m *UpstreamGroupAccountBindingMutation) AccountCleared() bool {
+	return m.clearedaccount
+}
+
+// AccountIDs returns the "account" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// AccountID instead. It exists only for internal usage by the builders.
+func (m *UpstreamGroupAccountBindingMutation) AccountIDs() (ids []int64) {
+	if id := m.account; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetAccount resets all changes to the "account" edge.
+func (m *UpstreamGroupAccountBindingMutation) ResetAccount() {
+	m.account = nil
+	m.clearedaccount = false
+}
+
+// Where appends a list predicates to the UpstreamGroupAccountBindingMutation builder.
+func (m *UpstreamGroupAccountBindingMutation) Where(ps ...predicate.UpstreamGroupAccountBinding) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the UpstreamGroupAccountBindingMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *UpstreamGroupAccountBindingMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.UpstreamGroupAccountBinding, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *UpstreamGroupAccountBindingMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *UpstreamGroupAccountBindingMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (UpstreamGroupAccountBinding).
+func (m *UpstreamGroupAccountBindingMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *UpstreamGroupAccountBindingMutation) Fields() []string {
+	fields := make([]string, 0, 4)
+	if m.upstream_group != nil {
+		fields = append(fields, upstreamgroupaccountbinding.FieldUpstreamGroupID)
+	}
+	if m.local_group != nil {
+		fields = append(fields, upstreamgroupaccountbinding.FieldLocalGroupID)
+	}
+	if m.account != nil {
+		fields = append(fields, upstreamgroupaccountbinding.FieldAccountID)
+	}
+	if m.created_at != nil {
+		fields = append(fields, upstreamgroupaccountbinding.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *UpstreamGroupAccountBindingMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case upstreamgroupaccountbinding.FieldUpstreamGroupID:
+		return m.UpstreamGroupID()
+	case upstreamgroupaccountbinding.FieldLocalGroupID:
+		return m.LocalGroupID()
+	case upstreamgroupaccountbinding.FieldAccountID:
+		return m.AccountID()
+	case upstreamgroupaccountbinding.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *UpstreamGroupAccountBindingMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case upstreamgroupaccountbinding.FieldUpstreamGroupID:
+		return m.OldUpstreamGroupID(ctx)
+	case upstreamgroupaccountbinding.FieldLocalGroupID:
+		return m.OldLocalGroupID(ctx)
+	case upstreamgroupaccountbinding.FieldAccountID:
+		return m.OldAccountID(ctx)
+	case upstreamgroupaccountbinding.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown UpstreamGroupAccountBinding field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *UpstreamGroupAccountBindingMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case upstreamgroupaccountbinding.FieldUpstreamGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpstreamGroupID(v)
+		return nil
+	case upstreamgroupaccountbinding.FieldLocalGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLocalGroupID(v)
+		return nil
+	case upstreamgroupaccountbinding.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAccountID(v)
+		return nil
+	case upstreamgroupaccountbinding.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown UpstreamGroupAccountBinding field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *UpstreamGroupAccountBindingMutation) AddedFields() []string {
+	var fields []string
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *UpstreamGroupAccountBindingMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *UpstreamGroupAccountBindingMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown UpstreamGroupAccountBinding numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *UpstreamGroupAccountBindingMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *UpstreamGroupAccountBindingMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *UpstreamGroupAccountBindingMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown UpstreamGroupAccountBinding nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *UpstreamGroupAccountBindingMutation) ResetField(name string) error {
+	switch name {
+	case upstreamgroupaccountbinding.FieldUpstreamGroupID:
+		m.ResetUpstreamGroupID()
+		return nil
+	case upstreamgroupaccountbinding.FieldLocalGroupID:
+		m.ResetLocalGroupID()
+		return nil
+	case upstreamgroupaccountbinding.FieldAccountID:
+		m.ResetAccountID()
+		return nil
+	case upstreamgroupaccountbinding.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown UpstreamGroupAccountBinding field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *UpstreamGroupAccountBindingMutation) AddedEdges() []string {
+	edges := make([]string, 0, 3)
+	if m.upstream_group != nil {
+		edges = append(edges, upstreamgroupaccountbinding.EdgeUpstreamGroup)
+	}
+	if m.local_group != nil {
+		edges = append(edges, upstreamgroupaccountbinding.EdgeLocalGroup)
+	}
+	if m.account != nil {
+		edges = append(edges, upstreamgroupaccountbinding.EdgeAccount)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *UpstreamGroupAccountBindingMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case upstreamgroupaccountbinding.EdgeUpstreamGroup:
+		if id := m.upstream_group; id != nil {
+			return []ent.Value{*id}
+		}
+	case upstreamgroupaccountbinding.EdgeLocalGroup:
+		if id := m.local_group; id != nil {
+			return []ent.Value{*id}
+		}
+	case upstreamgroupaccountbinding.EdgeAccount:
+		if id := m.account; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *UpstreamGroupAccountBindingMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 3)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *UpstreamGroupAccountBindingMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *UpstreamGroupAccountBindingMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 3)
+	if m.clearedupstream_group {
+		edges = append(edges, upstreamgroupaccountbinding.EdgeUpstreamGroup)
+	}
+	if m.clearedlocal_group {
+		edges = append(edges, upstreamgroupaccountbinding.EdgeLocalGroup)
+	}
+	if m.clearedaccount {
+		edges = append(edges, upstreamgroupaccountbinding.EdgeAccount)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *UpstreamGroupAccountBindingMutation) EdgeCleared(name string) bool {
+	switch name {
+	case upstreamgroupaccountbinding.EdgeUpstreamGroup:
+		return m.clearedupstream_group
+	case upstreamgroupaccountbinding.EdgeLocalGroup:
+		return m.clearedlocal_group
+	case upstreamgroupaccountbinding.EdgeAccount:
+		return m.clearedaccount
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *UpstreamGroupAccountBindingMutation) ClearEdge(name string) error {
+	switch name {
+	case upstreamgroupaccountbinding.EdgeUpstreamGroup:
+		m.ClearUpstreamGroup()
+		return nil
+	case upstreamgroupaccountbinding.EdgeLocalGroup:
+		m.ClearLocalGroup()
+		return nil
+	case upstreamgroupaccountbinding.EdgeAccount:
+		m.ClearAccount()
+		return nil
+	}
+	return fmt.Errorf("unknown UpstreamGroupAccountBinding unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *UpstreamGroupAccountBindingMutation) ResetEdge(name string) error {
+	switch name {
+	case upstreamgroupaccountbinding.EdgeUpstreamGroup:
+		m.ResetUpstreamGroup()
+		return nil
+	case upstreamgroupaccountbinding.EdgeLocalGroup:
+		m.ResetLocalGroup()
+		return nil
+	case upstreamgroupaccountbinding.EdgeAccount:
+		m.ResetAccount()
+		return nil
+	}
+	return fmt.Errorf("unknown UpstreamGroupAccountBinding edge %s", name)
 }
 
 // UpstreamGroupMultiplierHistoryMutation represents an operation that mutates the UpstreamGroupMultiplierHistory nodes in the graph.
