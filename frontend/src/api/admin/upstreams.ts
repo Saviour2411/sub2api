@@ -104,6 +104,7 @@ export interface UpstreamWritePayload {
   password?: string
   access_token?: string
   refresh_token?: string
+  user_agent?: string
   enabled: boolean
 }
 

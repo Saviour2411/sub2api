@@ -114,7 +114,7 @@
 | 编号 | 功能 | 当前行为与边界 | 关键入口 | 状态 |
 | --- | --- | --- | --- | --- |
 | `CUST-OBS-001` | 流式渠道监控与随机抖动 | 渠道监控和模板可以选择流式检测；检测间隔支持正负随机抖动，避免大量渠道同一时刻探测，并保留 provider/endpoint/请求体的本地扩展。 | `backend/internal/service/channel_monitor_checker.go`、`backend/ent/schema/channel_monitor.go`、`backend/migrations/141_channel_monitor_stream_enabled.sql` | 生效中 |
-| `CUST-OBS-002` | 独立上游站点同步监控 | 在二开管理页统一维护 Sub2API/New API 上游站点，定时同步余额、分组倍率、Token 与实际消耗，保留用量及倍率历史；支持按分组类型筛选、按余额/今日 Token 排序、拖拽调整站点顺序，并按平台优先级和倍率整理账号下方分组；新增 Sub2API 时会探测 Turnstile，自动改用令牌认证并支持从完整登录响应导入 Access/Refresh Token；同步时优先复用加密保存的 Token/Cookie，仅在凭证被拒绝时刷新或重新登录。 | `backend/internal/service/upstream_service.go`、`frontend/src/components/admin/upstream/UpstreamManagementPanel.vue`、`backend/migrations/178_upstream_management.sql`、`backend/migrations/181_upstream_management_order_and_platform.sql` | 生效中 |
+| `CUST-OBS-002` | 独立上游站点同步监控 | 在二开管理页统一维护 Sub2API/New API 上游站点，定时同步余额、分组倍率、Token 与实际消耗，保留用量及倍率历史；支持按分组类型筛选、按余额/今日 Token 排序、拖拽调整站点顺序，并按平台优先级和倍率整理账号下方分组；新增 Sub2API 时会探测 Turnstile，自动改用令牌认证并支持从完整登录响应导入 Access/Refresh Token；令牌模式可在加密凭证中保存登录会话 User-Agent，并在验证、刷新与同步请求中保持一致，以兼容绑定 IP/UA 指纹的上游站点；同步时优先复用加密保存的 Token/Cookie，仅在凭证被拒绝时刷新或重新登录。 | `backend/internal/service/upstream_service.go`、`frontend/src/components/admin/upstream/UpstreamManagementPanel.vue`、`backend/migrations/178_upstream_management.sql`、`backend/migrations/181_upstream_management_order_and_platform.sql` | 生效中 |
 
 ### 产品、支付与增长
 
@@ -160,6 +160,7 @@
 
 | 日期 | 版本/提交 | 类型 | 功能编号 | 变更与原因 | 验证 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-07-20 | `0.1.202` / 待提交 | 修改 | `CUST-OBS-002` | Sub2API 令牌认证新增会话 User-Agent：导入登录响应时自动记录当前浏览器 UA，与 Access/Refresh Token 一并加密保存，并在登录状态验证、令牌刷新和定时同步请求中持续复用，兼容同时绑定出口 IP 与 User-Agent 的上游会话风控。 | 后端 Provider/凭证生命周期测试、前端组件测试、类型检查、生产构建及生产环境认证验证 |
 | 2026-07-16 | `0.1.200` / 待提交 | 修改 | `CUST-OBS-002` | Sub2API 密码模式改为优先复用 Access Token、认证失败后优先刷新并仅在刷新凭证被拒绝或接口不支持时回退密码登录；New API 优先复用 Cookie 和加密保存的远端用户 ID，仅在 Cookie 被拒绝时重新登录；网络、限流和服务端错误不触发重复认证，账号、地址、平台或密码变化时主动清除旧会话凭证。 | Provider 请求计数与认证恢复测试、凭证作用域失效测试、后端相关包测试、`go vet`、`golangci-lint` 及 `git diff --check` |
 | 2026-07-16 | `0.1.199` / 待提交 | 修改 | `CUST-OBS-002` | Sub2API 上游新增公开设置能力探测；目标站开启 Cloudflare Turnstile 时自动禁用密码认证、切换令牌模式，并允许粘贴登录接口完整 JSON 导入访问/刷新令牌；未经过探测的创建请求也会返回专用 `UPSTREAM_TURNSTILE_REQUIRED` 错误，避免继续显示笼统的认证失败。 | 后端服务/Provider 测试、前端组件测试、类型检查、生产构建及 Playwright 表单流程检查 |
 | 2026-07-16 | `0.1.199` / 待提交 | 修改 | `CUST-OBS-002` | 上游管理新增分组类型筛选、余额/今日 Token 双向排序和站点拖拽排序；New API 分组平台改为优先使用上游显式类型、其次按名称/描述识别 Kiro/Claude/OpenAI/Gemini/Grok/Antigravity，并迁移修复历史错误标签；账号下方分组按 OpenAI、Anthropic、Gemini、Grok、Antigravity 和倍率升序排列。 | 后端服务/仓储测试、前端组件测试、类型检查、生产构建及 Playwright 交互与多视口截图检查 |

@@ -433,7 +433,7 @@ func (s *UpstreamService) prepareCreate(input UpstreamCreateInput) (*UpstreamSit
 	}
 	credential := UpstreamCredential{
 		Password: strings.TrimSpace(input.Password), AccessToken: strings.TrimSpace(input.AccessToken),
-		RefreshToken: strings.TrimSpace(input.RefreshToken),
+		RefreshToken: strings.TrimSpace(input.RefreshToken), UserAgent: strings.TrimSpace(input.UserAgent),
 	}
 	if err := s.validateSite(site, credential); err != nil {
 		return nil, UpstreamCredential{}, err
@@ -465,6 +465,8 @@ func (s *UpstreamService) validateSite(site *UpstreamSite, credential UpstreamCr
 		}
 	} else if credential.AccessToken == "" && credential.RefreshToken == "" {
 		return ErrUpstreamInvalidInput.WithCause(fmt.Errorf("令牌认证必须填写访问令牌或刷新令牌"))
+	} else if len(credential.UserAgent) > 512 {
+		return ErrUpstreamInvalidInput.WithCause(fmt.Errorf("会话 User-Agent 不能超过 512 个字符"))
 	}
 	return nil
 }
@@ -520,12 +522,17 @@ func mergeUpstreamUpdate(site *UpstreamSite, credential *UpstreamCredential, inp
 		credential.RefreshToken = strings.TrimSpace(*input.RefreshToken)
 		changed = true
 	}
+	if input.UserAgent != nil && strings.TrimSpace(*input.UserAgent) != "" {
+		credential.UserAgent = strings.TrimSpace(*input.UserAgent)
+		changed = true
+	}
 	return changed
 }
 
 func clearUpstreamSessionCredential(credential *UpstreamCredential) {
 	credential.AccessToken = ""
 	credential.RefreshToken = ""
+	credential.UserAgent = ""
 	credential.Cookie = ""
 	credential.NewAPIUserID = ""
 }

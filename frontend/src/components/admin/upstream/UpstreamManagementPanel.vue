@@ -391,6 +391,11 @@
             <label for="upstream-refresh-token" class="input-label">{{ t('admin.customFeatures.upstream.refreshToken') }}</label>
             <input id="upstream-refresh-token" v-model="form.refresh_token" class="input" type="password" autocomplete="off" :placeholder="editingSite?.auth_mode === 'token' && editingSite.has_token ? t('admin.customFeatures.upstream.keepCredential') : ''" />
           </div>
+          <div class="md:col-span-2">
+            <label for="upstream-user-agent" class="input-label">{{ t('admin.customFeatures.upstream.sessionUserAgent') }}</label>
+            <input id="upstream-user-agent" v-model="form.user_agent" class="input font-mono text-xs" autocomplete="off" maxlength="512" :placeholder="editingSite?.auth_mode === 'token' && editingSite.has_token ? t('admin.customFeatures.upstream.keepSessionUserAgent') : ''" />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.customFeatures.upstream.sessionUserAgentHint') }}</p>
+          </div>
           <div v-if="turnstileDetected" class="md:col-span-2">
             <label for="upstream-login-response" class="input-label">{{ t('admin.customFeatures.upstream.loginResponse') }}</label>
             <div class="flex flex-col gap-2 sm:flex-row sm:items-stretch">
@@ -652,9 +657,13 @@ let siteListRequestVersion = 0
 let capabilityProbeRequestVersion = 0
 let bindingOpenRequestVersion = 0
 
+function currentBrowserUserAgent() {
+  return typeof navigator === 'undefined' ? '' : navigator.userAgent.trim()
+}
+
 const form = reactive<UpstreamWritePayload>({
   name: '', base_url: '', platform: 'sub2api', auth_mode: 'password', account: '',
-  password: '', access_token: '', refresh_token: '', enabled: true
+  password: '', access_token: '', refresh_token: '', user_agent: currentBrowserUserAgent(), enabled: true
 })
 
 const turnstileDetected = computed(() => (
@@ -954,14 +963,14 @@ async function saveSortOrder() {
 
 function resetForm() {
   resetCapabilityProbe()
-  Object.assign(form, { name: '', base_url: '', platform: 'sub2api', auth_mode: 'password', account: '', password: '', access_token: '', refresh_token: '', enabled: true })
+  Object.assign(form, { name: '', base_url: '', platform: 'sub2api', auth_mode: 'password', account: '', password: '', access_token: '', refresh_token: '', user_agent: currentBrowserUserAgent(), enabled: true })
 }
 
 function openCreate() { editingSite.value = null; resetForm(); formOpen.value = true }
 function openEdit(site: UpstreamSite) {
   resetCapabilityProbe()
   editingSite.value = site
-  Object.assign(form, { name: site.name, base_url: site.base_url, platform: site.platform, auth_mode: site.auth_mode, account: site.account, password: '', access_token: '', refresh_token: '', enabled: site.enabled })
+  Object.assign(form, { name: site.name, base_url: site.base_url, platform: site.platform, auth_mode: site.auth_mode, account: site.account, password: '', access_token: '', refresh_token: '', user_agent: '', enabled: site.enabled })
   formOpen.value = true
   void probeSiteCapabilities()
 }
@@ -980,6 +989,7 @@ function handlePlatformChange() {
 }
 function handleAuthModeChange() {
   if (turnstileDetected.value && form.auth_mode === 'password') form.auth_mode = 'token'
+  if (form.auth_mode === 'token' && !form.user_agent?.trim()) form.user_agent = currentBrowserUserAgent()
   loginResponseError.value = ''
 }
 function handleBaseURLInput() {
@@ -1020,6 +1030,7 @@ function markTurnstileDetected(baseURL: string) {
     token_auth_recommended: true,
   }
   form.auth_mode = 'token'
+  form.user_agent = currentBrowserUserAgent()
 }
 
 async function probeSiteCapabilities(force = false): Promise<UpstreamCapabilities | null> {
@@ -1084,6 +1095,7 @@ function importLoginResponseTokens() {
   }
   if (accessToken) form.access_token = accessToken
   if (refreshToken) form.refresh_token = refreshToken
+  form.user_agent = currentBrowserUserAgent()
   loginResponseJSON.value = ''
   appStore.showSuccess(t('admin.customFeatures.upstream.tokensImported'))
 }
@@ -1111,6 +1123,7 @@ async function submitForm() {
       password: form.auth_mode === 'password' ? form.password?.trim() : undefined,
       access_token: form.auth_mode === 'token' ? form.access_token?.trim() : undefined,
       refresh_token: form.auth_mode === 'token' ? form.refresh_token?.trim() : undefined,
+      user_agent: form.auth_mode === 'token' ? form.user_agent?.trim() : undefined,
     }
     if (editingSite.value) await upstreamsAPI.update(editingSite.value.id, payload)
     else await upstreamsAPI.create(payload)

@@ -338,6 +338,7 @@ describe('UpstreamManagementPanel', () => {
     await wrapper.get('[data-test="upstream-import-login-response"]').trigger('click')
     expect(wrapper.get<HTMLInputElement>('#upstream-access-token').element.value).toBe('access-from-login')
     expect(wrapper.get<HTMLInputElement>('#upstream-refresh-token').element.value).toBe('refresh-from-login')
+    expect(wrapper.get<HTMLInputElement>('#upstream-user-agent').element.value).toBe(navigator.userAgent)
     expect(wrapper.get<HTMLTextAreaElement>('[data-test="upstream-login-response"]').element.value).toBe('')
 
     await wrapper.get('[data-test="upstream-form"]').trigger('submit')
@@ -348,6 +349,7 @@ describe('UpstreamManagementPanel', () => {
       auth_mode: 'token',
       access_token: 'access-from-login',
       refresh_token: 'refresh-from-login',
+      user_agent: navigator.userAgent,
     }))
     wrapper.unmount()
   })

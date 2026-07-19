@@ -167,11 +167,13 @@ func TestSub2APIUpstreamProviderPasswordAndUsage(t *testing.T) {
 
 func TestSub2APIUpstreamProviderRefreshToken(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v1/auth/refresh", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/api/v1/auth/refresh", func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "browser-agent", r.Header.Get("User-Agent"))
 		writeUpstreamJSON(t, w, map[string]any{"access_token": "refreshed"})
 	})
 	mux.HandleFunc("/api/v1/auth/me", func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "Bearer refreshed", r.Header.Get("Authorization"))
+		require.Equal(t, "browser-agent", r.Header.Get("User-Agent"))
 		writeUpstreamJSON(t, w, map[string]any{"id": 1})
 	})
 	server := httptest.NewServer(mux)
@@ -180,7 +182,7 @@ func TestSub2APIUpstreamProviderRefreshToken(t *testing.T) {
 	provider := newSub2APIUpstreamProvider(newTestUpstreamHTTPClient(t))
 	credential, err := provider.Validate(context.Background(), &UpstreamSite{
 		BaseURL: server.URL, Platform: UpstreamPlatformSub2API, AuthMode: UpstreamAuthToken,
-	}, UpstreamCredential{RefreshToken: "refresh"})
+	}, UpstreamCredential{RefreshToken: "refresh", UserAgent: "browser-agent"})
 	require.NoError(t, err)
 	require.Equal(t, "refreshed", credential.AccessToken)
 }
@@ -194,6 +196,7 @@ func TestSub2APIUpstreamProviderPasswordModeReusesCachedAccessToken(t *testing.T
 	})
 	mux.HandleFunc("/api/v1/auth/me", func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "Bearer cached-access", r.Header.Get("Authorization"))
+		require.Equal(t, "browser-agent", r.Header.Get("User-Agent"))
 		writeUpstreamJSON(t, w, map[string]any{"id": 1})
 	})
 	server := httptest.NewServer(mux)
@@ -203,7 +206,7 @@ func TestSub2APIUpstreamProviderPasswordModeReusesCachedAccessToken(t *testing.T
 	credential, err := provider.Validate(context.Background(), &UpstreamSite{
 		BaseURL: server.URL, Platform: UpstreamPlatformSub2API,
 		AuthMode: UpstreamAuthPassword, Account: "admin@example.com",
-	}, UpstreamCredential{Password: "secret", AccessToken: "cached-access", RefreshToken: "cached-refresh"})
+	}, UpstreamCredential{Password: "secret", AccessToken: "cached-access", RefreshToken: "cached-refresh", UserAgent: "browser-agent"})
 	require.NoError(t, err)
 	require.Zero(t, loginCalls)
 	require.Equal(t, "cached-access", credential.AccessToken)

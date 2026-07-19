@@ -150,15 +150,16 @@ func TestUpstreamServiceCredentialEnvelopeAndMaskedView(t *testing.T) {
 
 func TestMergeUpstreamUpdateKeepsBlankCredential(t *testing.T) {
 	site := &UpstreamSite{Name: "旧名称", BaseURL: "https://example.com", Platform: UpstreamPlatformSub2API, AuthMode: UpstreamAuthPassword, Account: "admin"}
-	credential := UpstreamCredential{Password: "old-password", AccessToken: "old-token"}
+	credential := UpstreamCredential{Password: "old-password", AccessToken: "old-token", UserAgent: "old-agent"}
 	empty := ""
 	newName := "新名称"
 	changed := mergeUpstreamUpdate(site, &credential, UpstreamUpdateInput{
-		Name: &newName, Password: &empty, AccessToken: &empty, RefreshToken: &empty,
+		Name: &newName, Password: &empty, AccessToken: &empty, RefreshToken: &empty, UserAgent: &empty,
 	})
 	require.True(t, changed)
 	require.Equal(t, "old-password", credential.Password)
 	require.Equal(t, "old-token", credential.AccessToken)
+	require.Equal(t, "old-agent", credential.UserAgent)
 }
 
 func TestMergeUpstreamUpdateClearsCredentialFromPreviousAuthMode(t *testing.T) {
@@ -167,19 +168,21 @@ func TestMergeUpstreamUpdateClearsCredentialFromPreviousAuthMode(t *testing.T) {
 		credential := UpstreamCredential{Password: "old-password", Cookie: "old-cookie"}
 		authMode := UpstreamAuthToken
 		accessToken := "new-token"
+		userAgent := "browser-agent"
 		changed := mergeUpstreamUpdate(site, &credential, UpstreamUpdateInput{
-			AuthMode: &authMode, AccessToken: &accessToken,
+			AuthMode: &authMode, AccessToken: &accessToken, UserAgent: &userAgent,
 		})
 
 		require.True(t, changed)
 		require.Empty(t, credential.Password)
 		require.Empty(t, credential.Cookie)
 		require.Equal(t, "new-token", credential.AccessToken)
+		require.Equal(t, "browser-agent", credential.UserAgent)
 	})
 
 	t.Run("令牌切换为密码", func(t *testing.T) {
 		site := &UpstreamSite{AuthMode: UpstreamAuthToken}
-		credential := UpstreamCredential{AccessToken: "old-access", RefreshToken: "old-refresh", Cookie: "old-cookie"}
+		credential := UpstreamCredential{AccessToken: "old-access", RefreshToken: "old-refresh", UserAgent: "old-agent", Cookie: "old-cookie"}
 		authMode := UpstreamAuthPassword
 		password := "new-password"
 		changed := mergeUpstreamUpdate(site, &credential, UpstreamUpdateInput{
@@ -189,6 +192,7 @@ func TestMergeUpstreamUpdateClearsCredentialFromPreviousAuthMode(t *testing.T) {
 		require.True(t, changed)
 		require.Empty(t, credential.AccessToken)
 		require.Empty(t, credential.RefreshToken)
+		require.Empty(t, credential.UserAgent)
 		require.Empty(t, credential.Cookie)
 		require.Equal(t, "new-password", credential.Password)
 	})
@@ -199,12 +203,13 @@ func TestMergeUpstreamUpdateInvalidatesCachedSessionWhenCredentialScopeChanges(t
 		t.Helper()
 		require.Empty(t, credential.AccessToken)
 		require.Empty(t, credential.RefreshToken)
+		require.Empty(t, credential.UserAgent)
 		require.Empty(t, credential.Cookie)
 		require.Empty(t, credential.NewAPIUserID)
 	}
 	credentialFixture := func() UpstreamCredential {
 		return UpstreamCredential{
-			Password: "old-password", AccessToken: "old-access", RefreshToken: "old-refresh",
+			Password: "old-password", AccessToken: "old-access", RefreshToken: "old-refresh", UserAgent: "old-agent",
 			Cookie: "old-cookie", NewAPIUserID: "9",
 		}
 	}

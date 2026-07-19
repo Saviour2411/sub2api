@@ -249,7 +249,7 @@ func sub2APIStatsQuery(date time.Time, loc *time.Location) url.Values {
 
 func (p *sub2APIUpstreamProvider) authenticate(ctx context.Context, site *UpstreamSite, credential UpstreamCredential) (UpstreamCredential, map[string]string, error) {
 	if credential.AccessToken != "" {
-		return credential, map[string]string{"Authorization": "Bearer " + credential.AccessToken}, nil
+		return credential, sub2APIRequestHeaders(credential, true), nil
 	}
 	if credential.RefreshToken != "" {
 		updated, headers, err := p.refresh(ctx, site, credential)
@@ -305,7 +305,7 @@ func (p *sub2APIUpstreamProvider) login(ctx context.Context, site *UpstreamSite,
 	if credential.AccessToken == "" {
 		return credential, nil, fmt.Errorf("Sub2API 未返回访问令牌")
 	}
-	return credential, map[string]string{"Authorization": "Bearer " + credential.AccessToken}, nil
+	return credential, sub2APIRequestHeaders(credential, true), nil
 }
 
 func isSub2APITurnstileError(err error) bool {
@@ -318,7 +318,7 @@ func isSub2APITurnstileError(err error) bool {
 }
 
 func (p *sub2APIUpstreamProvider) refresh(ctx context.Context, site *UpstreamSite, credential UpstreamCredential) (UpstreamCredential, map[string]string, error) {
-	payload, _, err := p.http.doJSON(ctx, http.MethodPost, site.BaseURL, "/api/v1/auth/refresh", nil, "", map[string]string{"refresh_token": credential.RefreshToken})
+	payload, _, err := p.http.doJSON(ctx, http.MethodPost, site.BaseURL, "/api/v1/auth/refresh", sub2APIRequestHeaders(credential, false), "", map[string]string{"refresh_token": credential.RefreshToken})
 	if err != nil {
 		return credential, nil, fmt.Errorf("刷新 Sub2API 令牌: %w", err)
 	}
@@ -329,7 +329,18 @@ func (p *sub2APIUpstreamProvider) refresh(ctx context.Context, site *UpstreamSit
 	if credential.AccessToken == "" {
 		return credential, nil, fmt.Errorf("Sub2API 未返回访问令牌")
 	}
-	return credential, map[string]string{"Authorization": "Bearer " + credential.AccessToken}, nil
+	return credential, sub2APIRequestHeaders(credential, true), nil
+}
+
+func sub2APIRequestHeaders(credential UpstreamCredential, includeAuthorization bool) map[string]string {
+	headers := make(map[string]string, 2)
+	if includeAuthorization && credential.AccessToken != "" {
+		headers["Authorization"] = "Bearer " + credential.AccessToken
+	}
+	if credential.UserAgent != "" {
+		headers["User-Agent"] = credential.UserAgent
+	}
+	return headers
 }
 
 func isUpstreamAuthenticationError(err error) bool {

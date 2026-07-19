@@ -64,6 +64,7 @@ type UpstreamCredential struct {
 	Password     string `json:"password,omitempty"`
 	AccessToken  string `json:"access_token,omitempty"`
 	RefreshToken string `json:"refresh_token,omitempty"`
+	UserAgent    string `json:"user_agent,omitempty"`
 	Cookie       string `json:"cookie,omitempty"`
 	NewAPIUserID string `json:"newapi_user_id,omitempty"`
 }
@@ -161,6 +162,7 @@ type UpstreamCreateInput struct {
 	Password     string `json:"password"`
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
+	UserAgent    string `json:"user_agent"`
 	Enabled      bool   `json:"enabled"`
 	CreatedBy    int64  `json:"-"`
 }
@@ -175,6 +177,7 @@ type UpstreamUpdateInput struct {
 	Password     *string `json:"password"`
 	AccessToken  *string `json:"access_token"`
 	RefreshToken *string `json:"refresh_token"`
+	UserAgent    *string `json:"user_agent"`
 	Enabled      *bool   `json:"enabled"`
 }
 
