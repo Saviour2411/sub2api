@@ -533,6 +533,7 @@ func clearUpstreamSessionCredential(credential *UpstreamCredential) {
 	credential.AccessToken = ""
 	credential.RefreshToken = ""
 	credential.UserAgent = ""
+	credential.ImpersonateChrome = false
 	credential.Cookie = ""
 	credential.NewAPIUserID = ""
 }

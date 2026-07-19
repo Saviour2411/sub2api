@@ -90,14 +90,20 @@ func buildClient(opts Options) (*http.Client, error) {
 	}
 
 	var rt http.RoundTripper = transport
-	if opts.ValidateResolvedIP && !opts.AllowPrivateHosts {
-		rt = newValidatedTransport(transport)
-	}
+	rt = WrapResolvedIPValidation(rt, opts.ValidateResolvedIP, opts.AllowPrivateHosts)
 	rt = servertiming.WrapRoundTripper(rt)
 	return &http.Client{
 		Transport: rt,
 		Timeout:   opts.Timeout,
 	}, nil
+}
+
+// WrapResolvedIPValidation 为自定义 Transport 复用统一的 DNS Rebinding 防护。
+func WrapResolvedIPValidation(base http.RoundTripper, enabled, allowPrivateHosts bool) http.RoundTripper {
+	if enabled && !allowPrivateHosts {
+		return newValidatedTransport(base)
+	}
+	return base
 }
 
 func buildTransport(opts Options) (*http.Transport, error) {

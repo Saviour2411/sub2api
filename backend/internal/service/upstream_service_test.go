@@ -132,7 +132,9 @@ func (r *upstreamMultiplierHistoryRangeRepo) ListMultiplierHistory(
 
 func TestUpstreamServiceCredentialEnvelopeAndMaskedView(t *testing.T) {
 	service := &UpstreamService{encryptor: upstreamPlainEncryptor{}}
-	encrypted, err := service.encryptCredential(UpstreamCredential{Password: "secret", AccessToken: "sensitive-access-value"})
+	encrypted, err := service.encryptCredential(UpstreamCredential{
+		Password: "secret", AccessToken: "sensitive-access-value", ImpersonateChrome: true,
+	})
 	require.NoError(t, err)
 	require.NotContains(t, encrypted, `"has_password"`)
 
@@ -182,7 +184,10 @@ func TestMergeUpstreamUpdateClearsCredentialFromPreviousAuthMode(t *testing.T) {
 
 	t.Run("令牌切换为密码", func(t *testing.T) {
 		site := &UpstreamSite{AuthMode: UpstreamAuthToken}
-		credential := UpstreamCredential{AccessToken: "old-access", RefreshToken: "old-refresh", UserAgent: "old-agent", Cookie: "old-cookie"}
+		credential := UpstreamCredential{
+			AccessToken: "old-access", RefreshToken: "old-refresh", UserAgent: "old-agent",
+			ImpersonateChrome: true, Cookie: "old-cookie",
+		}
 		authMode := UpstreamAuthPassword
 		password := "new-password"
 		changed := mergeUpstreamUpdate(site, &credential, UpstreamUpdateInput{
@@ -193,6 +198,7 @@ func TestMergeUpstreamUpdateClearsCredentialFromPreviousAuthMode(t *testing.T) {
 		require.Empty(t, credential.AccessToken)
 		require.Empty(t, credential.RefreshToken)
 		require.Empty(t, credential.UserAgent)
+		require.False(t, credential.ImpersonateChrome)
 		require.Empty(t, credential.Cookie)
 		require.Equal(t, "new-password", credential.Password)
 	})
@@ -204,13 +210,14 @@ func TestMergeUpstreamUpdateInvalidatesCachedSessionWhenCredentialScopeChanges(t
 		require.Empty(t, credential.AccessToken)
 		require.Empty(t, credential.RefreshToken)
 		require.Empty(t, credential.UserAgent)
+		require.False(t, credential.ImpersonateChrome)
 		require.Empty(t, credential.Cookie)
 		require.Empty(t, credential.NewAPIUserID)
 	}
 	credentialFixture := func() UpstreamCredential {
 		return UpstreamCredential{
 			Password: "old-password", AccessToken: "old-access", RefreshToken: "old-refresh", UserAgent: "old-agent",
-			Cookie: "old-cookie", NewAPIUserID: "9",
+			ImpersonateChrome: true, Cookie: "old-cookie", NewAPIUserID: "9",
 		}
 	}
 

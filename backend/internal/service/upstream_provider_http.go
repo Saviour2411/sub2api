@@ -16,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
+	"github.com/imroc/req/v3"
 )
 
 const upstreamMaxResponseBytes = 4 << 20
@@ -31,10 +32,22 @@ func (e *upstreamHTTPStatusError) Error() string {
 
 type upstreamHTTPClient struct {
 	client              *http.Client
+	chromeClient        *http.Client
 	allowInsecureHTTP   bool
 	requireAllowlist    bool
 	allowPrivateHosts   bool
 	allowedUpstreamHost []string
+}
+
+type upstreamChromeImpersonationContextKey struct{}
+
+func withUpstreamChromeImpersonation(ctx context.Context, enabled bool) context.Context {
+	return context.WithValue(ctx, upstreamChromeImpersonationContextKey{}, enabled)
+}
+
+func upstreamChromeImpersonationEnabled(ctx context.Context) bool {
+	enabled, _ := ctx.Value(upstreamChromeImpersonationContextKey{}).(bool)
+	return enabled
 }
 
 func newUpstreamHTTPClient(cfg *config.Config) (*upstreamHTTPClient, error) {
@@ -51,8 +64,7 @@ func newUpstreamHTTPClient(cfg *config.Config) (*upstreamHTTPClient, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建上游 HTTP 客户端: %w", err)
 	}
-	clientCopy := *shared
-	clientCopy.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+	checkRedirect := func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 5 {
 			return errors.New("上游重定向次数过多")
 		}
@@ -61,8 +73,17 @@ func newUpstreamHTTPClient(cfg *config.Config) (*upstreamHTTPClient, error) {
 		}
 		return nil
 	}
+	clientCopy := *shared
+	clientCopy.CheckRedirect = checkRedirect
+	chromeTransport := req.C().ImpersonateChrome().GetTransport()
+	chromeRoundTripper := httpclient.WrapResolvedIPValidation(
+		chromeTransport,
+		cfg.Security.URLAllowlist.Enabled,
+		cfg.Security.URLAllowlist.AllowPrivateHosts,
+	)
 	return &upstreamHTTPClient{
 		client:              &clientCopy,
+		chromeClient:        &http.Client{Transport: chromeRoundTripper, Timeout: 45 * time.Second, CheckRedirect: checkRedirect},
 		allowInsecureHTTP:   cfg.Security.URLAllowlist.AllowInsecureHTTP,
 		requireAllowlist:    cfg.Security.URLAllowlist.Enabled,
 		allowPrivateHosts:   cfg.Security.URLAllowlist.AllowPrivateHosts,
@@ -127,7 +148,11 @@ func (c *upstreamHTTPClient) doJSON(
 	if cookie != "" {
 		req.Header.Set("Cookie", cookie)
 	}
-	resp, err := c.client.Do(req)
+	client := c.client
+	if upstreamChromeImpersonationEnabled(ctx) && c.chromeClient != nil {
+		client = c.chromeClient
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, "", fmt.Errorf("请求上游失败: %w", err)
 	}

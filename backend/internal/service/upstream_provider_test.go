@@ -4,15 +4,23 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
+
+type upstreamRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f upstreamRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
 
 func newTestUpstreamHTTPClient(t *testing.T) *upstreamHTTPClient {
 	t.Helper()
@@ -185,6 +193,88 @@ func TestSub2APIUpstreamProviderRefreshToken(t *testing.T) {
 	}, UpstreamCredential{RefreshToken: "refresh", UserAgent: "browser-agent"})
 	require.NoError(t, err)
 	require.Equal(t, "refreshed", credential.AccessToken)
+}
+
+func TestSub2APIUpstreamProviderRetriesSessionBindingWithChromeTLS(t *testing.T) {
+	client := newTestUpstreamHTTPClient(t)
+	var standardCalls, chromeCalls int
+	client.client = &http.Client{Transport: upstreamRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		standardCalls++
+		require.Equal(t, "Bearer access-token", req.Header.Get("Authorization"))
+		require.Equal(t, "browser-agent", req.Header.Get("User-Agent"))
+		return &http.Response{
+			StatusCode: http.StatusUnauthorized,
+			Header:     make(http.Header),
+			Body: io.NopCloser(strings.NewReader(
+				`{"code":"SESSION_BINDING_MISMATCH","message":"Session network fingerprint changed, please login again"}`,
+			)),
+			Request: req,
+		}, nil
+	})}
+	client.chromeClient = &http.Client{Transport: upstreamRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		chromeCalls++
+		require.Equal(t, "Bearer access-token", req.Header.Get("Authorization"))
+		require.Equal(t, "browser-agent", req.Header.Get("User-Agent"))
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(`{"code":0,"data":{"id":224}}`)),
+			Request:    req,
+		}, nil
+	})}
+
+	provider := newSub2APIUpstreamProvider(client)
+	credential, err := provider.Validate(context.Background(), &UpstreamSite{
+		BaseURL: "https://www.xiaobaishu.org", Platform: UpstreamPlatformSub2API, AuthMode: UpstreamAuthToken,
+	}, UpstreamCredential{AccessToken: "access-token", UserAgent: "browser-agent"})
+	require.NoError(t, err)
+	require.True(t, credential.ImpersonateChrome)
+	require.Equal(t, 1, standardCalls)
+	require.Equal(t, 1, chromeCalls)
+}
+
+func TestSub2APIUpstreamProviderRetriesRefreshBindingWithChromeTLS(t *testing.T) {
+	client := newTestUpstreamHTTPClient(t)
+	var standardMeCalls, standardRefreshCalls, chromeMeCalls, chromeRefreshCalls int
+	client.client = &http.Client{Transport: upstreamRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		status := http.StatusUnauthorized
+		body := `{"code":"TOKEN_EXPIRED","message":"token expired"}`
+		if req.URL.Path == "/api/v1/auth/refresh" {
+			standardRefreshCalls++
+			body = `{"code":"SESSION_BINDING_MISMATCH","message":"Session network fingerprint changed, please login again"}`
+		} else {
+			standardMeCalls++
+		}
+		return &http.Response{
+			StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: req,
+		}, nil
+	})}
+	client.chromeClient = &http.Client{Transport: upstreamRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body := `{"code":0,"data":{"id":224}}`
+		if req.URL.Path == "/api/v1/auth/refresh" {
+			chromeRefreshCalls++
+			body = `{"code":0,"data":{"access_token":"refreshed-access","refresh_token":"refreshed-refresh"}}`
+		} else {
+			chromeMeCalls++
+			require.Equal(t, "Bearer refreshed-access", req.Header.Get("Authorization"))
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: req,
+		}, nil
+	})}
+
+	provider := newSub2APIUpstreamProvider(client)
+	credential, err := provider.Validate(context.Background(), &UpstreamSite{
+		BaseURL: "https://www.xiaobaishu.org", Platform: UpstreamPlatformSub2API, AuthMode: UpstreamAuthToken,
+	}, UpstreamCredential{AccessToken: "expired-access", RefreshToken: "refresh-token", UserAgent: "browser-agent"})
+	require.NoError(t, err)
+	require.True(t, credential.ImpersonateChrome)
+	require.Equal(t, "refreshed-access", credential.AccessToken)
+	require.Equal(t, "refreshed-refresh", credential.RefreshToken)
+	require.Equal(t, 1, standardMeCalls)
+	require.Equal(t, 1, standardRefreshCalls)
+	require.Equal(t, 1, chromeRefreshCalls)
+	require.Equal(t, 1, chromeMeCalls)
 }
 
 func TestSub2APIUpstreamProviderPasswordModeReusesCachedAccessToken(t *testing.T) {

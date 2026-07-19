@@ -22,12 +22,29 @@ func newSub2APIUpstreamProvider(client *upstreamHTTPClient) UpstreamProvider {
 func (p *sub2APIUpstreamProvider) Platform() string { return UpstreamPlatformSub2API }
 
 func (p *sub2APIUpstreamProvider) Validate(ctx context.Context, site *UpstreamSite, credential UpstreamCredential) (*UpstreamCredential, error) {
+	ctx = withUpstreamChromeImpersonation(ctx, credential.ImpersonateChrome)
 	updated, headers, err := p.authenticate(ctx, site, credential)
+	if err != nil && isSub2APISessionBindingMismatch(err) && !credential.ImpersonateChrome {
+		credential.ImpersonateChrome = true
+		ctx = withUpstreamChromeImpersonation(ctx, true)
+		updated, headers, err = p.authenticate(ctx, site, credential)
+	}
 	if err != nil {
 		return nil, err
 	}
-	if _, _, err = p.http.doJSON(ctx, http.MethodGet, site.BaseURL, "/api/v1/auth/me", headers, "", nil); isUpstreamAuthenticationError(err) {
+	if _, _, err = p.http.doJSON(ctx, http.MethodGet, site.BaseURL, "/api/v1/auth/me", headers, "", nil); isSub2APISessionBindingMismatch(err) && !updated.ImpersonateChrome {
+		updated.ImpersonateChrome = true
+		ctx = withUpstreamChromeImpersonation(ctx, true)
+		headers = sub2APIRequestHeaders(updated, true)
+		_, _, err = p.http.doJSON(ctx, http.MethodGet, site.BaseURL, "/api/v1/auth/me", headers, "", nil)
+	}
+	if isUpstreamAuthenticationError(err) {
 		updated, headers, err = p.reauthenticate(ctx, site, updated)
+		if err != nil && isSub2APISessionBindingMismatch(err) && !updated.ImpersonateChrome {
+			updated.ImpersonateChrome = true
+			ctx = withUpstreamChromeImpersonation(ctx, true)
+			updated, headers, err = p.reauthenticate(ctx, site, updated)
+		}
 		if err == nil {
 			_, _, err = p.http.doJSON(ctx, http.MethodGet, site.BaseURL, "/api/v1/auth/me", headers, "", nil)
 		}
@@ -39,7 +56,13 @@ func (p *sub2APIUpstreamProvider) Validate(ctx context.Context, site *UpstreamSi
 }
 
 func (p *sub2APIUpstreamProvider) Sync(ctx context.Context, req UpstreamSyncRequest) (*UpstreamSyncResult, error) {
+	ctx = withUpstreamChromeImpersonation(ctx, req.Credential.ImpersonateChrome)
 	credential, headers, err := p.authenticate(ctx, req.Site, req.Credential)
+	if err != nil && isSub2APISessionBindingMismatch(err) && !req.Credential.ImpersonateChrome {
+		req.Credential.ImpersonateChrome = true
+		ctx = withUpstreamChromeImpersonation(ctx, true)
+		credential, headers, err = p.authenticate(ctx, req.Site, req.Credential)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -47,11 +70,25 @@ func (p *sub2APIUpstreamProvider) Sync(ctx context.Context, req UpstreamSyncRequ
 	if err == nil {
 		return result, nil
 	}
+	if isSub2APISessionBindingMismatch(err) && !credential.ImpersonateChrome {
+		credential.ImpersonateChrome = true
+		ctx = withUpstreamChromeImpersonation(ctx, true)
+		headers = sub2APIRequestHeaders(credential, true)
+		result, err = p.syncAuthenticated(ctx, req, credential, headers)
+		if err == nil {
+			return result, nil
+		}
+	}
 	if !isUpstreamAuthenticationError(err) {
 		return upstreamResultWithCredential(result, credential), err
 	}
 
 	credential, headers, authErr := p.reauthenticate(ctx, req.Site, credential)
+	if authErr != nil && isSub2APISessionBindingMismatch(authErr) && !credential.ImpersonateChrome {
+		credential.ImpersonateChrome = true
+		ctx = withUpstreamChromeImpersonation(ctx, true)
+		credential, headers, authErr = p.reauthenticate(ctx, req.Site, credential)
+	}
 	if authErr != nil {
 		return upstreamResultWithCredential(result, credential), authErr
 	}
@@ -315,6 +352,16 @@ func isSub2APITurnstileError(err error) bool {
 	}
 	message := strings.ToLower(statusErr.Message)
 	return strings.Contains(message, "turnstile") || strings.Contains(message, "turnstile_verification_failed")
+}
+
+func isSub2APISessionBindingMismatch(err error) bool {
+	var statusErr *upstreamHTTPStatusError
+	if !errors.As(err, &statusErr) || statusErr.StatusCode != http.StatusUnauthorized {
+		return false
+	}
+	message := strings.ToLower(statusErr.Message)
+	return strings.Contains(message, "session_binding_mismatch") ||
+		strings.Contains(message, "network fingerprint changed")
 }
 
 func (p *sub2APIUpstreamProvider) refresh(ctx context.Context, site *UpstreamSite, credential UpstreamCredential) (UpstreamCredential, map[string]string, error) {

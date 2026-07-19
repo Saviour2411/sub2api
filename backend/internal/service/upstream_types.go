@@ -61,12 +61,13 @@ var (
 
 // UpstreamCredential 是 AES-GCM 加密信封中的明文结构，仅在服务内部流转。
 type UpstreamCredential struct {
-	Password     string `json:"password,omitempty"`
-	AccessToken  string `json:"access_token,omitempty"`
-	RefreshToken string `json:"refresh_token,omitempty"`
-	UserAgent    string `json:"user_agent,omitempty"`
-	Cookie       string `json:"cookie,omitempty"`
-	NewAPIUserID string `json:"newapi_user_id,omitempty"`
+	Password          string `json:"password,omitempty"`
+	AccessToken       string `json:"access_token,omitempty"`
+	RefreshToken      string `json:"refresh_token,omitempty"`
+	UserAgent         string `json:"user_agent,omitempty"`
+	ImpersonateChrome bool   `json:"impersonate_chrome,omitempty"`
+	Cookie            string `json:"cookie,omitempty"`
+	NewAPIUserID      string `json:"newapi_user_id,omitempty"`
 }
 
 // UpstreamSite 是独立上游管理领域的站点模型。
