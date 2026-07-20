@@ -61,13 +61,6 @@ func beginSuccessfulConversationAuditCapture(c *gin.Context, svc *service.Conten
 	}
 }
 
-func (h *GatewayHandler) checkContentModeration(c *gin.Context, reqLog *zap.Logger, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, body []byte) *service.ContentModerationDecision {
-	if h == nil || h.contentModerationService == nil {
-		return nil
-	}
-	return runContentModeration(c, reqLog, h.contentModerationService, apiKey, subject, protocol, model, body)
-}
-
 func (h *GatewayHandler) recordSuccessfulConversationAudit(c *gin.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, upstreamModel string, stream bool, body []byte, usage any, opts ...successfulConversationAuditOptions) {
 	if h == nil || h.contentModerationService == nil {
 		return
@@ -83,13 +76,6 @@ func contentModerationStatus(decision *service.ContentModerationDecision) int {
 
 func contentModerationErrorCode(decision *service.ContentModerationDecision) string {
 	return "content_policy_violation"
-}
-
-func (h *OpenAIGatewayHandler) checkContentModeration(c *gin.Context, reqLog *zap.Logger, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, body []byte) *service.ContentModerationDecision {
-	if h == nil || h.contentModerationService == nil {
-		return nil
-	}
-	return runContentModeration(c, reqLog, h.contentModerationService, apiKey, subject, protocol, model, body)
 }
 
 //nolint:unused

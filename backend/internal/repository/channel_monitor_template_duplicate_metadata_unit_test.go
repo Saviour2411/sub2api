@@ -28,11 +28,13 @@ func TestApplyChannelMonitorTemplatePreservesDuplicateOperationMetadataAtomicall
 
 	mock.ExpectBegin()
 	expectChannelMonitorTemplateForApply(mock, templateID)
-	mock.ExpectExec(`(?s)UPDATE "channel_monitors" SET "body_override" = NULL, "updated_at" = \$1, "api_mode" = \$2, "body_override_mode" = \$3 WHERE .*"template_id" = \$4.*"id" IN \(\$5, \$6\).*"provider" = \$7.*"api_mode" = \$8`).
+	mock.ExpectExec(`(?s)UPDATE "channel_monitors" SET "body_override" = NULL, "updated_at" = \$1, "api_mode" = \$2, "extra_headers" = \$3, "body_override_mode" = \$4, "stream_enabled" = \$5 WHERE .*"template_id" = \$6.*"id" IN \(\$7, \$8\).*"provider" = \$9.*"api_mode" = \$10`).
 		WithArgs(
 			sqlmock.AnyArg(),
 			service.MonitorAPIModeResponses,
+			sqlmock.AnyArg(),
 			service.MonitorBodyOverrideModeOff,
+			false,
 			templateID,
 			monitorIDs[0],
 			monitorIDs[1],

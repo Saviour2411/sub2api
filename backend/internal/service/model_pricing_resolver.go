@@ -254,6 +254,9 @@ func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricin
 // 与 image_output 不同，此处不设 Explicit 标志——图片输入未配置应回退文本价，
 // 而非硬置 0。
 func applyChannelImageInputPrice(chPricing *ChannelModelPricing, pricing *ModelPricing) {
+	if pricing == nil {
+		return
+	}
 	if chPricing != nil && chPricing.ImageInputPrice != nil {
 		pricing.ImageInputPricePerToken = *chPricing.ImageInputPrice
 	} else {

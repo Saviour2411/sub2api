@@ -38,7 +38,7 @@ function collectStaticI18nKeys(): Map<string, Set<string>> {
   const keys = new Map<string, Set<string>>()
   const patterns = [
     /\b(?:t|\$t)\(\s*['"]([A-Za-z0-9_.-]+)['"]/g,
-    /\b(?:titleKey|descriptionKey|labelKey)\s*:\s*['"]([A-Za-z0-9_.-]+)['"]/g,
+    /\b(?:titleKey|descriptionKey|labelKey)\s*:\s*['"]([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_.-]+)+)['"]/g,
   ]
 
   for (const file of files) {

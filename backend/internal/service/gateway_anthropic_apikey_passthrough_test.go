@@ -914,7 +914,9 @@ func TestGatewayService_AnthropicOAuthMimic_RewritesSystemWithBillingBlock(t *te
 			require.Contains(t, firstMsg.Get("content.0.text").String(), tt.wantOriginalSystem)
 
 			if tt.wantMetadataUserID != "" {
-				require.Equal(t, tt.wantMetadataUserID, gjson.GetBytes(upstream.lastBody, "metadata.user_id").String())
+				metadataUserID := gjson.GetBytes(upstream.lastBody, "metadata.user_id").String()
+				require.NotEqual(t, tt.wantMetadataUserID, metadataUserID, "模拟模式应替换不合法的客户端 metadata")
+				require.NotNil(t, ParseMetadataUserID(metadataUserID), "模拟模式应生成合法的 Claude Code metadata")
 				require.True(t, gjson.GetBytes(upstream.lastBody, "context_management").Exists())
 			}
 		})
@@ -965,7 +967,8 @@ func TestGatewayService_AnthropicOAuthRealClaudeCodeHaiku_PreservesClientHeaders
 		Credentials: map[string]any{"access_token": "oauth-token"}, Status: StatusActive, Schedulable: true,
 	}
 
-	result, err := svc.Forward(context.Background(), c, account, parsed)
+	ctx := SetClaudeCodeClient(context.Background(), true)
+	result, err := svc.Forward(ctx, c, account, parsed)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.NotNil(t, upstream.lastReq)

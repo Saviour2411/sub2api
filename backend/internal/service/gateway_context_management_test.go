@@ -497,7 +497,7 @@ func TestApplyClaudeCodeOAuthMimicryToBody_HaikuRewritesSystem(t *testing.T) {
 	svc := &GatewayService{cfg: &config.Config{}}
 
 	out := svc.applyClaudeCodeOAuthMimicryToBody(
-		context.Background(), nil, account, body, nil, "Pi project instructions", "claude-haiku-4-5",
+		context.Background(), nil, account, body, "Pi project instructions", "claude-haiku-4-5", "",
 	)
 
 	system := gjson.GetBytes(out, "system").Array()
