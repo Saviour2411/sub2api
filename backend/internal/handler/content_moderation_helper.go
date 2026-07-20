@@ -74,7 +74,6 @@ func (h *GatewayHandler) recordSuccessfulConversationAudit(c *gin.Context, apiKe
 	}
 	recordSuccessfulConversationAudit(c, h.contentModerationService, apiKey, subject, protocol, model, upstreamModel, stream, body, usage, opts...)
 }
-
 func contentModerationStatus(decision *service.ContentModerationDecision) int {
 	if decision == nil || decision.StatusCode < 400 || decision.StatusCode > 599 {
 		return http.StatusForbidden
@@ -100,7 +99,6 @@ func (h *OpenAIGatewayHandler) recordSuccessfulConversationAudit(c *gin.Context,
 	}
 	recordSuccessfulConversationAudit(c, h.contentModerationService, apiKey, subject, protocol, model, upstreamModel, stream, body, usage, opts...)
 }
-
 func runContentModeration(c *gin.Context, reqLog *zap.Logger, svc *service.ContentModerationService, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, body []byte) *service.ContentModerationDecision {
 	if svc == nil || c == nil || c.Request == nil {
 		return nil

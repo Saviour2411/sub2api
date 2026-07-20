@@ -5,6 +5,7 @@ import router from './router'
 import i18n, { initI18n } from './i18n'
 import { useAppStore } from '@/stores/app'
 import { safeLocalStorage } from '@/utils/browserStorage'
+import { updateFavicon } from '@/utils/branding'
 import './style.css'
 
 function renderBootstrapError(title = '页面加载失败', detail = '请刷新页面重试，或清理浏览器缓存后再次访问。') {
@@ -47,6 +48,7 @@ async function bootstrap() {
   if (appStore.siteName && appStore.siteName !== 'Sub2API') {
     document.title = `${appStore.siteName} - AI API Gateway`
   }
+  updateFavicon(appStore.siteLogo)
 
   await initI18n()
 
