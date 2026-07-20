@@ -161,7 +161,6 @@ func (r *channelMonitorRequestTemplateRepository) applyToMonitorsWithClient(
 			channelmonitor.APIModeEQ(defaultAPIModeRepo(tpl.APIMode)),
 		).
 		SetAPIMode(defaultAPIModeRepo(tpl.APIMode)).
-		SetExtraHeaders(emptyHeadersIfNilRepo(tpl.ExtraHeaders)).
 		SetBodyOverrideMode(defaultBodyModeRepo(tpl.BodyOverrideMode)).
 		SetStreamEnabled(tpl.StreamEnabled)
 	if tpl.BodyOverride != nil {
