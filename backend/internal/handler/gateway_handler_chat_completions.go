@@ -80,6 +80,10 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", invalidStreamFieldTypeMessage)
 		return
 	}
+	if service.IsGPTImageGenerationModel(reqModel) {
+		h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "This model is not supported on the Chat Completions endpoint")
+		return
+	}
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 
 	setOpsRequestContext(c, reqModel, reqStream)
@@ -98,8 +102,8 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 	if !h.validateGatewayRequestPricing(c, reqLog, apiKey, pricingErrorProtocolOpenAI, "/v1/chat/completions", reqModel, body) {
 		return
 	}
-	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIChat, reqModel, body); decision != nil && decision.Blocked {
-		h.chatCompletionsErrorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
+	if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIChat, reqModel, body); decision != nil && !decision.AllowNextStage {
+		h.openAISecurityAuditError(c, decision)
 		return
 	}
 
@@ -163,6 +167,9 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 	defer fs.FinalizePendingOutcomes(c.Request.Context(), h.gatewayService)
 
 	for {
+		if c.Request.Context().Err() != nil {
+			return
+		}
 		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, selectionSessionHash, reqModel, fs.FailedAccountIDs, "", int64(0))
 		if err != nil {
 			if len(fs.FailedAccountIDs) == 0 {
@@ -182,6 +189,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 			case FailoverContinue:
 				continue
 			case FailoverCanceled:
+				failoverClientGone(c)
 				return
 			default:
 				if fs.LastFailoverErr != nil {
@@ -274,6 +282,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 					h.handleCCFailoverExhausted(c, fs.LastFailoverErr, streamStarted)
 					return
 				case FailoverCanceled:
+					failoverClientGone(c)
 					return
 				}
 			}
@@ -352,6 +361,14 @@ func (h *GatewayHandler) handleCCFailoverExhausted(c *gin.Context, lastErr *serv
 	}
 	if streamStarted {
 		h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed", true)
+		return
+	}
+	if lastErr != nil {
+		copyFailoverRetryAfter(c, lastErr.ResponseHeaders)
+	}
+	if lastErr != nil && lastErr.IsCredentialFailure() {
+		status, message := credentialFailoverClientResponse(lastErr)
+		h.chatCompletionsErrorResponse(c, status, "server_error", message)
 		return
 	}
 	statusCode := http.StatusBadGateway

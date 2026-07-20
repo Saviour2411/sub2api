@@ -124,7 +124,14 @@ func TestOpenAIFailoverConstructorsRespectAccountRetryStatusCodes(t *testing.T) 
 			Header:     http.Header{},
 			Body:       io.NopCloser(bytes.NewReader([]byte(`{"error":{"message":"busy"}}`))),
 		}
-		err := svc.handleFailoverErrorResponsePassthrough(context.Background(), resp, newPoolModeFailoverGinContext("/v1/responses"), account, []byte(`{"model":"gpt-test"}`))
+		err := svc.handleFailoverErrorResponsePassthrough(
+			context.Background(),
+			resp,
+			newPoolModeFailoverGinContext("/v1/responses"),
+			account,
+			[]byte(`{"model":"gpt-test"}`),
+			[]byte(`{"error":{"message":"busy"}}`),
+		)
 		var failoverErr *UpstreamFailoverError
 		require.ErrorAs(t, err, &failoverErr)
 		require.True(t, failoverErr.RetryableOnSameAccount)

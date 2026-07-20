@@ -61,20 +61,12 @@ func beginSuccessfulConversationAuditCapture(c *gin.Context, svc *service.Conten
 	}
 }
 
-func (h *GatewayHandler) checkContentModeration(c *gin.Context, reqLog *zap.Logger, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, body []byte) *service.ContentModerationDecision {
-	if h == nil || h.contentModerationService == nil {
-		return nil
-	}
-	return runContentModeration(c, reqLog, h.contentModerationService, apiKey, subject, protocol, model, body)
-}
-
 func (h *GatewayHandler) recordSuccessfulConversationAudit(c *gin.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, upstreamModel string, stream bool, body []byte, usage any, opts ...successfulConversationAuditOptions) {
 	if h == nil || h.contentModerationService == nil {
 		return
 	}
 	recordSuccessfulConversationAudit(c, h.contentModerationService, apiKey, subject, protocol, model, upstreamModel, stream, body, usage, opts...)
 }
-
 func contentModerationStatus(decision *service.ContentModerationDecision) int {
 	if decision == nil || decision.StatusCode < 400 || decision.StatusCode > 599 {
 		return http.StatusForbidden
@@ -86,13 +78,6 @@ func contentModerationErrorCode(decision *service.ContentModerationDecision) str
 	return "content_policy_violation"
 }
 
-func (h *OpenAIGatewayHandler) checkContentModeration(c *gin.Context, reqLog *zap.Logger, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, body []byte) *service.ContentModerationDecision {
-	if h == nil || h.contentModerationService == nil {
-		return nil
-	}
-	return runContentModeration(c, reqLog, h.contentModerationService, apiKey, subject, protocol, model, body)
-}
-
 //nolint:unused
 func (h *OpenAIGatewayHandler) recordSuccessfulConversationAudit(c *gin.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, upstreamModel string, stream bool, body []byte, usage any, opts ...successfulConversationAuditOptions) {
 	if h == nil || h.contentModerationService == nil {
@@ -100,7 +85,6 @@ func (h *OpenAIGatewayHandler) recordSuccessfulConversationAudit(c *gin.Context,
 	}
 	recordSuccessfulConversationAudit(c, h.contentModerationService, apiKey, subject, protocol, model, upstreamModel, stream, body, usage, opts...)
 }
-
 func runContentModeration(c *gin.Context, reqLog *zap.Logger, svc *service.ContentModerationService, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, body []byte) *service.ContentModerationDecision {
 	if svc == nil || c == nil || c.Request == nil {
 		return nil

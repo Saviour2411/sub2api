@@ -194,8 +194,8 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	if action != "countTokens" && !h.validateGatewayRequestPricing(c, reqLog, apiKey, pricingErrorProtocolGemini, "/v1beta/models/"+modelName+":"+action, modelName, body) {
 		return
 	}
-	if decision := h.checkContentModeration(c, reqLog, apiKey, authSubject, service.ContentModerationProtocolGemini, modelName, body); decision != nil && decision.Blocked {
-		googleError(c, contentModerationStatus(decision), decision.Message)
+	if decision := h.checkSecurityAudit(c, reqLog, apiKey, authSubject, service.ContentModerationProtocolGemini, modelName, body); decision != nil && !decision.AllowNextStage {
+		googleSecurityAuditError(c, decision)
 		return
 	}
 
@@ -377,6 +377,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 				c.Request = c.Request.WithContext(ctx)
 				continue
 			case FailoverCanceled:
+				failoverClientGone(c)
 				return
 			default: // FailoverExhausted
 				h.handleGeminiFailoverExhausted(c, fs.LastFailoverErr)
@@ -500,6 +501,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 					h.handleGeminiFailoverExhausted(c, fs.LastFailoverErr)
 					return
 				case FailoverCanceled:
+					failoverClientGone(c)
 					return
 				}
 			}
