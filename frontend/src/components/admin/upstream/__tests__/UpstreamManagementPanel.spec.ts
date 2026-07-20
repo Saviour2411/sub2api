@@ -882,7 +882,7 @@ describe('UpstreamManagementPanel', () => {
     wrapper.unmount()
   })
 
-  it('倍率冻结时只允许解除已有绑定', async () => {
+  it('上游分组不可用时只允许解除已有绑定', async () => {
     const upstreamGroup = displayedGroupFixture({ available: false, bindings: [bindingFixture()] })
     api.list.mockResolvedValue(siteListResult(siteFixture({ displayed_group_count: 1, binding_count: 1 })))
     api.groups.mockResolvedValue([upstreamGroup])

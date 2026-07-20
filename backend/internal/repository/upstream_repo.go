@@ -523,12 +523,8 @@ func (r *upstreamRepository) CommitSync(ctx context.Context, id int64, result *s
 	if err = tx.UpstreamGroup.Update().Where(upstreamgroup.SiteIDEQ(id)).SetAvailable(false).Exec(ctx); err != nil {
 		return rollback(fmt.Errorf("标记上游分组不可用: %w", err))
 	}
-	priorityTriggerUpstreamGroupIDs := make([]int64, 0)
 	for _, group := range result.Groups {
 		if existing := existingByRemoteID[group.RemoteID]; existing != nil {
-			if !existing.Available || !equalNormalizedOptionalFloat(existing.Multiplier, group.Multiplier) {
-				priorityTriggerUpstreamGroupIDs = append(priorityTriggerUpstreamGroupIDs, existing.ID)
-			}
 			update := tx.UpstreamGroup.UpdateOneID(existing.ID).
 				SetName(group.Name).
 				SetPlatform(group.Platform).
@@ -573,24 +569,22 @@ func (r *upstreamRepository) CommitSync(ctx context.Context, id int64, result *s
 	).Exec(ctx); err != nil {
 		return rollback(fmt.Errorf("清理失效上游分组: %w", err))
 	}
-	if priorityTriggerUpstreamGroupIDs = uniqueSortedPositiveInt64s(priorityTriggerUpstreamGroupIDs); len(priorityTriggerUpstreamGroupIDs) > 0 {
-		bindings, bindingErr := tx.UpstreamGroupAccountBinding.Query().
-			Where(upstreamgroupaccountbinding.UpstreamGroupIDIn(priorityTriggerUpstreamGroupIDs...)).
-			All(ctx)
-		if bindingErr != nil {
-			return rollback(fmt.Errorf("查询倍率变化账号绑定: %w", bindingErr))
-		}
-		affectedLocalGroupIDs := make([]int64, 0, len(bindings))
-		for _, binding := range bindings {
-			affectedLocalGroupIDs = append(affectedLocalGroupIDs, binding.LocalGroupID)
-		}
-		affectedLocalGroupIDs = uniqueSortedPositiveInt64s(affectedLocalGroupIDs)
-		if err := lockLocalGroupsByID(ctx, tx.Client(), affectedLocalGroupIDs); err != nil {
-			return rollback(fmt.Errorf("锁定倍率变化本地分组: %w", err))
-		}
-		if _, err := recalculateUpstreamBindingPriorities(ctx, tx.Client(), affectedLocalGroupIDs); err != nil {
-			return rollback(fmt.Errorf("按上游倍率重排账号: %w", err))
-		}
+	bindings, bindingErr := tx.UpstreamGroupAccountBinding.Query().
+		Where(upstreamgroupaccountbinding.HasUpstreamGroupWith(upstreamgroup.SiteIDEQ(id))).
+		All(ctx)
+	if bindingErr != nil {
+		return rollback(fmt.Errorf("查询站点账号绑定: %w", bindingErr))
+	}
+	affectedLocalGroupIDs := make([]int64, 0, len(bindings))
+	for _, binding := range bindings {
+		affectedLocalGroupIDs = append(affectedLocalGroupIDs, binding.LocalGroupID)
+	}
+	affectedLocalGroupIDs = uniqueSortedPositiveInt64s(affectedLocalGroupIDs)
+	if err := lockLocalGroupsByID(ctx, tx.Client(), affectedLocalGroupIDs); err != nil {
+		return rollback(fmt.Errorf("锁定站点绑定本地分组: %w", err))
+	}
+	if _, err := recalculateUpstreamBindingPriorities(ctx, tx.Client(), affectedLocalGroupIDs); err != nil {
+		return rollback(fmt.Errorf("按上游倍率重排账号: %w", err))
 	}
 
 	for _, daily := range result.Daily {
@@ -956,10 +950,8 @@ func (r *upstreamRepository) ReplaceGroupBindings(
 			return rollback(translatePersistenceError(err, nil, service.ErrUpstreamBindingConflict))
 		}
 	}
-	if len(deleteIDs) > 0 || len(creates) > 0 {
-		if _, err := recalculateUpstreamBindingPriorities(ctx, tx.Client(), affectedLocalGroupIDs); err != nil {
-			return rollback(fmt.Errorf("重排绑定账号优先级: %w", err))
-		}
+	if _, err := recalculateUpstreamBindingPriorities(ctx, tx.Client(), affectedLocalGroupIDs); err != nil {
+		return rollback(fmt.Errorf("重排绑定账号优先级: %w", err))
 	}
 	bindingsByGroup, err := loadUpstreamBindingViews(ctx, tx.Client(), []int64{upstreamGroupID})
 	if err != nil {

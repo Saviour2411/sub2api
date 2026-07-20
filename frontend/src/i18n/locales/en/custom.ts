@@ -241,7 +241,7 @@ export default {
           multiplier: 'Current Multiplier',
           boundCount: '{count} accounts bound',
           globalPriorityWarning: 'Account priority is global. When a bound account belongs to multiple local groups, its synchronized priority affects all of them. Unbind it first if its priority must remain under manual control.',
-          frozenHint: 'This upstream group is unavailable or has no multiplier. Bound accounts keep their last priority. Existing bindings can be removed, but new accounts cannot be added.',
+          frozenHint: 'This upstream group is unavailable or has no current multiplier, so new accounts cannot be added. Existing bindings continue to use the last valid multiplier for priority ordering; accounts that never had a valid multiplier keep their current priority.',
           currentBindings: 'Current Bindings',
           account: 'Account',
           localGroup: 'Local Group',

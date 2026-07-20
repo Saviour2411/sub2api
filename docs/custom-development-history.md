@@ -114,7 +114,7 @@
 | 编号 | 功能 | 当前行为与边界 | 关键入口 | 状态 |
 | --- | --- | --- | --- | --- |
 | `CUST-OBS-001` | 流式渠道监控与随机抖动 | 渠道监控和模板可以选择流式检测；检测间隔支持正负随机抖动，避免大量渠道同一时刻探测，并保留 provider/endpoint/请求体的本地扩展。 | `backend/internal/service/channel_monitor_checker.go`、`backend/ent/schema/channel_monitor.go`、`backend/migrations/141_channel_monitor_stream_enabled.sql` | 生效中 |
-| `CUST-OBS-002` | 独立上游站点同步监控 | 在二开管理页统一维护 Sub2API/New API 上游站点，定时同步余额、分组倍率、Token 与实际消耗，保留用量及倍率历史；支持按分组类型筛选、按余额/今日 Token 排序、拖拽调整站点顺序，并按平台优先级和倍率整理账号下方分组；新增 Sub2API 时会探测 Turnstile，自动改用令牌认证并支持从完整登录响应导入 Access/Refresh Token；令牌模式可在加密凭证中保存登录会话 User-Agent，并在验证、刷新与同步请求中保持一致；目标站点返回 `SESSION_BINDING_MISMATCH` 时会以 Chrome TLS/HTTP2 指纹重试，成功后将该传输模式随凭证加密保存，以兼容绑定出口 IP、UA 与 TLS/JA4 指纹的浏览器会话；同步时优先复用加密保存的 Token/Cookie，仅在凭证被拒绝时刷新或重新登录。 | `backend/internal/service/upstream_service.go`、`backend/internal/service/upstream_provider_http.go`、`frontend/src/components/admin/upstream/UpstreamManagementPanel.vue`、`backend/migrations/178_upstream_management.sql`、`backend/migrations/181_upstream_management_order_and_platform.sql` | 生效中 |
+| `CUST-OBS-002` | 独立上游站点同步监控 | 在二开管理页统一维护 Sub2API/New API 上游站点，定时同步余额、分组倍率、Token 与实际消耗，保留用量及倍率历史；支持按分组类型筛选、按余额/今日 Token 排序、拖拽调整站点顺序，并按平台优先级和倍率整理账号下方分组；上游分组可绑定本地账号并按最后一次有效倍率自动维护全局优先级，不可用分组仍参与排序，从未取得有效倍率的账号保留原优先级；新增 Sub2API 时会探测 Turnstile，自动改用令牌认证并支持从完整登录响应导入 Access/Refresh Token；令牌模式可在加密凭证中保存登录会话 User-Agent，并在验证、刷新与同步请求中保持一致；目标站点返回 `SESSION_BINDING_MISMATCH` 时会以 Chrome TLS/HTTP2 指纹重试，成功后将该传输模式随凭证加密保存，以兼容绑定出口 IP、UA 与 TLS/JA4 指纹的浏览器会话；同步时优先复用加密保存的 Token/Cookie，仅在凭证被拒绝时刷新或重新登录。 | `backend/internal/service/upstream_service.go`、`backend/internal/service/upstream_provider_http.go`、`frontend/src/components/admin/upstream/UpstreamManagementPanel.vue`、`backend/migrations/178_upstream_management.sql`、`backend/migrations/181_upstream_management_order_and_platform.sql` | 生效中 |
 
 ### 产品、支付与增长
 
@@ -160,6 +160,7 @@
 
 | 日期 | 版本/提交 | 类型 | 功能编号 | 变更与原因 | 验证 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-07-20 | `0.1.203` / 待提交 | 修改 | `CUST-OBS-002` | 修复不可用上游分组冻结整个本地分组优先级的问题：已有绑定改为使用当前或历史中的最后一次有效倍率参与排序，每次成功同步和保存绑定都会纠正优先级漂移；从未取得有效倍率的账号单独保留原优先级，不再阻断其他账号排序。 | 后端仓储回归测试、前端组件测试、类型检查、lint 和生产构建 |
 | 2026-07-20 | `0.1.203` / 待提交 | 修改 | `CUST-OBS-002` | Sub2API 令牌认证新增浏览器 TLS 指纹自适应：普通客户端收到 `SESSION_BINDING_MISMATCH` 后以 Chrome TLS/HTTP2 指纹重试，成功后随加密凭证持久化，并用于后续验证、刷新和定时同步；自定义 Transport 继续复用 DNS Rebinding 防护。解决目标站点同时绑定出口 IP、User-Agent 与 TLS/JA4 指纹时令牌无法接入的问题。 | Chrome 指纹真实上游探针、Provider 自动回退测试、HTTP Client/Service 回归测试、生产环境认证与同步验证 |
 | 2026-07-20 | `0.1.202` / 待提交 | 修改 | `CUST-OBS-002` | Sub2API 令牌认证新增会话 User-Agent：导入登录响应时自动记录当前浏览器 UA，与 Access/Refresh Token 一并加密保存，并在登录状态验证、令牌刷新和定时同步请求中持续复用，兼容同时绑定出口 IP 与 User-Agent 的上游会话风控。 | 后端 Provider/凭证生命周期测试、前端组件测试、类型检查、生产构建及生产环境认证验证 |
 | 2026-07-16 | `0.1.200` / 待提交 | 修改 | `CUST-OBS-002` | Sub2API 密码模式改为优先复用 Access Token、认证失败后优先刷新并仅在刷新凭证被拒绝或接口不支持时回退密码登录；New API 优先复用 Cookie 和加密保存的远端用户 ID，仅在 Cookie 被拒绝时重新登录；网络、限流和服务端错误不触发重复认证，账号、地址、平台或密码变化时主动清除旧会话凭证。 | Provider 请求计数与认证恢复测试、凭证作用域失效测试、后端相关包测试、`go vet`、`golangci-lint` 及 `git diff --check` |

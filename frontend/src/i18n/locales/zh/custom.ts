@@ -241,7 +241,7 @@ export default {
           multiplier: '当前倍率',
           boundCount: '已绑定 {count} 个账号',
           globalPriorityWarning: '账号优先级是全局配置。绑定账号属于多个本地分组时，自动同步的优先级会同时影响这些分组；如需长期手工控制，请先解除绑定。',
-          frozenHint: '该上游分组当前不可用或倍率为空，系统会保持已绑定账号上次的优先级。此时只能解除已有绑定，不能新增账号。',
+          frozenHint: '该上游分组当前不可用或倍率为空，不能新增账号；已有绑定会继续使用最后一次有效倍率参与优先级排序，从未取得有效倍率的账号保留当前优先级。',
           currentBindings: '当前绑定',
           account: '账号',
           localGroup: '本地分组',

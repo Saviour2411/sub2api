@@ -17,7 +17,6 @@ import (
 const upstreamBindingMultiplierScale = 1_000_000
 
 type upstreamBindingPriorityRow struct {
-	localGroupID    int64
 	accountID       int64
 	multiplier      float64
 	accountPriority int
@@ -113,14 +112,26 @@ func lockRowsByID(ctx context.Context, client *dbent.Client, table string, ids [
 }
 
 // recalculateUpstreamBindingPriorities 必须在已锁定 local group 的事务中调用。
-// 任一绑定的上游分组不可用或倍率为空时，整个本地分组冻结，不产生部分重排。
+// 当前倍率不可用时回退到最近一次有效倍率；从未取得有效倍率的账号保留原优先级。
 func recalculateUpstreamBindingPriorities(ctx context.Context, client *dbent.Client, localGroupIDs []int64) ([]int64, error) {
 	localGroupIDs = uniqueSortedPositiveInt64s(localGroupIDs)
 	if len(localGroupIDs) == 0 {
 		return nil, nil
 	}
 	query := `
-		SELECT b.local_group_id, b.account_id, ug.available, ug.multiplier, a.priority
+		SELECT b.local_group_id,
+		       b.account_id,
+		       ug.multiplier,
+		       (
+		           SELECT h.multiplier
+		           FROM upstream_group_multiplier_history h
+		           WHERE h.site_id = ug.site_id
+		             AND h.remote_id = ug.remote_id
+		             AND h.multiplier IS NOT NULL
+		           ORDER BY h.recorded_at DESC, h.id DESC
+		           LIMIT 1
+		       ) AS last_valid_multiplier,
+		       a.priority
 		FROM upstream_group_account_bindings b
 		JOIN upstream_groups ug ON ug.id = b.upstream_group_id
 		JOIN accounts a ON a.id = b.account_id AND a.deleted_at IS NULL
@@ -133,28 +144,29 @@ func recalculateUpstreamBindingPriorities(ctx context.Context, client *dbent.Cli
 	defer func() { _ = rows.Close() }()
 
 	rowsByGroup := make(map[int64][]upstreamBindingPriorityRow, len(localGroupIDs))
-	frozenGroups := make(map[int64]struct{})
 	for rows.Next() {
 		var (
-			localGroupID int64
-			accountID    int64
-			available    bool
-			multiplier   sql.NullFloat64
-			priority     int
+			localGroupID      int64
+			accountID         int64
+			currentMultiplier sql.NullFloat64
+			historyMultiplier sql.NullFloat64
+			priority          int
 		)
-		if err := rows.Scan(&localGroupID, &accountID, &available, &multiplier, &priority); err != nil {
+		if err := rows.Scan(&localGroupID, &accountID, &currentMultiplier, &historyMultiplier, &priority); err != nil {
 			return nil, err
 		}
-		if !available || !multiplier.Valid {
-			frozenGroups[localGroupID] = struct{}{}
+		normalized, ok := 0.0, false
+		if currentMultiplier.Valid {
+			normalized, ok = normalizeUpstreamBindingMultiplier(currentMultiplier.Float64)
+		}
+		if !ok && historyMultiplier.Valid {
+			normalized, ok = normalizeUpstreamBindingMultiplier(historyMultiplier.Float64)
+		}
+		if !ok {
 			continue
 		}
-		normalized, ok := normalizeUpstreamBindingMultiplier(multiplier.Float64)
-		if !ok {
-			return nil, fmt.Errorf("本地分组 %d 的绑定倍率无效", localGroupID)
-		}
 		rowsByGroup[localGroupID] = append(rowsByGroup[localGroupID], upstreamBindingPriorityRow{
-			localGroupID: localGroupID, accountID: accountID, multiplier: normalized, accountPriority: priority,
+			accountID: accountID, multiplier: normalized, accountPriority: priority,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -163,9 +175,6 @@ func recalculateUpstreamBindingPriorities(ctx context.Context, client *dbent.Cli
 
 	priorityByAccount := make(map[int64]int)
 	for _, groupID := range localGroupIDs {
-		if _, frozen := frozenGroups[groupID]; frozen {
-			continue
-		}
 		groupRows := rowsByGroup[groupID]
 		sort.Slice(groupRows, func(i, j int) bool {
 			if groupRows[i].multiplier != groupRows[j].multiplier {
