@@ -427,3 +427,93 @@
 - WS HTTP bridge 使用 detached context 排空上游；若上游永久停滞，缺少流级截止时间可能长期占用响应体和账号并发，这是既有行为。
 - HTTP bridge 尚无直接覆盖 `response.failed` 与仅 `[DONE]` 结束分支的定向测试。
 - 未执行 push、PR、部署、远程服务器访问或生产数据操作。
+
+## 2026-07-20 同步至 e625ce3b3
+
+- 执行时间：2026-07-20T20:52:43+08:00
+- 执行状态：同步分支完整合并并验证完成；本记录提交后使用 `--ff-only` 更新本地 `main`
+- 本地目标分支：`main`
+- `LOCAL_PRE_SYNC_SHA`：`ae1f867eeb647fde908a01626bdc18ffc90b30d0`
+- 上游代码合并提交：`9d0083646b65a86d631afc6ac57a4618b78888e8`
+- 二次开发适配提交：`fc53abf1b`
+- 上游仓库：`https://github.com/Wei-Shaw/sub2api.git`
+- 上游分支：`main`
+- `UPSTREAM_OLD_SHA`：`da85cc7e47882090b115d664afe8e39b37aa7417`
+- `UPSTREAM_NEW_SHA`：`e625ce3b3b3b955b7c3afc93221f7c5f0ae55aa8`
+- merge-base：`da85cc7e47882090b115d664afe8e39b37aa7417`
+- `LAST_FULLY_INTEGRATED_UPSTREAM_SHA`：`e625ce3b3b3b955b7c3afc93221f7c5f0ae55aa8`
+- 集成策略：在隔离同步分支使用 `git merge --no-ff --no-commit` 完整合并固定上游 SHA，逐文件解决文本和语义冲突，重新生成 Ent/Wire，再提交兼容性修复
+- 备份分支：`backup/pre-upstream-sync-20260720-184738-ae1f867ee`
+- 同步分支：`sync/upstream-20260720-e625ce3b3`
+
+### 上游提交处置
+
+本次固定范围共 445 个提交，其中 161 个 merge commit、284 个 non-merge commit。完整 merge 保留了该范围内全部祖先关系；由 `git rev-list --reverse da85cc7e4..e625ce3b3` 产生的每个 SHA 均为 `Applied`，无 `Already Applied`、`Skipped` 或 `Deferred`。
+
+| 上游提交集合 | 数量 | 状态 | 内容与处置 |
+| --- | ---: | --- | --- |
+| `da85cc7e4..e625ce3b3` | 445 | Applied | 整体映射到本地 merge commit `9d0083646`；固定范围完整进入本地历史 |
+| `d515c3045`、`60732a2e8`、`bc2244c83`、`c2c19a7cb`、`57914967c`、`d4b9797ff`、`e625ce3b3` | 7 | Applied + Overridden | 上游版本从 0.1.156 递增至 0.1.162；最终保留本地较新版本 0.1.203 |
+| `d11bdb13f` 及其安全审计修复链 | 已包含于 445 | Applied + Overridden | 接入上游 prompt audit、guard、控制台和全提示词持久化，同时保留本地内容审核与 Cyber 会话阻断作为统一安全审计协调器的兼容降级 |
+| `90ee85f3e` 及倍率探测链 | 已包含于 445 | Applied + Overridden | 接入上游计费倍率探测、展示和调度成本；计费归因继续按本地设计统一使用用户请求模型，不引入不可达的逐账号 billing source 语义 |
+| Agent Identity、WS 生命周期、HTTP bridge 安全修复链 | 已包含于 445 | Applied + Overridden | 接入 Agent Identity、终态事件、任务恢复和安全切号；保留本地首 Token、语义错误、结果归因、图片计费及后续 turn 不重放约束 |
+
+### 本地提交与文件
+
+- 上游范围整体映射到本地 merge commit：`9d0083646b65a86d631afc6ac57a4618b78888e8`。
+- 二次开发兼容提交：`fc53abf1b`，包含 11 个文件、41 行新增和 50 行删除。
+- 同步记录提交前，代码与配置相对 `LOCAL_PRE_SYNC_SHA` 修改 848 个文件：新增 294 个、修改 553 个、删除 1 个；共新增 102905 行、删除 5406 行，包含 3 个二进制资源/归档。
+- 唯一删除文件 `backend/internal/repository/ops_repo_lookup_deleted_key_audit_integration_test.go` 来自上游 `b92bbf029`，其覆盖已由新的入口拒绝和鉴权边界测试替代。
+- 主要更新：Agent Identity、OpenAI WS/HTTP bridge 生命周期、异步图片任务、图片输入 Token 定价、上游倍率探测与调度、Grok OAuth/媒体/视频/缓存恢复、prompt audit、安全审计控制台、审计日志、step-up、可信代理与客户端 IP、重复创建幂等、运维入口拒绝聚合、支付币种与充值返利、前端 i18n/品牌和部署参数。
+- 已重新生成 Ent 与 Wire；`backend/ent/migrate/schema.go` 和 `backend/cmd/server/wire_gen.go` 与合并后的 schema/provider 源一致。
+
+### 冲突与最终解决方案
+
+- 69 个初始文本冲突均逐文件处理，无整文件采用 `ours` 或 `theirs`，最终索引没有未解决冲突。
+- `VERSION` 保留本地 0.1.203；上游新增 SVG logo，同时恢复本地 `frontend/public/logo.png`。
+- 安全审计入口只调用一次 `checkSecurityAudit`；协调器不可用时继续执行本地内容审核，避免重复审核，也不丢失 Cyber 会话阻断。
+- Gateway/OpenAI 转发保留本地计费预检、首 Token 超时、语义错误、结果归因、心跳和图片计费，并叠加上游 Agent Identity、终态事件、Grok encrypted reasoning 恢复及异步图片接口。
+- WS v2 和 HTTP bridge 同时保留逐轮图片计费、终态错误归因、Responses Lite payload 与 turn 生命周期；后续 turn 的传输错误写入错误事件，不再误包装为可切号错误。
+- Claude OAuth 模拟继续依赖 handler 的严格客户端判定，非法 metadata 会被规范化；真实 Claude Code context 保持客户端 headers/body，Haiku 兼容路径继续执行完整 system 改写。
+- `AdminService` 同时保留本地默认定时测试计划仓库、账号连续失败缓存，以及上游 duplicate repositories、affiliate service；Wire 中合并设置服务与 Agent Identity WS invalidator。
+- 渠道 token 定价在缺少基础价格且只配置区间时不再因图片输入价覆盖触发空指针；媒体定价完整性仍按本地请求前校验规则执行。
+- DataTable、账号滚动重置、倍率探测、支付返利/返佣设置及相关双方测试均保留。
+- 两份生产 Compose 同时保留本地资源参数与上游 Redis 参数，删除重复 PostgreSQL `command`；SHA-256 均为 `89437fa1258bade1251787d53e061deb525d18af89c7e1354719924000f1b493`。
+
+### 刻意保留的二次开发功能
+
+- 账号连续失败停调度、strict 调度、pending/final outcome、streak 清理和自动托管恢复测试。
+- 首 Token 超时、2xx 语义错误、body-signal compact、paused keepalive、WS lease、终态归因和流内失败结算。
+- 按用户请求模型计费、渠道定价完整性、图片/视频计费、充值返利、签到、模型广场和上游站点同步。
+- Claude Code 上游模拟、Codex 图片工具策略、API Key 请求头覆写、渠道监控结构化 Responses `input`。
+- 本地内容审核、人工审计、Cyber 会话阻断与上游 prompt audit 的统一协调。
+- 账号列表禁用虚拟化、查询上下文滚动重置，以及生产 bind mount、localhost 暴露和双 Compose 一致性约束。
+
+### 验证记录
+
+验证使用仓库内现有 Go 1.26.5、Node 20.19.4、Go/Node 缓存和已安装前端依赖。
+
+| 阶段 | 命令 | 退出码 | 结果 |
+| --- | --- | ---: | --- |
+| 同步前 | 完整回归基线 | 未保留 | 执行上下文交接时已进入 merge 现场；未伪造同步前命令或退出码，`main` 与备份分支始终保持 `LOCAL_PRE_SYNC_SHA` |
+| 生成 | `go generate ./ent`、`go generate ./cmd/server` | 0 | Ent/Wire 生成成功 |
+| 适配 | `go test -tags=unit -run '^$' ./...` | 0 | Go 全包编译通过 |
+| 适配 | handler/admin/service/repository/server 定向测试 | 1/0 | 首次发现 Claude、WS、媒体定价和模板 SQL 断言问题；修复后各失败组与完整 `internal/service` 均通过 |
+| 同步后 | `go test -tags=unit ./...` | 1/0 | 首次仅模板 SQLMock 未包含本地字段；适配后全包通过，后续受影响 handler/service 串行重跑通过 |
+| 同步后 | `golangci-lint run --timeout=30m ./...` | 1/0 | 首次仅工具链 PATH 缺失；修正后发现并删除 3 个不可达定义，最终 `0 issues` |
+| 同步后 | `make build`（backend） | 0 | `CGO_ENABLED=0` 构建 0.1.203 成功 |
+| 同步后 | `npm run lint:check`、`npm run typecheck` | 0 | 使用 Node 20，均通过 |
+| 同步后 | `npm run test:run` | 1/0 | 首次发现 4 个过期断言和 1 个缺失依赖链接；适配后 196 个测试文件全部通过 |
+| 同步后 | `npm run build` | 0 | `vue-tsc -b` 与 Vite 生产构建通过；仅有动态导入和大 chunk 非致命警告 |
+| 同步后 | `/bin/bash -n deploy/apple-container.sh` | 0 | shell 语法检查通过 |
+| 同步后 | `TMPDIR=<项目缓存> /bin/bash deploy/tests/apple-container-test.sh` | 0 | Apple container 生命周期 fixture 全部通过，未操作真实容器引擎 |
+| 同步后 | Compose 哈希、冲突标记、敏感路径、删除来源和 `git diff --check` | 0 | 两份生产 Compose 完全一致；源码无冲突标记、敏感文件路径或空白错误；归档补丁保持原样并从源码空白检查中排除 |
+
+### 未验证项与残余风险
+
+- 未运行 `go test -tags=integration ./...`、Testcontainers、`-race` 或真实数据库迁移；这些操作需要 Docker/CGO 或会扩大当前授权范围。
+- 未读取 `.env`，也未启动需要 PostgreSQL/Redis 的真实服务，因此本地健康检查标记为未验证。
+- 未使用真实 OpenAI、Anthropic、Grok、Agent Identity、S3 或支付凭据验证外部业务流程；相关请求转换、handler、service、repository 和前端用例已通过本地测试。
+- 当前 `node_modules` 来自既有 pnpm 9 环境；新增 message compiler 已存在于本地 store 并完成测试，但未执行 CI 等价的全新 `pnpm install --frozen-lockfile`。
+- 上游归档 `openspec/changes/add-openai-compatible-prompt-audit/source-freeze/aicodex-prompt-audit-tracked.patch` 保存另一个仓库的原始空白差异，未格式化或修改。
+- 未执行 push、PR、部署、远程服务器访问、容器重启或生产数据操作。
