@@ -25,26 +25,39 @@ type successfulConversationAuditOptions struct {
 
 const successfulConversationAuditCaptureEnabledKey = "successful_conversation_audit_capture_enabled"
 
-func (h *GatewayHandler) beginSuccessfulConversationAuditCapture(c *gin.Context) (*auditResponseCaptureWriter, func()) {
+func (h *GatewayHandler) beginSuccessfulConversationAuditCapture(c *gin.Context, apiKey *service.APIKey, protocol string, model string, body []byte) (*auditResponseCaptureWriter, func()) {
 	if h == nil {
 		return nil, func() {}
 	}
-	return beginSuccessfulConversationAuditCapture(c, h.contentModerationService)
+	return beginSuccessfulConversationAuditCapture(c, h.contentModerationService, apiKey, protocol, model, body)
 }
 
 //nolint:unused
-func (h *OpenAIGatewayHandler) beginSuccessfulConversationAuditCapture(c *gin.Context) (*auditResponseCaptureWriter, func()) {
+func (h *OpenAIGatewayHandler) beginSuccessfulConversationAuditCapture(c *gin.Context, apiKey *service.APIKey, protocol string, model string, body []byte) (*auditResponseCaptureWriter, func()) {
 	if h == nil {
 		return nil, func() {}
 	}
-	return beginSuccessfulConversationAuditCapture(c, h.contentModerationService)
+	return beginSuccessfulConversationAuditCapture(c, h.contentModerationService, apiKey, protocol, model, body)
 }
 
-func beginSuccessfulConversationAuditCapture(c *gin.Context, svc *service.ContentModerationService) (*auditResponseCaptureWriter, func()) {
+func beginSuccessfulConversationAuditCapture(c *gin.Context, svc *service.ContentModerationService, apiKey *service.APIKey, protocol string, model string, body []byte) (*auditResponseCaptureWriter, func()) {
 	if svc == nil || c == nil || c.Request == nil {
 		return nil, func() {}
 	}
-	release, ok := svc.TryBeginLocalAuditCapture(c.Request.Context())
+	input := service.ContentModerationLocalAuditInput{
+		Endpoint: GetInboundEndpoint(c),
+		Model:    strings.TrimSpace(model),
+		Protocol: protocol,
+		Body:     body,
+	}
+	if input.Endpoint == "" && c.Request.URL != nil {
+		input.Endpoint = c.Request.URL.Path
+	}
+	if apiKey != nil && apiKey.GroupID != nil {
+		groupID := *apiKey.GroupID
+		input.GroupID = &groupID
+	}
+	release, ok := svc.TryBeginLocalAuditCapture(c.Request.Context(), input)
 	if !ok {
 		return nil, func() {}
 	}

@@ -21,8 +21,6 @@ import (
 // upstream, and converts responses back to Responses format.
 func (h *GatewayHandler) Responses(c *gin.Context) {
 	streamStarted := false
-	auditCapture, restoreAuditCapture := h.beginSuccessfulConversationAuditCapture(c)
-	defer restoreAuditCapture()
 
 	requestStart := time.Now()
 
@@ -113,6 +111,8 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		h.responsesSecurityAuditError(c, decision)
 		return
 	}
+	auditCapture, restoreAuditCapture := h.beginSuccessfulConversationAuditCapture(c, apiKey, service.ContentModerationProtocolOpenAIResponses, reqModel, body)
+	defer restoreAuditCapture()
 
 	// Error passthrough binding
 	if h.errorPassthroughService != nil {

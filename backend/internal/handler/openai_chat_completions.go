@@ -100,6 +100,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		h.openAISecurityAuditError(c, decision)
 		return
 	}
+	auditCapture, restoreAuditCapture := h.beginSuccessfulConversationAuditCapture(c, apiKey, service.ContentModerationProtocolOpenAIChat, reqModel, body)
+	defer restoreAuditCapture()
 
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
@@ -343,6 +345,17 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account, result)
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+		if result != nil && !result.ClientDisconnect {
+			sessionID, clientSessionID, sessionSource := resolveOpenAISessionAuditFields(promptCacheKey, sessionHash)
+			h.recordSuccessfulConversationAudit(c, apiKey, subject, service.ContentModerationProtocolOpenAIChat, reqModel, result.UpstreamModel, result.Stream, body, result.Usage, successfulConversationAuditOptions{
+				SessionID:       sessionID,
+				ClientSessionID: clientSessionID,
+				SessionSource:   sessionSource,
+				UserAgent:       userAgent,
+				Originator:      c.GetHeader("Originator"),
+				RawResponse:     auditCapture.Bytes(),
+			})
+		}
 
 		cyberBlocked := service.GetOpsCyberPolicy(c) != nil
 		h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {

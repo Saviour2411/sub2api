@@ -3068,20 +3068,23 @@ type CyberPolicyRecordInput struct {
 	UpstreamOutTok  int
 }
 
-// RecordCyberPolicyEvent 把一次 cyber_policy 硬阻断写入风控中心日志、计入违规计数、
-// 并给用户发邮件。当前请求已由 gateway 透传给用户；本方法仅做事后记录/通知/计数。
-// 仅受 risk_control_enabled 总开关约束（不受内容审核 Enabled/Mode/scope/sample 约束）。
+// RecordCyberPolicyEvent 把审计范围内的 cyber_policy 硬阻断写入风控中心日志，
+// 并按配置执行违规计数与通知。当前请求已由 gateway 透传给用户；本方法仅做事后副作用。
 func (s *ContentModerationService) RecordCyberPolicyEvent(ctx context.Context, in CyberPolicyRecordInput) {
 	if s == nil || s.repo == nil {
 		return
 	}
-	if !s.isRiskControlEnabled(ctx) {
+	runtimeSnapshot, err := s.loadRuntimeSnapshot(ctx)
+	if err != nil {
+		slog.Warn("content_moderation.cyber_load_runtime_failed", "error", err)
 		return
 	}
-	cfg, err := s.loadConfig(ctx)
-	if err != nil {
-		slog.Warn("content_moderation.cyber_load_config_failed", "error", err)
-		cfg = &ContentModerationConfig{}
+	cfg := runtimeSnapshot.config
+	if !runtimeSnapshot.riskControlEnabled || cfg == nil || !cfg.Enabled || cfg.Mode == ContentModerationModeOff {
+		return
+	}
+	if !cfg.includesGroup(in.GroupID) || !cfg.includesModel(in.Model) {
+		return
 	}
 	var userID *int64
 	if in.UserID > 0 {
@@ -3132,10 +3135,12 @@ func (s *ContentModerationService) RecordCyberPolicyEvent(ctx context.Context, i
 	}
 	emailSent := false
 	if s.emailService != nil && strings.TrimSpace(log.UserEmail) != "" {
-		if err := s.sendCyberPolicyEmail(ctx, log); err != nil {
-			slog.Warn("content_moderation.cyber_email_failed", "user_id", in.UserID, "error", err)
-		} else {
-			emailSent = true
+		if cfg.EmailOnHit {
+			if err := s.sendCyberPolicyEmail(ctx, log); err != nil {
+				slog.Warn("content_moderation.cyber_email_failed", "user_id", in.UserID, "error", err)
+			} else {
+				emailSent = true
+			}
 		}
 		if autoBanned {
 			if err := s.sendAccountDisabledEmail(ctx, cfg, log); err != nil {

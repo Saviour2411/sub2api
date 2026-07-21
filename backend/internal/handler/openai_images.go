@@ -95,6 +95,9 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		h.openAISecurityAuditError(c, decision)
 		return
 	}
+	auditBody := parsed.ModerationBody()
+	auditCapture, restoreAuditCapture := h.beginSuccessfulConversationAuditCapture(c, apiKey, service.ContentModerationProtocolOpenAIImages, requestModel, auditBody)
+	defer restoreAuditCapture()
 	imageReleaseFunc, acquired := h.acquireImageGenerationSlot(c, streamStarted)
 	if !acquired {
 		return
@@ -383,6 +386,13 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		upstreamModel := ""
 		if result != nil {
 			upstreamModel = result.UpstreamModel
+		}
+		if result != nil && !result.ClientDisconnect {
+			h.recordSuccessfulConversationAudit(c, apiKey, subject, service.ContentModerationProtocolOpenAIImages, requestModel, upstreamModel, result.Stream, auditBody, result.Usage, successfulConversationAuditOptions{
+				UserAgent:   userAgent,
+				Originator:  c.GetHeader("Originator"),
+				RawResponse: auditCapture.Bytes(),
+			})
 		}
 		h.submitMandatoryUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{

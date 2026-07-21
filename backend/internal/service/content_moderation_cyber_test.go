@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -10,6 +12,21 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
+
+func cyberPolicyTestConfig(t *testing.T, mutate func(*ContentModerationConfig)) string {
+	t.Helper()
+	cfg := defaultContentModerationConfig()
+	cfg.Enabled = true
+	cfg.Mode = ContentModerationModeObserve
+	cfg.AllGroups = true
+	cfg.AutoBanEnabled = false
+	if mutate != nil {
+		mutate(cfg)
+	}
+	raw, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	return string(raw)
+}
 
 // cyberOrderingTestRepo records the sequence of repo calls to verify F7 ordering.
 type cyberOrderingTestRepo struct {
@@ -95,7 +112,8 @@ func TestRecordCyberPolicyEvent_WritesLogWhenEnabled(t *testing.T) {
 	repo := &contentModerationTestRepo{}
 	svc := NewContentModerationService(
 		&contentModerationTestSettingRepo{values: map[string]string{
-			SettingKeyRiskControlEnabled: "true",
+			SettingKeyRiskControlEnabled:      "true",
+			SettingKeyContentModerationConfig: cyberPolicyTestConfig(t, nil),
 		}},
 		repo,
 		nil,
@@ -154,25 +172,143 @@ func TestRecordCyberPolicyEvent_WritesLogWhenEnabled(t *testing.T) {
 		"Error should mention flagged or cyber_policy")
 }
 
+func TestRecordCyberPolicyEvent_RequiresConfiguredAuditScope(t *testing.T) {
+	group26 := int64(26)
+	tests := []struct {
+		name   string
+		mutate func(*ContentModerationConfig)
+		input  CyberPolicyRecordInput
+		want   int
+	}{
+		{
+			name: "content moderation disabled",
+			mutate: func(cfg *ContentModerationConfig) {
+				cfg.Enabled = false
+			},
+			input: CyberPolicyRecordInput{GroupID: &group26, Model: "gpt-5"},
+		},
+		{
+			name: "mode off",
+			mutate: func(cfg *ContentModerationConfig) {
+				cfg.Mode = ContentModerationModeOff
+			},
+			input: CyberPolicyRecordInput{GroupID: &group26, Model: "gpt-5"},
+		},
+		{
+			name: "group outside scope",
+			mutate: func(cfg *ContentModerationConfig) {
+				cfg.AllGroups = false
+				cfg.GroupIDs = []int64{26}
+			},
+			input: func() CyberPolicyRecordInput {
+				group8 := int64(8)
+				return CyberPolicyRecordInput{GroupID: &group8, Model: "gpt-5"}
+			}(),
+		},
+		{
+			name: "model outside scope",
+			mutate: func(cfg *ContentModerationConfig) {
+				cfg.ModelFilter = ContentModerationModelFilter{Type: ContentModerationModelFilterInclude, Models: []string{"gpt-5"}}
+			},
+			input: CyberPolicyRecordInput{GroupID: &group26, Model: "gpt-4.1"},
+		},
+		{
+			name: "group and model in scope",
+			mutate: func(cfg *ContentModerationConfig) {
+				cfg.AllGroups = false
+				cfg.GroupIDs = []int64{26}
+				cfg.ModelFilter = ContentModerationModelFilter{Type: ContentModerationModelFilterInclude, Models: []string{"gpt-5"}}
+			},
+			input: CyberPolicyRecordInput{GroupID: &group26, Model: "gpt-5"},
+			want:  1,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &banCountArgsTestRepo{}
+			svc := NewContentModerationService(
+				&contentModerationTestSettingRepo{values: map[string]string{
+					SettingKeyRiskControlEnabled:      "true",
+					SettingKeyContentModerationConfig: cyberPolicyTestConfig(t, tt.mutate),
+				}},
+				repo, nil, nil, nil, nil, nil,
+			)
+			tt.input.UserID = 7
+			tt.input.Endpoint = "/v1/responses"
+			tt.input.UpstreamMessage = "blocked"
+			svc.RecordCyberPolicyEvent(context.Background(), tt.input)
+			require.Len(t, repo.snapshotLogs(), tt.want)
+			if tt.want == 0 {
+				require.Empty(t, repo.snapshotCountCalls())
+			}
+		})
+	}
+}
+
+func TestRecordCyberPolicyEvent_RuntimeLoadFailureHasNoSideEffects(t *testing.T) {
+	settings := &contentModerationRuntimeSettingRepo{getMultipleErr: errors.New("database unavailable")}
+	repo := &banCountArgsTestRepo{}
+	svc := NewContentModerationService(settings, repo, nil, nil, nil, nil, nil)
+	svc.RecordCyberPolicyEvent(context.Background(), CyberPolicyRecordInput{UserID: 7, Model: "gpt-5"})
+	require.Empty(t, repo.snapshotLogs())
+	require.Empty(t, repo.snapshotCountCalls())
+}
+
+func TestRecordCyberPolicyEvent_EmailOnHitControlsCyberNotice(t *testing.T) {
+	for _, emailOnHit := range []bool{false, true} {
+		t.Run(map[bool]string{false: "disabled", true: "enabled"}[emailOnHit], func(t *testing.T) {
+			smtpServer := startNotificationEmailTestSMTPServer(t)
+			settings := newNotificationEmailMemorySettingRepo()
+			values := smtpServer.settings()
+			values[SettingKeyRiskControlEnabled] = "true"
+			values[SettingKeyContentModerationConfig] = cyberPolicyTestConfig(t, func(cfg *ContentModerationConfig) {
+				cfg.EmailOnHit = emailOnHit
+			})
+			require.NoError(t, settings.SetMultiple(context.Background(), values))
+
+			repo := &cyberOrderingTestRepo{}
+			emailService := NewEmailService(settings, nil)
+			svc := NewContentModerationService(settings, repo, nil, nil, nil, nil, emailService)
+			groupID := int64(26)
+			svc.RecordCyberPolicyEvent(context.Background(), CyberPolicyRecordInput{
+				UserID:          7,
+				UserEmail:       "user@example.com",
+				GroupID:         &groupID,
+				Model:           "gpt-5",
+				Endpoint:        "/v1/responses",
+				UpstreamMessage: "blocked",
+			})
+
+			wantMessages := int64(0)
+			if emailOnHit {
+				wantMessages = 1
+			}
+			require.Equal(t, wantMessages, smtpServer.messageCount())
+			calls := repo.snapshot()
+			require.Equal(t, "create", calls[0])
+			if emailOnHit {
+				require.Contains(t, calls, "update_email_sent")
+			} else {
+				require.NotContains(t, calls, "update_email_sent")
+			}
+		})
+	}
+}
+
 // TestRecordCyberPolicyEvent_CreateLogBeforeEmail verifies F7: the moderation
 // log is persisted BEFORE email delivery, and EmailSent is patched afterwards —
 // SMTP hangs can no longer swallow the audit record.
 //
-// Note on email ordering: EmailService is a concrete type with no injectable
-// send interface, so SMTP-success cannot be simulated in unit tests.
 // With emailService=nil the email block is skipped and UpdateLogEmailSent is not
-// called (correct: logPersisted && emailSent guard). The test therefore asserts
-// the two invariants that ARE observable without real SMTP:
+// called (correct: logPersisted && emailSent guard). This test asserts:
 //  1. CreateLog runs first (calls[0]=="create").
 //  2. The log is stored with EmailSent=false (not pre-set to true).
-//
-// The update_email_sent path is covered by integration/e2e tests where a real
-// (or test-double) SMTP endpoint is available.
 func TestRecordCyberPolicyEvent_CreateLogBeforeEmail(t *testing.T) {
 	repo := &cyberOrderingTestRepo{}
 	svc := NewContentModerationService(
 		&contentModerationTestSettingRepo{values: map[string]string{
-			SettingKeyRiskControlEnabled: "true",
+			SettingKeyRiskControlEnabled:      "true",
+			SettingKeyContentModerationConfig: cyberPolicyTestConfig(t, nil),
 		}},
 		repo,
 		nil,
@@ -252,8 +388,10 @@ func TestRecordCyberPolicyEvent_ExcludeFromBanCount_SkipsBanJudgment(t *testing.
 	repo := &banCountArgsTestRepo{}
 	svc := NewContentModerationService(
 		&contentModerationTestSettingRepo{values: map[string]string{
-			SettingKeyRiskControlEnabled:      "true",
-			SettingKeyContentModerationConfig: `{"cyber_policy_exclude_from_ban_count":true}`,
+			SettingKeyRiskControlEnabled: "true",
+			SettingKeyContentModerationConfig: cyberPolicyTestConfig(t, func(cfg *ContentModerationConfig) {
+				cfg.CyberPolicyExcludeFromBanCount = true
+			}),
 		}},
 		repo, nil, nil, nil, nil, nil,
 	)
@@ -280,7 +418,8 @@ func TestRecordCyberPolicyEvent_DefaultCountsTowardBan(t *testing.T) {
 	repo := &banCountArgsTestRepo{}
 	svc := NewContentModerationService(
 		&contentModerationTestSettingRepo{values: map[string]string{
-			SettingKeyRiskControlEnabled: "true",
+			SettingKeyRiskControlEnabled:      "true",
+			SettingKeyContentModerationConfig: cyberPolicyTestConfig(t, nil),
 		}},
 		repo, nil, nil, nil, nil, nil,
 	)

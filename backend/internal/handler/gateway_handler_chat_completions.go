@@ -106,6 +106,8 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		h.openAISecurityAuditError(c, decision)
 		return
 	}
+	auditCapture, restoreAuditCapture := h.beginSuccessfulConversationAuditCapture(c, apiKey, service.ContentModerationProtocolOpenAIChat, reqModel, body)
+	defer restoreAuditCapture()
 
 	// Error passthrough binding
 	if h.errorPassthroughService != nil {
@@ -309,6 +311,17 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		requestPayloadHash := service.HashUsageRequestPayload(body)
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
+		if result != nil && !result.ClientDisconnect {
+			sessionID, clientSessionID, sessionSource := resolveParsedSessionAuditFields(parsedReq, sessionHash)
+			h.recordSuccessfulConversationAudit(c, apiKey, subject, service.ContentModerationProtocolOpenAIChat, reqModel, result.UpstreamModel, result.Stream, body, result.Usage, successfulConversationAuditOptions{
+				SessionID:       sessionID,
+				ClientSessionID: clientSessionID,
+				SessionSource:   sessionSource,
+				UserAgent:       userAgent,
+				Originator:      c.GetHeader("Originator"),
+				RawResponse:     auditCapture.Bytes(),
+			})
+		}
 
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 		h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {

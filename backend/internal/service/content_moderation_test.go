@@ -1885,11 +1885,11 @@ func TestContentModerationLocalAuditCaptureConcurrencySkipsOverload(t *testing.T
 		nil,
 	)
 
-	release1, ok := svc.TryBeginLocalAuditCapture(context.Background())
+	release1, ok := svc.TryBeginLocalAuditCapture(context.Background(), ContentModerationLocalAuditInput{})
 	require.True(t, ok)
-	release2, ok := svc.TryBeginLocalAuditCapture(context.Background())
+	release2, ok := svc.TryBeginLocalAuditCapture(context.Background(), ContentModerationLocalAuditInput{})
 	require.True(t, ok)
-	_, ok = svc.TryBeginLocalAuditCapture(context.Background())
+	_, ok = svc.TryBeginLocalAuditCapture(context.Background(), ContentModerationLocalAuditInput{})
 	require.False(t, ok)
 
 	stats := svc.localAuditStats(cfg)
@@ -1904,7 +1904,7 @@ func TestContentModerationLocalAuditCaptureConcurrencySkipsOverload(t *testing.T
 	require.Equal(t, int64(1), stats.CaptureActive)
 	require.False(t, stats.OverloadActive)
 
-	release3, ok := svc.TryBeginLocalAuditCapture(context.Background())
+	release3, ok := svc.TryBeginLocalAuditCapture(context.Background(), ContentModerationLocalAuditInput{})
 	require.True(t, ok)
 	release2()
 	release3()
@@ -1933,7 +1933,7 @@ func TestContentModerationLocalAuditCaptureConcurrencyZeroIsUnlimited(t *testing
 
 	releases := make([]func(), 0, 3)
 	for i := 0; i < 3; i++ {
-		release, ok := svc.TryBeginLocalAuditCapture(context.Background())
+		release, ok := svc.TryBeginLocalAuditCapture(context.Background(), ContentModerationLocalAuditInput{})
 		require.True(t, ok)
 		releases = append(releases, release)
 	}
@@ -1944,6 +1944,91 @@ func TestContentModerationLocalAuditCaptureConcurrencyZeroIsUnlimited(t *testing
 	for _, release := range releases {
 		release()
 	}
+}
+
+func TestContentModerationLocalAuditCaptureChecksScopeBeforeReserving(t *testing.T) {
+	cfg := defaultContentModerationConfig()
+	cfg.LocalAuditEnabled = true
+	cfg.LocalAuditExcludeImage = true
+	cfg.AllGroups = false
+	cfg.GroupIDs = []int64{26}
+	cfg.ModelFilter = ContentModerationModelFilter{Type: ContentModerationModelFilterInclude, Models: []string{"gpt-5"}}
+	rawCfg, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	svc := NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{
+			SettingKeyRiskControlEnabled:      "true",
+			SettingKeyContentModerationConfig: string(rawCfg),
+		}},
+		nil, nil, nil, nil, nil, nil,
+	)
+	group26 := int64(26)
+	group8 := int64(8)
+
+	skipped := []ContentModerationLocalAuditInput{
+		{GroupID: &group8, Model: "gpt-5", Protocol: ContentModerationProtocolOpenAIChat},
+		{GroupID: &group26, Model: "gpt-4.1", Protocol: ContentModerationProtocolOpenAIChat},
+		{GroupID: &group26, Model: "gpt-5", Protocol: ContentModerationProtocolOpenAIImages},
+		{
+			GroupID:  &group26,
+			Model:    "gpt-5",
+			Protocol: ContentModerationProtocolOpenAIResponses,
+			Endpoint: "/v1/responses",
+			Body:     []byte(`{"model":"gpt-5","tools":[{"type":"image_generation"}]}`),
+		},
+	}
+	for _, input := range skipped {
+		_, ok := svc.TryBeginLocalAuditCapture(context.Background(), input)
+		require.False(t, ok)
+	}
+	stats := svc.localAuditStats(cfg)
+	require.Zero(t, stats.CaptureActive)
+	require.Zero(t, stats.OverloadSkipped)
+
+	release, ok := svc.TryBeginLocalAuditCapture(context.Background(), ContentModerationLocalAuditInput{
+		GroupID:  &group26,
+		Model:    "gpt-5",
+		Protocol: ContentModerationProtocolOpenAIChat,
+		Body:     []byte(`{"messages":[{"role":"user","content":"hello"}]}`),
+	})
+	require.True(t, ok)
+	require.Equal(t, int64(1), svc.localAuditStats(cfg).CaptureActive)
+	release()
+	require.Zero(t, svc.localAuditStats(cfg).CaptureActive)
+}
+
+func TestContentModerationLocalAuditRecordRechecksChangedScope(t *testing.T) {
+	cfg := defaultContentModerationConfig()
+	cfg.LocalAuditEnabled = true
+	cfg.AllGroups = false
+	cfg.GroupIDs = []int64{26}
+	rawCfg, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	settings := &contentModerationTestSettingRepo{values: map[string]string{
+		SettingKeyRiskControlEnabled:      "true",
+		SettingKeyContentModerationConfig: string(rawCfg),
+	}}
+	svc := NewContentModerationService(settings, nil, nil, nil, nil, nil, nil)
+	group26 := int64(26)
+	release, ok := svc.TryBeginLocalAuditCapture(context.Background(), ContentModerationLocalAuditInput{
+		GroupID: &group26,
+		Model:   "gpt-5",
+	})
+	require.True(t, ok)
+	defer release()
+
+	cfg.GroupIDs = []int64{8}
+	rawCfg, err = json.Marshal(cfg)
+	require.NoError(t, err)
+	settings.values[SettingKeyContentModerationConfig] = string(rawCfg)
+	svc.RecordSuccessfulConversation(context.Background(), ContentModerationLocalAuditInput{
+		GroupID:  &group26,
+		Model:    "gpt-5",
+		Protocol: ContentModerationProtocolOpenAIChat,
+		Body:     []byte(`{"messages":[{"role":"user","content":"hello"}]}`),
+	})
+	require.Zero(t, svc.localAuditEnqueued.Load())
+	require.Empty(t, svc.localAuditQueue)
 }
 
 func TestContentModerationLocalAuditBuildRecordPersistsSessionAndResponseFields(t *testing.T) {

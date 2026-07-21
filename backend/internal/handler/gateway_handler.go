@@ -209,6 +209,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		h.anthropicSecurityAuditError(c, decision)
 		return
 	}
+	auditCapture, restoreAuditCapture := h.beginSuccessfulConversationAuditCapture(c, apiKey, service.ContentModerationProtocolAnthropicMessages, reqModel, body)
+	defer restoreAuditCapture()
 
 	// Track if we've started streaming (for error handling)
 	streamStarted := false
@@ -531,6 +533,17 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					protocolModel = result.Model
 				}
 				result.ReasoningEffort = service.DefaultEffortForThinkingEnabled(protocolModel)
+			}
+			if !result.ClientDisconnect {
+				sessionID, clientSessionID, sessionSource := resolveParsedSessionAuditFields(parsedReq, sessionHash)
+				h.recordSuccessfulConversationAudit(c, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, result.UpstreamModel, result.Stream, body, result.Usage, successfulConversationAuditOptions{
+					SessionID:       sessionID,
+					ClientSessionID: clientSessionID,
+					SessionSource:   sessionSource,
+					UserAgent:       userAgent,
+					Originator:      c.GetHeader("Originator"),
+					RawResponse:     auditCapture.Bytes(),
+				})
 			}
 
 			// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
@@ -996,6 +1009,17 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					protocolModel = result.Model
 				}
 				result.ReasoningEffort = service.DefaultEffortForThinkingEnabled(protocolModel)
+			}
+			if !result.ClientDisconnect {
+				sessionID, clientSessionID, sessionSource := resolveParsedSessionAuditFields(attemptParsedReq, sessionHash)
+				h.recordSuccessfulConversationAudit(c, currentAPIKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, result.UpstreamModel, result.Stream, attemptParsedReq.Body.Bytes(), result.Usage, successfulConversationAuditOptions{
+					SessionID:       sessionID,
+					ClientSessionID: clientSessionID,
+					SessionSource:   sessionSource,
+					UserAgent:       userAgent,
+					Originator:      c.GetHeader("Originator"),
+					RawResponse:     auditCapture.Bytes(),
+				})
 			}
 
 			// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。

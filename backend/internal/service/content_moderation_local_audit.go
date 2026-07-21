@@ -194,19 +194,23 @@ func (s *ContentModerationService) RecordSuccessfulConversation(ctx context.Cont
 	}
 }
 
-func (s *ContentModerationService) TryBeginLocalAuditCapture(ctx context.Context) (func(), bool) {
+func (s *ContentModerationService) TryBeginLocalAuditCapture(ctx context.Context, input ContentModerationLocalAuditInput) (func(), bool) {
 	if s == nil || s.settingRepo == nil {
 		return func() {}, false
 	}
-	if !s.isRiskControlEnabled(ctx) {
-		return func() {}, false
-	}
-	cfg, err := s.loadConfig(ctx)
+	runtimeSnapshot, err := s.loadRuntimeSnapshot(ctx)
 	if err != nil {
 		slog.Warn("content_moderation.local_audit_capture_config_failed", "error", err)
 		return func() {}, false
 	}
-	if !cfg.LocalAuditEnabled {
+	cfg := runtimeSnapshot.config
+	if !runtimeSnapshot.riskControlEnabled || cfg == nil || !cfg.LocalAuditEnabled {
+		return func() {}, false
+	}
+	if !cfg.includesGroup(input.GroupID) || !cfg.includesModel(input.Model) {
+		return func() {}, false
+	}
+	if shouldSkipContentModerationLocalAuditCapture(cfg, input) {
 		return func() {}, false
 	}
 	maxCapture := cfg.LocalAuditMaxCaptureConcurrency
@@ -228,6 +232,20 @@ func (s *ContentModerationService) TryBeginLocalAuditCapture(ctx context.Context
 	}
 	s.localAuditCaptureActive.Add(1)
 	return s.releaseLocalAuditCapture, true
+}
+
+func shouldSkipContentModerationLocalAuditCapture(cfg *ContentModerationConfig, input ContentModerationLocalAuditInput) bool {
+	if cfg == nil || !cfg.LocalAuditExcludeImage {
+		return false
+	}
+	if input.Protocol == ContentModerationProtocolOpenAIImages {
+		return true
+	}
+	var root map[string]any
+	if len(input.Body) > 0 {
+		_ = json.Unmarshal(input.Body, &root)
+	}
+	return IsImageGenerationIntentMap(input.Endpoint, input.Model, root)
 }
 
 func (s *ContentModerationService) releaseLocalAuditCapture() {
