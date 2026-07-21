@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -193,6 +194,76 @@ func TestSub2APIUpstreamProviderRefreshToken(t *testing.T) {
 	}, UpstreamCredential{RefreshToken: "refresh", UserAgent: "browser-agent"})
 	require.NoError(t, err)
 	require.Equal(t, "refreshed", credential.AccessToken)
+}
+
+func TestSub2APIUpstreamProviderProactivelyRefreshesExpiringAccessToken(t *testing.T) {
+	var refreshCalls int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/auth/refresh", func(w http.ResponseWriter, r *http.Request) {
+		refreshCalls++
+		require.Equal(t, "browser-agent", r.Header.Get("User-Agent"))
+		writeUpstreamJSON(t, w, map[string]any{
+			"access_token": "refreshed-access", "refresh_token": "rotated-refresh",
+		})
+	})
+	mux.HandleFunc("/api/v1/auth/me", func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "Bearer refreshed-access", r.Header.Get("Authorization"))
+		writeUpstreamJSON(t, w, map[string]any{"id": 1})
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	provider := newSub2APIUpstreamProvider(newTestUpstreamHTTPClient(t))
+	credential, err := provider.Validate(context.Background(), &UpstreamSite{
+		BaseURL: server.URL, Platform: UpstreamPlatformSub2API, AuthMode: UpstreamAuthToken,
+	}, UpstreamCredential{
+		AccessToken:  testUpstreamJWT(t, time.Now().Add(10*time.Minute)),
+		RefreshToken: "current-refresh", UserAgent: "browser-agent",
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, refreshCalls)
+	require.Equal(t, "refreshed-access", credential.AccessToken)
+	require.Equal(t, "rotated-refresh", credential.RefreshToken)
+}
+
+func TestSub2APIUpstreamProviderKeepsAccessTokenOutsideRefreshWindow(t *testing.T) {
+	accessToken := testUpstreamJWT(t, time.Now().Add(30*time.Minute))
+	var refreshCalls int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/auth/refresh", func(w http.ResponseWriter, _ *http.Request) {
+		refreshCalls++
+		http.Error(w, "不应提前刷新", http.StatusInternalServerError)
+	})
+	mux.HandleFunc("/api/v1/auth/me", func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "Bearer "+accessToken, r.Header.Get("Authorization"))
+		writeUpstreamJSON(t, w, map[string]any{"id": 1})
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	provider := newSub2APIUpstreamProvider(newTestUpstreamHTTPClient(t))
+	credential, err := provider.Validate(context.Background(), &UpstreamSite{
+		BaseURL: server.URL, Platform: UpstreamPlatformSub2API, AuthMode: UpstreamAuthToken,
+	}, UpstreamCredential{AccessToken: accessToken, RefreshToken: "refresh"})
+	require.NoError(t, err)
+	require.Zero(t, refreshCalls)
+	require.Equal(t, accessToken, credential.AccessToken)
+}
+
+func TestSub2APIAccessTokenNeedsRefresh(t *testing.T) {
+	now := time.Date(2026, 7, 21, 12, 0, 0, 0, time.UTC)
+	require.True(t, sub2APIAccessTokenNeedsRefresh(testUpstreamJWT(t, now.Add(15*time.Minute)), now))
+	require.True(t, sub2APIAccessTokenNeedsRefresh(testUpstreamJWT(t, now.Add(-time.Minute)), now))
+	require.False(t, sub2APIAccessTokenNeedsRefresh(testUpstreamJWT(t, now.Add(15*time.Minute+time.Second)), now))
+	require.False(t, sub2APIAccessTokenNeedsRefresh("opaque-access-token", now))
+	require.False(t, sub2APIAccessTokenNeedsRefresh("header.invalid.signature", now))
+}
+
+func testUpstreamJWT(t *testing.T, expiresAt time.Time) string {
+	t.Helper()
+	payload, err := json.Marshal(map[string]any{"exp": expiresAt.Unix()})
+	require.NoError(t, err)
+	return "header." + base64.RawURLEncoding.EncodeToString(payload) + ".signature"
 }
 
 func TestSub2APIUpstreamProviderRetriesSessionBindingWithChromeTLS(t *testing.T) {

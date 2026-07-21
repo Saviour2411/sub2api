@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -10,6 +12,12 @@ import (
 	"strings"
 	"time"
 )
+
+const sub2APIProactiveRefreshWindow = 15 * time.Minute
+
+type sub2APIAccessTokenClaims struct {
+	ExpiresAt int64 `json:"exp"`
+}
 
 type sub2APIUpstreamProvider struct {
 	http *upstreamHTTPClient
@@ -286,6 +294,16 @@ func sub2APIStatsQuery(date time.Time, loc *time.Location) url.Values {
 
 func (p *sub2APIUpstreamProvider) authenticate(ctx context.Context, site *UpstreamSite, credential UpstreamCredential) (UpstreamCredential, map[string]string, error) {
 	if credential.AccessToken != "" {
+		if credential.RefreshToken != "" && sub2APIAccessTokenNeedsRefresh(credential.AccessToken, time.Now()) {
+			updated, headers, err := p.refresh(ctx, site, credential)
+			if err == nil {
+				return updated, headers, nil
+			}
+			if site.AuthMode != UpstreamAuthPassword || !canFallbackToPasswordLogin(err) {
+				return credential, nil, err
+			}
+			return p.login(ctx, site, credential)
+		}
 		return credential, sub2APIRequestHeaders(credential, true), nil
 	}
 	if credential.RefreshToken != "" {
@@ -301,6 +319,23 @@ func (p *sub2APIUpstreamProvider) authenticate(ctx context.Context, site *Upstre
 		return p.login(ctx, site, credential)
 	}
 	return credential, nil, fmt.Errorf("Sub2API 未返回访问令牌")
+}
+
+// sub2APIAccessTokenNeedsRefresh 只读取未验签 JWT 的 exp 进行刷新调度；认证仍由上游完成。
+func sub2APIAccessTokenNeedsRefresh(accessToken string, now time.Time) bool {
+	parts := strings.Split(accessToken, ".")
+	if len(parts) != 3 || parts[1] == "" {
+		return false
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(parts[1], "="))
+	if err != nil {
+		return false
+	}
+	var claims sub2APIAccessTokenClaims
+	if err := json.Unmarshal(payload, &claims); err != nil || claims.ExpiresAt <= 0 {
+		return false
+	}
+	return !time.Unix(claims.ExpiresAt, 0).After(now.Add(sub2APIProactiveRefreshWindow))
 }
 
 func (p *sub2APIUpstreamProvider) reauthenticate(ctx context.Context, site *UpstreamSite, credential UpstreamCredential) (UpstreamCredential, map[string]string, error) {
