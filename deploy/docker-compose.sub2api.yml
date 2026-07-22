@@ -54,6 +54,11 @@ services:
       - UPDATE_GITHUB_TOKEN=${UPDATE_GITHUB_TOKEN:-}
 
       # =======================================================================
+      # 仪表盘数据保留配置
+      # =======================================================================
+      - DASHBOARD_AGGREGATION_RETENTION_USAGE_LOGS_DAYS=${DASHBOARD_AGGREGATION_RETENTION_USAGE_LOGS_DAYS:-90}
+
+      # =======================================================================
       # Database Configuration (PostgreSQL)
       # =======================================================================
       - DATABASE_HOST=postgres
