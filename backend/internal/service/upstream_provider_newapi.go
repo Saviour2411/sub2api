@@ -12,7 +12,6 @@ import (
 )
 
 const (
-	newAPILogPageSize          = 100
 	newAPIUpstreamPlatformName = "New API"
 )
 
@@ -86,29 +85,28 @@ func (p *newAPIUpstreamProvider) syncAuthenticated(ctx context.Context, req Upst
 		return nil, err
 	}
 	daily := make([]UpstreamDailySnapshot, 0, len(req.Dates))
-	todayUsage := make(map[string]UpstreamGroupSnapshot)
 	todayKey := dayKey(time.Now(), req.Location)
 	for _, date := range req.Dates {
-		snapshot, groupUsage, fetchErr := p.fetchDailyLogs(ctx, req.Site, state, date, req.Location)
+		snapshot, fetchErr := p.fetchDailyStat(ctx, req.Site, state, date, req.Location, "")
 		if fetchErr != nil {
-			return nil, fetchErr
+			return nil, fmt.Errorf("读取 New API %s 日志统计: %w", dayKey(date, req.Location), fetchErr)
 		}
 		if dayKey(date, req.Location) == todayKey {
 			snapshot.BalanceUSD = balance
-			todayUsage = groupUsage
+			for index := range groups {
+				groupSnapshot, groupErr := p.fetchDailyStat(ctx, req.Site, state, date, req.Location, groups[index].RemoteID)
+				if groupErr != nil {
+					return nil, fmt.Errorf("读取 New API 分组 %s 当日用量: %w", groups[index].Name, groupErr)
+				}
+				groups[index].TodayCostUSD = groupSnapshot.CostUSD
+			}
 		}
 		daily = append(daily, snapshot)
 	}
-	for index := range groups {
-		if usage, found := todayUsage[groups[index].RemoteID]; found {
-			groups[index].TodayTokens = usage.TodayTokens
-			groups[index].TodayCostUSD = usage.TodayCostUSD
-		} else if usage, found := todayUsage[groups[index].Name]; found {
-			groups[index].TodayTokens = usage.TodayTokens
-			groups[index].TodayCostUSD = usage.TodayCostUSD
-		}
-	}
-	return &UpstreamSyncResult{BalanceUSD: balance, Groups: groups, Daily: daily, Credential: &state.credential}, nil
+	return &UpstreamSyncResult{
+		BalanceUSD: balance, Groups: groups, Daily: daily, Credential: &state.credential,
+		TokenMetricsAvailable: boolPtr(false),
+	}, nil
 }
 
 func (p *newAPIUpstreamProvider) authenticate(ctx context.Context, site *UpstreamSite, credential UpstreamCredential) (*newAPIAuthState, error) {
@@ -193,77 +191,35 @@ func (p *newAPIUpstreamProvider) fetchGroups(ctx context.Context, site *Upstream
 	return groups, nil
 }
 
-func (p *newAPIUpstreamProvider) fetchDailyLogs(ctx context.Context, site *UpstreamSite, state *newAPIAuthState, date time.Time, loc *time.Location) (UpstreamDailySnapshot, map[string]UpstreamGroupSnapshot, error) {
+func (p *newAPIUpstreamProvider) fetchDailyStat(
+	ctx context.Context,
+	site *UpstreamSite,
+	state *newAPIAuthState,
+	date time.Time,
+	loc *time.Location,
+	group string,
+) (UpstreamDailySnapshot, error) {
 	if loc == nil {
 		loc = time.Local
 	}
 	start := time.Date(date.In(loc).Year(), date.In(loc).Month(), date.In(loc).Day(), 0, 0, 0, 0, loc)
 	end := start.AddDate(0, 0, 1)
-	var tokens int64
-	var quota float64
-	groups := make(map[string]UpstreamGroupSnapshot)
-	for page := 1; page <= 10000; page++ {
-		query := url.Values{}
-		query.Set("p", strconv.Itoa(page))
-		query.Set("page", strconv.Itoa(page))
-		query.Set("page_size", strconv.Itoa(newAPILogPageSize))
-		query.Set("type", "0")
-		query.Set("start_timestamp", strconv.FormatInt(start.Unix(), 10))
-		query.Set("end_timestamp", strconv.FormatInt(end.Unix(), 10))
-		payload, _, err := p.http.doJSON(ctx, http.MethodGet, site.BaseURL, "/api/log/self?"+query.Encode(), state.headers, state.credential.Cookie, nil)
-		if err != nil {
-			return UpstreamDailySnapshot{}, nil, fmt.Errorf("读取 New API %s 第 %d 页日志: %w", start.Format("2006-01-02"), page, err)
-		}
-		items := extractItems(payload)
-		for _, item := range items {
-			object := asMap(item)
-			if object == nil {
-				continue
-			}
-			itemTokens, hasTotal := int64Value(valueByKeys(object, "total_tokens"))
-			if !hasTotal {
-				prompt, _ := int64Value(valueByKeys(object, "prompt_tokens", "input_tokens"))
-				completion, _ := int64Value(valueByKeys(object, "completion_tokens", "output_tokens"))
-				itemTokens = prompt + completion
-				if itemTokens == 0 {
-					itemTokens, _ = int64Value(valueByKeys(object, "token_used"))
-				}
-			}
-			itemQuota, _ := numberValue(valueByKeys(object, "quota", "use_quota", "quota_used"))
-			tokens += itemTokens
-			quota += itemQuota
-			groupName := stringValue(valueByKeys(object, "group", "group_name"))
-			if groupName != "" {
-				usage := groups[groupName]
-				usage.RemoteID = groupName
-				usage.Name = groupName
-				usage.TodayTokens += itemTokens
-				usage.TodayCostUSD += itemQuota / state.quotaPerUnit
-				groups[groupName] = usage
-			}
-		}
-		total, hasTotal := int64Value(valueByKeys(apiData(payload), "total", "total_count"))
-		if len(items) == 0 || len(items) < newAPILogPageSize || (hasTotal && int64(page*newAPILogPageSize) >= total) {
-			break
-		}
-		if page == 10000 {
-			return UpstreamDailySnapshot{}, nil, fmt.Errorf("new API %s 日志分页超过安全上限", start.Format("2006-01-02"))
-		}
+	query := url.Values{}
+	query.Set("type", "0")
+	query.Set("start_timestamp", strconv.FormatInt(start.Unix(), 10))
+	query.Set("end_timestamp", strconv.FormatInt(end.Unix(), 10))
+	if group != "" {
+		query.Set("group", group)
 	}
-
-	statQuery := url.Values{}
-	statQuery.Set("type", "0")
-	statQuery.Set("start_timestamp", strconv.FormatInt(start.Unix(), 10))
-	statQuery.Set("end_timestamp", strconv.FormatInt(end.Unix(), 10))
-	stat, _, statErr := p.http.doJSON(ctx, http.MethodGet, site.BaseURL, "/api/log/self/stat?"+statQuery.Encode(), state.headers, state.credential.Cookie, nil)
-	if statErr == nil {
-		if statQuota, ok := numberValue(valueByKeys(apiData(stat), "quota", "used_quota", "total_quota")); ok {
-			quota = statQuota
-		}
-	} else if !isHTTPStatus(statErr, http.StatusNotFound) {
-		return UpstreamDailySnapshot{}, nil, fmt.Errorf("读取 New API %s 日志统计: %w", start.Format("2006-01-02"), statErr)
+	stat, _, err := p.http.doJSON(ctx, http.MethodGet, site.BaseURL, "/api/log/self/stat?"+query.Encode(), state.headers, state.credential.Cookie, nil)
+	if err != nil {
+		return UpstreamDailySnapshot{}, err
 	}
-	return UpstreamDailySnapshot{Date: start, Tokens: tokens, CostUSD: quota / state.quotaPerUnit}, groups, nil
+	quota, ok := numberValue(valueByKeys(apiData(stat), "quota", "used_quota", "total_quota"))
+	if !ok {
+		return UpstreamDailySnapshot{}, fmt.Errorf("日志统计响应缺少 quota")
+	}
+	return UpstreamDailySnapshot{Date: start, CostUSD: quota / state.quotaPerUnit}, nil
 }
 
 func parseNewAPIGroups(value any) []UpstreamGroupSnapshot {

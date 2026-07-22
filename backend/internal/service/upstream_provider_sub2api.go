@@ -156,7 +156,10 @@ func (p *sub2APIUpstreamProvider) syncAuthenticated(
 			groups[index].TodayCostUSD = usage.TodayCostUSD
 		}
 	}
-	return &UpstreamSyncResult{BalanceUSD: balance, Groups: groups, Daily: daily, Credential: &credential}, nil
+	return &UpstreamSyncResult{
+		BalanceUSD: balance, Groups: groups, Daily: daily, Credential: &credential,
+		TokenMetricsAvailable: boolPtr(true),
+	}, nil
 }
 
 func (p *sub2APIUpstreamProvider) fetchUsage(

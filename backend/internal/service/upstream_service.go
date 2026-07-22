@@ -568,7 +568,8 @@ func (s *UpstreamService) toView(site *UpstreamSite) UpstreamSiteView {
 		Account: site.Account, Enabled: site.Enabled, Status: site.Status, ErrorMessage: site.ErrorMessage,
 		BalanceUSD: site.BalanceUSD, TodayTokens: site.TodayTokens, TodayCostUSD: site.TodayCostUSD,
 		TotalTokens: site.TotalTokens, TotalCostUSD: site.TotalCostUSD, TrackingStartedAt: site.TrackingStartedAt,
-		LastSyncedAt: site.LastSyncedAt, CreatedAt: site.CreatedAt, UpdatedAt: site.UpdatedAt,
+		TokenMetricsAvailable: UpstreamTokenMetricsAvailable(site.Platform),
+		LastSyncedAt:          site.LastSyncedAt, CreatedAt: site.CreatedAt, UpdatedAt: site.UpdatedAt,
 		DisplayedGroupCount: site.DisplayedGroupCount,
 		BindingCount:        site.BindingCount,
 	}

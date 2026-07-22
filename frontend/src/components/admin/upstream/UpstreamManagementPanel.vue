@@ -59,8 +59,8 @@
         <option value="">{{ t('admin.customFeatures.upstream.defaultSort') }}</option>
         <option value="balance_desc">{{ t('admin.customFeatures.upstream.sort.balanceDesc') }}</option>
         <option value="balance_asc">{{ t('admin.customFeatures.upstream.sort.balanceAsc') }}</option>
-        <option value="today_tokens_desc">{{ t('admin.customFeatures.upstream.sort.todayTokensDesc') }}</option>
-        <option value="today_tokens_asc">{{ t('admin.customFeatures.upstream.sort.todayTokensAsc') }}</option>
+        <option v-if="platformFilter !== 'newapi'" value="today_tokens_desc">{{ t('admin.customFeatures.upstream.sort.todayTokensDesc') }}</option>
+        <option v-if="platformFilter !== 'newapi'" value="today_tokens_asc">{{ t('admin.customFeatures.upstream.sort.todayTokensAsc') }}</option>
       </select>
     </div>
 
@@ -134,13 +134,13 @@
       </template>
       <template #cell-today="{ row }">
         <div class="space-y-1 text-xs">
-          <p class="font-medium text-gray-800 dark:text-gray-200" :title="formatExactTokens(row.today_tokens)">{{ formatTokens(row.today_tokens) }}</p>
+          <p class="font-medium text-gray-800 dark:text-gray-200" :title="tokenMetricsAvailable(row) ? formatExactTokens(row.today_tokens) : undefined">{{ formatTokenMetric(row.today_tokens, tokenMetricsAvailable(row)) }}</p>
           <p class="text-gray-500 dark:text-gray-400">{{ formatMoney(row.today_cost_usd) }}</p>
         </div>
       </template>
       <template #cell-total="{ row }">
         <div class="space-y-1 text-xs">
-          <p class="font-medium text-gray-800 dark:text-gray-200" :title="formatExactTokens(row.total_tokens)">{{ formatTokens(row.total_tokens) }}</p>
+          <p class="font-medium text-gray-800 dark:text-gray-200" :title="tokenMetricsAvailable(row) ? formatExactTokens(row.total_tokens) : undefined">{{ formatTokenMetric(row.total_tokens, tokenMetricsAvailable(row)) }}</p>
           <p class="text-gray-500 dark:text-gray-400">{{ formatMoney(row.total_cost_usd) }}</p>
         </div>
       </template>
@@ -230,7 +230,7 @@
                 </div>
                 <div>
                   <dt class="text-[10px] leading-4 text-gray-500 dark:text-gray-400">{{ t('admin.customFeatures.upstream.groupColumns.tokens') }}</dt>
-                  <dd class="mt-0.5 text-xs font-medium leading-4 text-gray-900 dark:text-gray-100" :title="formatExactTokens(group.today_tokens)">{{ formatTokens(group.today_tokens) }}</dd>
+                  <dd class="mt-0.5 text-xs font-medium leading-4 text-gray-900 dark:text-gray-100" :title="tokenMetricsAvailable(group) ? formatExactTokens(group.today_tokens) : undefined">{{ formatTokenMetric(group.today_tokens, tokenMetricsAvailable(group)) }}</dd>
                 </div>
                 <div>
                   <dt class="text-[10px] leading-4 text-gray-500 dark:text-gray-400">{{ t('admin.customFeatures.upstream.groupColumns.cost') }}</dt>
@@ -457,7 +457,7 @@
               </span>
             </template>
             <template #cell-multiplier="{ row }"><span class="rounded bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">{{ formatMultiplier(row.multiplier) }}</span></template>
-            <template #cell-today_tokens="{ row }"><span :title="formatExactTokens(row.today_tokens)">{{ formatTokens(row.today_tokens) }}</span></template>
+            <template #cell-today_tokens="{ row }"><span :title="tokenMetricsAvailable(row) ? formatExactTokens(row.today_tokens) : undefined">{{ formatTokenMetric(row.today_tokens, tokenMetricsAvailable(row)) }}</span></template>
             <template #cell-today_cost_usd="{ row }">{{ formatMoney(row.today_cost_usd) }}</template>
             <template #cell-actions="{ row }">
               <button
@@ -705,26 +705,30 @@ const groupColumns = computed<Column[]>(() => [
   { key: 'actions', label: t('admin.customFeatures.upstream.columns.actions'), class: 'min-w-28' }
 ])
 
-const historyChartData = computed(() => ({
-  labels: detailHistory.value.map((item) => item.date.slice(0, 10)),
-  datasets: [
-    { label: t('admin.customFeatures.upstream.chart.tokens'), data: detailHistory.value.map((item) => item.tokens), borderColor: '#2563eb', backgroundColor: '#2563eb20', tension: 0.25, yAxisID: 'tokens' },
+const detailTokenMetricsAvailable = computed(() => detailSite.value?.token_metrics_available !== false)
+
+const historyChartData = computed(() => {
+  const datasets = [
     { label: t('admin.customFeatures.upstream.chart.cost'), data: detailHistory.value.map((item) => item.cost_usd), borderColor: '#dc2626', backgroundColor: '#dc262620', tension: 0.25, yAxisID: 'currency' },
     { label: t('admin.customFeatures.upstream.chart.balance'), data: detailHistory.value.map((item) => item.balance_usd), borderColor: '#059669', backgroundColor: '#05966920', tension: 0.25, yAxisID: 'currency' }
   ]
-}))
+  if (detailTokenMetricsAvailable.value) {
+    datasets.unshift({ label: t('admin.customFeatures.upstream.chart.tokens'), data: detailHistory.value.map((item) => item.tokens), borderColor: '#2563eb', backgroundColor: '#2563eb20', tension: 0.25, yAxisID: 'tokens' })
+  }
+  return { labels: detailHistory.value.map((item) => item.date.slice(0, 10)), datasets }
+})
 
 const historyChartOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
   interaction: { mode: 'index' as const, intersect: false },
   scales: {
-    tokens: {
+    ...(detailTokenMetricsAvailable.value ? { tokens: {
       type: 'linear' as const,
       position: 'left' as const,
       beginAtZero: true,
       ticks: { callback: (value: string | number) => formatCompactNumber(Number(value)) }
-    },
+    } } : {}),
     currency: { type: 'linear' as const, position: 'right' as const, beginAtZero: true, grid: { drawOnChartArea: false } }
   },
   plugins: { legend: { position: 'top' as const } }
@@ -912,7 +916,11 @@ async function loadSites(silent = false) {
   }
 }
 
-function applyFilters() { page.value = 1; loadSites(false) }
+function applyFilters() {
+  if (platformFilter.value === 'newapi' && sortSelection.value.startsWith('today_tokens_')) sortSelection.value = ''
+  page.value = 1
+  loadSites(false)
+}
 function applySortSelection() { page.value = 1; loadSites(false) }
 function changePage(nextPage: number) { page.value = nextPage; loadSites(false) }
 
@@ -1458,6 +1466,8 @@ function sortGroups(groups: UpstreamGroup[]) {
 function formatMoney(value: number | null | undefined) { return value == null ? '—' : `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}` }
 function formatTokens(value: number) { return formatCompactNumber(Number(value || 0)) }
 function formatExactTokens(value: number) { return Number(value || 0).toLocaleString('en-US') }
+function tokenMetricsAvailable(item: { token_metrics_available?: boolean }) { return item.token_metrics_available !== false }
+function formatTokenMetric(value: number, available: boolean) { return available ? formatTokens(value) : '—' }
 function formatMultiplier(value: number | null | undefined) {
   return value == null ? '—' : `${value.toLocaleString(undefined, { maximumFractionDigits: 6 })}×`
 }

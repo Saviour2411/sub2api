@@ -101,29 +101,30 @@ type UpstreamSite struct {
 
 // UpstreamSiteView 是管理 API 的脱敏响应。
 type UpstreamSiteView struct {
-	ID                  int64      `json:"id"`
-	SortOrder           int        `json:"sort_order"`
-	Name                string     `json:"name"`
-	BaseURL             string     `json:"base_url"`
-	Platform            string     `json:"platform"`
-	AuthMode            string     `json:"auth_mode"`
-	Account             string     `json:"account"`
-	Enabled             bool       `json:"enabled"`
-	Status              string     `json:"status"`
-	ErrorMessage        *string    `json:"error_message"`
-	BalanceUSD          *float64   `json:"balance_usd"`
-	TodayTokens         int64      `json:"today_tokens"`
-	TodayCostUSD        float64    `json:"today_cost_usd"`
-	TotalTokens         int64      `json:"total_tokens"`
-	TotalCostUSD        float64    `json:"total_cost_usd"`
-	TrackingStartedAt   time.Time  `json:"tracking_started_at"`
-	LastSyncedAt        *time.Time `json:"last_synced_at"`
-	CreatedAt           time.Time  `json:"created_at"`
-	UpdatedAt           time.Time  `json:"updated_at"`
-	HasPassword         bool       `json:"has_password"`
-	HasToken            bool       `json:"has_token"`
-	DisplayedGroupCount int        `json:"displayed_group_count"`
-	BindingCount        int        `json:"binding_count"`
+	ID                    int64      `json:"id"`
+	SortOrder             int        `json:"sort_order"`
+	Name                  string     `json:"name"`
+	BaseURL               string     `json:"base_url"`
+	Platform              string     `json:"platform"`
+	AuthMode              string     `json:"auth_mode"`
+	Account               string     `json:"account"`
+	Enabled               bool       `json:"enabled"`
+	Status                string     `json:"status"`
+	ErrorMessage          *string    `json:"error_message"`
+	BalanceUSD            *float64   `json:"balance_usd"`
+	TodayTokens           int64      `json:"today_tokens"`
+	TodayCostUSD          float64    `json:"today_cost_usd"`
+	TotalTokens           int64      `json:"total_tokens"`
+	TotalCostUSD          float64    `json:"total_cost_usd"`
+	TokenMetricsAvailable bool       `json:"token_metrics_available"`
+	TrackingStartedAt     time.Time  `json:"tracking_started_at"`
+	LastSyncedAt          *time.Time `json:"last_synced_at"`
+	CreatedAt             time.Time  `json:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at"`
+	HasPassword           bool       `json:"has_password"`
+	HasToken              bool       `json:"has_token"`
+	DisplayedGroupCount   int        `json:"displayed_group_count"`
+	BindingCount          int        `json:"binding_count"`
 }
 
 type UpstreamListParams struct {
@@ -183,19 +184,20 @@ type UpstreamUpdateInput struct {
 }
 
 type UpstreamGroup struct {
-	ID           int64                         `json:"id"`
-	SiteID       int64                         `json:"site_id"`
-	RemoteID     string                        `json:"remote_id"`
-	Name         string                        `json:"name"`
-	Platform     string                        `json:"platform"`
-	Description  string                        `json:"description"`
-	Multiplier   *float64                      `json:"multiplier"`
-	TodayTokens  int64                         `json:"today_tokens"`
-	TodayCostUSD float64                       `json:"today_cost_usd"`
-	Displayed    bool                          `json:"displayed"`
-	Available    bool                          `json:"available"`
-	LastSyncedAt time.Time                     `json:"last_synced_at"`
-	Bindings     []UpstreamGroupAccountBinding `json:"bindings"`
+	ID                    int64                         `json:"id"`
+	SiteID                int64                         `json:"site_id"`
+	RemoteID              string                        `json:"remote_id"`
+	Name                  string                        `json:"name"`
+	Platform              string                        `json:"platform"`
+	Description           string                        `json:"description"`
+	Multiplier            *float64                      `json:"multiplier"`
+	TodayTokens           int64                         `json:"today_tokens"`
+	TodayCostUSD          float64                       `json:"today_cost_usd"`
+	TokenMetricsAvailable bool                          `json:"token_metrics_available"`
+	Displayed             bool                          `json:"displayed"`
+	Available             bool                          `json:"available"`
+	LastSyncedAt          time.Time                     `json:"last_synced_at"`
+	Bindings              []UpstreamGroupAccountBinding `json:"bindings"`
 }
 
 // UpstreamGroupAccountBinding 是上游分组与本地账号的管理 API 响应。
@@ -233,15 +235,16 @@ type UpstreamGroupDisplayResult struct {
 }
 
 type UpstreamDailyStat struct {
-	ID               int64     `json:"id"`
-	SiteID           int64     `json:"site_id"`
-	Date             time.Time `json:"date"`
-	BalanceUSD       *float64  `json:"balance_usd"`
-	Tokens           int64     `json:"tokens"`
-	CostUSD          float64   `json:"cost_usd"`
-	CostBasisVersion int       `json:"cost_basis_version"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	ID                    int64     `json:"id"`
+	SiteID                int64     `json:"site_id"`
+	Date                  time.Time `json:"date"`
+	BalanceUSD            *float64  `json:"balance_usd"`
+	Tokens                int64     `json:"tokens"`
+	CostUSD               float64   `json:"cost_usd"`
+	TokenMetricsAvailable bool      `json:"token_metrics_available"`
+	CostBasisVersion      int       `json:"cost_basis_version"`
+	CreatedAt             time.Time `json:"created_at"`
+	UpdatedAt             time.Time `json:"updated_at"`
 }
 
 type UpstreamSyncRequest struct {
@@ -282,12 +285,17 @@ type UpstreamGroupMultiplierHistory struct {
 	Points            []UpstreamGroupMultiplierPoint `json:"points"`
 }
 
-// UpstreamSyncResult 必须在适配器完成全部分页后一次性返回。
+// UpstreamSyncResult 必须在适配器完成整轮快照后一次性返回。
 type UpstreamSyncResult struct {
-	BalanceUSD *float64
-	Groups     []UpstreamGroupSnapshot
-	Daily      []UpstreamDailySnapshot
-	Credential *UpstreamCredential
+	BalanceUSD            *float64
+	Groups                []UpstreamGroupSnapshot
+	Daily                 []UpstreamDailySnapshot
+	Credential            *UpstreamCredential
+	TokenMetricsAvailable *bool
+}
+
+func UpstreamTokenMetricsAvailable(platform string) bool {
+	return platform != UpstreamPlatformNewAPI
 }
 
 type UpstreamProvider interface {

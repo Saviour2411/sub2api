@@ -236,9 +236,17 @@ func upstreamSiteOrder(params service.UpstreamListParams) []upstreamsite.OrderOp
 	}
 	if params.SortBy == "today_tokens" {
 		if params.SortOrder == "desc" {
-			return []upstreamsite.OrderOption{dbent.Desc(upstreamsite.FieldTodayTokens), dbent.Asc(upstreamsite.FieldID)}
+			return []upstreamsite.OrderOption{
+				dbent.Desc(upstreamsite.FieldPlatform),
+				dbent.Desc(upstreamsite.FieldTodayTokens),
+				dbent.Asc(upstreamsite.FieldID),
+			}
 		}
-		return []upstreamsite.OrderOption{dbent.Asc(upstreamsite.FieldTodayTokens), dbent.Asc(upstreamsite.FieldID)}
+		return []upstreamsite.OrderOption{
+			dbent.Desc(upstreamsite.FieldPlatform),
+			dbent.Asc(upstreamsite.FieldTodayTokens),
+			dbent.Asc(upstreamsite.FieldID),
+		}
 	}
 	return []upstreamsite.OrderOption{dbent.Asc(upstreamsite.FieldSortOrder), dbent.Asc(upstreamsite.FieldID)}
 }
@@ -445,6 +453,7 @@ func (r *upstreamRepository) CommitSync(ctx context.Context, id int64, result *s
 	if result == nil {
 		return service.ErrUpstreamInvalidInput.WithCause(fmt.Errorf("同步结果为空"))
 	}
+	tokenMetricsAvailable := result.TokenMetricsAvailable == nil || *result.TokenMetricsAvailable
 	seenRemoteIDs := make(map[string]struct{}, len(result.Groups))
 	for _, group := range result.Groups {
 		if strings.TrimSpace(group.RemoteID) == "" {
@@ -529,10 +538,12 @@ func (r *upstreamRepository) CommitSync(ctx context.Context, id int64, result *s
 				SetName(group.Name).
 				SetPlatform(group.Platform).
 				SetDescription(group.Description).
-				SetTodayTokens(group.TodayTokens).
 				SetTodayCostUsd(group.TodayCostUSD).
 				SetAvailable(true).
 				SetLastSyncedAt(syncedAt)
+			if tokenMetricsAvailable {
+				update = update.SetTodayTokens(group.TodayTokens)
+			}
 			if group.Multiplier != nil {
 				update = update.SetMultiplier(*group.Multiplier)
 			} else {
@@ -549,10 +560,12 @@ func (r *upstreamRepository) CommitSync(ctx context.Context, id int64, result *s
 			SetName(group.Name).
 			SetPlatform(group.Platform).
 			SetDescription(group.Description).
-			SetTodayTokens(group.TodayTokens).
 			SetTodayCostUsd(group.TodayCostUSD).
 			SetAvailable(true).
 			SetLastSyncedAt(syncedAt)
+		if tokenMetricsAvailable {
+			create = create.SetTodayTokens(group.TodayTokens)
+		}
 		if group.Multiplier != nil {
 			create = create.SetMultiplier(*group.Multiplier)
 		}
@@ -591,13 +604,25 @@ func (r *upstreamRepository) CommitSync(ctx context.Context, id int64, result *s
 		b := tx.UpstreamDailyStat.Create().
 			SetSiteID(id).
 			SetUsageDate(daily.Date).
-			SetTokens(daily.Tokens).
 			SetCostUsd(daily.CostUSD).
 			SetCostBasisVersion(service.UpstreamCostBasisActual)
+		if tokenMetricsAvailable {
+			b = b.SetTokens(daily.Tokens)
+		}
 		if daily.BalanceUSD != nil {
 			b = b.SetBalanceUsd(*daily.BalanceUSD)
 		}
-		upsert := b.OnConflictColumns(upstreamdailystat.FieldSiteID, upstreamdailystat.FieldUsageDate).UpdateNewValues()
+		upsert := b.OnConflictColumns(upstreamdailystat.FieldSiteID, upstreamdailystat.FieldUsageDate)
+		if tokenMetricsAvailable {
+			upsert = upsert.UpdateNewValues()
+		} else {
+			upsert = upsert.Update(func(update *dbent.UpstreamDailyStatUpsert) {
+				if daily.BalanceUSD != nil {
+					update.UpdateBalanceUsd()
+				}
+				update.UpdateCostUsd().UpdateCostBasisVersion().UpdateUpdatedAt()
+			})
+		}
 		if err = upsert.Exec(ctx); err != nil {
 			return rollback(fmt.Errorf("保存上游每日统计: %w", err))
 		}
@@ -628,11 +653,12 @@ func (r *upstreamRepository) CommitSync(ctx context.Context, id int64, result *s
 	update := tx.UpstreamSite.UpdateOneID(id).
 		SetStatus(upstreamsite.StatusHealthy).
 		ClearErrorMessage().
-		SetTodayTokens(todayTokens).
 		SetTodayCostUsd(todayCost).
-		SetTotalTokens(totalTokens).
 		SetTotalCostUsd(totalCost).
 		SetLastSyncedAt(syncedAt)
+	if tokenMetricsAvailable {
+		update = update.SetTodayTokens(todayTokens).SetTotalTokens(totalTokens)
+	}
 	if result.BalanceUSD != nil {
 		update = update.SetBalanceUsd(*result.BalanceUSD)
 	} else {
@@ -656,9 +682,11 @@ func (r *upstreamRepository) CommitSync(ctx context.Context, id int64, result *s
 }
 
 func (r *upstreamRepository) ListGroups(ctx context.Context, siteID int64) ([]service.UpstreamGroup, error) {
-	if _, err := r.GetByID(ctx, siteID); err != nil {
+	site, err := r.GetByID(ctx, siteID)
+	if err != nil {
 		return nil, err
 	}
+	tokenMetricsAvailable := service.UpstreamTokenMetricsAvailable(site.Platform)
 	rows, err := clientFromContext(ctx, r.client).UpstreamGroup.Query().
 		Where(
 			upstreamgroup.SiteIDEQ(siteID),
@@ -683,7 +711,8 @@ func (r *upstreamRepository) ListGroups(ctx context.Context, siteID int64) ([]se
 			ID: row.ID, SiteID: row.SiteID, RemoteID: row.RemoteID, Name: row.Name,
 			Platform: row.Platform, Description: row.Description, Multiplier: row.Multiplier, TodayTokens: row.TodayTokens,
 			TodayCostUSD: row.TodayCostUsd, Displayed: row.Displayed, Available: row.Available, LastSyncedAt: row.LastSyncedAt,
-			Bindings: bindingsByGroup[row.ID],
+			TokenMetricsAvailable: tokenMetricsAvailable,
+			Bindings:              bindingsByGroup[row.ID],
 		}
 		if item.Bindings == nil {
 			item.Bindings = []service.UpstreamGroupAccountBinding{}
@@ -765,6 +794,11 @@ func (r *upstreamRepository) SetGroupDisplayed(ctx context.Context, siteID int64
 		return rollback(service.ErrUpstreamGroupUnavailable)
 	}
 	item := upstreamGroupFromEnt(row)
+	tokenMetricsAvailable, metricErr := upstreamTokenMetricsAvailableForSite(ctx, tx.Client(), siteID)
+	if metricErr != nil {
+		return rollback(fmt.Errorf("读取上游站点平台: %w", metricErr))
+	}
+	item.TokenMetricsAvailable = tokenMetricsAvailable
 	item.Displayed = displayed
 	if !displayed && !row.Available {
 		if err = tx.UpstreamGroup.DeleteOneID(row.ID).Exec(ctx); err != nil {
@@ -958,6 +992,11 @@ func (r *upstreamRepository) ReplaceGroupBindings(
 		return rollback(fmt.Errorf("读取更新后账号绑定: %w", err))
 	}
 	item := upstreamGroupFromEnt(groupRow)
+	tokenMetricsAvailable, metricErr := upstreamTokenMetricsAvailableForSite(ctx, tx.Client(), siteID)
+	if metricErr != nil {
+		return rollback(fmt.Errorf("读取上游站点平台: %w", metricErr))
+	}
+	item.TokenMetricsAvailable = tokenMetricsAvailable
 	item.Bindings = bindingsByGroup[upstreamGroupID]
 	if item.Bindings == nil {
 		item.Bindings = []service.UpstreamGroupAccountBinding{}
@@ -977,6 +1016,14 @@ func upstreamGroupFromEnt(row *dbent.UpstreamGroup) service.UpstreamGroup {
 	}
 }
 
+func upstreamTokenMetricsAvailableForSite(ctx context.Context, client *dbent.Client, siteID int64) (bool, error) {
+	site, err := client.UpstreamSite.Query().Where(upstreamsite.IDEQ(siteID)).Only(ctx)
+	if err != nil {
+		return false, err
+	}
+	return service.UpstreamTokenMetricsAvailable(string(site.Platform)), nil
+}
+
 func lockUpstreamSite(ctx context.Context, tx *dbent.Tx, siteID int64) error {
 	_, err := tx.UpstreamSite.Query().Where(upstreamsite.IDEQ(siteID)).ForUpdate().Only(ctx)
 	if err != nil && strings.Contains(err.Error(), "not supported in SQLite") {
@@ -986,9 +1033,11 @@ func lockUpstreamSite(ctx context.Context, tx *dbent.Tx, siteID int64) error {
 }
 
 func (r *upstreamRepository) ListHistory(ctx context.Context, siteID int64, from, through time.Time) ([]service.UpstreamDailyStat, error) {
-	if _, err := r.GetByID(ctx, siteID); err != nil {
+	site, err := r.GetByID(ctx, siteID)
+	if err != nil {
 		return nil, err
 	}
+	tokenMetricsAvailable := service.UpstreamTokenMetricsAvailable(site.Platform)
 	rows, err := clientFromContext(ctx, r.client).UpstreamDailyStat.Query().
 		Where(
 			upstreamdailystat.SiteIDEQ(siteID),
@@ -1006,7 +1055,8 @@ func (r *upstreamRepository) ListHistory(ctx context.Context, siteID int64, from
 		items = append(items, service.UpstreamDailyStat{
 			ID: row.ID, SiteID: row.SiteID, Date: row.UsageDate, BalanceUSD: row.BalanceUsd,
 			Tokens: row.Tokens, CostUSD: row.CostUsd, CostBasisVersion: row.CostBasisVersion,
-			CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+			TokenMetricsAvailable: tokenMetricsAvailable,
+			CreatedAt:             row.CreatedAt, UpdatedAt: row.UpdatedAt,
 		})
 	}
 	return items, nil

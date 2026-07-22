@@ -148,6 +148,69 @@ func TestUpstreamRepositoryCommitSyncIdempotentAndCascadeDelete(t *testing.T) {
 	require.Zero(t, historyPointCount)
 }
 
+func TestUpstreamRepositoryCommitSyncPreservesUnavailableTokenMetrics(t *testing.T) {
+	db, err := sql.Open("sqlite", fmt.Sprintf("file:upstream-no-tokens-%d?mode=memory&cache=shared&_pragma=foreign_keys(1)&_time_format=sqlite", time.Now().UnixNano()))
+	require.NoError(t, err)
+	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(entsql.OpenDB(dialect.SQLite, db))))
+	t.Cleanup(func() { require.NoError(t, client.Close()) })
+	repo := NewUpstreamRepository(client)
+	ctx := context.Background()
+	loc := time.FixedZone("Asia/Shanghai", 8*60*60)
+	now := time.Now().In(loc).Truncate(time.Second)
+	date := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+	site := &service.UpstreamSite{
+		Name: "New API 站点", BaseURL: "https://newapi.example.com", Platform: service.UpstreamPlatformNewAPI,
+		AuthMode: service.UpstreamAuthPassword, Account: "admin", CredentialEncrypted: "encrypted",
+		Enabled: true, Status: service.UpstreamStatusPending, TrackingStartedAt: now, CreatedBy: 1,
+	}
+	require.NoError(t, repo.Create(ctx, site))
+	require.NoError(t, client.UpstreamSite.UpdateOneID(site.ID).SetTodayTokens(111).SetTotalTokens(222).Exec(ctx))
+	_, err = client.UpstreamGroup.Create().
+		SetSiteID(site.ID).
+		SetRemoteID("vip").
+		SetName("VIP").
+		SetTodayTokens(333).
+		SetTodayCostUsd(1).
+		Save(ctx)
+	require.NoError(t, err)
+	_, err = client.UpstreamDailyStat.Create().
+		SetSiteID(site.ID).
+		SetUsageDate(date).
+		SetTokens(444).
+		SetCostUsd(1).
+		SetCostBasisVersion(service.UpstreamCostBasisActual).
+		Save(ctx)
+	require.NoError(t, err)
+
+	tokensUnavailable := false
+	next := now.Add(5 * time.Minute)
+	result := &service.UpstreamSyncResult{
+		Groups:                []service.UpstreamGroupSnapshot{{RemoteID: "vip", Name: "VIP", TodayCostUSD: 9}},
+		Daily:                 []service.UpstreamDailySnapshot{{Date: date, Tokens: 999, CostUSD: 8}},
+		TokenMetricsAvailable: &tokensUnavailable,
+	}
+	require.NoError(t, repo.CommitSync(ctx, site.ID, result, "", now, &next))
+
+	updated, err := repo.GetByID(ctx, site.ID)
+	require.NoError(t, err)
+	require.Equal(t, int64(111), updated.TodayTokens)
+	require.Equal(t, int64(222), updated.TotalTokens)
+	require.InDelta(t, 8, updated.TodayCostUSD, 1e-9)
+	require.InDelta(t, 8, updated.TotalCostUSD, 1e-9)
+	groups, err := repo.ListGroups(ctx, site.ID)
+	require.NoError(t, err)
+	require.Len(t, groups, 1)
+	require.Equal(t, int64(333), groups[0].TodayTokens)
+	require.InDelta(t, 9, groups[0].TodayCostUSD, 1e-9)
+	require.False(t, groups[0].TokenMetricsAvailable)
+	history, err := repo.ListHistory(ctx, site.ID, date, date)
+	require.NoError(t, err)
+	require.Len(t, history, 1)
+	require.Equal(t, int64(444), history[0].Tokens)
+	require.InDelta(t, 8, history[0].CostUSD, 1e-9)
+	require.False(t, history[0].TokenMetricsAvailable)
+}
+
 func TestUpstreamRepositoryGroupDisplayLifecycle(t *testing.T) {
 	db, err := sql.Open("sqlite", fmt.Sprintf("file:upstream-display-%d?mode=memory&cache=shared&_pragma=foreign_keys(1)&_time_format=sqlite", time.Now().UnixNano()))
 	require.NoError(t, err)
@@ -318,6 +381,9 @@ func TestUpstreamRepositoryListFilterSortAndManualOrder(t *testing.T) {
 	items, _, err = repo.List(ctx, service.UpstreamListParams{Page: 1, PageSize: 20, SortBy: "today_tokens", SortOrder: "asc"})
 	require.NoError(t, err)
 	require.Equal(t, []string{"站点 B", "站点 C", "站点 A"}, []string{items[0].Name, items[1].Name, items[2].Name})
+	items, _, err = repo.List(ctx, service.UpstreamListParams{Page: 1, PageSize: 20, SortBy: "today_tokens", SortOrder: "desc"})
+	require.NoError(t, err)
+	require.Equal(t, []string{"站点 B", "站点 A", "站点 C"}, []string{items[0].Name, items[1].Name, items[2].Name})
 
 	require.NoError(t, repo.UpdateSortOrder(ctx, []service.UpstreamSortOrderUpdate{{ID: 3, SortOrder: 0}, {ID: 1, SortOrder: 10}, {ID: 2, SortOrder: 20}}))
 	items, _, err = repo.List(ctx, service.UpstreamListParams{Page: 1, PageSize: 20})

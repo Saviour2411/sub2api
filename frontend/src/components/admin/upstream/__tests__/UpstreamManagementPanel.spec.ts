@@ -26,7 +26,7 @@ vi.mock('@/utils/apiError', () => ({
 vi.mock('vue-chartjs', () => ({
   Line: {
     props: ['data', 'options'],
-    template: '<div data-test="history-chart" :data-stepped="data.datasets?.[0]?.stepped || \'\'" :data-first-x="data.datasets?.[0]?.data?.[0]?.x ?? \'\'" />',
+    template: '<div data-test="history-chart" :data-stepped="data.datasets?.[0]?.stepped || \'\'" :data-first-x="data.datasets?.[0]?.data?.[0]?.x ?? \'\'" :data-datasets="data.datasets?.map((item) => item.yAxisID).join(\',\') || \'\'" />',
   },
 }))
 vi.mock('vue-i18n', async (importOriginal) => {
@@ -104,6 +104,7 @@ function siteFixture(overrides = {}) {
     today_cost_usd: 0.1,
     total_tokens: 1000,
     total_cost_usd: 1,
+    token_metrics_available: true,
     tracking_started_at: '2026-07-01T00:00:00Z',
     last_synced_at: '2026-07-15T00:00:00Z',
     created_at: '2026-07-01T00:00:00Z',
@@ -147,6 +148,7 @@ function displayedGroupFixture(overrides = {}) {
     multiplier: 0.5,
     today_tokens: 100,
     today_cost_usd: 0.1,
+    token_metrics_available: true,
     displayed: true,
     available: true,
     last_synced_at: '2026-07-15T00:00:00Z',
@@ -427,6 +429,39 @@ describe('UpstreamManagementPanel', () => {
     expect(wrapper.text()).toContain('1.2M')
     expect(wrapper.text()).toContain('$71.56')
     expect(wrapper.find('[title="10,388,595,898"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('New API 隐藏站点、分组和历史 Token，同时保留费用展示', async () => {
+    api.list.mockResolvedValue(siteListResult(siteFixture({
+      platform: 'newapi', token_metrics_available: false, displayed_group_count: 1,
+      today_tokens: 10_388_595_898, total_tokens: 1_234_567, today_cost_usd: 71.56, total_cost_usd: 88.12,
+    })))
+    api.groups.mockResolvedValue([displayedGroupFixture({
+      token_metrics_available: false, today_tokens: 9_876_543, today_cost_usd: 12.34,
+    })])
+    api.history.mockResolvedValue([{
+      id: 1, site_id: 1, date: '2026-07-15T00:00:00Z', balance_usd: 10,
+      tokens: 10_388_595_898, cost_usd: 71.56, token_metrics_available: false, created_at: '', updated_at: '',
+    }])
+    const wrapper = mountPanel()
+    await flushPromises()
+
+    expect(wrapper.find('[title="10,388,595,898"]').exists()).toBe(false)
+    expect(wrapper.find('[title="9,876,543"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('$71.56')
+    expect(wrapper.text()).toContain('$12.34')
+
+    await wrapper.get('button[title="admin.customFeatures.upstream.details"]').trigger('click')
+    await flushPromises()
+    const usageTab = wrapper.findAll('button').find((button) => button.text() === 'admin.customFeatures.upstream.detailTabs.usage')
+    await usageTab?.trigger('click')
+    expect(wrapper.get('[data-test="history-chart"]').attributes('data-datasets')).toBe('currency,currency')
+
+    const platformSelect = wrapper.get('select[aria-label="admin.customFeatures.upstream.platform"]')
+    await platformSelect.setValue('newapi')
+    expect(wrapper.find('option[value="today_tokens_desc"]').exists()).toBe(false)
+    expect(wrapper.find('option[value="today_tokens_asc"]').exists()).toBe(false)
     wrapper.unmount()
   })
 

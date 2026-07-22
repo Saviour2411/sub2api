@@ -4,11 +4,9 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -486,9 +484,12 @@ func TestSub2APIUpstreamProviderMapsTurnstileLoginFailure(t *testing.T) {
 	require.ErrorIs(t, upstreamValidationError(err), ErrUpstreamTurnstileRequired)
 }
 
-func TestNewAPIUpstreamProviderPaginationTokenFallbackAndUSD(t *testing.T) {
+func TestNewAPIUpstreamProviderUsesDailyAndGroupStatsWithoutLogPagination(t *testing.T) {
 	loc := time.FixedZone("Asia/Shanghai", 8*60*60)
 	today := time.Now().In(loc)
+	yesterday := today.AddDate(0, 0, -1)
+	var logCalls int
+	statCalls := make([]string, 0)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/user/login", func(w http.ResponseWriter, _ *http.Request) {
 		http.SetCookie(w, &http.Cookie{Name: "session", Value: "cookie-1"})
@@ -503,26 +504,31 @@ func TestNewAPIUpstreamProviderPaginationTokenFallbackAndUSD(t *testing.T) {
 		writeUpstreamJSON(t, w, map[string]any{"quota_per_unit": 500_000})
 	})
 	mux.HandleFunc("/api/user/self/groups", func(w http.ResponseWriter, _ *http.Request) {
-		writeUpstreamJSON(t, w, map[string]any{"vip": map[string]any{"ratio": 1.2, "desc": "高级分组"}})
+		writeUpstreamJSON(t, w, map[string]any{
+			"basic": map[string]any{"ratio": 1, "desc": "基础分组"},
+			"vip":   map[string]any{"ratio": 1.2, "desc": "高级分组"},
+		})
 	})
 	mux.HandleFunc("/api/pricing", func(w http.ResponseWriter, _ *http.Request) {
-		writeUpstreamJSON(t, w, map[string]any{"group_ratio": map[string]any{"vip": 2}})
+		writeUpstreamJSON(t, w, map[string]any{"group_ratio": map[string]any{"basic": 1, "vip": 2}})
 	})
-	mux.HandleFunc("/api/log/self", func(w http.ResponseWriter, r *http.Request) {
-		page, _ := strconv.Atoi(r.URL.Query().Get("p"))
-		items := make([]any, 0)
-		switch page {
-		case 1:
-			for index := 0; index < newAPILogPageSize; index++ {
-				items = append(items, map[string]any{"total_tokens": 10, "quota": 500, "group": "vip"})
-			}
-		case 2:
-			items = append(items, map[string]any{"prompt_tokens": 3, "completion_tokens": 4, "quota": 1000, "group": "vip"})
+	mux.HandleFunc("/api/log/self", func(w http.ResponseWriter, _ *http.Request) {
+		logCalls++
+		http.Error(w, "不应读取日志明细", http.StatusInternalServerError)
+	})
+	mux.HandleFunc("/api/log/self/stat", func(w http.ResponseWriter, r *http.Request) {
+		group := r.URL.Query().Get("group")
+		statCalls = append(statCalls, group)
+		require.Equal(t, "0", r.URL.Query().Get("type"))
+		require.NotEmpty(t, r.URL.Query().Get("start_timestamp"))
+		require.NotEmpty(t, r.URL.Query().Get("end_timestamp"))
+		quota := 51_000
+		if group == "basic" {
+			quota = 10_000
+		} else if group == "vip" {
+			quota = 20_000
 		}
-		writeUpstreamJSON(t, w, map[string]any{"items": items, "total": 101})
-	})
-	mux.HandleFunc("/api/log/self/stat", func(w http.ResponseWriter, _ *http.Request) {
-		writeUpstreamJSON(t, w, map[string]any{"quota": 51_000})
+		writeUpstreamJSON(t, w, map[string]any{"quota": quota})
 	})
 	server := httptest.NewServer(mux)
 	defer server.Close()
@@ -530,17 +536,20 @@ func TestNewAPIUpstreamProviderPaginationTokenFallbackAndUSD(t *testing.T) {
 	provider := newNewAPIUpstreamProvider(newTestUpstreamHTTPClient(t))
 	result, err := provider.Sync(context.Background(), UpstreamSyncRequest{
 		Site:       &UpstreamSite{BaseURL: server.URL, Platform: UpstreamPlatformNewAPI, AuthMode: UpstreamAuthPassword, Account: "admin"},
-		Credential: UpstreamCredential{Password: "secret"}, Dates: []time.Time{today}, Location: loc,
+		Credential: UpstreamCredential{Password: "secret"}, Dates: []time.Time{yesterday, today}, Location: loc,
 	})
 	require.NoError(t, err)
 	require.Equal(t, 2.0, *result.BalanceUSD)
-	require.Equal(t, int64(1007), result.Daily[0].Tokens)
+	require.Len(t, result.Daily, 2)
+	require.Zero(t, result.Daily[0].Tokens)
 	require.InDelta(t, 0.102, result.Daily[0].CostUSD, 1e-9)
-	require.Len(t, result.Groups, 1)
-	require.InDelta(t, 2, *result.Groups[0].Multiplier, 1e-9)
-	require.Equal(t, "高级分组", result.Groups[0].Description)
-	require.Equal(t, "New API", result.Groups[0].Platform)
-	require.Equal(t, int64(1007), result.Groups[0].TodayTokens)
+	require.InDelta(t, 0.102, result.Daily[1].CostUSD, 1e-9)
+	require.Len(t, result.Groups, 2)
+	require.InDelta(t, 0.02, result.Groups[0].TodayCostUSD, 1e-9)
+	require.InDelta(t, 0.04, result.Groups[1].TodayCostUSD, 1e-9)
+	require.False(t, *result.TokenMetricsAvailable)
+	require.Zero(t, logCalls)
+	require.Equal(t, []string{"", "", "basic", "vip"}, statCalls)
 	require.Equal(t, "session=cookie-1", result.Credential.Cookie)
 	require.Equal(t, "9", result.Credential.NewAPIUserID)
 }
@@ -658,7 +667,7 @@ func TestNewAPIUpstreamProviderPreservesLoginCookieWhenPostLoginLoadFails(t *tes
 	require.Equal(t, "9", result.Credential.NewAPIUserID)
 }
 
-func TestNewAPIUpstreamProviderDoesNotReturnPartialPagination(t *testing.T) {
+func TestNewAPIUpstreamProviderDoesNotReturnPartialStatistics(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/user/login", func(w http.ResponseWriter, _ *http.Request) {
 		http.SetCookie(w, &http.Cookie{Name: "session", Value: "cookie"})
@@ -668,18 +677,16 @@ func TestNewAPIUpstreamProviderDoesNotReturnPartialPagination(t *testing.T) {
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, _ *http.Request) {
 		writeUpstreamJSON(t, w, map[string]any{"quota_per_unit": 1})
 	})
-	mux.HandleFunc("/api/user/self/groups", func(w http.ResponseWriter, _ *http.Request) { writeUpstreamJSON(t, w, map[string]any{}) })
+	mux.HandleFunc("/api/user/self/groups", func(w http.ResponseWriter, _ *http.Request) {
+		writeUpstreamJSON(t, w, map[string]any{"vip": 1})
+	})
 	mux.HandleFunc("/api/pricing", func(w http.ResponseWriter, _ *http.Request) { writeUpstreamJSON(t, w, map[string]any{}) })
-	mux.HandleFunc("/api/log/self", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("p") == "2" {
-			http.Error(w, "boom", http.StatusBadGateway)
+	mux.HandleFunc("/api/log/self/stat", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("group") == "vip" {
+			http.Error(w, "rate limited", http.StatusTooManyRequests)
 			return
 		}
-		items := make([]any, newAPILogPageSize)
-		for index := range items {
-			items[index] = map[string]any{"total_tokens": 1, "quota": 1}
-		}
-		writeUpstreamJSON(t, w, map[string]any{"items": items, "total": 101})
+		writeUpstreamJSON(t, w, map[string]any{"quota": 1})
 	})
 	server := httptest.NewServer(mux)
 	defer server.Close()
@@ -694,7 +701,8 @@ func TestNewAPIUpstreamProviderDoesNotReturnPartialPagination(t *testing.T) {
 	require.NotNil(t, result.Credential)
 	require.Empty(t, result.Groups)
 	require.Empty(t, result.Daily)
-	require.Contains(t, err.Error(), fmt.Sprintf("第 %d 页", 2))
+	require.Contains(t, err.Error(), "分组 vip")
+	require.Contains(t, err.Error(), "HTTP 429")
 }
 
 func TestParseNewAPIGroupsResolvesPlatform(t *testing.T) {

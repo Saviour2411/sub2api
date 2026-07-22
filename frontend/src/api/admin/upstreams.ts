@@ -21,6 +21,7 @@ export interface UpstreamSite {
   today_cost_usd: number
   total_tokens: number
   total_cost_usd: number
+  token_metrics_available: boolean
   tracking_started_at: string
   last_synced_at: string | null
   created_at: string
@@ -54,6 +55,7 @@ export interface UpstreamGroup {
   multiplier: number | null
   today_tokens: number
   today_cost_usd: number
+  token_metrics_available: boolean
   displayed: boolean
   available: boolean
   last_synced_at: string
@@ -91,6 +93,7 @@ export interface UpstreamDailyStat {
   balance_usd: number | null
   tokens: number
   cost_usd: number
+  token_metrics_available: boolean
   created_at: string
   updated_at: string
 }
