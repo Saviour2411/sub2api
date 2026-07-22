@@ -125,7 +125,7 @@
 | `CUST-PROD-003` | 公开模型定价 | 提供独立定价 API/页面，展示充值倍率和模型费用；导航入口可以隐藏，但直达页面和 API 仍受公开设置控制。 | `backend/internal/handler/payment_handler.go`、`frontend/src/views/ModelPricingView.vue` | 生效中 |
 | `CUST-PROD-004` | 批量图片任务 | 提供任务提交、队列处理、列表、明细、输出、下载、取消和清理；限制到允许的 Gemini 分组，包含余额预占、失败恢复和有界结算重试。 | `backend/internal/service/batch_image.go`、`backend/internal/service/batch_image_worker.go`、`backend/internal/server/routes/gateway.go` | 生效中 |
 | `CUST-PROD-005` | 兑换码多次使用 | 兑换码支持最大使用次数，并以用户维度记录使用明细，防止同一用户重复使用同一码。 | `backend/internal/repository/redeem_code_repo.go`、`backend/migrations/140_redeem_code_usage_limits.sql` | 生效中 |
-| `CUST-PROD-006` | 支付和充值增强 | 支持余额充值赠送阶梯、手续费/倍率、赠送快照、自定义 EasyPay 支付方式、订阅 USD/CNY 换算预览和管理员删除订单。 | `backend/internal/service/payment_amounts.go`、`backend/internal/payment/provider/easypay.go`、`backend/migrations/149_payment_balance_bonus_rules.sql` | 生效中 |
+| `CUST-PROD-006` | 支付和充值增强 | 支持余额充值赠送阶梯、手续费/倍率、赠送快照、自定义 EasyPay 支付方式、订阅 USD/CNY 换算预览和管理员删除订单；可配置专属倍率用户不参与余额充值赠送。 | `backend/internal/service/payment_amounts.go`、`backend/internal/payment/provider/easypay.go`、`backend/migrations/149_payment_balance_bonus_rules.sql` | 生效中 |
 
 ### 风控与内容审核
 

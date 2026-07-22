@@ -178,6 +178,28 @@
             </div>
           </section>
 
+          <section class="border-t border-gray-100 pt-8 dark:border-dark-700" aria-labelledby="gateway-custom-rate-recharge-bonus-title">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 id="gateway-custom-rate-recharge-bonus-title" class="font-semibold text-gray-900 dark:text-white">
+                  {{ t('admin.customFeatures.gateway.customRateRechargeBonus.title') }}
+                </h3>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.customFeatures.gateway.customRateRechargeBonus.description') }}
+                </p>
+              </div>
+              <div class="flex flex-shrink-0 items-center gap-3">
+                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.customFeatures.gateway.customRateRechargeBonus.enabled') }}
+                </span>
+                <Toggle
+                  v-model="gateway.disable_recharge_bonus_for_custom_rate_users"
+                  data-test="gateway-disable-recharge-bonus-for-custom-rate-users"
+                />
+              </div>
+            </div>
+          </section>
+
           <section class="border-t border-gray-100 pt-8 dark:border-dark-700" aria-labelledby="gateway-pool-title">
             <h3 id="gateway-pool-title" class="font-semibold text-gray-900 dark:text-white">
               {{ t('admin.customFeatures.gateway.poolDefaults.title') }}
@@ -738,7 +760,8 @@ const gateway = reactive<GatewaySettings>({
   upstream_error_status_codes: [502, 503, 504],
   upstream_error_consecutive_threshold: 10,
   image_group_success_rate_visible: true,
-  anthropic_claude_code_mimicry_enabled: false
+  anthropic_claude_code_mimicry_enabled: false,
+  disable_recharge_bonus_for_custom_rate_users: false
 })
 const gatewayRetryStatusCodesInput = ref(gateway.default_pool_mode_retry_status_codes.join(', '))
 const gatewayUpstreamErrorStatusCodesInput = ref(gateway.upstream_error_status_codes.join(', '))
@@ -787,7 +810,9 @@ function cloneGateway(settings?: Partial<GatewaySettings>): GatewaySettings {
     upstream_error_consecutive_threshold: settings?.upstream_error_consecutive_threshold ?? 10,
     image_group_success_rate_visible: settings?.image_group_success_rate_visible ?? true,
     anthropic_claude_code_mimicry_enabled:
-      settings?.anthropic_claude_code_mimicry_enabled ?? false
+      settings?.anthropic_claude_code_mimicry_enabled ?? false,
+    disable_recharge_bonus_for_custom_rate_users:
+      settings?.disable_recharge_bonus_for_custom_rate_users ?? false
   }
 }
 
@@ -958,7 +983,9 @@ async function saveGateway() {
       upstream_error_status_codes: validation.upstreamErrorStatusCodes,
       upstream_error_consecutive_threshold: Number(gateway.upstream_error_consecutive_threshold),
       image_group_success_rate_visible: gateway.image_group_success_rate_visible,
-      anthropic_claude_code_mimicry_enabled: gateway.anthropic_claude_code_mimicry_enabled
+      anthropic_claude_code_mimicry_enabled: gateway.anthropic_claude_code_mimicry_enabled,
+      disable_recharge_bonus_for_custom_rate_users:
+        gateway.disable_recharge_bonus_for_custom_rate_users
     })
     assignGateway(saved)
     appStore.showSuccess(t('admin.customFeatures.gateway.saved'))

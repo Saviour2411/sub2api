@@ -106,6 +106,7 @@ function checkoutInfoFixture(overrides: Partial<CheckoutInfoResponse> = {}) {
     balance_disabled: false,
     balance_recharge_multiplier: 1,
     balance_recharge_bonus_rules: [],
+    balance_recharge_bonus_disabled: false,
     subscription_usd_to_cny_rate: 0,
     recharge_fee_rate: 0,
     help_text: '',
@@ -320,6 +321,45 @@ describe('PaymentView balance recharge bonus preview', () => {
     const bonusLabel = amountInput.props('bonusLabel') as (amount: number) => string
     expect(bonusLabel(50)).toBe('+5%')
     expect(bonusLabel(100)).toBe('+12.50%')
+  })
+
+  it('hides all bonus details when recharge bonuses are disabled for the user', async () => {
+    getCheckoutInfo.mockResolvedValue(checkoutInfoFixture({
+      balance_recharge_multiplier: 1.2,
+      balance_recharge_bonus_rules: [
+        { min_amount: 0, max_amount: null, bonus_rate: 10 },
+      ],
+      balance_recharge_bonus_disabled: true,
+    }))
+
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          AmountInput: {
+            name: 'AmountInput',
+            props: ['modelValue', 'bonusLabel'],
+            emits: ['update:modelValue'],
+            template: '<input data-test="amount-input" :value="modelValue ?? ``" @input="$emit(`update:modelValue`, Number($event.target.value))" />',
+          },
+          PaymentMethodSelector: true,
+          Teleport: true,
+          Transition: false,
+        },
+      },
+    })
+
+    await flushPromises()
+    await wrapper.get('[data-test="amount-input"]').setValue('100')
+    await flushPromises()
+
+    const amountInput = wrapper.findComponent({ name: 'AmountInput' })
+    const bonusLabel = amountInput.props('bonusLabel') as (amount: number) => string
+    expect(bonusLabel(100)).toBe('')
+    expect(wrapper.text()).not.toContain('payment.bonusAmount')
+    expect(wrapper.text()).not.toContain('payment.rechargeBonusRulePreview')
+    expect(wrapper.text()).not.toContain('payment.rechargeRatePreview')
+    expect(wrapper.text()).toContain(formatPaymentAmount(100, 'USD'))
   })
 
   it('always shows actual payment and credited balance for a valid amount', async () => {

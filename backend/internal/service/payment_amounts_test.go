@@ -66,6 +66,34 @@ func TestCalculateBonusQuoteLegacyMultiplierFallback(t *testing.T) {
 	}
 }
 
+func TestCalculateEffectiveBalanceRechargeQuoteDisablesAllBonuses(t *testing.T) {
+	maxAmount := 200.0
+	withRules := &PaymentConfig{
+		BalanceRechargeMultiplier: 1.5,
+		BalanceRechargeBonusRules: []PaymentBonusRule{
+			{MinAmount: 0, MaxAmount: &maxAmount, BonusRate: 10},
+		},
+	}
+	legacyMultiplier := &PaymentConfig{BalanceRechargeMultiplier: 1.2}
+
+	for name, cfg := range map[string]*PaymentConfig{
+		"configured rules":  withRules,
+		"legacy multiplier": legacyMultiplier,
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := calculateEffectiveBalanceRechargeQuote(100, cfg, true)
+			if got.BaseAmount != 100 || got.CreditedAmount != 100 || got.BonusAmount != 0 || got.BonusRate != 0 || got.Rule != nil {
+				t.Fatalf("disabled quote = %#v, want original amount without bonus", got)
+			}
+		})
+	}
+
+	got := calculateEffectiveBalanceRechargeQuote(100, withRules, false)
+	if got.BonusAmount != 10 || got.CreditedAmount != 110 || got.Rule == nil {
+		t.Fatalf("enabled quote = %#v, want configured rule bonus", got)
+	}
+}
+
 func TestPaymentBonusRulesValidation(t *testing.T) {
 	max200 := 200.0
 	max300 := 300.0

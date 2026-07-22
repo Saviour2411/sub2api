@@ -25,6 +25,7 @@ const gatewaySettings: GatewaySettings = {
   upstream_error_consecutive_threshold: 10,
   image_group_success_rate_visible: true,
   anthropic_claude_code_mimicry_enabled: false,
+  disable_recharge_bonus_for_custom_rate_users: false,
 }
 
 describe('admin custom features gateway API', () => {

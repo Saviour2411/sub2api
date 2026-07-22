@@ -370,6 +370,11 @@ export default {
           description: 'When enabled, API key accounts without passthrough mode in all Anthropic groups mimic Claude Code requests. OAuth accounts continue to mimic automatically, and genuine Claude Code requests are not rewritten.',
           enabled: 'Enable mimicry',
         },
+        customRateRechargeBonus: {
+          title: 'Disable Top-up Bonuses for Custom-rate Users',
+          description: 'When enabled, users with a custom multiplier in any group receive only the original top-up amount, without tier bonuses or the legacy recharge multiplier.',
+          enabled: 'Enable restriction',
+        },
         poolDefaults: {
           title: 'Account Pool Defaults',
           description: 'Applies only to new API key and Bedrock accounts. Existing accounts are not changed.',

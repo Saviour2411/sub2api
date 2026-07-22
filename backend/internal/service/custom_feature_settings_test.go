@@ -249,19 +249,21 @@ func TestSettingService_GetGatewaySettings_UsesDefaultsAndStoredValues(t *testin
 	require.Equal(t, 10, defaults.UpstreamErrorConsecutiveThreshold)
 	require.True(t, defaults.ImageGroupSuccessRateVisible)
 	require.False(t, defaults.AnthropicClaudeCodeMimicryEnabled)
+	require.False(t, defaults.DisableRechargeBonusForCustomRateUsers)
 	require.Equal(t, int64(1), defaults.FailurePolicyRevision)
 
 	repo := &customFeatureSettingsRepoStub{values: map[string]string{
-		SettingKeyGatewayDefaultPoolModeRetryCount:             "4",
-		SettingKeyGatewayDefaultPoolModeRetryStatusCodes:       `[504,429,429]`,
-		SettingKeyGatewayAutoManagedProbeBackoffMinutes:        `[2,8,8,30]`,
-		SettingKeyGatewayFirstTokenTimeoutSeconds:              "0",
-		SettingKeyGatewayFirstTokenTimeoutConsecutiveThreshold: "4",
-		SettingKeyGatewayUpstreamErrorStatusCodes:              `[504,502,502]`,
-		SettingKeyGatewayUpstreamErrorConsecutiveThreshold:     "7",
-		SettingKeyGatewayImageGroupSuccessRateVisible:          "false",
-		SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled:     "true",
-		SettingKeyGatewayFailurePolicyRevision:                 "7",
+		SettingKeyGatewayDefaultPoolModeRetryCount:              "4",
+		SettingKeyGatewayDefaultPoolModeRetryStatusCodes:        `[504,429,429]`,
+		SettingKeyGatewayAutoManagedProbeBackoffMinutes:         `[2,8,8,30]`,
+		SettingKeyGatewayFirstTokenTimeoutSeconds:               "0",
+		SettingKeyGatewayFirstTokenTimeoutConsecutiveThreshold:  "4",
+		SettingKeyGatewayUpstreamErrorStatusCodes:               `[504,502,502]`,
+		SettingKeyGatewayUpstreamErrorConsecutiveThreshold:      "7",
+		SettingKeyGatewayImageGroupSuccessRateVisible:           "false",
+		SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled:      "true",
+		SettingKeyGatewayDisableRechargeBonusForCustomRateUsers: "true",
+		SettingKeyGatewayFailurePolicyRevision:                  "7",
 	}}
 	svc := NewSettingService(repo, &config.Config{})
 	settings, err := svc.GetGatewaySettings(context.Background())
@@ -275,6 +277,7 @@ func TestSettingService_GetGatewaySettings_UsesDefaultsAndStoredValues(t *testin
 	require.Equal(t, 7, settings.UpstreamErrorConsecutiveThreshold)
 	require.False(t, settings.ImageGroupSuccessRateVisible)
 	require.True(t, settings.AnthropicClaudeCodeMimicryEnabled)
+	require.True(t, settings.DisableRechargeBonusForCustomRateUsers)
 	require.Equal(t, int64(7), settings.FailurePolicyRevision)
 }
 
@@ -285,15 +288,16 @@ func TestSettingService_UpdateGatewaySettings_NormalizesCachesAndReschedules(t *
 	svc.SetScheduledTestPlanRepository(planRepo)
 
 	updated, err := svc.UpdateGatewaySettings(context.Background(), GatewaySettings{
-		DefaultPoolModeRetryCount:             2,
-		DefaultPoolModeRetryStatusCodes:       []int{503, 429, 503},
-		AutoManagedProbeBackoffMinutes:        []int{1, 3, 10},
-		FirstTokenTimeoutSeconds:              25,
-		FirstTokenTimeoutConsecutiveThreshold: 4,
-		UpstreamErrorStatusCodes:              []int{504, 502, 504},
-		UpstreamErrorConsecutiveThreshold:     8,
-		ImageGroupSuccessRateVisible:          false,
-		AnthropicClaudeCodeMimicryEnabled:     true,
+		DefaultPoolModeRetryCount:              2,
+		DefaultPoolModeRetryStatusCodes:        []int{503, 429, 503},
+		AutoManagedProbeBackoffMinutes:         []int{1, 3, 10},
+		FirstTokenTimeoutSeconds:               25,
+		FirstTokenTimeoutConsecutiveThreshold:  4,
+		UpstreamErrorStatusCodes:               []int{504, 502, 504},
+		UpstreamErrorConsecutiveThreshold:      8,
+		ImageGroupSuccessRateVisible:           false,
+		AnthropicClaudeCodeMimicryEnabled:      true,
+		DisableRechargeBonusForCustomRateUsers: true,
 	})
 	require.NoError(t, err)
 	require.Equal(t, []int{429, 503}, updated.DefaultPoolModeRetryStatusCodes)
@@ -304,6 +308,7 @@ func TestSettingService_UpdateGatewaySettings_NormalizesCachesAndReschedules(t *
 	require.Equal(t, `[502,504]`, repo.updates[SettingKeyGatewayUpstreamErrorStatusCodes])
 	require.Equal(t, "8", repo.updates[SettingKeyGatewayUpstreamErrorConsecutiveThreshold])
 	require.Equal(t, "true", repo.updates[SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled])
+	require.Equal(t, "true", repo.updates[SettingKeyGatewayDisableRechargeBonusForCustomRateUsers])
 	require.Equal(t, "2", repo.updates[SettingKeyGatewayFailurePolicyRevision])
 	require.Equal(t, int64(2), updated.FailurePolicyRevision)
 	require.Equal(t, []time.Duration{time.Minute, 3 * time.Minute, 10 * time.Minute}, planRepo.rescheduledSteps)
@@ -314,6 +319,7 @@ func TestSettingService_UpdateGatewaySettings_NormalizesCachesAndReschedules(t *
 	require.Equal(t, []int{502, 504}, runtime.UpstreamErrorStatusCodes)
 	require.False(t, runtime.ImageGroupSuccessRateVisible)
 	require.True(t, runtime.AnthropicClaudeCodeMimicryEnabled)
+	require.True(t, runtime.DisableRechargeBonusForCustomRateUsers)
 
 	updated.DefaultPoolModeRetryStatusCodes[0] = 500
 	updated.UpstreamErrorStatusCodes[0] = 500
@@ -325,10 +331,12 @@ func TestSettingService_UpdateGatewaySettings_NormalizesCachesAndReschedules(t *
 	unchangedPolicyInput.UpstreamErrorStatusCodes = []int{502, 504}
 	unchangedPolicyInput.ImageGroupSuccessRateVisible = true
 	unchangedPolicyInput.AnthropicClaudeCodeMimicryEnabled = false
+	unchangedPolicyInput.DisableRechargeBonusForCustomRateUsers = false
 	unchangedPolicyInput.AutoManagedProbeBackoffMinutes = []int{2, 4, 12}
 	unchangedPolicy, err := svc.UpdateGatewaySettings(context.Background(), unchangedPolicyInput)
 	require.NoError(t, err)
 	require.Equal(t, int64(2), unchangedPolicy.FailurePolicyRevision)
+	require.False(t, unchangedPolicy.DisableRechargeBonusForCustomRateUsers)
 
 	changedPolicyInput := cloneGatewaySettings(*unchangedPolicy)
 	changedPolicyInput.UpstreamErrorConsecutiveThreshold = 9

@@ -370,6 +370,11 @@ export default {
           description: '开启后，所有 Anthropic 类型分组下未开启透传模式的 API Key 账号会模拟 Claude Code 客户端请求。OAuth 账号仍保持自动模拟，真实 Claude Code 请求不会重写。',
           enabled: '启用模拟',
         },
+        customRateRechargeBonus: {
+          title: '专属倍率用户充值不返利',
+          description: '开启后，只要用户在任意分组配置了专属倍率，余额充值就按原始充值金额入账，不应用阶梯返利或旧版充值倍率。',
+          enabled: '启用限制',
+        },
         poolDefaults: {
           title: '账号池默认值',
           description: '仅应用于后续新建的 API Key 和 Bedrock 账号，不修改存量账号。',

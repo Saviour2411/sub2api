@@ -73,16 +73,17 @@ type DailyCheckinSettings struct {
 
 // GatewaySettings 是二开功能中的网关运行配置。
 type GatewaySettings struct {
-	DefaultPoolModeRetryCount             int   `json:"default_pool_mode_retry_count"`
-	DefaultPoolModeRetryStatusCodes       []int `json:"default_pool_mode_retry_status_codes"`
-	AutoManagedProbeBackoffMinutes        []int `json:"auto_managed_probe_backoff_minutes"`
-	FirstTokenTimeoutSeconds              int   `json:"first_token_timeout_seconds"`
-	FirstTokenTimeoutConsecutiveThreshold int   `json:"first_token_timeout_consecutive_threshold"`
-	UpstreamErrorStatusCodes              []int `json:"upstream_error_status_codes"`
-	UpstreamErrorConsecutiveThreshold     int   `json:"upstream_error_consecutive_threshold"`
-	ImageGroupSuccessRateVisible          bool  `json:"image_group_success_rate_visible"`
-	AnthropicClaudeCodeMimicryEnabled     bool  `json:"anthropic_claude_code_mimicry_enabled"`
-	FailurePolicyRevision                 int64 `json:"-"`
+	DefaultPoolModeRetryCount              int   `json:"default_pool_mode_retry_count"`
+	DefaultPoolModeRetryStatusCodes        []int `json:"default_pool_mode_retry_status_codes"`
+	AutoManagedProbeBackoffMinutes         []int `json:"auto_managed_probe_backoff_minutes"`
+	FirstTokenTimeoutSeconds               int   `json:"first_token_timeout_seconds"`
+	FirstTokenTimeoutConsecutiveThreshold  int   `json:"first_token_timeout_consecutive_threshold"`
+	UpstreamErrorStatusCodes               []int `json:"upstream_error_status_codes"`
+	UpstreamErrorConsecutiveThreshold      int   `json:"upstream_error_consecutive_threshold"`
+	ImageGroupSuccessRateVisible           bool  `json:"image_group_success_rate_visible"`
+	AnthropicClaudeCodeMimicryEnabled      bool  `json:"anthropic_claude_code_mimicry_enabled"`
+	DisableRechargeBonusForCustomRateUsers bool  `json:"disable_recharge_bonus_for_custom_rate_users"`
+	FailurePolicyRevision                  int64 `json:"-"`
 }
 
 type gatewaySettingsRevisionWriter interface {
@@ -119,6 +120,7 @@ var gatewaySettingKeys = []string{
 	SettingKeyGatewayUpstreamErrorConsecutiveThreshold,
 	SettingKeyGatewayImageGroupSuccessRateVisible,
 	SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled,
+	SettingKeyGatewayDisableRechargeBonusForCustomRateUsers,
 	SettingKeyGatewayFailurePolicyRevision,
 }
 
@@ -144,6 +146,7 @@ var customFeatureSettingKeys = []string{
 	SettingKeyGatewayUpstreamErrorConsecutiveThreshold,
 	SettingKeyGatewayImageGroupSuccessRateVisible,
 	SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled,
+	SettingKeyGatewayDisableRechargeBonusForCustomRateUsers,
 	SettingKeyGatewayFailurePolicyRevision,
 }
 
@@ -193,16 +196,17 @@ func (s *SettingService) GetCustomFeatureSettings(ctx context.Context) (*CustomF
 // DefaultGatewaySettings 返回未持久化配置时使用的默认值。
 func DefaultGatewaySettings() GatewaySettings {
 	return GatewaySettings{
-		DefaultPoolModeRetryCount:             DefaultGatewayPoolModeRetryCount,
-		DefaultPoolModeRetryStatusCodes:       append([]int(nil), defaultGatewayPoolModeRetryStatusCodes...),
-		AutoManagedProbeBackoffMinutes:        append([]int(nil), defaultGatewayProbeBackoffMinutes...),
-		FirstTokenTimeoutSeconds:              DefaultGatewayFirstTokenTimeout,
-		FirstTokenTimeoutConsecutiveThreshold: DefaultGatewayFirstTokenTimeoutConsecutiveThreshold,
-		UpstreamErrorStatusCodes:              append([]int(nil), defaultGatewayUpstreamErrorStatusCodes...),
-		UpstreamErrorConsecutiveThreshold:     DefaultGatewayUpstreamErrorConsecutiveThreshold,
-		ImageGroupSuccessRateVisible:          true,
-		AnthropicClaudeCodeMimicryEnabled:     false,
-		FailurePolicyRevision:                 DefaultGatewayFailurePolicyRevision,
+		DefaultPoolModeRetryCount:              DefaultGatewayPoolModeRetryCount,
+		DefaultPoolModeRetryStatusCodes:        append([]int(nil), defaultGatewayPoolModeRetryStatusCodes...),
+		AutoManagedProbeBackoffMinutes:         append([]int(nil), defaultGatewayProbeBackoffMinutes...),
+		FirstTokenTimeoutSeconds:               DefaultGatewayFirstTokenTimeout,
+		FirstTokenTimeoutConsecutiveThreshold:  DefaultGatewayFirstTokenTimeoutConsecutiveThreshold,
+		UpstreamErrorStatusCodes:               append([]int(nil), defaultGatewayUpstreamErrorStatusCodes...),
+		UpstreamErrorConsecutiveThreshold:      DefaultGatewayUpstreamErrorConsecutiveThreshold,
+		ImageGroupSuccessRateVisible:           true,
+		AnthropicClaudeCodeMimicryEnabled:      false,
+		DisableRechargeBonusForCustomRateUsers: false,
+		FailurePolicyRevision:                  DefaultGatewayFailurePolicyRevision,
 	}
 }
 
@@ -281,15 +285,16 @@ func (s *SettingService) UpdateGatewaySettings(ctx context.Context, input Gatewa
 		return nil, fmt.Errorf("序列化上游错误状态码: %w", err)
 	}
 	updates := map[string]string{
-		SettingKeyGatewayDefaultPoolModeRetryCount:             strconv.Itoa(input.DefaultPoolModeRetryCount),
-		SettingKeyGatewayDefaultPoolModeRetryStatusCodes:       string(statusCodesJSON),
-		SettingKeyGatewayAutoManagedProbeBackoffMinutes:        string(backoffJSON),
-		SettingKeyGatewayFirstTokenTimeoutSeconds:              strconv.Itoa(input.FirstTokenTimeoutSeconds),
-		SettingKeyGatewayFirstTokenTimeoutConsecutiveThreshold: strconv.Itoa(input.FirstTokenTimeoutConsecutiveThreshold),
-		SettingKeyGatewayUpstreamErrorStatusCodes:              string(upstreamErrorStatusCodesJSON),
-		SettingKeyGatewayUpstreamErrorConsecutiveThreshold:     strconv.Itoa(input.UpstreamErrorConsecutiveThreshold),
-		SettingKeyGatewayImageGroupSuccessRateVisible:          strconv.FormatBool(input.ImageGroupSuccessRateVisible),
-		SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled:     strconv.FormatBool(input.AnthropicClaudeCodeMimicryEnabled),
+		SettingKeyGatewayDefaultPoolModeRetryCount:              strconv.Itoa(input.DefaultPoolModeRetryCount),
+		SettingKeyGatewayDefaultPoolModeRetryStatusCodes:        string(statusCodesJSON),
+		SettingKeyGatewayAutoManagedProbeBackoffMinutes:         string(backoffJSON),
+		SettingKeyGatewayFirstTokenTimeoutSeconds:               strconv.Itoa(input.FirstTokenTimeoutSeconds),
+		SettingKeyGatewayFirstTokenTimeoutConsecutiveThreshold:  strconv.Itoa(input.FirstTokenTimeoutConsecutiveThreshold),
+		SettingKeyGatewayUpstreamErrorStatusCodes:               string(upstreamErrorStatusCodesJSON),
+		SettingKeyGatewayUpstreamErrorConsecutiveThreshold:      strconv.Itoa(input.UpstreamErrorConsecutiveThreshold),
+		SettingKeyGatewayImageGroupSuccessRateVisible:           strconv.FormatBool(input.ImageGroupSuccessRateVisible),
+		SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled:      strconv.FormatBool(input.AnthropicClaudeCodeMimicryEnabled),
+		SettingKeyGatewayDisableRechargeBonusForCustomRateUsers: strconv.FormatBool(input.DisableRechargeBonusForCustomRateUsers),
 	}
 	var revision int64
 	if writer, ok := s.settingRepo.(gatewaySettingsRevisionWriter); ok {
@@ -416,6 +421,9 @@ func parseGatewaySettings(values map[string]string) GatewaySettings {
 	}
 	if raw, ok := values[SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled]; ok {
 		settings.AnthropicClaudeCodeMimicryEnabled = strings.EqualFold(strings.TrimSpace(raw), "true")
+	}
+	if raw, ok := values[SettingKeyGatewayDisableRechargeBonusForCustomRateUsers]; ok {
+		settings.DisableRechargeBonusForCustomRateUsers = strings.EqualFold(strings.TrimSpace(raw), "true")
 	}
 	if value, err := strconv.ParseInt(strings.TrimSpace(values[SettingKeyGatewayFailurePolicyRevision]), 10, 64); err == nil && value >= DefaultGatewayFailurePolicyRevision {
 		settings.FailurePolicyRevision = value

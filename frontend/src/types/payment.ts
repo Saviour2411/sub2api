@@ -76,6 +76,7 @@ export interface CheckoutInfoResponse {
   balance_disabled: boolean
   balance_recharge_multiplier: number
   balance_recharge_bonus_rules: PaymentBonusRule[]
+  balance_recharge_bonus_disabled: boolean
   /** Subscription CNY conversion rate (1 USD = X CNY); 0 = disabled, plan price is charged as-is */
   subscription_usd_to_cny_rate: number
   recharge_fee_rate: number

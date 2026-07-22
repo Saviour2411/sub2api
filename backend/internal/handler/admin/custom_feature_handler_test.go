@@ -181,7 +181,8 @@ func TestCustomFeatureHandler_UpdateGateway_EmptyRetryStatusCodesReturnsArray(t 
 
 func TestCustomFeatureHandler_UpdateGateway_部分更新保留ClaudeCode模拟开关(t *testing.T) {
 	repo := &customFeatureHandlerRepoStub{values: map[string]string{
-		service.SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled: "true",
+		service.SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled:      "true",
+		service.SettingKeyGatewayDisableRechargeBonusForCustomRateUsers: "true",
 	}}
 	body := bytes.NewBufferString(`{"image_group_success_rate_visible":false}`)
 	recorder := httptest.NewRecorder()
@@ -191,4 +192,5 @@ func TestCustomFeatureHandler_UpdateGateway_部分更新保留ClaudeCode模拟�
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Equal(t, "true", repo.values[service.SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled])
+	require.Equal(t, "true", repo.values[service.SettingKeyGatewayDisableRechargeBonusForCustomRateUsers])
 }

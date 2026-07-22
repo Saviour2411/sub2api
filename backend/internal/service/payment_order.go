@@ -62,23 +62,20 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 		orderAmount = plan.Price
 		limitAmount = plan.Price
 	} else if req.OrderType == payment.OrderTypeBalance {
-		if len(cfg.BalanceRechargeBonusRules) > 0 {
-			quote := calculateBonusQuote(req.Amount, cfg.BalanceRechargeBonusRules, cfg.BalanceRechargeMultiplier)
-			orderAmount = quote.CreditedAmount
-			bonusAmount = quote.BonusAmount
-			bonusRate = quote.BonusRate
-			if quote.Rule != nil {
-				bonusRuleSnapshot = map[string]any{
-					"min_amount": quote.Rule.MinAmount,
-					"bonus_rate": quote.Rule.BonusRate,
-					"max_amount": quote.Rule.MaxAmount,
-				}
+		quote := calculateEffectiveBalanceRechargeQuote(
+			req.Amount,
+			cfg,
+			s.IsBalanceRechargeBonusDisabled(ctx, req.UserID),
+		)
+		orderAmount = quote.CreditedAmount
+		bonusAmount = quote.BonusAmount
+		bonusRate = quote.BonusRate
+		if quote.Rule != nil {
+			bonusRuleSnapshot = map[string]any{
+				"min_amount": quote.Rule.MinAmount,
+				"bonus_rate": quote.Rule.BonusRate,
+				"max_amount": quote.Rule.MaxAmount,
 			}
-		} else {
-			quote := calculateBonusQuote(req.Amount, nil, cfg.BalanceRechargeMultiplier)
-			orderAmount = quote.CreditedAmount
-			bonusAmount = quote.BonusAmount
-			bonusRate = quote.BonusRate
 		}
 	}
 	feeRate := cfg.RechargeFeeRate

@@ -502,6 +502,7 @@ const checkout = ref<CheckoutInfoResponse>({
   methods: {}, global_min: 0, global_max: 0,
   plans: [], balance_disabled: false, balance_recharge_multiplier: 1, subscription_usd_to_cny_rate: 0, recharge_fee_rate: 0, help_text: '', help_image_url: '', stripe_publishable_key: '',
   balance_recharge_bonus_rules: [],
+  balance_recharge_bonus_disabled: false,
 })
 
 const tabs = computed(() => {
@@ -514,11 +515,15 @@ const tabs = computed(() => {
 const visibleMethods = computed(() => getVisibleMethods(checkout.value.methods))
 const enabledMethods = computed(() => Object.keys(visibleMethods.value))
 const validAmount = computed(() => amount.value ?? 0)
+const balanceRechargeBonusDisabled = computed(() => checkout.value.balance_recharge_bonus_disabled === true)
 const balanceRechargeMultiplier = computed(() => {
+  if (balanceRechargeBonusDisabled.value) return 1
   const multiplier = checkout.value.balance_recharge_multiplier
   return Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1
 })
-const balanceBonusRules = computed(() => checkout.value.balance_recharge_bonus_rules || [])
+const balanceBonusRules = computed(() => (
+  balanceRechargeBonusDisabled.value ? [] : (checkout.value.balance_recharge_bonus_rules || [])
+))
 // 订阅 CNY 换算汇率（1 USD = X CNY）。0 = 未配置，订阅保持 price 直付（与后端 opt-in 条件严格镜像）。
 const subscriptionUsdToCnyRate = computed(() => {
   const rate = checkout.value.subscription_usd_to_cny_rate

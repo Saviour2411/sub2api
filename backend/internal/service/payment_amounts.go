@@ -156,6 +156,13 @@ func calculateBonusQuote(paymentAmount float64, rules []PaymentBonusRule, legacy
 	return quote
 }
 
+func calculateEffectiveBalanceRechargeQuote(paymentAmount float64, cfg *PaymentConfig, bonusDisabled bool) PaymentBonusQuote {
+	if cfg == nil || bonusDisabled {
+		return calculateBonusQuote(paymentAmount, nil, defaultBalanceRechargeMultiplier)
+	}
+	return calculateBonusQuote(paymentAmount, cfg.BalanceRechargeBonusRules, cfg.BalanceRechargeMultiplier)
+}
+
 func calculateGatewayRefundAmount(orderAmount, payAmount, refundAmount float64, currency string) float64 {
 	if orderAmount <= 0 || payAmount <= 0 || refundAmount <= 0 {
 		return 0

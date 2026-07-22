@@ -12,6 +12,8 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/enttest"
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -23,6 +25,20 @@ import (
 
 type publicPricingSettingRepo struct {
 	values map[string]string
+}
+
+type checkoutUserGroupRateRepoStub struct {
+	service.UserGroupRateRepository
+	rates map[int64]float64
+	err   error
+}
+
+func (s checkoutUserGroupRateRepoStub) GetByUserID(context.Context, int64) (map[int64]float64, error) {
+	return s.rates, s.err
+}
+
+func setCheckoutTestAuth(c *gin.Context, userID int64) {
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: userID})
 }
 
 func (r publicPricingSettingRepo) Get(context.Context, string) (*service.Setting, error) {
@@ -245,6 +261,7 @@ func TestPaymentHandler_GetCheckoutInfoExposesBalanceRechargeBonusRules(t *testi
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/payment/checkout-info", nil)
+	setCheckoutTestAuth(c, 1)
 
 	h.GetCheckoutInfo(c)
 
@@ -272,6 +289,7 @@ func TestPaymentHandler_GetCheckoutInfoReturnsEmptyBalanceRechargeBonusRules(t *
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/payment/checkout-info", nil)
+	setCheckoutTestAuth(c, 1)
 
 	h.GetCheckoutInfo(c)
 
@@ -282,6 +300,45 @@ func TestPaymentHandler_GetCheckoutInfoReturnsEmptyBalanceRechargeBonusRules(t *
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.NotNil(t, resp.Data.BalanceRechargeBonusRules)
+	require.Empty(t, resp.Data.BalanceRechargeBonusRules)
+}
+
+func TestPaymentHandler_GetCheckoutInfoDisablesBonusForCustomRateUser(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	client := newPublicPricingTestClient(t)
+	repo := publicPricingSettingRepo{values: map[string]string{
+		service.SettingPaymentEnabled:                                   "true",
+		service.SettingBalanceRechargeMult:                              "1.2",
+		service.SettingBalanceBonusRules:                                `[{"min_amount":0,"bonus_rate":10}]`,
+		service.SettingKeyGatewayDisableRechargeBonusForCustomRateUsers: "true",
+	}}
+	configSvc := service.NewPaymentConfigService(client, repo, nil)
+	paymentSvc := service.NewPaymentService(nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	paymentSvc.SetRechargeBonusPolicyDependencies(
+		service.NewSettingService(repo, &config.Config{}),
+		checkoutUserGroupRateRepoStub{rates: map[int64]float64{2: 0.8}},
+	)
+	h := NewPaymentHandler(paymentSvc, configSvc)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/payment/checkout-info", nil)
+	setCheckoutTestAuth(c, 99)
+
+	h.GetCheckoutInfo(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var resp struct {
+		Data struct {
+			BalanceRechargeMultiplier    float64                    `json:"balance_recharge_multiplier"`
+			BalanceRechargeBonusRules    []service.PaymentBonusRule `json:"balance_recharge_bonus_rules"`
+			BalanceRechargeBonusDisabled bool                       `json:"balance_recharge_bonus_disabled"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.True(t, resp.Data.BalanceRechargeBonusDisabled)
+	require.Equal(t, 1.0, resp.Data.BalanceRechargeMultiplier)
 	require.NotNil(t, resp.Data.BalanceRechargeBonusRules)
 	require.Empty(t, resp.Data.BalanceRechargeBonusRules)
 }

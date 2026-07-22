@@ -129,6 +129,7 @@ function settingsFixture(): CustomFeatureSettings {
       upstream_error_consecutive_threshold: 10,
       image_group_success_rate_visible: true,
       anthropic_claude_code_mimicry_enabled: false,
+      disable_recharge_bonus_for_custom_rate_users: false,
     },
   }
 }
@@ -209,6 +210,7 @@ describe('admin CustomFeaturesView', () => {
     expect(wrapper.get<HTMLInputElement>('[data-test="gateway-upstream-error-consecutive-threshold"]').element.value).toBe('10')
 
     await wrapper.get('[data-test="gateway-anthropic-claude-code-mimicry-enabled"]').trigger('click')
+    await wrapper.get('[data-test="gateway-disable-recharge-bonus-for-custom-rate-users"]').trigger('click')
 
     await wrapper.get('[data-test="gateway-pool-retry-status-codes"]').setValue('504 401, 504, 429')
     await wrapper.get('[data-test="gateway-upstream-error-status-codes"]').setValue('504 502, 504')
@@ -225,6 +227,7 @@ describe('admin CustomFeaturesView', () => {
       upstream_error_consecutive_threshold: 10,
       image_group_success_rate_visible: true,
       anthropic_claude_code_mimicry_enabled: true,
+      disable_recharge_bonus_for_custom_rate_users: true,
     })
     expect(updateDailyCheckin).not.toHaveBeenCalled()
     expect(showSuccess).toHaveBeenCalledWith('admin.customFeatures.gateway.saved')
@@ -237,6 +240,7 @@ describe('admin CustomFeaturesView', () => {
     delete legacyGateway.upstream_error_status_codes
     delete legacyGateway.upstream_error_consecutive_threshold
     delete legacyGateway.anthropic_claude_code_mimicry_enabled
+    delete legacyGateway.disable_recharge_bonus_for_custom_rate_users
     getSettings.mockResolvedValueOnce({
       ...legacySettings,
       gateway: legacyGateway,
@@ -260,6 +264,9 @@ describe('admin CustomFeaturesView', () => {
     ).toBe('10')
     expect(
       wrapper.get('[data-test="gateway-anthropic-claude-code-mimicry-enabled"]').text()
+    ).toBe('off')
+    expect(
+      wrapper.get('[data-test="gateway-disable-recharge-bonus-for-custom-rate-users"]').text()
     ).toBe('off')
   })
 
