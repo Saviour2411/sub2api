@@ -11,13 +11,13 @@
 
 ## 当前基线
 
-- 基线日期：2026-07-20
-- 本地版本：`0.1.203`
-- 本地代码基线提交：`fc53abf1b`
-- 已完整集成的上游提交：`e625ce3b3b3b955b7c3afc93221f7c5f0ae55aa8`
-- 比较范围：`e625ce3b3..fc53abf1b`
-- 基线差异：648 个文件，新增 86210 行、删除 3895 行；本地独有提交 402 个
-- 当前能力族：46 项，分布在 9 个功能域
+- 基线日期：2026-07-23
+- 本地版本：`0.1.207`
+- 本地代码基线提交：`e957a0a38f0e969a104789190ad8ab0407fde05e`
+- 已完整集成的上游提交：`60013c5f100be7b4f2e6caee415883d221d33e32`
+- 比较范围：`60013c5f1..e957a0a38`
+- 基线差异：655 个文件，新增 87371 行、删除 3960 行；本地独有提交 417 个
+- 当前能力族：47 项，分布在 9 个功能域
 
 这组数字只用于确认分析边界，不能直接等同于功能数量。生成代码、测试、文案、上游提交的本地适配和同一能力的连续修复均会放大差异规模。
 
@@ -160,6 +160,7 @@
 
 | 日期 | 版本/提交 | 类型 | 功能编号 | 变更与原因 | 验证 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-07-23 | `0.1.207` / `e957a0a38` | 上游适配 | `CUST-GW-001`、`CUST-GW-003`、`CUST-GW-006`、`CUST-GW-007`、`CUST-GW-008`、`CUST-GW-009`、`CUST-PROTO-001`、`CUST-PROTO-002`、`CUST-PROTO-005`、`CUST-PROTO-006`、`CUST-ACC-001`、`CUST-ACC-002`、`CUST-ACC-003`、`CUST-ACC-005`、`CUST-BILL-001`、`CUST-BILL-002`、`CUST-BILL-004`、`CUST-BILL-005`、`CUST-OBS-001`、`CUST-PROD-006`、`CUST-RISK-001`、`CUST-RISK-003`、`CUST-UI-003`、`CUST-UI-004`、`CUST-UI-005`、`CUST-OPS-003`、`CUST-OPS-004` | 完整合并上游 `e625ce3b3..60013c5f1`，接入 Grok compact 与客户端工具回程、OpenAI reasoning effort 分组策略、调度排除原因、hosted image token 计费、Redis ACL、移动端布局和依赖安全更新；保留本地首 Token/body-signal unary compact、逐轮 WS 结算、图片尺寸能力、按请求模型计费、充值赠送、账号列表禁用虚拟化、启动容错及双生产 Compose 约束。 | Go 全量 unit、lint、构建、govulncheck、定向协议/调度/计费回归、前端 lint/typecheck/全量 Vitest/build/audit、Apple fixture、Compose 与生成一致性检查 |
 | 2026-07-22 | `0.1.207` / 待提交 | 修改 | `CUST-OBS-002` | New API 用量同步停止每 5 分钟全量分页扫描当日日志，改为按日期调用一次 `/api/log/self/stat` 获取总费用，并对当天可用分组顺序携带 `group` 查询分组费用；New API 不再维护无法由标准统计接口直接提供的 Token 指标，API 通过 `token_metrics_available=false` 明确能力边界，管理页以“—”隐藏站点、分组和历史 Token，既有数据库值保留且不再覆盖。解决高日志量站点固定在深分页触发 HTTP 429、随后重复从首页扫描的问题。 | New API 统计请求计数与错误测试、仓储旧 Token 保留测试、前端组件测试、类型检查和生产构建 |
 | 2026-07-21 | `0.1.206` / 待提交 | 修改 | `CUST-OBS-002` | Sub2API 令牌认证会读取 Access Token JWT 的 `exp` 作为调度提示，并在到期前 15 分钟主动轮换 Access/Refresh Token；JWT 不验签且不参与本地认证，非 JWT 或无 `exp` 的上游令牌保持原有按 401 刷新行为。避免 Access Token 与 Refresh Token 同时到期时，定时同步在访问令牌失效后才刷新而错过 Refresh Token 的有效期。 | Provider 主动刷新窗口、窗口外复用、异常令牌兼容测试及生产构建验证 |
 | 2026-07-20 | `0.1.203` / `fc53abf1b` | 上游适配 | `CUST-GW-001`、`CUST-GW-006`、`CUST-GW-008`、`CUST-PROTO-003`、`CUST-PROTO-004`、`CUST-PROTO-006`、`CUST-PROTO-007`、`CUST-BILL-001`、`CUST-RISK-001`、`CUST-RISK-002`、`CUST-UI-004`、`CUST-OPS-003` | 完整合并上游 `da85cc7e4..e625ce3b3`，接入 Agent Identity、WS 终态/turn 生命周期、倍率探测、图片输入定价和 prompt audit；保留本地首 Token、连续失败停调度、请求模型计费、Claude 严格模拟、内容审核/Cyber 阻断、DataTable 滚动和生产 Compose 约束，并修复 HTTP bridge 后续轮次切号、定价空指针及双方测试契约。 | Go unit、golangci-lint、后端构建、前端 lint/typecheck/全量 Vitest/build、Apple container fixture、Compose/冲突/空白检查 |
