@@ -517,3 +517,99 @@
 - 当前 `node_modules` 来自既有 pnpm 9 环境；新增 message compiler 已存在于本地 store 并完成测试，但未执行 CI 等价的全新 `pnpm install --frozen-lockfile`。
 - 上游归档 `openspec/changes/add-openai-compatible-prompt-audit/source-freeze/aicodex-prompt-audit-tracked.patch` 保存另一个仓库的原始空白差异，未格式化或修改。
 - 未执行 push、PR、部署、远程服务器访问、容器重启或生产数据操作。
+
+## 2026-07-23 同步至 60013c5f1
+
+- 执行时间：2026-07-23T01:40:53+08:00
+- 执行状态：同步分支完整合并并验证完成；本记录提交后使用 `--ff-only` 更新本地 `main`
+- 本地目标分支：`main`
+- `LOCAL_PRE_SYNC_SHA`：`69c680f2f834670c209d70e1210c71d42c7611c5`
+- 上游代码合并提交：`e957a0a38f0e969a104789190ad8ab0407fde05e`
+- 上游仓库：`https://github.com/Wei-Shaw/sub2api.git`
+- 上游分支：`main`
+- `UPSTREAM_OLD_SHA`：`e625ce3b3b3b955b7c3afc93221f7c5f0ae55aa8`
+- `UPSTREAM_NEW_SHA`：`60013c5f100be7b4f2e6caee415883d221d33e32`
+- merge-base：`e625ce3b3b3b955b7c3afc93221f7c5f0ae55aa8`
+- `LAST_FULLY_INTEGRATED_UPSTREAM_SHA`：`60013c5f100be7b4f2e6caee415883d221d33e32`
+- 集成策略：在隔离同步分支使用 `git merge --no-ff --no-commit` 完整合并固定上游 SHA，逐文件解决文本与语义冲突，重新生成 Ent/Wire，并将必要兼容处理纳入可编译的 merge commit
+- 备份分支：`backup/pre-upstream-sync-20260723-012045-69c680f2f`
+- 同步分支：`sync/upstream-20260723-60013c5f1`
+
+### 上游提交处置
+
+本次固定范围共 69 个提交，其中 30 个 merge commit、39 个 non-merge commit。完整 merge 保留全部祖先关系；68 个提交为 `Applied`，1 个版本提交为 `Already Applied + Overridden`，无 `Skipped`、`Deferred` 或未解决 `Conflict`。
+
+| 上游提交集合 | 数量 | 状态 | 内容与处置 |
+| --- | ---: | --- | --- |
+| `e625ce3b3..d0bdd7e77` | 68 | Applied | 整体映射到本地 merge commit `e957a0a38`；引入 Grok compact/客户端工具/错误隔离、OpenAI reasoning effort、调度可观测性与缓存修复、hosted image token 计费、Redis ACL、移动端适配、用量筛选及依赖安全更新 |
+| `60013c5f1` | 1 | Already Applied + Overridden | 与本地 `6f96ebbb5` patch-id 等价；完整 merge 保留上游祖先关系，最终继续使用本地较新版本 `0.1.207` |
+| `106043fd9`、`9da816154` | 已包含于 68 | Applied + Overridden | 接受示例镜像修复意图，但生产 Compose 继续使用本地 `SUB2API_IMAGE`/`SUB2API_TAG` 变量，不改为固定上游镜像 |
+| `2ae61f3da`、`0b9d44545` | 已包含于 68 | Applied + Overridden | 接入 Grok compact 输入/输出转换；保持本地 body-signal compact 上游 unary、下游按客户端意愿桥接 SSE、首 Token watchdog 与暂停心跳语义 |
+| `29bea0a75`、`a31933316`、`1f9eac4fb` | 已包含于 68 | Applied + Overridden | 接入调度排除原因统计；继续按本地用户请求模型执行渠道限制，并保留图片尺寸层级能力检查 |
+| `6af622c34`、`6c93f01c9`、`ebfaf2496` | 已包含于 68 | Applied + Overridden | 接入分组 reasoning effort 映射与上限；WS 同时保留本地逐轮 usage、失败阻断、审计哈希和并发槽位生命周期 |
+
+### 本地提交与文件
+
+- 上游范围整体映射到本地 merge commit：`e957a0a38f0e969a104789190ad8ab0407fde05e`。
+- 上游 merge commit 相对 `LOCAL_PRE_SYNC_SHA` 修改 168 个文件：新增 24 个、修改 144 个、删除 0 个，共增加 7338 行、删除 531 行，包含 1 个新增移动端截图。
+- 主要更新：Grok compact、Codex/custom/tool_search/namespace 工具回程、Grok OAuth 模型与 403 隔离、OpenAI reasoning effort 分组策略、调度排除统计与缓存侧键、hosted image token 计费、Redis ACL、优雅关停、代理双栈探测、套餐有效期、移动端账号/运维布局、用量筛选和 Axios/Go 安全依赖。
+- Ent 与 Wire 已从合并后的 schema/provider 重新生成；重复生成后工作树保持干净。
+- `docs/custom-development-history.md` 更新到本次代码基线，修正当前能力族数量为实际的 47 项，并追加上游适配记录。
+
+### 冲突与最终解决方案
+
+- 9 个文本冲突均逐文件解决，无整文件采用 `ours` 或 `theirs`，最终索引无未解决项。
+- `backend/cmd/server/VERSION` 保留本地 `0.1.207`，不回退到上游 `0.1.163`。
+- `backend/ent/mutation.go` 及关联生成代码由合并后的 schema 重新生成，同时保留本地 group 字段和上游 reasoning effort 两个新字段。
+- `backend/internal/handler/openai_gateway_handler.go` 同时保留 WS 逐轮 usage、失败阻断和请求审计，并接入 reasoning effort 映射/上限。
+- `backend/internal/service/openai_account_scheduler.go` 接入排除原因统计，保留本地请求模型渠道限制入口与图片尺寸层级能力；未恢复已被本地计费策略覆盖的逐账号 upstream billing source 分支。
+- `backend/internal/service/openai_gateway_grok.go` 同时保留 upstream/client stream 分离、首 Token、客户端断开结算，并接入客户端工具流式回程。
+- `deploy/docker-compose.yml` 保留本地镜像变量、网络和数据约束；Redis ACL username 同步到 `deploy/docker-compose.sub2api.yml`，两份生产 Compose 保持完全一致。
+- `frontend/pnpm-lock.yaml` 升级 Axios 至 1.18.1，并保留本地 overrides 和其他依赖。
+- `frontend/src/main.ts` 同时保留安全存储、启动错误兜底与 iOS viewport 修复；`frontend/src/views/user/PaymentView.vue` 同时保留充值赠送与套餐有效期格式化。
+- 首次编译发现 Grok compact helper 与本地 helper 同名、上游测试仍使用旧签名、调度器引用本地已移除的 upstream billing source 方法；按现有本地契约修复后全包编译通过。
+
+### 刻意保留的二次开发功能
+
+- 首 Token 超时、body-signal unary compact、暂停心跳、upstream/client stream 分离、WS 逐轮结算和失败阻断。
+- 连续失败停调度、strict 调度、pending/final outcome、图片尺寸能力、请求模型渠道限制及调度 outbox 语义。
+- 按用户请求模型计费、渠道定价完整性、图片/视频计费、Image 分组成功率、充值赠送和专属倍率用户限制。
+- Codex 图片工具策略、Claude Code 上游模拟、API Key 请求头覆写、内容审核/Cyber 阻断和渠道监控结构化 Responses `input`。
+- 账号列表禁用虚拟化、查询上下文滚动重置、主题与启动容错，以及生产 bind mount、localhost 暴露和双 Compose 一致性约束。
+
+### 验证记录
+
+验证使用项目内现有 Go 1.26.5、Node 20.19.4、pnpm 9.15.9、golangci-lint 2.9.0 和项目内缓存。所有构建、审计输出和临时文件均位于仓库 `.cache`、`backend/bin` 或前端目录。
+
+| 阶段 | 命令 | 退出码 | 结果 |
+| --- | --- | ---: | --- |
+| 同步前 | `go test -tags=unit ./...` | 0 | 全包通过 |
+| 同步前 | `golangci-lint run --timeout=30m ./...` | 0 | `0 issues` |
+| 同步前 | `CGO_ENABLED=0 go build -trimpath ./cmd/server` | 0 | 构建通过 |
+| 同步前 | `govulncheck ./...` | 0 | 无可达漏洞；依赖模块中的 8 个已知漏洞均未被当前代码调用 |
+| 同步前 | `pnpm install --frozen-lockfile`、lint、typecheck | 0 | 均通过，使用项目内 pnpm store |
+| 同步前 | `pnpm run test:run` | 0 | 196 个测试文件、1350 个测试通过 |
+| 同步前 | `pnpm run build` | 0 | 生产构建通过；仅有既有 Browserslist、动态导入和大 chunk 警告 |
+| 同步前 | `pnpm audit` / 审计例外门禁 | 1 / 0 | 0 critical、2 high、30 moderate、8 low；仓库例外校验通过 |
+| 同步前 | Apple 脚本/fixture、4 份 Compose 静态解析、双生产 Compose 比较 | 0 | 全部通过，未启动真实容器或服务 |
+| 生成 | `go generate ./ent`、`go generate ./cmd/server` | 0 | 首次及最终重复生成均成功且结果稳定 |
+| 适配 | `go test -tags=unit -run '^$' ./...` | 1 / 0 | 首次发现 3 类双方独立演进造成的编译问题；修复 helper、测试签名和本地计费策略后全包编译通过 |
+| 适配 | service 高风险定向回归 | 1 / 0 | 首次 2 个 Grok compact 用例发现 `stream:false` 字段破坏本地 unary body 契约；改为删除该字段后 compact 与完整定向集合通过 |
+| 适配 | handler、repository、migration、前端 11 文件定向测试 | 0 | 后端相关包通过；前端 66 个测试通过 |
+| 同步后 | `go test -tags=unit ./...` | 0 | 全包通过 |
+| 同步后 | `golangci-lint run --timeout=30m ./...` | 0 | `0 issues` |
+| 同步后 | `CGO_ENABLED=0 go build -trimpath ./cmd/server`、`govulncheck ./...` | 0 | 构建通过；安全结果与同步前一致，无可达漏洞 |
+| 同步后 | 前端 frozen install、lint、typecheck、全量 Vitest、build | 0 | 201 个测试文件、1377 个测试通过；生产构建通过 |
+| 同步后 | `pnpm audit` / 审计例外门禁 | 1 / 0 | 漏洞计数与同步前完全一致，仓库例外校验通过 |
+| 同步后 | Apple 脚本/fixture、4 份 Compose 静态解析、双生产 Compose 比较 | 0 | 全部通过；两份生产 Compose SHA-256 均为 `92769f2b9f18e415b8c88927c6e4655abe8085dcd3518f74b616b64c6b8a2534` |
+| 同步后 | `git diff --check`、冲突标记、意外删除、敏感路径、祖先关系和工作树检查 | 0 | 无空白错误、冲突标记、删除文件或敏感文件；固定上游 SHA 已成为本地祖先，代码提交后工作树干净 |
+
+### 未验证项与残余风险
+
+- 未运行 `go test -tags=integration ./...`：所需 `redis:8.4-alpine` 与 `postgres:18.1-alpine3.23` 镜像不存在，自动拉取会写入项目外 Docker 全局缓存，违反本次临时文件约束；真实 PostgreSQL migration 因此未验证。
+- 未运行 `-race`；当前验证范围不包含 CGO race 环境。
+- 未读取 `.env`，也未启动依赖 PostgreSQL/Redis 的真实服务，本地启动和健康检查标记为未验证。
+- 未使用真实 OpenAI、Anthropic、Grok、支付、S3 或上游站点凭据；协议转换、handler、service、repository 和前端组件仅通过本地测试覆盖。
+- 未执行真实浏览器端到端交互；移动端和 iOS 变更由组件测试、typecheck 和生产构建覆盖。
+- `pnpm audit` 仍报告 2 high、30 moderate、8 low，均为同步前已有且通过仓库例外门禁；发布前仍需远端 CI 复核。
+- 未执行 push、PR、部署、远程服务器访问、容器重启或生产数据操作。
