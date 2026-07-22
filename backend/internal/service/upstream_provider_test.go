@@ -523,9 +523,10 @@ func TestNewAPIUpstreamProviderUsesDailyAndGroupStatsWithoutLogPagination(t *tes
 		require.NotEmpty(t, r.URL.Query().Get("start_timestamp"))
 		require.NotEmpty(t, r.URL.Query().Get("end_timestamp"))
 		quota := 51_000
-		if group == "basic" {
+		switch group {
+		case "basic":
 			quota = 10_000
-		} else if group == "vip" {
+		case "vip":
 			quota = 20_000
 		}
 		writeUpstreamJSON(t, w, map[string]any{"quota": quota})
