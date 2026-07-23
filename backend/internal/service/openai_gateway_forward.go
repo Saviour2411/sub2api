@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -541,6 +542,16 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		if err != nil {
 			return nil, err
 		}
+		releaseWSRequestBody := sync.OnceFunc(func() {
+			body = nil
+			canonicalImageIntentBody = nil
+			originalBody = nil
+			normalizedBody = nil
+			requestView = openAIRequestView{}
+			reqBody = nil
+			wsReqBody = nil
+			releaseOpenAIRequestBody(c)
+		})
 		_, hasPreviousResponseID := wsReqBody["previous_response_id"]
 		logOpenAIWSModeDebug(
 			"forward_start account_id=%d account_type=%s model=%s stream=%v has_previous_response_id=%v",
@@ -627,6 +638,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		for attempt := 1; attempt <= maxAttempts; attempt++ {
 			wsAttempts = attempt
 			firstTokenAttempt := newFirstTokenAttempt(ctx, c, s.rateLimitService, account, upstreamModel, clientStream)
+			firstTokenAttempt.setAcceptedCallback(releaseWSRequestBody)
 			if firstTokenAttempt != nil {
 				firstTokenAttempt.wrapWriter(c)
 			}
@@ -646,6 +658,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				wsLastFailureReason,
 				firstTokenAttempt,
 				&agentTaskRecoveryTried,
+				releaseWSRequestBody,
 			)
 			wsErr = firstTokenAttempt.finish(wsErr)
 			var firstTokenFailoverErr *UpstreamFailoverError
@@ -746,6 +759,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 		}
 		if wsErr == nil {
+			releaseWSRequestBody()
 			firstTokenMs := int64(0)
 			hasFirstTokenMs := wsResult != nil && wsResult.FirstTokenMs != nil
 			if hasFirstTokenMs {
@@ -939,6 +953,26 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		defer func() { _ = resp.Body.Close() }()
 
 		serviceTier := extractOpenAIServiceTierFromBody(body)
+		releaseHTTPRequestBody := sync.OnceFunc(func() {
+			body = nil
+			canonicalImageIntentBody = nil
+			originalBody = nil
+			normalizedBody = nil
+			requestView = openAIRequestView{}
+			reqBody = nil
+			if upstreamReq != nil {
+				upstreamReq.Body = http.NoBody
+				upstreamReq.GetBody = nil
+			}
+			if resp.Request != nil {
+				resp.Request.Body = http.NoBody
+				resp.Request.GetBody = nil
+			}
+			releaseOpenAIRequestBody(c)
+		})
+		if upstreamStream {
+			firstTokenAttempt.setAcceptedCallback(releaseHTTPRequestBody)
+		}
 		// 上游接受后只保留计费需要的标量，避免响应处理期间继续保活完整 input/tools map。
 		reqBody = nil
 
@@ -951,7 +985,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		var imageOutputSizes []string
 		if upstreamStream {
 			firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolSSE)
-			streamResult, streamErr := s.handleStreamingResponseWithReasoning(ctx, resp, c, account, startTime, originalModel, upstreamModel, reasoningEffortValue)
+			streamResult, streamErr := s.handleStreamingResponseWithReasoningOnAccepted(ctx, resp, c, account, startTime, originalModel, upstreamModel, reasoningEffortValue, releaseHTTPRequestBody)
 			err := firstTokenAttempt.finish(streamErr)
 			if err != nil {
 				return nil, err
@@ -1011,6 +1045,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			forwardResult.ImageOutputSizes = imageOutputSizes
 			forwardResult.BillingModel = imageBillingModel
 		}
+		releaseHTTPRequestBody()
 		return forwardResult, nil
 	}
 }

@@ -75,6 +75,7 @@
 | `CUST-GW-007` | OpenAI 高级调度器 | 支持 sticky weighted、订阅优先、Top-K 和 priority/load/queue/error-rate/TTFT/reset/quota/session 等权重；另有优先最近重置策略。 | `backend/internal/service/openai_account_scheduler.go`、`backend/internal/service/setting_parse.go` | 生效中 |
 | `CUST-GW-008` | 增强故障转移与响应结算 | 覆盖非 JSON 2xx、SSE `event:error`、Responses 传输错误、图片服务错误、流式部分结果和已提交响应，复用错误体并避免重复写帧。 | `backend/internal/handler/failover_loop.go`、`backend/internal/service/upstream_outcome_error.go`、`backend/internal/service/openai_gateway_response_handling.go` | 生效中 |
 | `CUST-GW-009` | 代理到期与失败回退 | 代理支持到期处理、质量测试、失败回退和定向调度刷新；生产调度不会继续使用已失效代理。 | `backend/internal/service/proxy_expiry_service.go`、`backend/internal/service/proxy_fallback.go`、`backend/internal/repository/proxy_repo.go` | 生效中 |
+| `CUST-GW-010` | 高并发请求体驻留治理 | OpenAI Responses 在首个有效输出确认后释放 handler、HTTP/WS 请求和解析视图持有的大请求体；首 Token 前仍完整保留请求体用于安全故障转移，成功会话审计开启时保留审计所需的原始体。 | `backend/internal/handler/openai_gateway_handler.go`、`backend/internal/service/openai_gateway_forward.go`、`backend/internal/service/openai_gateway_response_handling.go`、`backend/internal/service/openai_gateway_passthrough.go`、`backend/internal/service/openai_ws_forwarder_v2.go` | 生效中 |
 
 ### 协议与上游兼容
 
@@ -108,7 +109,7 @@
 | `CUST-BILL-003` | OpenAI 长上下文计费兼容策略 | 账号开关叠加本地区间计价逻辑；只有实际命中渠道区间时才禁用内置倍率。历史缺失开关的主账号回填为开启，新账号默认关闭。 | `backend/internal/service/billing_service.go`、`backend/migrations/175_default_openai_long_context_billing.sql` | 兼容覆盖 |
 | `CUST-BILL-004` | Image 分组成功率 | 统计单次和批量图片请求的分组请求数/失败数，支持代次式原子清零、用户展示开关，并排除 keepalive 字节对结果判断的干扰。 | `backend/internal/service/image_group_success_rate.go`、`backend/internal/repository/image_group_success_rate_repo.go`、`backend/migrations/177_image_group_success_rates.sql` | 生效中 |
 | `CUST-BILL-005` | 用量与费用明细增强 | 展示缓存 Token、请求模型、余额调整和图片/视频费用信息；错误请求和上游端点记录使用本地归因规则。 | `backend/internal/service/gateway_usage_billing.go`、`frontend/src/views/admin/UsageView.vue`、`frontend/src/components/admin/user/UserBalanceHistoryModal.vue` | 生效中 |
-| `CUST-BILL-006` | 高并发余额扣费整流 | 单实例内对同一用户的余额扣费事务串行排队，不同用户仍可并行；等待 gate 时响应 context 超时且不占用数据库连接。后台扣费隔离请求取消，但保留 worker 的更短 deadline。 | `backend/internal/repository/usage_billing_repo.go`、`backend/internal/service/gateway_usage_billing.go` | 生效中 |
+| `CUST-BILL-006` | 高并发余额扣费整流 | 单实例内对同一用户的余额扣费事务串行排队，不同用户仍可并行；usage worker 在执行前按用户聚合，同一热用户只占一个 worker，任务开始执行时再创建超时 context。余额事务 gate 继续在 `BeginTx` 前提供最终进程内串行。 | `backend/internal/repository/usage_billing_repo.go`、`backend/internal/service/gateway_usage_billing.go`、`backend/internal/service/usage_record_worker_pool.go` | 生效中 |
 
 ### 渠道监控与可观测性
 
@@ -162,6 +163,7 @@
 
 | 日期 | 版本/提交 | 类型 | 功能编号 | 变更与原因 | 验证 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-07-24 | `0.1.210` / 待提交 | 修改 | `CUST-GW-010`、`CUST-BILL-006` | 生产 GC 诊断确认高并发 Responses 请求在长流期间保留多份最大约 52 MB 的请求体，live heap 可增长至约 3.1 GiB 并触发 OOM；改为首个有效输出后释放不再用于故障转移的大对象。usage worker 改为按用户聚合排空，避免热用户的 gate 等待占满全部 worker 并持续产生 5 秒扣费超时，不改变用户入口并发。 | 请求体释放时机/幂等测试、keyed worker 同用户串行/不同用户并行/超时窗口/队列清理测试、Go race/全量测试、生产 30 分钟稳定观察 |
 | 2026-07-24 | `0.1.209` / 待提交 | 新增 | `CUST-BILL-006`、`CUST-OPS-005` | 同一用户余额扣费在开启事务前改为进程内串行，避免高并发请求同时占用连接并争抢 `users` 行锁；后台扣费继续隔离请求取消，但不再覆盖 usage worker 的较短 deadline。Compose 新增 worker、PostgreSQL 并行查询与 Docker 日志轮转参数透传，为 2 核小内存生产实例提供可回滚的资源保护。 | gate 并发/取消/事务退出测试、worker deadline 测试、计费幂等集成测试、Go race/全量测试、Compose 一致性与生产健康检查 |
 | 2026-07-23 | `0.1.208` / 待提交 | 修改 | `CUST-OPS-003` | 两份生产 Compose 增加 `DASHBOARD_AGGREGATION_RETENTION_USAGE_LOGS_DAYS` 环境变量透传，仓库默认值仍为 90 天，生产实例通过未跟踪的 `.env` 配置为 30 天。修复 `.env` 已设置保留策略但变量未进入应用容器、运行时仍使用代码默认值的问题。 | 两份 Compose 内容一致性、`docker compose config`、生产容器环境变量与健康检查 |
 | 2026-07-23 | `0.1.207` / `e957a0a38` | 上游适配 | `CUST-GW-001`、`CUST-GW-003`、`CUST-GW-006`、`CUST-GW-007`、`CUST-GW-008`、`CUST-GW-009`、`CUST-PROTO-001`、`CUST-PROTO-002`、`CUST-PROTO-005`、`CUST-PROTO-006`、`CUST-ACC-001`、`CUST-ACC-002`、`CUST-ACC-003`、`CUST-ACC-005`、`CUST-BILL-001`、`CUST-BILL-002`、`CUST-BILL-004`、`CUST-BILL-005`、`CUST-OBS-001`、`CUST-PROD-006`、`CUST-RISK-001`、`CUST-RISK-003`、`CUST-UI-003`、`CUST-UI-004`、`CUST-UI-005`、`CUST-OPS-003`、`CUST-OPS-004` | 完整合并上游 `e625ce3b3..60013c5f1`，接入 Grok compact 与客户端工具回程、OpenAI reasoning effort 分组策略、调度排除原因、hosted image token 计费、Redis ACL、移动端布局和依赖安全更新；保留本地首 Token/body-signal unary compact、逐轮 WS 结算、图片尺寸能力、按请求模型计费、充值赠送、账号列表禁用虚拟化、启动容错及双生产 Compose 约束。 | Go 全量 unit、lint、构建、govulncheck、定向协议/调度/计费回归、前端 lint/typecheck/全量 Vitest/build/audit、Apple fixture、Compose 与生成一致性检查 |

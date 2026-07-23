@@ -189,11 +189,13 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 
 	agentTaskRecoveryTried := false
 	var resp *http.Response
+	var upstreamReq *http.Request
 	var firstTokenAttempt *firstTokenAttempt
 	for {
 		firstTokenAttempt = newFirstTokenAttempt(ctx, c, s.rateLimitService, account, upstreamPassthroughModel, clientStream)
 		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
-		upstreamReq, buildErr := s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token)
+		var buildErr error
+		upstreamReq, buildErr = s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token)
 		releaseUpstreamCtx()
 		if buildErr != nil {
 			firstTokenAttempt.stopBeforeStreaming()
@@ -244,6 +246,24 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	defer func() { _ = resp.Body.Close() }()
 
 	serviceTier := extractOpenAIServiceTierFromBody(body)
+	releasePassthroughRequestBody := sync.OnceFunc(func() {
+		body = nil
+		canonicalImageIntentBody = nil
+		sanitizedBody = nil
+		updatedBody = nil
+		if upstreamReq != nil {
+			upstreamReq.Body = http.NoBody
+			upstreamReq.GetBody = nil
+		}
+		if resp.Request != nil {
+			resp.Request.Body = http.NoBody
+			resp.Request.GetBody = nil
+		}
+		releaseOpenAIRequestBody(c)
+	})
+	if upstreamStream {
+		firstTokenAttempt.setAcceptedCallback(releasePassthroughRequestBody)
+	}
 
 	var usage *OpenAIUsage
 	var firstTokenMs *int
@@ -253,7 +273,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	var imageOutputSizes []string
 	if upstreamStream {
 		firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolSSE)
-		result, streamErr := s.handleStreamingResponsePassthrough(ctx, resp, c, account, startTime, reqModel, upstreamPassthroughModel)
+		result, streamErr := s.handleStreamingResponsePassthroughOnAccepted(ctx, resp, c, account, startTime, reqModel, upstreamPassthroughModel, releasePassthroughRequestBody)
 		err := firstTokenAttempt.finish(streamErr)
 		if err != nil {
 			return nil, err
@@ -311,6 +331,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		forwardResult.ImageOutputSizes = imageOutputSizes
 		forwardResult.BillingModel = imageBillingModel
 	}
+	releasePassthroughRequestBody()
 	return forwardResult, nil
 }
 
@@ -1003,6 +1024,24 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	originalModel string,
 	mappedModel string,
 ) (*openaiStreamingResultPassthrough, error) {
+	return s.handleStreamingResponsePassthroughOnAccepted(ctx, resp, c, account, startTime, originalModel, mappedModel, nil)
+}
+
+func (s *OpenAIGatewayService) handleStreamingResponsePassthroughOnAccepted(
+	ctx context.Context,
+	resp *http.Response,
+	c *gin.Context,
+	account *Account,
+	startTime time.Time,
+	originalModel string,
+	mappedModel string,
+	onAccepted func(),
+) (*openaiStreamingResultPassthrough, error) {
+	notifyAccepted := sync.OnceFunc(func() {
+		if onAccepted != nil {
+			onAccepted()
+		}
+	})
 	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 
 	// SSE headers
@@ -1239,6 +1278,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			if firstTokenMs == nil && lineStartsClientOutput && trimmedData != "[DONE]" {
 				ms := int(time.Since(startTime).Milliseconds())
 				firstTokenMs = &ms
+				notifyAccepted()
 			}
 			s.parseSSEUsageBytes(dataBytes, usage)
 		}

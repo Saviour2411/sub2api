@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -9,6 +10,123 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
+
+func TestUsageRecordWorkerPool_SubmitKeyedSerializesSameKey(t *testing.T) {
+	pool := NewUsageRecordWorkerPoolWithOptions(UsageRecordWorkerPoolOptions{
+		WorkerCount: 2, QueueSize: 8, TaskTimeout: time.Second,
+		OverflowPolicy: config.UsageRecordOverflowPolicyDrop,
+	})
+	t.Cleanup(pool.Stop)
+
+	firstStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	secondStarted := make(chan struct{})
+	require.Equal(t, UsageRecordSubmitModeEnqueued, pool.SubmitKeyed(900, func(context.Context) {
+		close(firstStarted)
+		<-releaseFirst
+	}))
+	<-firstStarted
+	require.Equal(t, UsageRecordSubmitModeEnqueued, pool.SubmitKeyed(900, func(context.Context) {
+		close(secondStarted)
+	}))
+
+	select {
+	case <-secondStarted:
+		t.Fatal("同一用户的第二条任务不应并行执行")
+	case <-time.After(30 * time.Millisecond):
+	}
+	close(releaseFirst)
+	select {
+	case <-secondStarted:
+	case <-time.After(time.Second):
+		t.Fatal("同一用户的第二条任务未在前一条完成后执行")
+	}
+}
+
+func TestUsageRecordWorkerPool_SubmitKeyedKeepsDifferentKeysParallel(t *testing.T) {
+	pool := NewUsageRecordWorkerPoolWithOptions(UsageRecordWorkerPoolOptions{
+		WorkerCount: 2, QueueSize: 8, TaskTimeout: time.Second,
+		OverflowPolicy: config.UsageRecordOverflowPolicyDrop,
+	})
+	t.Cleanup(pool.Stop)
+
+	release := make(chan struct{})
+	started := make(chan int64, 2)
+	for _, userID := range []int64{900, 877} {
+		userID := userID
+		require.Equal(t, UsageRecordSubmitModeEnqueued, pool.SubmitKeyed(userID, func(context.Context) {
+			started <- userID
+			<-release
+		}))
+	}
+
+	seen := map[int64]bool{}
+	for range 2 {
+		select {
+		case userID := <-started:
+			seen[userID] = true
+		case <-time.After(time.Second):
+			t.Fatal("不同用户的任务未并行启动")
+		}
+	}
+	close(release)
+	require.True(t, seen[900] && seen[877])
+}
+
+func TestUsageRecordWorkerPool_SubmitKeyedStartsFreshTaskDeadline(t *testing.T) {
+	pool := NewUsageRecordWorkerPoolWithOptions(UsageRecordWorkerPoolOptions{
+		WorkerCount: 1, QueueSize: 8, TaskTimeout: 40 * time.Millisecond,
+		OverflowPolicy: config.UsageRecordOverflowPolicyDrop,
+	})
+	t.Cleanup(pool.Stop)
+
+	firstStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	secondDeadlineRemaining := make(chan time.Duration, 1)
+	pool.SubmitKeyed(900, func(context.Context) {
+		close(firstStarted)
+		<-releaseFirst
+	})
+	<-firstStarted
+	pool.SubmitKeyed(900, func(ctx context.Context) {
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			secondDeadlineRemaining <- 0
+			return
+		}
+		secondDeadlineRemaining <- time.Until(deadline)
+	})
+	time.Sleep(70 * time.Millisecond)
+	close(releaseFirst)
+
+	select {
+	case remaining := <-secondDeadlineRemaining:
+		require.Greater(t, remaining, 20*time.Millisecond)
+	case <-time.After(time.Second):
+		t.Fatal("排队任务未执行")
+	}
+}
+
+func TestUsageRecordWorkerPool_SubmitKeyedCleansIdleQueues(t *testing.T) {
+	pool := NewUsageRecordWorkerPoolWithOptions(UsageRecordWorkerPoolOptions{
+		WorkerCount: 4, QueueSize: 64, TaskTimeout: time.Second,
+		OverflowPolicy: config.UsageRecordOverflowPolicyDrop,
+	})
+	t.Cleanup(pool.Stop)
+
+	var completed sync.WaitGroup
+	completed.Add(20)
+	for i := 0; i < 20; i++ {
+		userID := int64(i%3 + 1)
+		pool.SubmitKeyed(userID, func(context.Context) { completed.Done() })
+	}
+	completed.Wait()
+	require.Eventually(t, func() bool {
+		pool.keyedMu.Lock()
+		defer pool.keyedMu.Unlock()
+		return pool.keyedPending == 0 && len(pool.keyedQueues) == 0
+	}, time.Second, 10*time.Millisecond)
+}
 
 func TestUsageRecordWorkerPool_SubmitEnqueued(t *testing.T) {
 	pool := NewUsageRecordWorkerPoolWithOptions(UsageRecordWorkerPoolOptions{

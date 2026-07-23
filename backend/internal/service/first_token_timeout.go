@@ -95,6 +95,8 @@ type firstTokenAttempt struct {
 	originalWriter gin.ResponseWriter
 	sideEffectOnce sync.Once
 	closeOnce      sync.Once
+	onAcceptedSet  bool
+	onAccepted     func()
 }
 
 func resolveFirstTokenTimeoutSettings(ctx context.Context, rateLimit *RateLimitService) GatewaySettings {
@@ -512,7 +514,34 @@ func (a *firstTokenAttempt) markReceived() {
 	if a.clientStop != nil {
 		a.clientStop()
 	}
+	a.mu.Lock()
+	onAccepted := a.onAccepted
+	a.onAccepted = nil
+	a.mu.Unlock()
+	if onAccepted != nil {
+		onAccepted()
+	}
 	a.releaseWriter()
+}
+
+func (a *firstTokenAttempt) setAcceptedCallback(callback func()) {
+	if a == nil || callback == nil {
+		return
+	}
+	a.mu.Lock()
+	if a.onAcceptedSet {
+		a.mu.Unlock()
+		return
+	}
+	a.onAcceptedSet = true
+	runNow := a.currentState() == firstTokenAttemptReceived
+	if !runNow {
+		a.onAccepted = callback
+	}
+	a.mu.Unlock()
+	if runNow {
+		callback()
+	}
 }
 
 func (a *firstTokenAttempt) observedFirstTokenMs() *int {

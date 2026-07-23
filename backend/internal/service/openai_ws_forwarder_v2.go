@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -33,6 +34,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	lastFailureReason string,
 	firstTokenAttempt *firstTokenAttempt,
 	agentTaskRecoveryTried *bool,
+	onRequestAccepted func(),
 ) (*OpenAIForwardResult, error) {
 	if s == nil || account == nil {
 		return nil, wrapOpenAIWSFallback("invalid_state", errors.New("service or account is nil"))
@@ -61,6 +63,15 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	)
 
 	payload := s.buildOpenAIWSCreatePayload(reqBody, account)
+	serviceTier := extractOpenAIServiceTier(reqBody)
+	reasoningEffort := extractOpenAIReasoningEffort(reqBody, mappedModel, originalModel)
+	releaseAttemptRequestBody := sync.OnceFunc(func() {
+		payload = nil
+		reqBody = nil
+		if onRequestAccepted != nil {
+			onRequestAccepted()
+		}
+	})
 	payloadStrategy, removedKeys := applyOpenAIWSRetryPayloadStrategy(payload, attempt)
 	previousResponseID := openAIWSPayloadString(payload, "previous_response_id")
 	previousResponseIDKind := ClassifyOpenAIPreviousResponseIDKind(previousResponseID)
@@ -533,12 +544,16 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			terminalEventCount++
 			terminalPayload = append(terminalPayload[:0], message...)
 		}
+		meaningfulFirstToken := isMeaningfulFirstTokenJSON(message)
 		if firstTokenAttempt != nil {
-			if isMeaningfulFirstTokenJSON(message) {
+			if meaningfulFirstToken {
 				firstTokenAttempt.markReceived()
 			} else if isTerminalEvent {
 				firstTokenAttempt.markDecidedWithoutToken()
 			}
+		}
+		if reqStream && meaningfulFirstToken {
+			releaseAttemptRequestBody()
 		}
 		if firstTokenMs == nil && isTokenEvent {
 			ms := int(time.Since(startTime).Milliseconds())
@@ -766,6 +781,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		clientDisconnected,
 	)
 
+	releaseAttemptRequestBody()
 	result := &OpenAIForwardResult{
 		RequestID:             responseID,
 		Usage:                 *usage,
@@ -773,8 +789,8 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		UpstreamModel:         mappedModel,
 		ImageCount:            imageCounter.Count(),
 		ImageOutputSizes:      imageCounter.Sizes(),
-		ServiceTier:           extractOpenAIServiceTier(reqBody),
-		ReasoningEffort:       extractOpenAIReasoningEffort(reqBody, mappedModel, originalModel),
+		ServiceTier:           serviceTier,
+		ReasoningEffort:       reasoningEffort,
 		Stream:                reqStream,
 		OpenAIWSMode:          true,
 		UpstreamTerminalEvent: upstreamTerminalEvent,

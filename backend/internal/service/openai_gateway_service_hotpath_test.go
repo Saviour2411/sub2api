@@ -931,6 +931,21 @@ func TestGetOpenAIRequestBodyMap_DoesNotWriteContextCache(t *testing.T) {
 	require.Empty(t, c.Keys)
 }
 
+func TestOpenAIRequestViewCopiesScalarStringsFromBody(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.3-codex","stream":true,"prompt_cache_key":"cache-1","previous_response_id":"resp-1","service_tier":"priority","reasoning":{"effort":"high"},"input":"large payload"}`)
+	view := newOpenAIRequestView(body)
+
+	for i := range body {
+		body[i] = 'x'
+	}
+
+	require.Equal(t, "gpt-5.3-codex", view.Model)
+	require.Equal(t, "cache-1", view.PromptCacheKey)
+	require.Equal(t, "resp-1", view.PreviousResponseID)
+	require.Equal(t, "priority", view.ServiceTier)
+	require.Equal(t, "high", view.ReasoningEffort)
+}
+
 func TestSanitizeEmptyBase64InputImagesInOpenAIRequestBodyMap(t *testing.T) {
 	var reqBody map[string]any
 	require.NoError(t, json.Unmarshal([]byte(`{

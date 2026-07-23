@@ -84,6 +84,10 @@ type UsageRecordWorkerPoolStats struct {
 type UsageRecordWorkerPool struct {
 	pool                  pond.Pool
 	taskTimeout           time.Duration
+	keyedQueueSize        int
+	keyedMu               sync.Mutex
+	keyedQueues           map[int64][]UsageRecordTask
+	keyedPending          int
 	overflowPolicy        string
 	overflowSamplePercent int
 	overflowCounter       atomic.Uint64
@@ -118,6 +122,8 @@ func NewUsageRecordWorkerPoolWithOptions(opts UsageRecordWorkerPoolOptions) *Usa
 
 	p := &UsageRecordWorkerPool{
 		taskTimeout:           opts.TaskTimeout,
+		keyedQueueSize:        opts.QueueSize,
+		keyedQueues:           make(map[int64][]UsageRecordTask),
 		overflowPolicy:        opts.OverflowPolicy,
 		overflowSamplePercent: opts.OverflowSamplePercent,
 		autoScaleEnabled:      opts.AutoScaleEnabled,
@@ -166,6 +172,87 @@ func (p *UsageRecordWorkerPool) Submit(task UsageRecordTask) UsageRecordSubmitMo
 		return UsageRecordSubmitModeDropped
 	}
 
+	return p.handleOverflow(task)
+}
+
+// SubmitKeyed 按 key 聚合任务。同一 key 由一个 worker 串行排空，不同 key 仍可并行。
+func (p *UsageRecordWorkerPool) SubmitKeyed(key int64, task UsageRecordTask) UsageRecordSubmitMode {
+	if key <= 0 {
+		return p.Submit(task)
+	}
+	if p == nil || task == nil {
+		return UsageRecordSubmitModeDropped
+	}
+	if p.pool == nil || p.pool.Stopped() {
+		p.droppedPoolStopped.Add(1)
+		p.logDrop("stopped")
+		return UsageRecordSubmitModeDropped
+	}
+
+	p.keyedMu.Lock()
+	if p.keyedPending >= p.keyedQueueSize {
+		p.keyedMu.Unlock()
+		return p.handleOverflow(task)
+	}
+	queue, exists := p.keyedQueues[key]
+	p.keyedQueues[key] = append(queue, task)
+	p.keyedPending++
+	if exists {
+		p.keyedMu.Unlock()
+		return UsageRecordSubmitModeEnqueued
+	}
+
+	_, ok := p.pool.TrySubmit(func() {
+		p.drainKeyedQueue(key)
+	})
+	if ok {
+		p.keyedMu.Unlock()
+		return UsageRecordSubmitModeEnqueued
+	}
+	delete(p.keyedQueues, key)
+	p.keyedPending--
+	p.keyedMu.Unlock()
+
+	if p.pool.Stopped() {
+		p.droppedPoolStopped.Add(1)
+		p.logDrop("stopped")
+		return UsageRecordSubmitModeDropped
+	}
+	return p.handleOverflow(task)
+}
+
+func (p *UsageRecordWorkerPool) drainKeyedQueue(key int64) {
+	for {
+		p.keyedMu.Lock()
+		queue := p.keyedQueues[key]
+		if len(queue) == 0 {
+			delete(p.keyedQueues, key)
+			p.keyedMu.Unlock()
+			return
+		}
+		task := queue[0]
+		p.keyedMu.Unlock()
+
+		p.execute(task)
+
+		p.keyedMu.Lock()
+		queue = p.keyedQueues[key]
+		if len(queue) > 0 {
+			queue[0] = nil
+			queue = queue[1:]
+			p.keyedPending--
+		}
+		if len(queue) == 0 {
+			delete(p.keyedQueues, key)
+			p.keyedMu.Unlock()
+			return
+		}
+		p.keyedQueues[key] = queue
+		p.keyedMu.Unlock()
+	}
+}
+
+func (p *UsageRecordWorkerPool) handleOverflow(task UsageRecordTask) UsageRecordSubmitMode {
 	switch p.overflowPolicy {
 	case config.UsageRecordOverflowPolicySync:
 		p.syncFallback.Add(1)
@@ -189,10 +276,17 @@ func (p *UsageRecordWorkerPool) Stats() UsageRecordWorkerPoolStats {
 	if p == nil || p.pool == nil {
 		return UsageRecordWorkerPoolStats{}
 	}
+	waitingTasks := p.pool.WaitingTasks()
+	p.keyedMu.Lock()
+	keyedWaiting := p.keyedPending - len(p.keyedQueues)
+	p.keyedMu.Unlock()
+	if keyedWaiting > 0 {
+		waitingTasks += uint64(keyedWaiting)
+	}
 	return UsageRecordWorkerPoolStats{
 		MaxConcurrency:     p.pool.MaxConcurrency(),
 		RunningWorkers:     p.pool.RunningWorkers(),
-		WaitingTasks:       p.pool.WaitingTasks(),
+		WaitingTasks:       waitingTasks,
 		SubmittedTasks:     p.pool.SubmittedTasks(),
 		CompletedTasks:     p.pool.CompletedTasks(),
 		SuccessfulTasks:    p.pool.SuccessfulTasks(),

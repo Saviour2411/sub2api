@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -44,6 +45,25 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 }
 
 func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel, reasoningEffort string) (*openaiStreamingResult, error) {
+	return s.handleStreamingResponseWithReasoningOnAccepted(ctx, resp, c, account, startTime, originalModel, mappedModel, reasoningEffort, nil)
+}
+
+func (s *OpenAIGatewayService) handleStreamingResponseWithReasoningOnAccepted(
+	ctx context.Context,
+	resp *http.Response,
+	c *gin.Context,
+	account *Account,
+	startTime time.Time,
+	originalModel string,
+	mappedModel string,
+	reasoningEffort string,
+	onAccepted func(),
+) (*openaiStreamingResult, error) {
+	notifyAccepted := sync.OnceFunc(func() {
+		if onAccepted != nil {
+			onAccepted()
+		}
+	})
 	firstOutputTimeout := time.Duration(0)
 	if account != nil && account.Platform == PlatformOpenAI {
 		firstOutputTimeout = s.openAIFirstOutputTimeout(reasoningEffort)
@@ -264,6 +284,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			ms := int(time.Since(startTime).Milliseconds())
 			firstTokenMs = &ms
 			stopFirstOutputTimer()
+			notifyAccepted()
 		}
 		eventStartsClientOutput = false
 		eventShouldFlush = false
@@ -563,6 +584,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				ms := int(time.Since(startTime).Milliseconds())
 				firstTokenMs = &ms
 				stopFirstOutputTimer()
+				notifyAccepted()
 			}
 			s.parseSSEUsageBytes(dataBytes, usage)
 			return
