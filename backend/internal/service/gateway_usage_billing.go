@@ -476,10 +476,18 @@ func notifyAccountQuota(p *postUsageBillingParams, deps *billingDeps, result *Us
 
 func detachedBillingContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	base := context.Background()
-	if ctx != nil {
-		base = context.WithoutCancel(ctx)
+	if ctx == nil {
+		return context.WithTimeout(base, postUsageBillingTimeout)
 	}
-	return context.WithTimeout(base, postUsageBillingTimeout)
+
+	deadline, hasDeadline := ctx.Deadline()
+	base = context.WithoutCancel(ctx)
+	fallbackDeadline := time.Now().Add(postUsageBillingTimeout)
+	if hasDeadline && deadline.Before(fallbackDeadline) {
+		return context.WithDeadline(base, deadline)
+	}
+
+	return context.WithDeadline(base, fallbackDeadline)
 }
 
 func detachStreamUpstreamContext(ctx context.Context, stream bool) (context.Context, context.CancelFunc) {

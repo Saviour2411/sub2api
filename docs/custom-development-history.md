@@ -108,6 +108,7 @@
 | `CUST-BILL-003` | OpenAI 长上下文计费兼容策略 | 账号开关叠加本地区间计价逻辑；只有实际命中渠道区间时才禁用内置倍率。历史缺失开关的主账号回填为开启，新账号默认关闭。 | `backend/internal/service/billing_service.go`、`backend/migrations/175_default_openai_long_context_billing.sql` | 兼容覆盖 |
 | `CUST-BILL-004` | Image 分组成功率 | 统计单次和批量图片请求的分组请求数/失败数，支持代次式原子清零、用户展示开关，并排除 keepalive 字节对结果判断的干扰。 | `backend/internal/service/image_group_success_rate.go`、`backend/internal/repository/image_group_success_rate_repo.go`、`backend/migrations/177_image_group_success_rates.sql` | 生效中 |
 | `CUST-BILL-005` | 用量与费用明细增强 | 展示缓存 Token、请求模型、余额调整和图片/视频费用信息；错误请求和上游端点记录使用本地归因规则。 | `backend/internal/service/gateway_usage_billing.go`、`frontend/src/views/admin/UsageView.vue`、`frontend/src/components/admin/user/UserBalanceHistoryModal.vue` | 生效中 |
+| `CUST-BILL-006` | 高并发余额扣费整流 | 单实例内对同一用户的余额扣费事务串行排队，不同用户仍可并行；等待 gate 时响应 context 超时且不占用数据库连接。后台扣费隔离请求取消，但保留 worker 的更短 deadline。 | `backend/internal/repository/usage_billing_repo.go`、`backend/internal/service/gateway_usage_billing.go` | 生效中 |
 
 ### 渠道监控与可观测性
 
@@ -153,6 +154,7 @@
 | `CUST-OPS-002` | 保留生产 Compose | 自动部署默认不上传仓库 Compose，只更新远端 `.env` 镜像标签并使用活动 Compose，防止通用命名卷配置覆盖生产文件。 | `.github/workflows/release.yml`、`deploy/remote-deploy.sh` | 运维约束 |
 | `CUST-OPS-003` | 生产数据与网络拓扑 | 生产实例必须保持 bind mount 数据目录、仅回环地址暴露、两个活动 Compose 一致，以及业务要求的 HTTP upstream 安全开关；Compose 透传实例级数据保留参数，具体保留天数、实例专用路径和连接参数只保存在不跟踪的 `.env` 与本地运维说明中。 | `deploy/docker-compose.yml`、`deploy/docker-compose.sub2api.yml`、`deploy/remote-deploy.sh`、`.github/workflows/release.yml` | 运维约束 |
 | `CUST-OPS-004` | 本地 CI 与安全门禁 | Push/PR 运行 Go 1.26.5 单元和集成测试、Node 20 前端测试、lint、部署脚本检查及依赖安全扫描；发布前以远端 CI 为最终门禁。 | `.github/workflows/backend-ci.yml`、`.github/workflows/security-scan.yml` | 运维约束 |
+| `CUST-OPS-005` | 小规格生产资源保护 | Compose 透传 Go 内存、用量 worker、数据库连接与并行查询参数，并为应用、PostgreSQL 和 Redis 配置有界 Docker 日志轮转；实例具体值保存在未跟踪的 `.env` 中。 | `deploy/docker-compose.yml`、`deploy/docker-compose.sub2api.yml`、`deploy/.env.example` | 运维约束 |
 
 ## 变更记录
 
@@ -160,6 +162,7 @@
 
 | 日期 | 版本/提交 | 类型 | 功能编号 | 变更与原因 | 验证 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-07-24 | `0.1.209` / 待提交 | 新增 | `CUST-BILL-006`、`CUST-OPS-005` | 同一用户余额扣费在开启事务前改为进程内串行，避免高并发请求同时占用连接并争抢 `users` 行锁；后台扣费继续隔离请求取消，但不再覆盖 usage worker 的较短 deadline。Compose 新增 worker、PostgreSQL 并行查询与 Docker 日志轮转参数透传，为 2 核小内存生产实例提供可回滚的资源保护。 | gate 并发/取消/事务退出测试、worker deadline 测试、计费幂等集成测试、Go race/全量测试、Compose 一致性与生产健康检查 |
 | 2026-07-23 | `0.1.208` / 待提交 | 修改 | `CUST-OPS-003` | 两份生产 Compose 增加 `DASHBOARD_AGGREGATION_RETENTION_USAGE_LOGS_DAYS` 环境变量透传，仓库默认值仍为 90 天，生产实例通过未跟踪的 `.env` 配置为 30 天。修复 `.env` 已设置保留策略但变量未进入应用容器、运行时仍使用代码默认值的问题。 | 两份 Compose 内容一致性、`docker compose config`、生产容器环境变量与健康检查 |
 | 2026-07-23 | `0.1.207` / `e957a0a38` | 上游适配 | `CUST-GW-001`、`CUST-GW-003`、`CUST-GW-006`、`CUST-GW-007`、`CUST-GW-008`、`CUST-GW-009`、`CUST-PROTO-001`、`CUST-PROTO-002`、`CUST-PROTO-005`、`CUST-PROTO-006`、`CUST-ACC-001`、`CUST-ACC-002`、`CUST-ACC-003`、`CUST-ACC-005`、`CUST-BILL-001`、`CUST-BILL-002`、`CUST-BILL-004`、`CUST-BILL-005`、`CUST-OBS-001`、`CUST-PROD-006`、`CUST-RISK-001`、`CUST-RISK-003`、`CUST-UI-003`、`CUST-UI-004`、`CUST-UI-005`、`CUST-OPS-003`、`CUST-OPS-004` | 完整合并上游 `e625ce3b3..60013c5f1`，接入 Grok compact 与客户端工具回程、OpenAI reasoning effort 分组策略、调度排除原因、hosted image token 计费、Redis ACL、移动端布局和依赖安全更新；保留本地首 Token/body-signal unary compact、逐轮 WS 结算、图片尺寸能力、按请求模型计费、充值赠送、账号列表禁用虚拟化、启动容错及双生产 Compose 约束。 | Go 全量 unit、lint、构建、govulncheck、定向协议/调度/计费回归、前端 lint/typecheck/全量 Vitest/build/audit、Apple fixture、Compose 与生成一致性检查 |
 | 2026-07-22 | `0.1.207` / 待提交 | 修改 | `CUST-OBS-002` | New API 用量同步停止每 5 分钟全量分页扫描当日日志，改为按日期调用一次 `/api/log/self/stat` 获取总费用，并对当天可用分组顺序携带 `group` 查询分组费用；New API 不再维护无法由标准统计接口直接提供的 Token 指标，API 通过 `token_metrics_available=false` 明确能力边界，管理页以“—”隐藏站点、分组和历史 Token，既有数据库值保留且不再覆盖。解决高日志量站点固定在深分页触发 HTTP 429、随后重复从首页扫描的问题。 | New API 统计请求计数与错误测试、仓储旧 Token 保留测试、前端组件测试、类型检查和生产构建 |

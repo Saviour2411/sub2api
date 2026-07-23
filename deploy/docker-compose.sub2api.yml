@@ -19,6 +19,11 @@ services:
     image: "${SUB2API_IMAGE:-DOCKERHUB_USERNAME/sub2api}:${SUB2API_TAG:-latest}"
     container_name: sub2api
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "${DOCKER_LOG_MAX_SIZE:-100m}"
+        max-file: "${DOCKER_LOG_MAX_FILE:-3}"
     ulimits:
       nofile:
         soft: 100000
@@ -172,6 +177,10 @@ services:
       - GATEWAY_MAX_CONNS_PER_HOST=${GATEWAY_MAX_CONNS_PER_HOST:-2048}
       - GATEWAY_MAX_IDLE_CONNS=${GATEWAY_MAX_IDLE_CONNS:-8192}
       - GATEWAY_MAX_IDLE_CONNS_PER_HOST=${GATEWAY_MAX_IDLE_CONNS_PER_HOST:-4096}
+      - GATEWAY_USAGE_RECORD_WORKER_COUNT=${GATEWAY_USAGE_RECORD_WORKER_COUNT:-128}
+      - GATEWAY_USAGE_RECORD_QUEUE_SIZE=${GATEWAY_USAGE_RECORD_QUEUE_SIZE:-16384}
+      - GATEWAY_USAGE_RECORD_TASK_TIMEOUT_SECONDS=${GATEWAY_USAGE_RECORD_TASK_TIMEOUT_SECONDS:-5}
+      - GATEWAY_USAGE_RECORD_AUTO_SCALE_ENABLED=${GATEWAY_USAGE_RECORD_AUTO_SCALE_ENABLED:-true}
       - GATEWAY_IMAGE_STREAM_DATA_INTERVAL_TIMEOUT=${GATEWAY_IMAGE_STREAM_DATA_INTERVAL_TIMEOUT:-900}
       - GATEWAY_IMAGE_STREAM_KEEPALIVE_INTERVAL=${GATEWAY_IMAGE_STREAM_KEEPALIVE_INTERVAL:-10}
       - GATEWAY_IMAGE_CONCURRENCY_ENABLED=${GATEWAY_IMAGE_CONCURRENCY_ENABLED:-false}
@@ -210,6 +219,11 @@ services:
     image: postgres:18-alpine
     container_name: sub2api-postgres
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "${DOCKER_LOG_MAX_SIZE:-100m}"
+        max-file: "${DOCKER_LOG_MAX_FILE:-3}"
     ulimits:
       nofile:
         soft: 100000
@@ -226,6 +240,10 @@ services:
       - "effective_cache_size=${POSTGRES_EFFECTIVE_CACHE_SIZE:-2GB}"
       - "-c"
       - "maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-128MB}"
+      - "-c"
+      - "max_parallel_workers=${POSTGRES_MAX_PARALLEL_WORKERS:-8}"
+      - "-c"
+      - "max_parallel_workers_per_gather=${POSTGRES_MAX_PARALLEL_WORKERS_PER_GATHER:-2}"
     environment:
       # postgres:18-alpine 默认 PGDATA=/var/lib/postgresql/18/docker（位于镜像声明的匿名卷 /var/lib/postgresql 内）。
       # 若不显式设置 PGDATA，则即使挂载了 postgres_data 到 /var/lib/postgresql/data，数据也不会落盘到该命名卷，
@@ -257,6 +275,11 @@ services:
     image: redis:8-alpine
     container_name: sub2api-redis
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "${DOCKER_LOG_MAX_SIZE:-100m}"
+        max-file: "${DOCKER_LOG_MAX_FILE:-3}"
     ulimits:
       nofile:
         soft: 100000

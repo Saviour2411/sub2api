@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"strings"
+	"sync"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -12,7 +13,60 @@ import (
 )
 
 type usageBillingRepository struct {
-	db *sql.DB
+	db           *sql.DB
+	balanceGates userBillingGate
+}
+
+type userBillingGate struct {
+	mu      sync.Mutex
+	entries map[int64]*userBillingGateEntry
+}
+
+type userBillingGateEntry struct {
+	semaphore chan struct{}
+	refs      int
+}
+
+func (g *userBillingGate) acquire(ctx context.Context, userID int64) (func(), error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	g.mu.Lock()
+	if g.entries == nil {
+		g.entries = make(map[int64]*userBillingGateEntry)
+	}
+	entry := g.entries[userID]
+	if entry == nil {
+		entry = &userBillingGateEntry{semaphore: make(chan struct{}, 1)}
+		g.entries[userID] = entry
+	}
+	entry.refs++
+	g.mu.Unlock()
+
+	select {
+	case entry.semaphore <- struct{}{}:
+		var once sync.Once
+		return func() {
+			once.Do(func() {
+				<-entry.semaphore
+				g.releaseRef(userID, entry)
+			})
+		}, nil
+	case <-ctx.Done():
+		g.releaseRef(userID, entry)
+		return nil, ctx.Err()
+	}
+}
+
+func (g *userBillingGate) releaseRef(userID int64, entry *userBillingGateEntry) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	entry.refs--
+	if entry.refs == 0 && g.entries[userID] == entry {
+		delete(g.entries, userID)
+	}
 }
 
 func NewUsageBillingRepository(_ *dbent.Client, sqlDB *sql.DB) service.UsageBillingRepository {
@@ -30,6 +84,13 @@ func (r *usageBillingRepository) Apply(ctx context.Context, cmd *service.UsageBi
 	cmd.Normalize()
 	if cmd.RequestID == "" {
 		return nil, service.ErrUsageBillingRequestIDRequired
+	}
+	if cmd.BalanceCost > 0 {
+		release, err := r.balanceGates.acquire(ctx, cmd.UserID)
+		if err != nil {
+			return nil, err
+		}
+		defer release()
 	}
 
 	tx, err := r.db.BeginTx(ctx, nil)
