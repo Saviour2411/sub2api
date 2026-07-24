@@ -155,7 +155,7 @@
 | `CUST-OPS-002` | 保留生产 Compose | 自动部署默认不上传仓库 Compose，只更新远端 `.env` 镜像标签并使用活动 Compose，防止通用命名卷配置覆盖生产文件。 | `.github/workflows/release.yml`、`deploy/remote-deploy.sh` | 运维约束 |
 | `CUST-OPS-003` | 生产数据与网络拓扑 | 生产实例必须保持 bind mount 数据目录、仅回环地址暴露、两个活动 Compose 一致，以及业务要求的 HTTP upstream 安全开关；Compose 透传实例级数据保留参数，具体保留天数、实例专用路径和连接参数只保存在不跟踪的 `.env` 与本地运维说明中。 | `deploy/docker-compose.yml`、`deploy/docker-compose.sub2api.yml`、`deploy/remote-deploy.sh`、`.github/workflows/release.yml` | 运维约束 |
 | `CUST-OPS-004` | 本地 CI 与安全门禁 | Push/PR 运行 Go 1.26.5 单元和集成测试、Node 20 前端测试、lint、部署脚本检查及依赖安全扫描；发布前以远端 CI 为最终门禁。 | `.github/workflows/backend-ci.yml`、`.github/workflows/security-scan.yml` | 运维约束 |
-| `CUST-OPS-005` | 小规格生产资源保护 | Compose 透传 Go 内存、用量 worker、数据库连接与并行查询参数，并为应用、PostgreSQL 和 Redis 配置有界 Docker 日志轮转；实例具体值保存在未跟踪的 `.env` 中。 | `deploy/docker-compose.yml`、`deploy/docker-compose.sub2api.yml`、`deploy/.env.example` | 运维约束 |
+| `CUST-OPS-005` | 生产资源保护与调优 | Compose 透传 Go 内存、用量 worker、数据库连接与并行查询参数，并为应用、PostgreSQL 和 Redis 配置有界 Docker 日志轮转；参数按生产主机规格和实测压力调整，实例具体值保存在未跟踪的 `.env` 与本地运维说明中。 | `deploy/docker-compose.yml`、`deploy/docker-compose.sub2api.yml`、`deploy/.env.example` | 运维约束 |
 
 ## 变更记录
 
@@ -163,6 +163,7 @@
 
 | 日期 | 版本/提交 | 类型 | 功能编号 | 变更与原因 | 验证 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-07-25 | `0.1.210` / 待提交 | 修改 | `CUST-OPS-005` | 生产实例迁移至 4 vCPU、8 GiB 内存主机后，重新评估实例级运行参数：释放 Go 四核并行和更大堆空间，提高用量 worker、HTTP 空闲连接复用及 PostgreSQL 缓存与并行查询能力，同时保持数据库连接总量、计费超时、队列上限和日志轮转边界。具体实例值仅记录在不跟踪的本地运维说明中。 | 新旧主机资源对比、Compose 配置解析、容器实际环境变量、PostgreSQL 实际参数、挂载/健康检查及生产观察 |
 | 2026-07-24 | `0.1.210` / 待提交 | 修改 | `CUST-GW-010`、`CUST-BILL-006` | 生产 GC 诊断确认高并发 Responses 请求在长流期间保留多份最大约 52 MB 的请求体，live heap 可增长至约 3.1 GiB 并触发 OOM；改为首个有效输出后释放不再用于故障转移的大对象。usage worker 改为按用户聚合排空，避免热用户的 gate 等待占满全部 worker 并持续产生 5 秒扣费超时，不改变用户入口并发。 | 请求体释放时机/幂等测试、keyed worker 同用户串行/不同用户并行/超时窗口/队列清理测试、Go race/全量测试、生产 30 分钟稳定观察 |
 | 2026-07-24 | `0.1.209` / 待提交 | 新增 | `CUST-BILL-006`、`CUST-OPS-005` | 同一用户余额扣费在开启事务前改为进程内串行，避免高并发请求同时占用连接并争抢 `users` 行锁；后台扣费继续隔离请求取消，但不再覆盖 usage worker 的较短 deadline。Compose 新增 worker、PostgreSQL 并行查询与 Docker 日志轮转参数透传，为 2 核小内存生产实例提供可回滚的资源保护。 | gate 并发/取消/事务退出测试、worker deadline 测试、计费幂等集成测试、Go race/全量测试、Compose 一致性与生产健康检查 |
 | 2026-07-23 | `0.1.208` / 待提交 | 修改 | `CUST-OPS-003` | 两份生产 Compose 增加 `DASHBOARD_AGGREGATION_RETENTION_USAGE_LOGS_DAYS` 环境变量透传，仓库默认值仍为 90 天，生产实例通过未跟踪的 `.env` 配置为 30 天。修复 `.env` 已设置保留策略但变量未进入应用容器、运行时仍使用代码默认值的问题。 | 两份 Compose 内容一致性、`docker compose config`、生产容器环境变量与健康检查 |
