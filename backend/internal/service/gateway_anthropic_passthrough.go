@@ -339,6 +339,16 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, clientBeta); changed {
 		body = sanitized
 	}
+	filteredBody, _, err := filterAnthropicSamplingParametersWithSettings(
+		ctx,
+		s.settingService,
+		body,
+		gjson.GetBytes(body, "model").String(),
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	body = filteredBody
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {

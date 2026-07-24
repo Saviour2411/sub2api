@@ -83,11 +83,12 @@
 | --- | --- | --- | --- | --- |
 | `CUST-PROTO-001` | OpenAI Codex CLI 模拟与客户端策略 | API Key/OAuth 路径支持 Codex CLI 请求模拟、User-Agent 和版本范围策略、App Server 客户端识别及能力探测一致性。 | `backend/internal/service/openai_codex_emulation.go`、`backend/internal/service/openai_codex_identity.go` | 生效中 |
 | `CUST-PROTO-002` | Codex 图片工具策略 | 可完全禁用或按策略处理图片生成工具；覆盖原生 Responses、Chat fallback、namespace 和 WSv2，防止换名、嵌套或重复注入绕过。 | `backend/internal/service/codex_image_generation_bridge.go`、`backend/internal/service/openai_responses_namespace.go`、`backend/internal/service/setting_service_codex_policy_test.go` | 生效中 |
-| `CUST-PROTO-003` | Anthropic Claude Code 上游模拟 | 支持全局开关和分组开关，将普通下游请求按 Claude Code 客户端规则清洗、补充和转发；账号测试与真实网关使用同一策略。 | `backend/internal/service/gateway_anthropic_mimicry_sanitize.go`、`backend/internal/service/gateway_anthropic_oauth_mimicry.go`、`backend/migrations/156_add_group_claude_code_upstream_mimicry.sql` | 生效中 |
+| `CUST-PROTO-003` | Anthropic Claude Code 上游模拟 | 支持全局开关，将普通下游请求按 Claude Code 客户端规则清洗、补充和转发；账号测试与真实网关使用同一策略。 | `backend/internal/service/gateway_anthropic_mimicry_sanitize.go`、`backend/internal/service/gateway_anthropic_oauth_mimicry.go` | 生效中 |
 | `CUST-PROTO-004` | Claude OAuth 提示词与协议清洗 | 可配置 OAuth system prompt/blocks，处理 beta header、thinking block、Bedrock CC 兼容和重试时的协议字段。 | `backend/internal/service/gateway_claude_oauth_body.go`、`backend/internal/service/gateway_tool_rewrite.go`、`backend/internal/service/setting_update.go` | 生效中 |
 | `CUST-PROTO-005` | API Key 账号请求头覆写 | Anthropic/OpenAI API Key 账号可以配置请求头覆写；真实转发、模型列表、能力探测、count tokens、Images 和 WS 使用一致的最终请求头。 | `backend/internal/service/openai_gateway_forward.go`、`backend/internal/service/upstream_models.go`、`frontend/src/components/account/EditAccountModal.vue` | 生效中 |
 | `CUST-PROTO-006` | 请求端点与 compact 信号规范化 | 从原始路径规范化入站端点，区分 Responses compact，识别 `compaction_trigger`，并保留本地 HTTP 流转 WSv2 和 namespace 的决策边界。 | `backend/internal/handler/gateway_handler.go`、`backend/internal/service/openai_gateway_request_body.go`、`backend/internal/service/openai_ws_http_bridge.go` | 生效中 |
 | `CUST-PROTO-007` | Responses 渠道监控请求格式 | 渠道监控使用结构化 Responses `input` 消息数组，而不是普通字符串；上游同步不得退回非标准请求体。 | `backend/internal/service/channel_monitor_checker.go`、`frontend/src/components/admin/monitor/MonitorAdvancedRequestConfig.vue` | 兼容覆盖 |
+| `CUST-PROTO-008` | Anthropic 采样参数过滤 | 在二开网关配置中按最终上游模型精确匹配或末尾通配符匹配，从 REST Messages 请求体删除已被新模型弃用的 `temperature`、`top_k` 和 `top_p`；覆盖 API Key、OAuth、协议转换、直通和账号测试，默认关闭。 | `backend/internal/service/gateway_anthropic_sampling_filter.go`、`backend/internal/service/custom_feature_settings.go`、`frontend/src/views/admin/CustomFeaturesView.vue` | 生效中 |
 
 ### 账号与运维测试
 
@@ -163,6 +164,7 @@
 
 | 日期 | 版本/提交 | 类型 | 功能编号 | 变更与原因 | 验证 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-07-25 | `0.1.210` / 待提交 | 新增/移除 | `CUST-PROTO-003`、`CUST-PROTO-008` | 确认分组级 `claude_code_upstream_mimicry` 为已脱离运行链路的历史二开，新增向前 migration 删除数据库列与索引并清理 Ent 字段，保留仍生效的全局 Claude Code 模拟；新增按最终上游模型过滤 Anthropic REST Messages 根级 `temperature`、`top_k`、`top_p` 的网关配置，支持精确 ID 和末尾通配符，并同步用于账号测试。 | 配置读写/校验/缓存测试、清洗器与两类 Messages 构造器测试、账号模型映射测试、前端配置与兼容测试、Ent codegen、Go/前端全量检查 |
 | 2026-07-25 | `0.1.210` / 待提交 | 修改 | `CUST-OPS-005` | 生产实例迁移至 4 vCPU、8 GiB 内存主机后，重新评估实例级运行参数：释放 Go 四核并行和更大堆空间，提高用量 worker、HTTP 空闲连接复用及 PostgreSQL 缓存与并行查询能力，同时保持数据库连接总量、计费超时、队列上限和日志轮转边界。具体实例值仅记录在不跟踪的本地运维说明中。 | 新旧主机资源对比、Compose 配置解析、容器实际环境变量、PostgreSQL 实际参数、挂载/健康检查及生产观察 |
 | 2026-07-24 | `0.1.210` / 待提交 | 修改 | `CUST-GW-010`、`CUST-BILL-006` | 生产 GC 诊断确认高并发 Responses 请求在长流期间保留多份最大约 52 MB 的请求体，live heap 可增长至约 3.1 GiB 并触发 OOM；改为首个有效输出后释放不再用于故障转移的大对象。usage worker 改为按用户聚合排空，避免热用户的 gate 等待占满全部 worker 并持续产生 5 秒扣费超时，不改变用户入口并发。 | 请求体释放时机/幂等测试、keyed worker 同用户串行/不同用户并行/超时窗口/队列清理测试、Go race/全量测试、生产 30 分钟稳定观察 |
 | 2026-07-24 | `0.1.209` / 待提交 | 新增 | `CUST-BILL-006`、`CUST-OPS-005` | 同一用户余额扣费在开启事务前改为进程内串行，避免高并发请求同时占用连接并争抢 `users` 行锁；后台扣费继续隔离请求取消，但不再覆盖 usage worker 的较短 deadline。Compose 新增 worker、PostgreSQL 并行查询与 Docker 日志轮转参数透传，为 2 核小内存生产实例提供可回滚的资源保护。 | gate 并发/取消/事务退出测试、worker deadline 测试、计费幂等集成测试、Go race/全量测试、Compose 一致性与生产健康检查 |
@@ -192,7 +194,7 @@
 
 1. 网关 handler/service 签名变化：`CUST-GW-001` 至 `CUST-GW-009`；
 2. OpenAI Responses、WSv2、namespace、图片工具变化：`CUST-PROTO-001`、`CUST-PROTO-002`、`CUST-PROTO-006`、`CUST-PROTO-007`；
-3. Anthropic 请求转换和账号测试变化：`CUST-PROTO-003`、`CUST-PROTO-004`、`CUST-ACC-005`；
+3. Anthropic 请求转换和账号测试变化：`CUST-PROTO-003`、`CUST-PROTO-004`、`CUST-PROTO-008`、`CUST-ACC-005`；
 4. 计费和 usage schema 变化：`CUST-BILL-001` 至 `CUST-BILL-005`；
 5. account/group/channel/payment schema 变化：`CUST-ACC-001`、`CUST-ACC-006`、`CUST-PROD-005`、`CUST-PROD-006`；
 6. 前端设置、导航和公共配置变化：`CUST-PROD-001`、`CUST-PROD-002`、`CUST-OBS-002`、`CUST-UI-001` 至 `CUST-UI-005`；

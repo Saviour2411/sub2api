@@ -96,6 +96,12 @@ const ConfirmDialogStub = defineComponent({
   template: '<div v-if="show" data-test="confirm-dialog"><button data-test="confirm-dialog-confirm" @click="$emit(\'confirm\')">confirm</button><button @click="$emit(\'cancel\')">cancel</button></div>',
 })
 
+const ModelWhitelistSelectorStub = defineComponent({
+  props: { modelValue: { type: Array, default: () => [] } },
+  emits: ['update:modelValue'],
+  template: '<div data-test="model-whitelist-selector"><button type="button" data-test="add-sampling-filter-model" @click="$emit(\'update:modelValue\', [...modelValue, \'claude-opus-*\'])">add</button></div>',
+})
+
 function settingsFixture(): CustomFeatureSettings {
   return {
     model_marketplace: {
@@ -129,6 +135,8 @@ function settingsFixture(): CustomFeatureSettings {
       upstream_error_consecutive_threshold: 10,
       image_group_success_rate_visible: true,
       anthropic_claude_code_mimicry_enabled: false,
+      anthropic_sampling_parameter_filter_enabled: false,
+      anthropic_sampling_parameter_filter_models: [],
       disable_recharge_bonus_for_custom_rate_users: false,
     },
   }
@@ -144,6 +152,7 @@ function mountView() {
         UpstreamManagementPanel: { template: '<div data-test="upstream-management-panel" />' },
         Select: SelectStub,
         ConfirmDialog: ConfirmDialogStub,
+        ModelWhitelistSelector: ModelWhitelistSelectorStub,
       },
     },
   })
@@ -210,6 +219,9 @@ describe('admin CustomFeaturesView', () => {
     expect(wrapper.get<HTMLInputElement>('[data-test="gateway-upstream-error-consecutive-threshold"]').element.value).toBe('10')
 
     await wrapper.get('[data-test="gateway-anthropic-claude-code-mimicry-enabled"]').trigger('click')
+    await wrapper.get('[data-test="gateway-anthropic-sampling-parameter-filter-enabled"]').trigger('click')
+    expect(wrapper.find('[data-test="gateway-anthropic-sampling-parameter-filter-models"]').exists()).toBe(true)
+    await wrapper.get('[data-test="add-sampling-filter-model"]').trigger('click')
     await wrapper.get('[data-test="gateway-disable-recharge-bonus-for-custom-rate-users"]').trigger('click')
 
     await wrapper.get('[data-test="gateway-pool-retry-status-codes"]').setValue('504 401, 504, 429')
@@ -227,6 +239,8 @@ describe('admin CustomFeaturesView', () => {
       upstream_error_consecutive_threshold: 10,
       image_group_success_rate_visible: true,
       anthropic_claude_code_mimicry_enabled: true,
+      anthropic_sampling_parameter_filter_enabled: true,
+      anthropic_sampling_parameter_filter_models: ['claude-opus-*'],
       disable_recharge_bonus_for_custom_rate_users: true,
     })
     expect(updateDailyCheckin).not.toHaveBeenCalled()
@@ -240,6 +254,8 @@ describe('admin CustomFeaturesView', () => {
     delete legacyGateway.upstream_error_status_codes
     delete legacyGateway.upstream_error_consecutive_threshold
     delete legacyGateway.anthropic_claude_code_mimicry_enabled
+    delete legacyGateway.anthropic_sampling_parameter_filter_enabled
+    delete legacyGateway.anthropic_sampling_parameter_filter_models
     delete legacyGateway.disable_recharge_bonus_for_custom_rate_users
     getSettings.mockResolvedValueOnce({
       ...legacySettings,
@@ -266,8 +282,55 @@ describe('admin CustomFeaturesView', () => {
       wrapper.get('[data-test="gateway-anthropic-claude-code-mimicry-enabled"]').text()
     ).toBe('off')
     expect(
+      wrapper.get('[data-test="gateway-anthropic-sampling-parameter-filter-enabled"]').text()
+    ).toBe('off')
+    expect(
+      wrapper.find('[data-test="gateway-anthropic-sampling-parameter-filter-models"]').exists()
+    ).toBe(false)
+    expect(
       wrapper.get('[data-test="gateway-disable-recharge-bonus-for-custom-rate-users"]').text()
     ).toBe('off')
+  })
+
+  it('校验 Anthropic 采样参数过滤模型并在关闭时保留选择', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="custom-feature-tab-gateway"]').trigger('click')
+
+    await wrapper.get('[data-test="gateway-anthropic-sampling-parameter-filter-enabled"]').trigger('click')
+    await wrapper.get('[data-test="gateway-form"]').trigger('submit')
+    expect(updateGateway).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenLastCalledWith(
+      'admin.customFeatures.gateway.validation.samplingParameterFilterModelsRequired'
+    )
+
+    const selector = wrapper.findComponent(ModelWhitelistSelectorStub)
+    selector.vm.$emit('update:modelValue', ['*'])
+    await wrapper.vm.$nextTick()
+    await wrapper.get('[data-test="gateway-form"]').trigger('submit')
+    expect(updateGateway).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenLastCalledWith(
+      'admin.customFeatures.gateway.validation.samplingParameterFilterModelPattern'
+    )
+
+    selector.vm.$emit('update:modelValue', [' claude-opus-* ', 'claude-opus-*'])
+    await wrapper.vm.$nextTick()
+    await wrapper.get('[data-test="gateway-anthropic-sampling-parameter-filter-enabled"]').trigger('click')
+    expect(wrapper.find('[data-test="gateway-anthropic-sampling-parameter-filter-models"]').exists()).toBe(false)
+    await wrapper.get('[data-test="gateway-anthropic-sampling-parameter-filter-enabled"]').trigger('click')
+    expect(wrapper.findComponent(ModelWhitelistSelectorStub).props('modelValue')).toEqual([
+      ' claude-opus-* ',
+      'claude-opus-*',
+    ])
+
+    await wrapper.get('[data-test="gateway-form"]').trigger('submit')
+    await flushPromises()
+    expect(updateGateway).toHaveBeenCalledWith(
+      expect.objectContaining({
+        anthropic_sampling_parameter_filter_enabled: true,
+        anthropic_sampling_parameter_filter_models: ['claude-opus-*'],
+      })
+    )
   })
 
   it('rejects invalid gateway status codes and decreasing probe backoff', async () => {

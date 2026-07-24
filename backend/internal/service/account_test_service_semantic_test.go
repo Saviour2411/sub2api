@@ -1,9 +1,15 @@
 package service
 
-import "testing"
+import (
+	"sync"
+	"testing"
+)
+
+var semanticSettingTestMu sync.Mutex
 
 func testSemanticSettingService(t *testing.T, platform string, pattern string, customMessage string) *SettingService {
 	t.Helper()
+	semanticSettingTestMu.Lock()
 	svc := &SettingService{}
 	svc.refreshCachedSettings(&SystemSettings{
 		SemanticErrorDetectionEnabled: true,
@@ -22,6 +28,7 @@ func testSemanticSettingService(t *testing.T, platform string, pattern string, c
 	})
 	t.Cleanup(func() {
 		svc.refreshCachedSettings(&SystemSettings{})
+		semanticSettingTestMu.Unlock()
 	})
 	return svc
 }

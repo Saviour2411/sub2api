@@ -21023,7 +21023,6 @@ type GroupMutation struct {
 	web_search_price_per_call               *float64
 	addweb_search_price_per_call            *float64
 	claude_code_only                        *bool
-	claude_code_upstream_mimicry            *bool
 	fallback_group_id                       *int64
 	addfallback_group_id                    *int64
 	fallback_group_id_on_invalid_request    *int64
@@ -22950,42 +22949,6 @@ func (m *GroupMutation) ResetClaudeCodeOnly() {
 	m.claude_code_only = nil
 }
 
-// SetClaudeCodeUpstreamMimicry sets the "claude_code_upstream_mimicry" field.
-func (m *GroupMutation) SetClaudeCodeUpstreamMimicry(b bool) {
-	m.claude_code_upstream_mimicry = &b
-}
-
-// ClaudeCodeUpstreamMimicry returns the value of the "claude_code_upstream_mimicry" field in the mutation.
-func (m *GroupMutation) ClaudeCodeUpstreamMimicry() (r bool, exists bool) {
-	v := m.claude_code_upstream_mimicry
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldClaudeCodeUpstreamMimicry returns the old "claude_code_upstream_mimicry" field's value of the Group entity.
-// If the Group object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *GroupMutation) OldClaudeCodeUpstreamMimicry(ctx context.Context) (v bool, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldClaudeCodeUpstreamMimicry is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldClaudeCodeUpstreamMimicry requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldClaudeCodeUpstreamMimicry: %w", err)
-	}
-	return oldValue.ClaudeCodeUpstreamMimicry, nil
-}
-
-// ResetClaudeCodeUpstreamMimicry resets all changes to the "claude_code_upstream_mimicry" field.
-func (m *GroupMutation) ResetClaudeCodeUpstreamMimicry() {
-	m.claude_code_upstream_mimicry = nil
-}
-
 // SetFallbackGroupID sets the "fallback_group_id" field.
 func (m *GroupMutation) SetFallbackGroupID(i int64) {
 	m.fallback_group_id = &i
@@ -24125,7 +24088,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 52)
+	fields := make([]string, 0, 51)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -24230,9 +24193,6 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.claude_code_only != nil {
 		fields = append(fields, group.FieldClaudeCodeOnly)
-	}
-	if m.claude_code_upstream_mimicry != nil {
-		fields = append(fields, group.FieldClaudeCodeUpstreamMimicry)
 	}
 	if m.fallback_group_id != nil {
 		fields = append(fields, group.FieldFallbackGroupID)
@@ -24360,8 +24320,6 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.WebSearchPricePerCall()
 	case group.FieldClaudeCodeOnly:
 		return m.ClaudeCodeOnly()
-	case group.FieldClaudeCodeUpstreamMimicry:
-		return m.ClaudeCodeUpstreamMimicry()
 	case group.FieldFallbackGroupID:
 		return m.FallbackGroupID()
 	case group.FieldFallbackGroupIDOnInvalidRequest:
@@ -24473,8 +24431,6 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldWebSearchPricePerCall(ctx)
 	case group.FieldClaudeCodeOnly:
 		return m.OldClaudeCodeOnly(ctx)
-	case group.FieldClaudeCodeUpstreamMimicry:
-		return m.OldClaudeCodeUpstreamMimicry(ctx)
 	case group.FieldFallbackGroupID:
 		return m.OldFallbackGroupID(ctx)
 	case group.FieldFallbackGroupIDOnInvalidRequest:
@@ -24760,13 +24716,6 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetClaudeCodeOnly(v)
-		return nil
-	case group.FieldClaudeCodeUpstreamMimicry:
-		v, ok := value.(bool)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetClaudeCodeUpstreamMimicry(v)
 		return nil
 	case group.FieldFallbackGroupID:
 		v, ok := value.(int64)
@@ -25387,9 +25336,6 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldClaudeCodeOnly:
 		m.ResetClaudeCodeOnly()
-		return nil
-	case group.FieldClaudeCodeUpstreamMimicry:
-		m.ResetClaudeCodeUpstreamMimicry()
 		return nil
 	case group.FieldFallbackGroupID:
 		m.ResetFallbackGroupID()

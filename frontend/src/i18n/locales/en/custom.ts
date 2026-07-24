@@ -370,6 +370,11 @@ export default {
           description: 'When enabled, API key accounts without passthrough mode in all Anthropic groups mimic Claude Code requests. OAuth accounts continue to mimic automatically, and genuine Claude Code requests are not rewritten.',
           enabled: 'Enable mimicry',
         },
+        anthropicSamplingParameterFilter: {
+          title: 'Anthropic Sampling Parameter Filter',
+          description: 'Remove temperature, top_k and top_p from REST Messages bodies after the final upstream model matches. Exact model IDs and trailing wildcards are supported.',
+          enabled: 'Enable filter',
+        },
         customRateRechargeBonus: {
           title: 'Disable Top-up Bonuses for Custom-rate Users',
           description: 'When enabled, users with a custom multiplier in any group receive only the original top-up amount, without tier bonuses or the legacy recharge multiplier.',
@@ -427,6 +432,8 @@ export default {
           firstTokenConsecutiveThreshold: 'The consecutive first-token timeout threshold must be an integer from 1 to 100',
           upstreamErrorConsecutiveThreshold: 'The consecutive upstream error threshold must be an integer from 1 to 100',
           upstreamErrorStatusCodes: 'Consecutive upstream error status codes must be integers from 100 to 599 separated by commas or spaces',
+          samplingParameterFilterModelsRequired: 'Select at least one model when the Anthropic sampling parameter filter is enabled',
+          samplingParameterFilterModelPattern: 'Model patterns must be exact IDs or use a trailing wildcard, and a standalone * is not allowed',
         },
       },
       dailyCheckin: {

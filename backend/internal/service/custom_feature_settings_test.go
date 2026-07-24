@@ -249,21 +249,26 @@ func TestSettingService_GetGatewaySettings_UsesDefaultsAndStoredValues(t *testin
 	require.Equal(t, 10, defaults.UpstreamErrorConsecutiveThreshold)
 	require.True(t, defaults.ImageGroupSuccessRateVisible)
 	require.False(t, defaults.AnthropicClaudeCodeMimicryEnabled)
+	require.False(t, defaults.AnthropicSamplingParameterFilterEnabled)
+	require.Empty(t, defaults.AnthropicSamplingParameterFilterModels)
+	require.NotNil(t, defaults.AnthropicSamplingParameterFilterModels)
 	require.False(t, defaults.DisableRechargeBonusForCustomRateUsers)
 	require.Equal(t, int64(1), defaults.FailurePolicyRevision)
 
 	repo := &customFeatureSettingsRepoStub{values: map[string]string{
-		SettingKeyGatewayDefaultPoolModeRetryCount:              "4",
-		SettingKeyGatewayDefaultPoolModeRetryStatusCodes:        `[504,429,429]`,
-		SettingKeyGatewayAutoManagedProbeBackoffMinutes:         `[2,8,8,30]`,
-		SettingKeyGatewayFirstTokenTimeoutSeconds:               "0",
-		SettingKeyGatewayFirstTokenTimeoutConsecutiveThreshold:  "4",
-		SettingKeyGatewayUpstreamErrorStatusCodes:               `[504,502,502]`,
-		SettingKeyGatewayUpstreamErrorConsecutiveThreshold:      "7",
-		SettingKeyGatewayImageGroupSuccessRateVisible:           "false",
-		SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled:      "true",
-		SettingKeyGatewayDisableRechargeBonusForCustomRateUsers: "true",
-		SettingKeyGatewayFailurePolicyRevision:                  "7",
+		SettingKeyGatewayDefaultPoolModeRetryCount:               "4",
+		SettingKeyGatewayDefaultPoolModeRetryStatusCodes:         `[504,429,429]`,
+		SettingKeyGatewayAutoManagedProbeBackoffMinutes:          `[2,8,8,30]`,
+		SettingKeyGatewayFirstTokenTimeoutSeconds:                "0",
+		SettingKeyGatewayFirstTokenTimeoutConsecutiveThreshold:   "4",
+		SettingKeyGatewayUpstreamErrorStatusCodes:                `[504,502,502]`,
+		SettingKeyGatewayUpstreamErrorConsecutiveThreshold:       "7",
+		SettingKeyGatewayImageGroupSuccessRateVisible:            "false",
+		SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled:       "true",
+		SettingKeyGatewayAnthropicSamplingParameterFilterEnabled: "true",
+		SettingKeyGatewayAnthropicSamplingParameterFilterModels:  `[" claude-opus-4-8 ","claude-opus-*","claude-opus-4-8",""]`,
+		SettingKeyGatewayDisableRechargeBonusForCustomRateUsers:  "true",
+		SettingKeyGatewayFailurePolicyRevision:                   "7",
 	}}
 	svc := NewSettingService(repo, &config.Config{})
 	settings, err := svc.GetGatewaySettings(context.Background())
@@ -277,6 +282,8 @@ func TestSettingService_GetGatewaySettings_UsesDefaultsAndStoredValues(t *testin
 	require.Equal(t, 7, settings.UpstreamErrorConsecutiveThreshold)
 	require.False(t, settings.ImageGroupSuccessRateVisible)
 	require.True(t, settings.AnthropicClaudeCodeMimicryEnabled)
+	require.True(t, settings.AnthropicSamplingParameterFilterEnabled)
+	require.Equal(t, []string{"claude-opus-4-8", "claude-opus-*"}, settings.AnthropicSamplingParameterFilterModels)
 	require.True(t, settings.DisableRechargeBonusForCustomRateUsers)
 	require.Equal(t, int64(7), settings.FailurePolicyRevision)
 }
@@ -288,16 +295,18 @@ func TestSettingService_UpdateGatewaySettings_NormalizesCachesAndReschedules(t *
 	svc.SetScheduledTestPlanRepository(planRepo)
 
 	updated, err := svc.UpdateGatewaySettings(context.Background(), GatewaySettings{
-		DefaultPoolModeRetryCount:              2,
-		DefaultPoolModeRetryStatusCodes:        []int{503, 429, 503},
-		AutoManagedProbeBackoffMinutes:         []int{1, 3, 10},
-		FirstTokenTimeoutSeconds:               25,
-		FirstTokenTimeoutConsecutiveThreshold:  4,
-		UpstreamErrorStatusCodes:               []int{504, 502, 504},
-		UpstreamErrorConsecutiveThreshold:      8,
-		ImageGroupSuccessRateVisible:           false,
-		AnthropicClaudeCodeMimicryEnabled:      true,
-		DisableRechargeBonusForCustomRateUsers: true,
+		DefaultPoolModeRetryCount:               2,
+		DefaultPoolModeRetryStatusCodes:         []int{503, 429, 503},
+		AutoManagedProbeBackoffMinutes:          []int{1, 3, 10},
+		FirstTokenTimeoutSeconds:                25,
+		FirstTokenTimeoutConsecutiveThreshold:   4,
+		UpstreamErrorStatusCodes:                []int{504, 502, 504},
+		UpstreamErrorConsecutiveThreshold:       8,
+		ImageGroupSuccessRateVisible:            false,
+		AnthropicClaudeCodeMimicryEnabled:       true,
+		AnthropicSamplingParameterFilterEnabled: true,
+		AnthropicSamplingParameterFilterModels:  []string{" claude-opus-4-8 ", "claude-opus-*", "claude-opus-4-8", ""},
+		DisableRechargeBonusForCustomRateUsers:  true,
 	})
 	require.NoError(t, err)
 	require.Equal(t, []int{429, 503}, updated.DefaultPoolModeRetryStatusCodes)
@@ -308,6 +317,8 @@ func TestSettingService_UpdateGatewaySettings_NormalizesCachesAndReschedules(t *
 	require.Equal(t, `[502,504]`, repo.updates[SettingKeyGatewayUpstreamErrorStatusCodes])
 	require.Equal(t, "8", repo.updates[SettingKeyGatewayUpstreamErrorConsecutiveThreshold])
 	require.Equal(t, "true", repo.updates[SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled])
+	require.Equal(t, "true", repo.updates[SettingKeyGatewayAnthropicSamplingParameterFilterEnabled])
+	require.Equal(t, `["claude-opus-4-8","claude-opus-*"]`, repo.updates[SettingKeyGatewayAnthropicSamplingParameterFilterModels])
 	require.Equal(t, "true", repo.updates[SettingKeyGatewayDisableRechargeBonusForCustomRateUsers])
 	require.Equal(t, "2", repo.updates[SettingKeyGatewayFailurePolicyRevision])
 	require.Equal(t, int64(2), updated.FailurePolicyRevision)
@@ -319,18 +330,24 @@ func TestSettingService_UpdateGatewaySettings_NormalizesCachesAndReschedules(t *
 	require.Equal(t, []int{502, 504}, runtime.UpstreamErrorStatusCodes)
 	require.False(t, runtime.ImageGroupSuccessRateVisible)
 	require.True(t, runtime.AnthropicClaudeCodeMimicryEnabled)
+	require.True(t, runtime.AnthropicSamplingParameterFilterEnabled)
+	require.Equal(t, []string{"claude-opus-4-8", "claude-opus-*"}, runtime.AnthropicSamplingParameterFilterModels)
 	require.True(t, runtime.DisableRechargeBonusForCustomRateUsers)
 
 	updated.DefaultPoolModeRetryStatusCodes[0] = 500
 	updated.UpstreamErrorStatusCodes[0] = 500
+	updated.AnthropicSamplingParameterFilterModels[0] = "mutated"
 	require.Equal(t, []int{429, 503}, svc.GetGatewayRuntime(context.Background()).DefaultPoolModeRetryStatusCodes)
 	require.Equal(t, []int{502, 504}, svc.GetGatewayRuntime(context.Background()).UpstreamErrorStatusCodes)
+	require.Equal(t, []string{"claude-opus-4-8", "claude-opus-*"}, svc.GetGatewayRuntime(context.Background()).AnthropicSamplingParameterFilterModels)
 
 	unchangedPolicyInput := cloneGatewaySettings(*updated)
 	unchangedPolicyInput.DefaultPoolModeRetryStatusCodes = []int{429, 503}
 	unchangedPolicyInput.UpstreamErrorStatusCodes = []int{502, 504}
 	unchangedPolicyInput.ImageGroupSuccessRateVisible = true
 	unchangedPolicyInput.AnthropicClaudeCodeMimicryEnabled = false
+	unchangedPolicyInput.AnthropicSamplingParameterFilterEnabled = false
+	unchangedPolicyInput.AnthropicSamplingParameterFilterModels = []string{"claude-sonnet-4-6"}
 	unchangedPolicyInput.DisableRechargeBonusForCustomRateUsers = false
 	unchangedPolicyInput.AutoManagedProbeBackoffMinutes = []int{2, 4, 12}
 	unchangedPolicy, err := svc.UpdateGatewaySettings(context.Background(), unchangedPolicyInput)
@@ -343,6 +360,24 @@ func TestSettingService_UpdateGatewaySettings_NormalizesCachesAndReschedules(t *
 	changedPolicy, err := svc.UpdateGatewaySettings(context.Background(), changedPolicyInput)
 	require.NoError(t, err)
 	require.Equal(t, int64(3), changedPolicy.FailurePolicyRevision)
+}
+
+func TestSettingService_UpdateGatewaySettings_采样过滤变更不重排自动探测(t *testing.T) {
+	repo := &customFeatureSettingsRepoStub{}
+	planRepo := &scheduledTestPlanRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+	svc.SetScheduledTestPlanRepository(planRepo)
+
+	input := DefaultGatewaySettings()
+	input.AnthropicSamplingParameterFilterEnabled = true
+	input.AnthropicSamplingParameterFilterModels = []string{"claude-opus-4-8"}
+
+	updated, err := svc.UpdateGatewaySettings(context.Background(), input)
+	require.NoError(t, err)
+	require.True(t, updated.AnthropicSamplingParameterFilterEnabled)
+	require.Equal(t, []string{"claude-opus-4-8"}, updated.AnthropicSamplingParameterFilterModels)
+	require.Empty(t, planRepo.rescheduledSteps)
+	require.True(t, planRepo.rescheduledAt.IsZero())
 }
 
 func TestSettingService_UpdateGatewaySettings_AcceptsEmptyRetryStatusCodes(t *testing.T) {
@@ -392,6 +427,10 @@ func TestSettingService_UpdateGatewaySettings_RejectsInvalidValues(t *testing.T)
 		{name: "上游状态码越界", mutate: func(v *GatewaySettings) { v.UpstreamErrorStatusCodes = []int{600} }},
 		{name: "上游错误阈值为零", mutate: func(v *GatewaySettings) { v.UpstreamErrorConsecutiveThreshold = 0 }},
 		{name: "上游错误阈值过大", mutate: func(v *GatewaySettings) { v.UpstreamErrorConsecutiveThreshold = 101 }},
+		{name: "采样参数过滤缺少模型", mutate: func(v *GatewaySettings) { v.AnthropicSamplingParameterFilterEnabled = true }},
+		{name: "采样参数过滤裸通配符", mutate: func(v *GatewaySettings) { v.AnthropicSamplingParameterFilterModels = []string{"*"} }},
+		{name: "采样参数过滤中间通配符", mutate: func(v *GatewaySettings) { v.AnthropicSamplingParameterFilterModels = []string{"claude-*-4-8"} }},
+		{name: "采样参数过滤多个通配符", mutate: func(v *GatewaySettings) { v.AnthropicSamplingParameterFilterModels = []string{"claude-**"} }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

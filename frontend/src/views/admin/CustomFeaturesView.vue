@@ -178,6 +178,38 @@
             </div>
           </section>
 
+          <section class="border-t border-gray-100 pt-8 dark:border-dark-700" aria-labelledby="gateway-anthropic-sampling-filter-title">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 id="gateway-anthropic-sampling-filter-title" class="font-semibold text-gray-900 dark:text-white">
+                  {{ t('admin.customFeatures.gateway.anthropicSamplingParameterFilter.title') }}
+                </h3>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.customFeatures.gateway.anthropicSamplingParameterFilter.description') }}
+                </p>
+              </div>
+              <div class="flex flex-shrink-0 items-center gap-3">
+                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.customFeatures.gateway.anthropicSamplingParameterFilter.enabled') }}
+                </span>
+                <Toggle
+                  v-model="gateway.anthropic_sampling_parameter_filter_enabled"
+                  data-test="gateway-anthropic-sampling-parameter-filter-enabled"
+                />
+              </div>
+            </div>
+            <div
+              v-if="gateway.anthropic_sampling_parameter_filter_enabled"
+              data-test="gateway-anthropic-sampling-parameter-filter-models"
+              class="mt-5 max-w-3xl"
+            >
+              <ModelWhitelistSelector
+                v-model="gateway.anthropic_sampling_parameter_filter_models"
+                platform="anthropic"
+              />
+            </div>
+          </section>
+
           <section class="border-t border-gray-100 pt-8 dark:border-dark-700" aria-labelledby="gateway-custom-rate-recharge-bonus-title">
             <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -699,6 +731,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import Select from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
+import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import UpstreamManagementPanel from '@/components/admin/upstream/UpstreamManagementPanel.vue'
 import groupsAPI from '@/api/admin/groups'
 import customFeaturesAPI, {
@@ -710,6 +743,7 @@ import customFeaturesAPI, {
 import type { AdminGroup } from '@/types'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
+import { isValidWildcardPattern } from '@/composables/useModelWhitelist'
 
 type CustomFeatureTab = 'upstream' | 'model-marketplace' | 'gateway' | 'daily-checkin'
 
@@ -761,6 +795,8 @@ const gateway = reactive<GatewaySettings>({
   upstream_error_consecutive_threshold: 10,
   image_group_success_rate_visible: true,
   anthropic_claude_code_mimicry_enabled: false,
+  anthropic_sampling_parameter_filter_enabled: false,
+  anthropic_sampling_parameter_filter_models: [],
   disable_recharge_bonus_for_custom_rate_users: false
 })
 const gatewayRetryStatusCodesInput = ref(gateway.default_pool_mode_retry_status_codes.join(', '))
@@ -811,6 +847,11 @@ function cloneGateway(settings?: Partial<GatewaySettings>): GatewaySettings {
     image_group_success_rate_visible: settings?.image_group_success_rate_visible ?? true,
     anthropic_claude_code_mimicry_enabled:
       settings?.anthropic_claude_code_mimicry_enabled ?? false,
+    anthropic_sampling_parameter_filter_enabled:
+      settings?.anthropic_sampling_parameter_filter_enabled ?? false,
+    anthropic_sampling_parameter_filter_models: [
+      ...(settings?.anthropic_sampling_parameter_filter_models ?? [])
+    ],
     disable_recharge_bonus_for_custom_rate_users:
       settings?.disable_recharge_bonus_for_custom_rate_users ?? false
   }
@@ -879,6 +920,7 @@ type GatewayValidationResult = {
   error: string | null
   retryStatusCodes: number[]
   upstreamErrorStatusCodes: number[]
+  samplingParameterFilterModels: string[]
 }
 
 function gatewayValidationError(
@@ -886,7 +928,7 @@ function gatewayValidationError(
   retryStatusCodes: number[] = [],
   upstreamErrorStatusCodes: number[] = []
 ): GatewayValidationResult {
-  return { error, retryStatusCodes, upstreamErrorStatusCodes }
+  return { error, retryStatusCodes, upstreamErrorStatusCodes, samplingParameterFilterModels: [] }
 }
 
 function validateGateway(): GatewayValidationResult {
@@ -960,7 +1002,41 @@ function validateGateway(): GatewayValidationResult {
     )
   }
 
-  return { error: null, retryStatusCodes, upstreamErrorStatusCodes }
+  const samplingParameterFilterModels = [
+    ...new Set(
+      gateway.anthropic_sampling_parameter_filter_models
+        .map((model) => model.trim())
+        .filter(Boolean)
+    )
+  ]
+  if (
+    gateway.anthropic_sampling_parameter_filter_enabled &&
+    samplingParameterFilterModels.length === 0
+  ) {
+    return gatewayValidationError(
+      t('admin.customFeatures.gateway.validation.samplingParameterFilterModelsRequired'),
+      retryStatusCodes,
+      upstreamErrorStatusCodes
+    )
+  }
+  if (
+    samplingParameterFilterModels.some(
+      (model) => model === '*' || !isValidWildcardPattern(model)
+    )
+  ) {
+    return gatewayValidationError(
+      t('admin.customFeatures.gateway.validation.samplingParameterFilterModelPattern'),
+      retryStatusCodes,
+      upstreamErrorStatusCodes
+    )
+  }
+
+  return {
+    error: null,
+    retryStatusCodes,
+    upstreamErrorStatusCodes,
+    samplingParameterFilterModels
+  }
 }
 
 async function saveGateway() {
@@ -984,6 +1060,10 @@ async function saveGateway() {
       upstream_error_consecutive_threshold: Number(gateway.upstream_error_consecutive_threshold),
       image_group_success_rate_visible: gateway.image_group_success_rate_visible,
       anthropic_claude_code_mimicry_enabled: gateway.anthropic_claude_code_mimicry_enabled,
+      anthropic_sampling_parameter_filter_enabled:
+        gateway.anthropic_sampling_parameter_filter_enabled,
+      anthropic_sampling_parameter_filter_models:
+        validation.samplingParameterFilterModels,
       disable_recharge_bonus_for_custom_rate_users:
         gateway.disable_recharge_bonus_for_custom_rate_users
     })

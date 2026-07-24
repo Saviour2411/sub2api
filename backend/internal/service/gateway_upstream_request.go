@@ -136,6 +136,13 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		s.shouldInjectAnthropicCacheTTL1h(ctx, account) {
 		body = injectAnthropicCacheControlTTL1h(body)
 	}
+	if account.Platform == PlatformAnthropic {
+		filteredBody, _, err := filterAnthropicSamplingParametersWithSettings(ctx, s.settingService, body, modelID)
+		if err != nil {
+			return nil, nil, err
+		}
+		body = filteredBody
+	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
 	if err != nil {

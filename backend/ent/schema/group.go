@@ -158,9 +158,6 @@ func (Group) Fields() []ent.Field {
 		field.Bool("claude_code_only").
 			Default(false).
 			Comment("是否仅允许 Claude Code 客户端"),
-		field.Bool("claude_code_upstream_mimicry").
-			Default(false).
-			Comment("API Key 上游伪装 Claude Code"),
 		field.Int64("fallback_group_id").
 			Optional().
 			Nillable().

@@ -370,6 +370,11 @@ export default {
           description: '开启后，所有 Anthropic 类型分组下未开启透传模式的 API Key 账号会模拟 Claude Code 客户端请求。OAuth 账号仍保持自动模拟，真实 Claude Code 请求不会重写。',
           enabled: '启用模拟',
         },
+        anthropicSamplingParameterFilter: {
+          title: 'Anthropic 采样参数过滤',
+          description: '命中最终上游模型后，从 REST Messages 请求体中删除 temperature、top_k 和 top_p。支持精确模型 ID 与末尾通配符。',
+          enabled: '启用过滤',
+        },
         customRateRechargeBonus: {
           title: '专属倍率用户充值不返利',
           description: '开启后，只要用户在任意分组配置了专属倍率，余额充值就按原始充值金额入账，不应用阶梯返利或旧版充值倍率。',
@@ -427,6 +432,8 @@ export default {
           firstTokenConsecutiveThreshold: '首 Token 连续超时停调度次数必须是 1 到 100 之间的整数',
           upstreamErrorConsecutiveThreshold: '连续上游错误停调度次数必须是 1 到 100 之间的整数',
           upstreamErrorStatusCodes: '连续上游错误状态码必须是 100 到 599 之间的整数，并使用逗号或空格分隔',
+          samplingParameterFilterModelsRequired: '启用 Anthropic 采样参数过滤时必须至少选择一个模型',
+          samplingParameterFilterModelPattern: '模型模式仅允许精确 ID 或末尾通配符，且不能使用单独的 *',
         },
       },
       dailyCheckin: {

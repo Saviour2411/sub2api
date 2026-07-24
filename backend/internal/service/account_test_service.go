@@ -337,6 +337,12 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 			return s.sendErrorAndEnd(c, "Failed to create test payload")
 		}
 	}
+	if account.Platform == PlatformAnthropic {
+		payloadBytes, _, payloadErr = filterAnthropicSamplingParametersWithSettings(ctx, s.settingService, payloadBytes, testModelID)
+		if payloadErr != nil {
+			return s.sendErrorAndEnd(c, payloadErr.Error())
+		}
+	}
 
 	// Send test_start event
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})

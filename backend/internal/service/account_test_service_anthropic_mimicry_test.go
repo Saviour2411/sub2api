@@ -128,6 +128,32 @@ func TestAccountTestService_RunTestBackgroundReusesAnthropicMimicryPolicy(t *tes
 	require.Equal(t, "定时测试", gjson.Get(toJSONString(t, payload), "messages.0.content.0.text").String())
 }
 
+func TestAccountTestService_AnthropicSamplingParameterFilterUsesMappedModel(t *testing.T) {
+	account := newAnthropicMimicAccountTestAccount(900, false)
+	account.Credentials["model_mapping"] = map[string]any{"claude-opus-latest": "claude-opus-4-8"}
+	repo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{account.ID: account}}
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{newAnthropicAccountTestSuccessResponse("过滤成功")}}
+	settingService := NewSettingService(&customFeatureSettingsRepoStub{values: map[string]string{
+		SettingKeyGatewayAnthropicSamplingParameterFilterEnabled: "true",
+		SettingKeyGatewayAnthropicSamplingParameterFilterModels:  `["claude-opus-4-8"]`,
+	}}, &config.Config{})
+	svc := &AccountTestService{
+		accountRepo:    repo,
+		httpUpstream:   upstream,
+		cfg:            testAccountURLConfig(),
+		settingService: settingService,
+	}
+	ginCtx, _ := newTestContext()
+
+	err := svc.TestAccountConnection(ginCtx, account.ID, "claude-opus-latest", "过滤测试", AccountTestModeDefault)
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 1)
+	payload := readQueuedRequestJSON(t, upstream.requests[0])
+	payloadJSON := toJSONString(t, payload)
+	require.Equal(t, "claude-opus-4-8", gjson.Get(payloadJSON, "model").String())
+	require.False(t, gjson.Get(payloadJSON, "temperature").Exists())
+}
+
 func newAnthropicMimicAccountTestAccount(id int64, passthrough bool) *Account {
 	extra := map[string]any{}
 	if passthrough {
