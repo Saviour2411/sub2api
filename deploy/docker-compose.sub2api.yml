@@ -29,10 +29,10 @@ services:
         soft: 100000
         hard: 100000
     ports:
-      - "${BIND_HOST:-0.0.0.0}:${SERVER_PORT:-8080}:8080"
+      - "${BIND_HOST:-127.0.0.1}:${SERVER_PORT:-18080}:8080"
     volumes:
       # Data persistence (config.yaml will be auto-generated here)
-      - sub2api_data:/app/data
+      - ./data:/app/data
       # Optional: Mount custom config.yaml (uncomment and create the file first)
       # Copy config.example.yaml to config.yaml, modify it, then uncomment:
       # - ./config.yaml:/app/data/config.yaml
@@ -233,7 +233,7 @@ services:
         soft: 100000
         hard: 100000
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./postgres_data:/var/lib/postgresql/data
     command:
       - "postgres"
       - "-c"
@@ -289,7 +289,7 @@ services:
         soft: 100000
         hard: 100000
     volumes:
-      - redis_data:/data
+      - ./redis_data:/data
     # The command is one quoted script for the inner `sh -c`. Compose keeps
     # the newlines inside the quoted string, so every line needs a trailing
     # `\` — without it, `redis-server` on the first line runs with no flags
@@ -316,17 +316,6 @@ services:
       start_period: 5s
     # 注意：不暴露端口到宿主机，应用通过内部网络连接
     # 如需调试，可临时添加：ports: ["127.0.0.1:6379:6379"]
-# =============================================================================
-# Volumes
-# =============================================================================
-volumes:
-  sub2api_data:
-    driver: local
-  postgres_data:
-    driver: local
-  redis_data:
-    driver: local
-
 # =============================================================================
 # Networks
 # =============================================================================
