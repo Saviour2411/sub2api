@@ -86,6 +86,17 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 		requestView = newOpenAIRequestView(body)
 	}
+	if shouldStripOpenAIResponsesInputNamespaces(account, wsDecision.Transport, passthroughEnabled) {
+		body, err = stripOpenAIResponsesInputNamespaces(body)
+		if err != nil {
+			setOpsUpstreamError(c, http.StatusBadRequest, err.Error(), "")
+			c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
+				"type": "invalid_request_error", "message": err.Error(), "param": "input",
+			}})
+			return nil, err
+		}
+		requestView = newOpenAIRequestView(body)
+	}
 
 	originalBody := body
 
@@ -96,6 +107,19 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 	if account.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(account.Extra) {
 		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body)
+	}
+	if account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey {
+		sanitizedBody, changed, sanitizeErr := sanitizeOpenAIResponsesInputItemIDs(body)
+		if sanitizeErr != nil {
+			return nil, fmt.Errorf("sanitize OpenAI Responses input item IDs: %w", sanitizeErr)
+		}
+		if changed {
+			body = sanitizedBody
+			originalBody = sanitizedBody
+			requestView = newOpenAIRequestView(sanitizedBody)
+			reqModel, promptCacheKey = requestView.Model, requestView.PromptCacheKey
+			originalModel = reqModel
+		}
 	}
 
 	compatMessagesBridge := isOpenAICompatMessagesBridgeBody(body)

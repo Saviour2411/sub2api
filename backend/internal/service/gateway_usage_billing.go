@@ -46,6 +46,7 @@ type RecordUsageInput struct {
 	UpstreamEndpoint   string             // 上游端点（标准化后的上游路径）
 	UserAgent          string             // 请求的 User-Agent
 	IPAddress          string             // 请求的客户端 IP 地址
+	SessionID          string             // 客户端显式会话标识（session_id / X-Session-Id 等请求头），仅用于用量行会话关联
 	RequestPayloadHash string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
 	ForceCacheBilling  bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
 	APIKeyService      APIKeyQuotaUpdater // 可选：用于更新API Key配额
@@ -111,10 +112,19 @@ func PlatformFromAPIKey(apiKey *APIKey) string {
 // 后扣运行在 worker 池的 background ctx 上没有 ForcePlatform，因此后扣平台由 handler
 // 预先算定、经 RecordUsageInput.QuotaPlatform 传入，不要在后扣链路用 worker ctx 调用本函数。
 func QuotaPlatform(ctx context.Context, apiKey *APIKey) string {
-	if fp, ok := ctx.Value(ctxkey.ForcePlatform).(string); ok && fp != "" {
-		return fp
+	if ctx != nil {
+		if fp, ok := ctx.Value(ctxkey.ForcePlatform).(string); ok && fp != "" {
+			return fp
+		}
 	}
-	return PlatformFromAPIKey(apiKey)
+	if platform, ok := ResolvedTargetPlatformFromContext(ctx); ok {
+		return platform
+	}
+	platform := PlatformFromAPIKey(apiKey)
+	if platform == PlatformComposite {
+		return ""
+	}
+	return platform
 }
 
 func (p *postUsageBillingParams) shouldDeductAPIKeyQuota() bool {
@@ -583,6 +593,7 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		UpstreamEndpoint:   input.UpstreamEndpoint,
 		UserAgent:          input.UserAgent,
 		IPAddress:          input.IPAddress,
+		SessionID:          input.SessionID,
 		RequestPayloadHash: input.RequestPayloadHash,
 		ForceCacheBilling:  input.ForceCacheBilling,
 		APIKeyService:      input.APIKeyService,
@@ -602,6 +613,7 @@ type RecordUsageLongContextInput struct {
 	UpstreamEndpoint      string             // 上游端点（标准化后的上游路径）
 	UserAgent             string             // 请求的 User-Agent
 	IPAddress             string             // 请求的客户端 IP 地址
+	SessionID             string             // 客户端显式会话标识（session_id / X-Session-Id 等请求头），仅用于用量行会话关联
 	RequestPayloadHash    string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
 	LongContextThreshold  int                // 长上下文阈值（如 200000）
 	LongContextMultiplier float64            // 超出阈值部分的倍率（如 2.0）
@@ -624,6 +636,7 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		UpstreamEndpoint:   input.UpstreamEndpoint,
 		UserAgent:          input.UserAgent,
 		IPAddress:          input.IPAddress,
+		SessionID:          input.SessionID,
 		RequestPayloadHash: input.RequestPayloadHash,
 		ForceCacheBilling:  input.ForceCacheBilling,
 		APIKeyService:      input.APIKeyService,
@@ -646,6 +659,7 @@ type recordUsageCoreInput struct {
 	UpstreamEndpoint   string
 	UserAgent          string
 	IPAddress          string
+	SessionID          string
 	RequestPayloadHash string
 	ForceCacheBilling  bool
 	APIKeyService      APIKeyQuotaUpdater
@@ -692,7 +706,6 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	// token 倍率叠加高峰因子（token 计费含图片 token，图片按次倍率不受影响）。高峰因子按请求时刻现算，
 	// 不并入上面的 getUserGroupRateMultiplier，以免污染 user:group 倍率缓存。
 	multiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, multiplier, timezone.Now())
-
 	// 确定 RequestedModel（渠道映射前的原始模型）
 	requestedModel := strings.TrimSpace(input.OriginalModel)
 	if requestedModel == "" {
@@ -700,6 +713,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	}
 
 	// 文本费用固定按用户请求模型计费；渠道映射及最终上游模型不参与用户扣费。
+	// Composite 公开别名只有存在显式渠道价时才按别名计费，否则使用实际路由模型；
 	// 图片仍按转发结果中的最终媒体模型计费。
 	billingModel := requestedModel
 	if result.ImageCount > 0 {
@@ -711,9 +725,16 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 			billingModel = requestedModel
 		}
 	} else if s.cfg == nil || s.cfg.RunMode != config.RunModeSimple {
+		if apiKey.Group != nil && apiKey.Group.Platform == PlatformComposite {
+			concreteBillingModel := strings.TrimSpace(result.UpstreamModel)
+			if concreteBillingModel == "" {
+				concreteBillingModel = strings.TrimSpace(result.Model)
+			}
+			billingModel = s.compositeBillableModel(ctx, apiKey, billingModel, concreteBillingModel)
+		}
 		resolvedModel, err := resolveRequestedModelPricing(
 			ctx, s.cfg, s.resolver, s.billingService, apiKey,
-			requestedModel, PricingUsageToken, "",
+			billingModel, PricingUsageToken, "",
 		)
 		if err != nil {
 			return err
@@ -773,6 +794,9 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	quotaPlatform := input.QuotaPlatform
 	if quotaPlatform == "" {
 		quotaPlatform = PlatformFromAPIKey(apiKey)
+		if quotaPlatform == PlatformComposite && account != nil {
+			quotaPlatform = account.Platform
+		}
 	}
 	requestID := usageLog.RequestID
 	_, billingErr := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
@@ -835,6 +859,21 @@ func (s *GatewayService) calculateRecordUsageCostStrict(
 
 	// Token 计费
 	return s.calculateTokenCostStrict(ctx, result, apiKey, billingModel, multiplier, opts)
+}
+
+// compositeBillableModel 决定 composite 分组请求的计费模型：来源覆盖把计费模型
+// 换成公开别名等非具体模型时，只有管理员为该名字显式配置了渠道定价才按其计费
+// （OpenRouter 式自定价），否则回退到实际转发的具体模型，避免别名落入价格表的
+// 家族模糊匹配（错价）或查无价（$0）。未发生来源覆盖时原样返回。
+func (s *GatewayService) compositeBillableModel(ctx context.Context, apiKey *APIKey, billingModel, concreteBillingModel string) string {
+	if concreteBillingModel == "" || billingModel == concreteBillingModel {
+		return billingModel
+	}
+	if s.resolveChannelPricing(ctx, billingModel, apiKey) != nil {
+		return billingModel
+	}
+	logger.LegacyPrintf("service.gateway", "[Billing] composite billing model %q has no explicit channel pricing, billing by concrete model %q", billingModel, concreteBillingModel)
+	return concreteBillingModel
 }
 
 // resolveChannelPricing 检查指定模型是否存在渠道级别定价。
@@ -994,6 +1033,7 @@ func (s *GatewayService) buildRecordUsageLog(
 		ModelMappingChain:     optionalTrimmedStringPtr(input.ModelMappingChain),
 		UserAgent:             optionalTrimmedStringPtr(input.UserAgent),
 		IPAddress:             optionalTrimmedStringPtr(input.IPAddress),
+		SessionID:             optionalTrimmedStringPtr(input.SessionID),
 		GroupID:               apiKey.GroupID,
 		SubscriptionID:        optionalSubscriptionID(subscription),
 		CreatedAt:             time.Now(),

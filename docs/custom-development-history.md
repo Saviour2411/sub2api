@@ -17,7 +17,7 @@
 - 已完整集成的上游提交：`60013c5f100be7b4f2e6caee415883d221d33e32`
 - 比较范围：`60013c5f1..e957a0a38`
 - 基线差异：655 个文件，新增 87371 行、删除 3960 行；本地独有提交 417 个
-- 当前能力族：47 项，分布在 9 个功能域
+- 当前能力族：51 项，分布在 9 个功能域
 
 这组数字只用于确认分析边界，不能直接等同于功能数量。生成代码、测试、文案、上游提交的本地适配和同一能力的连续修复均会放大差异规模。
 
@@ -105,8 +105,8 @@
 
 | 编号 | 功能 | 当前行为与边界 | 关键入口 | 状态 |
 | --- | --- | --- | --- | --- |
-| `CUST-BILL-001` | 按用户请求模型计费 | 计费优先使用用户请求模型而不是上游映射模型，并记录 billing model source；Chat、Responses、Images 等入口保持一致。 | `backend/internal/handler/requested_model_pricing.go`、`backend/internal/service/requested_model_pricing.go`、`backend/migrations/175_force_requested_billing_model_source.sql` | 生效中 |
-| `CUST-BILL-002` | 多层定价回退 | 支持部分渠道区间回退、渠道默认定价、DeepSeek/GLM/Kimi/MiniMax/豆包等兜底定价，以及 thinking、图片和视频计价补充。 | `backend/internal/service/model_pricing_resolver.go`、`backend/internal/service/pricing_service.go`、`backend/migrations/147_channel_default_pricing.sql` | 生效中 |
+| `CUST-BILL-001` | 按用户请求模型计费 | 普通分组严格按用户请求模型计费，不使用渠道映射名或最终上游模型回退；Composite 分组仅在公开别名存在显式渠道价时按别名计费，否则按实际路由的具体模型计费。Chat、Responses、Images、Messages 与 WS 入口统一记录请求模型、映射链和上游模型。 | `backend/internal/handler/requested_model_pricing.go`、`backend/internal/service/requested_model_pricing.go`、`backend/internal/service/gateway_usage_billing.go`、`backend/migrations/175_force_requested_billing_model_source.sql` | 生效中 |
+| `CUST-BILL-002` | 多层定价与严格缺价处理 | 支持部分渠道区间回退、渠道默认定价、DeepSeek/GLM/Kimi/MiniMax/豆包等兜底定价，以及 thinking、图片和视频计价补充；非简单模式下选定计费模型缺价必须返回错误，不得静默记为零费用。Composite 的具体模型回退仅用于公开别名未配置渠道价的场景，不改变普通分组边界。 | `backend/internal/service/model_pricing_resolver.go`、`backend/internal/service/pricing_service.go`、`backend/internal/service/requested_model_pricing.go`、`backend/internal/service/gateway_usage_billing.go`、`backend/migrations/147_channel_default_pricing.sql` | 生效中 |
 | `CUST-BILL-003` | OpenAI 长上下文计费兼容策略 | 账号开关叠加本地区间计价逻辑；只有实际命中渠道区间时才禁用内置倍率。历史缺失开关的主账号回填为开启，新账号默认关闭。 | `backend/internal/service/billing_service.go`、`backend/migrations/175_default_openai_long_context_billing.sql` | 兼容覆盖 |
 | `CUST-BILL-004` | Image 分组成功率 | 统计单次和批量图片请求的分组请求数/失败数，支持代次式原子清零、用户展示开关，并排除 keepalive 字节对结果判断的干扰。 | `backend/internal/service/image_group_success_rate.go`、`backend/internal/repository/image_group_success_rate_repo.go`、`backend/migrations/177_image_group_success_rates.sql` | 生效中 |
 | `CUST-BILL-005` | 用量与费用明细增强 | 展示缓存 Token、请求模型、余额调整和图片/视频费用信息；错误请求和上游端点记录使用本地归因规则。 | `backend/internal/service/gateway_usage_billing.go`、`frontend/src/views/admin/UsageView.vue`、`frontend/src/components/admin/user/UserBalanceHistoryModal.vue` | 生效中 |
@@ -164,6 +164,7 @@
 
 | 日期 | 版本/提交 | 类型 | 功能编号 | 变更与原因 | 验证 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-07-25 | `0.1.210` / 待提交 | 上游适配 | `CUST-GW-005`、`CUST-GW-006`、`CUST-GW-010`、`CUST-PROTO-005`、`CUST-PROTO-006`、`CUST-BILL-001`、`CUST-BILL-002`、`CUST-BILL-004`、`CUST-BILL-005`、`CUST-BILL-006`、`CUST-PROD-004`、`CUST-PROD-006`、`CUST-RISK-001`、`CUST-RISK-002`、`CUST-UI-004`、`CUST-OPS-003`、`CUST-OPS-005` | 完整合并上游 `60013c5f1..6d956bdc2`，接入 Composite 路由、请求会话 ID、Ollama Cloud 用量、支付宝移动端当面付唤起和 OpenAI 代理流熔断；保留本地逐轮 WS 并发释放与审计、成功会话审计、严格请求模型计费、Composite 显式别名价例外、图片分组结果统计、批量图片字段、充值赠送及专属倍率禁返利、DataTable 非虚拟化和生产资源参数。 | Ent/Wire 重复生成、Go 全包编译；完整 Go/前端回归与静态检查在同步完成前补录 |
 | 2026-07-25 | `0.1.210` / 待提交 | 新增/移除 | `CUST-PROTO-003`、`CUST-PROTO-008` | 确认分组级 `claude_code_upstream_mimicry` 为已脱离运行链路的历史二开，新增向前 migration 删除数据库列与索引并清理 Ent 字段，保留仍生效的全局 Claude Code 模拟；新增按最终上游模型过滤 Anthropic REST Messages 根级 `temperature`、`top_k`、`top_p` 的网关配置，支持精确 ID 和末尾通配符，并同步用于账号测试。 | 配置读写/校验/缓存测试、清洗器与两类 Messages 构造器测试、账号模型映射测试、前端配置与兼容测试、Ent codegen、Go/前端全量检查 |
 | 2026-07-25 | `0.1.210` / 待提交 | 修改 | `CUST-OPS-005` | 生产实例迁移至 4 vCPU、8 GiB 内存主机后，重新评估实例级运行参数：释放 Go 四核并行和更大堆空间，提高用量 worker、HTTP 空闲连接复用及 PostgreSQL 缓存与并行查询能力，同时保持数据库连接总量、计费超时、队列上限和日志轮转边界。具体实例值仅记录在不跟踪的本地运维说明中。 | 新旧主机资源对比、Compose 配置解析、容器实际环境变量、PostgreSQL 实际参数、挂载/健康检查及生产观察 |
 | 2026-07-24 | `0.1.210` / 待提交 | 修改 | `CUST-GW-010`、`CUST-BILL-006` | 生产 GC 诊断确认高并发 Responses 请求在长流期间保留多份最大约 52 MB 的请求体，live heap 可增长至约 3.1 GiB 并触发 OOM；改为首个有效输出后释放不再用于故障转移的大对象。usage worker 改为按用户聚合排空，避免热用户的 gate 等待占满全部 worker 并持续产生 5 秒扣费超时，不改变用户入口并发。 | 请求体释放时机/幂等测试、keyed worker 同用户串行/不同用户并行/超时窗口/队列清理测试、Go race/全量测试、生产 30 分钟稳定观察 |

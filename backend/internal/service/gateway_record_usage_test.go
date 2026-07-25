@@ -44,6 +44,7 @@ func newGatewayRecordUsageServiceForTest(usageRepo UsageLogRepository, userRepo 
 		nil,
 		nil,
 		nil,
+		nil,
 		nil, // userPlatformQuotaRepo
 	)
 }
@@ -228,6 +229,119 @@ func TestGatewayServiceRecordUsage_LegacyMappedSourceStillBillsRequestedModel(t 
 	require.InDelta(t, expectedCost.TotalCost, usageRepo.lastLog.TotalCost, 1e-12)
 	require.InDelta(t, expectedCost.ActualCost, usageRepo.lastLog.ActualCost, 1e-12)
 	require.InDelta(t, expectedCost.ActualCost, userRepo.lastAmount, 1e-12)
+}
+
+func TestGatewayServiceRecordUsage_NormalGroupDoesNotFallbackToUpstreamModel(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{})
+	groupID := int64(910)
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID:     "gateway_normal_unpriceable_alias",
+			Usage:         ClaudeUsage{InputTokens: 20, OutputTokens: 10},
+			Model:         "team/best",
+			UpstreamModel: "claude-sonnet-4",
+			Duration:      time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      810,
+			GroupID: i64p(groupID),
+			Group:   &Group{ID: groupID, Platform: PlatformAnthropic, RateMultiplier: 1},
+		},
+		User:    &User{ID: 610},
+		Account: &Account{ID: 710},
+		ChannelUsageFields: ChannelUsageFields{
+			OriginalModel: "team/best",
+		},
+	})
+
+	require.ErrorIs(t, err, ErrModelPricingUnavailable)
+	require.Zero(t, usageRepo.calls)
+	require.Zero(t, userRepo.deductCalls)
+}
+
+func TestGatewayServiceRecordUsage_CompositeFallsBackToConcreteModel(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{})
+	groupID := int64(911)
+	tokens := UsageTokens{InputTokens: 20, OutputTokens: 10}
+	expectedCost, err := svc.billingService.CalculateCost("claude-sonnet-4", tokens, 1)
+	require.NoError(t, err)
+
+	err = svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID:     "gateway_composite_concrete_model",
+			Usage:         ClaudeUsage{InputTokens: 20, OutputTokens: 10},
+			Model:         "team/best",
+			UpstreamModel: "claude-sonnet-4",
+			Duration:      time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      811,
+			GroupID: i64p(groupID),
+			Group:   &Group{ID: groupID, Platform: PlatformComposite, RateMultiplier: 1},
+		},
+		User:    &User{ID: 611},
+		Account: &Account{ID: 711},
+		ChannelUsageFields: ChannelUsageFields{
+			OriginalModel: "team/best",
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, "team/best", usageRepo.lastLog.RequestedModel)
+	require.InDelta(t, expectedCost.TotalCost, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, expectedCost.ActualCost, userRepo.lastAmount, 1e-12)
+}
+
+func TestGatewayServiceRecordUsage_CompositeUsesExplicitAliasChannelPrice(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{})
+	groupID := int64(912)
+	inputPrice := 1e-6
+	outputPrice := 2e-6
+	cache := newEmptyChannelCache()
+	cache.pricingByGroupModel[channelModelKey{groupID: groupID, platform: PlatformAnthropic, model: "team/best"}] = &ChannelModelPricing{
+		BillingMode: BillingModeToken,
+		InputPrice:  &inputPrice,
+		OutputPrice: &outputPrice,
+	}
+	cache.channelByGroupID[groupID] = &Channel{ID: groupID, Status: StatusActive}
+	cache.groupPlatform[groupID] = PlatformComposite
+	cache.loadedAt = time.Now()
+	channelService := &ChannelService{}
+	channelService.cache.Store(cache)
+	svc.resolver = NewModelPricingResolver(channelService, svc.billingService)
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID:     "gateway_composite_alias_price",
+			Usage:         ClaudeUsage{InputTokens: 20, OutputTokens: 10},
+			Model:         "team/best",
+			UpstreamModel: "claude-opus-4-6",
+			Duration:      time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      812,
+			GroupID: i64p(groupID),
+			Group:   &Group{ID: groupID, Platform: PlatformComposite, RateMultiplier: 1},
+		},
+		User:    &User{ID: 612},
+		Account: &Account{ID: 712},
+		ChannelUsageFields: ChannelUsageFields{
+			OriginalModel: "team/best",
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.InDelta(t, float64(20)*inputPrice+float64(10)*outputPrice, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, usageRepo.lastLog.TotalCost, userRepo.lastAmount, 1e-12)
 }
 
 func TestGatewayServiceRecordUsage_EmptyImageSizeDefaultsBeforeBillingAndPersistence(t *testing.T) {

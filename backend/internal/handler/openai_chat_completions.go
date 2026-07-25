@@ -75,6 +75,11 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		return
 	}
 	reqModel := modelResult.String()
+	ensureCompositeTargetPlatform(c, apiKey, reqModel)
+	if !openAICompatibleTextTargetAllowed(c, apiKey, reqModel) {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by this OpenAI-compatible endpoint for composite groups")
+		return
+	}
 	if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformOpenAI {
 		if cappedBody, changed := service.ApplyOpenAIReasoningEffortPolicy(body, apiKey.Group.MaxReasoningEffort, apiKey.Group.ReasoningEffortMappings); changed {
 			body = cappedBody
@@ -116,7 +121,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	}
 
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
-	requestPlatform := openAICompatibleRequestPlatform(apiKey)
+	requestPlatform := openAICompatibleRequestPlatform(c.Request.Context(), apiKey)
 
 	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
 	routingStart := time.Now()
@@ -233,7 +238,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		if service.GetOpsCyberPolicy(c) != nil {
 			cyberBlockKeyChat = service.CyberSessionBlockKey(apiKey.ID, c, body)
 		}
-		h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, reqModel, err != nil, cyberBlockKeyChat, channelMapping.ToUsageFields(reqModel, ""), service.HashUsageRequestPayload(body))
+		h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, reqModel, err != nil, cyberBlockKeyChat, clientRequestedUsageFields(c, channelMapping, reqModel, ""), service.HashUsageRequestPayload(body))
 
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		upstreamLatencyMs, _ := getContextInt64(c, service.OpsUpstreamLatencyMsKey)
@@ -351,9 +356,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account, result)
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 		if result != nil && !result.ClientDisconnect {
-			sessionID, clientSessionID, sessionSource := resolveOpenAISessionAuditFields(promptCacheKey, sessionHash)
+			auditSessionID, clientSessionID, sessionSource := resolveOpenAISessionAuditFields(promptCacheKey, sessionHash)
 			h.recordSuccessfulConversationAudit(c, apiKey, subject, service.ContentModerationProtocolOpenAIChat, reqModel, result.UpstreamModel, result.Stream, body, result.Usage, successfulConversationAuditOptions{
-				SessionID:       sessionID,
+				SessionID:       auditSessionID,
 				ClientSessionID: clientSessionID,
 				SessionSource:   sessionSource,
 				UserAgent:       userAgent,
@@ -361,6 +366,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				RawResponse:     auditCapture.Bytes(),
 			})
 		}
+		sessionID := service.ExtractClientSessionID(c)
 
 		cyberBlocked := service.GetOpsCyberPolicy(c) != nil
 		h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
@@ -376,7 +382,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				IPAddress:          clientIP,
 				APIKeyService:      h.apiKeyService,
 				QuotaPlatform:      quotaPlatform,
-				ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
+				SessionID:          sessionID,
+				ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
 				CyberBlocked:       cyberBlocked,
 			}); err != nil {
 				logger.L().With(
