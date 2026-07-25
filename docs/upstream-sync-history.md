@@ -518,6 +518,93 @@
 - 上游归档 `openspec/changes/add-openai-compatible-prompt-audit/source-freeze/aicodex-prompt-audit-tracked.patch` 保存另一个仓库的原始空白差异，未格式化或修改。
 - 未执行 push、PR、部署、远程服务器访问、容器重启或生产数据操作。
 
+## 2026-07-25 同步至 6d956bdc2
+
+- 执行时间：2026-07-25T18:46:50+08:00
+- 执行状态：同步分支完整合并并验证完成；本记录提交后使用 `--ff-only` 更新本地 `main`
+- 本地目标分支：`main`
+- `LOCAL_PRE_SYNC_SHA`：`02a8884a350664d132fd57f36b9d12e3591c683d`
+- 上游代码合并提交：`68f708d11fc13eaa7dc0f6738fdae2a5c1b8dac0`
+- 最后一个代码/台账适配提交：`0a4763eb4040cc756ebeddf9adc33d345fc12aeb`
+- 上游仓库：`https://github.com/Wei-Shaw/sub2api.git`
+- 上游分支：`main`
+- `UPSTREAM_OLD_SHA`：`60013c5f100be7b4f2e6caee415883d221d33e32`
+- `UPSTREAM_NEW_SHA`：`6d956bdc20f0d8c38275d4d77b628a8ff776711c`
+- merge-base：`60013c5f100be7b4f2e6caee415883d221d33e32`
+- `LAST_FULLY_INTEGRATED_UPSTREAM_SHA`：`6d956bdc20f0d8c38275d4d77b628a8ff776711c`
+- 集成策略：在隔离同步分支使用 `git merge --no-ff --no-commit` 完整合并固定上游 SHA，逐文件解决 23 个文本冲突和相关语义冲突，重新生成 Ent/Wire，并将必要兼容处理纳入 merge commit
+- 备份分支：`backup/pre-upstream-sync-20260725-151555-02a8884a3`
+- 同步分支：`sync/upstream-20260725-6d956bdc2`
+
+### 上游提交处置
+
+本次固定范围共 61 个提交，其中 18 个 merge commit、43 个 non-merge commit。61 个提交均通过完整 merge 保留祖先关系并记为 `Applied`，其中下表列出的提交同时按本地二次开发边界记为 `Applied + Overridden`；无 `Already Applied`、`Skipped`、`Deferred` 或未解决 `Conflict`。
+
+| 上游提交集合 | 数量 | 状态 | 内容与处置 |
+| --- | ---: | --- | --- |
+| `60013c5f1..6d956bdc2` | 61 | Applied | 整体映射到本地 merge commit `68f708d11`；引入 Composite 分组路由、Ollama Cloud 用量、客户端 session ID、支付宝移动端当面付唤起、OpenAI 输入 namespace/item ID 清洗、代理流熔断、Claude Opus 5、Grok 与简单模式修复、前端移动端适配及依赖更新 |
+| `44093579e`、`ba88cc239` | 2 | Applied + Overridden | 保留渠道模型名规范化和 Composite 按实际路由模型计费的修复意图；普通分组继续严格按用户请求模型计费，Composite 公开别名仅在存在显式渠道价时按别名计费，否则按具体模型计费 |
+| `47ad29db3`、`6aeea70ee` | 2 | Applied + Overridden | 接入 OpenAI 代理流断连熔断；两份生产 Compose 使用本地批准的阈值 2、窗口 60 秒、TTL 600 秒，并继续保留本地连接池、worker、数据库和日志参数 |
+| `e70fbf320`、`1bdf99109`、`9994eaa70`、`c5d9d5794`、`1891faa68`、`333acde7d` | 6 | Applied + Overridden | 接入 HTTP 输入 namespace 与 API Key item ID 清洗；同步重建本地增量请求视图，避免后续补丁恢复已移除字段，同时保持 upstream/client stream 拆分、首 Token 与 WS 本地语义 |
+| `cb24522dd` | 1 | Applied + Overridden | 保留上游版本提交的祖先关系，最终版本继续使用本地较新的 `0.1.210`，不回退到上游 `0.1.164` |
+
+### 本地提交与文件
+
+- 上游范围整体映射到 merge commit `68f708d11fc13eaa7dc0f6738fdae2a5c1b8dac0`，其双亲为同步前本地 SHA 和固定上游 SHA。
+- merge commit 相对 `LOCAL_PRE_SYNC_SHA` 修改 246 个文件：新增 53 个、修改 193 个、删除 0 个，共增加 19218 行、删除 547 行。
+- 二开台账基线与验证记录更新提交：`0a4763eb4040cc756ebeddf9adc33d345fc12aeb`。
+- 主要新增：Composite 路由表及管理接口、Ollama Cloud 用量抓取与前端设置、用量 session ID、支付宝移动端深链、OpenAI 代理流熔断、Claude Opus 5 定价与测试。
+- Ent/Wire 从合并后的 schema/provider 重新生成；重复生成的受控差异 SHA-256 均为 `faf24976dec5dabde9d3b57542b6a39a8a76b2cb`。
+- `frontend/pnpm-lock.yaml` 仅包含上游依赖更新；安装、测试和构建后无额外未暂存锁文件变化。
+
+### 冲突与最终解决方案
+
+- 23 个文本冲突均逐文件解决，无整文件采用 `ours` 或 `theirs`，最终索引无未解决路径。
+- 支付配置、订单履约与前端支付流程同时保留本地充值赠送、专属倍率用户禁返利和上游支付宝移动端唤起。
+- Composite 路由接入 handler、service、repository、Ent 与 Wire；计费和额度平台按实际路由账号归属，同时保留普通分组严格请求模型计费边界。
+- OpenAI Responses 同时保留本地 upstream/client stream 拆分、首 Token、WS 逐轮结算和审计，并接入 namespace/item ID 清洗及代理流熔断；修复请求视图未同步导致清洗字段被后续补丁恢复的问题。
+- 审计日志继续保留成功会话记录、敏感字段清理和本地响应包装，接入 session ID 但不记录 Ollama 会话明文。
+- 图片与批量图片路径保留本地分组成功率、请求质量/尺寸、公开字段和结算语义，并接入上游诊断字段与 Composite 路由。
+- `frontend/src/components/common/DataTable.vue` 保留本地非虚拟化和滚动稳定性，同时接入上游表格行为更新。
+- `deploy/docker-compose.yml` 与 `deploy/docker-compose.sub2api.yml` 保持完全一致，SHA-256 均为 `2A5CD7204F2B66A49ACBAF914108383B48D5E0F292E49AAEF16508059275A731`；继续使用 bind mount、回环地址、HTTP upstream 业务开关和既定 4 vCPU/8 GiB 参数。
+
+### 刻意保留的二次开发功能
+
+- 首 Token 超时、upstream/client stream 拆分、WS 逐轮并发释放/结算、成功会话审计与失败调度保护。
+- 普通分组严格按用户请求模型计费、严格缺价错误、Composite 显式别名渠道价例外、按用户串行扣费和 5 秒 usage task 超时。
+- 图片分组成功率、批量图片字段与结算、充值赠送、专属倍率用户禁返利和内容审核/Cyber 阻断。
+- 账号列表禁用虚拟化、查询后滚动重置、DataTable 稳定性、二开配置入口和生产双 Compose 约束。
+- 生产连接池、worker、PostgreSQL、Go 内存与 Docker 日志参数均保持批准基线，没有为了提高 worker 数量扩大数据库连接池。
+
+### 验证记录
+
+验证使用 Go 1.26.3、Node 24.15.0、corepack pnpm 9.15.9 和 golangci-lint 2.9.0。系统 pnpm 为 11.9.0，仅用于确认失败原因，未用于最终安装或修改锁文件。
+
+| 阶段 | 命令 | 退出码 | 结果 |
+| --- | --- | ---: | --- |
+| 同步前 | Git SHA、祖先关系与工作树预检 | 0 | `main` 固定在 `02a8884a3`，旧上游 SHA 是本地祖先；创建备份与同步分支后开始合并 |
+| 生成 | `go generate ./ent`、`go generate ./cmd/server`，重复执行 | 0 | Ent/Wire 生成成功且两次结果哈希一致 |
+| 适配 | `go test -run '^$' ./...` | 1 / 0 | 首次发现请求流拆分和 Composite 计费调用不兼容；修复后全包编译通过 |
+| 适配 | 计费、Grok、API 契约和 OpenAI namespace/item ID 定向测试 | 1 / 0 | 首轮定位构造参数、Grok 不可达分支和请求视图恢复 namespace；修复后全部通过 |
+| 同步后 | `go test -tags=unit ./...` | 1 / 1 / 0 | 依次发现 `NewAdminService` 新参数缺失及 4 个 OpenAI namespace 回归；修复后全包通过 |
+| 同步后 | `golangci-lint run --timeout=30m ./...` | 1 / 0 | 首轮发现 5 个问题：无效 stream 赋值、Grok 恒真判断和 2 个未使用通用计费 helper；按本地策略修复后 `0 issues` |
+| 同步后 | `CGO_ENABLED=0 go build -trimpath -o bin/server.exe ./cmd/server` | 0 | 后端构建通过，产物位于忽略目录 |
+| 前端安装 | 系统 pnpm 11 frozen install（两次尝试） | 1 / 1 | 分别被新发布 `postcss@8.5.23` 的最短发布时间策略和 pnpm 11 忽略 `package.json#pnpm.overrides` 导致的 frozen mismatch 拒绝；锁文件未变化 |
+| 前端安装 | `corepack pnpm install --offline --frozen-lockfile` | 0 | 使用与 CI 对齐的 pnpm 9.15.9 离线冻结安装成功 |
+| 同步后 | `corepack pnpm run lint:check`、`corepack pnpm run typecheck` | 0 | 均通过 |
+| 同步后 | `corepack pnpm run test:run` | 0 | 前端全量 Vitest 通过；仅输出既有 i18n 测试警告 |
+| 同步后 | `corepack pnpm run build` | 0 | TypeScript/Vite 生产构建通过；仅有大 chunk 非致命警告 |
+| 同步后 | Compose 哈希、关键环境参数、冲突标记、删除、敏感路径、锁文件和 `git diff --check` | 0 | 两份生产 Compose 完全一致；无源码冲突标记、删除文件、实际凭据路径、未暂存锁文件或空白错误 |
+
+### 未验证项与残余风险
+
+- 未运行 `go test -tags=integration ./...`、Testcontainers、真实 PostgreSQL migration 或 `-race`；这些验证需要 Docker、隔离数据库或 CGO 环境。
+- 本机 `docker` 与 `govulncheck` 不在 PATH，未执行 Compose 启动、容器健康检查或 Go 漏洞可达性扫描。
+- 未读取 `.env`，未启动依赖 PostgreSQL/Redis 的真实服务，因此本地启动与健康检查标记为未验证。
+- 未使用真实 OpenAI、Anthropic、Grok、Ollama、支付、S3 或上游站点凭据；外部业务流程仅由本地单元、契约和前端测试覆盖。
+- 未执行真实浏览器端到端交互；移动端支付、Ollama Cloud 设置和 Composite 管理页面由组件测试、typecheck 和生产构建覆盖。
+- 未执行 push、PR、部署、远程服务器访问、容器重启或生产数据操作。
+
 ## 2026-07-23 同步至 60013c5f1
 
 - 执行时间：2026-07-23T01:40:53+08:00
