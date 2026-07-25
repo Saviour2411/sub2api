@@ -97,7 +97,7 @@
 ## 2026-07-14 同步至 da85cc7e4
 
 - 执行时间：2026-07-14T23:31:44+08:00
-- 执行状态：同步分支完整合并并更新本地 `main`；首轮远端 CI 暴露批量图片插入占位符冲突，已修复并等待新一轮 CI 复核
+- 执行状态：同步分支完整合并并更新本地 `main`；首轮远端 CI 暴露批量图片插入占位符冲突，修复后第二轮 CI 与 Security Scan 全部通过
 - 本地目标分支：`main`
 - `LOCAL_PRE_SYNC_SHA`：`ce7ff703925415b61855d5d3b67fcee413fc5e87`
 - 上游代码合并提交：`1774fb96e15e69a13956580c15318cc24ac624a0`
@@ -525,7 +525,7 @@
 - 本地目标分支：`main`
 - `LOCAL_PRE_SYNC_SHA`：`02a8884a350664d132fd57f36b9d12e3591c683d`
 - 上游代码合并提交：`68f708d11fc13eaa7dc0f6738fdae2a5c1b8dac0`
-- 最后一个代码/台账适配提交：`0a4763eb4040cc756ebeddf9adc33d345fc12aeb`
+- 最后一个代码修复提交：`0ccedbc0a6df98bd4509ef50eed00a3a40a957a4`
 - 上游仓库：`https://github.com/Wei-Shaw/sub2api.git`
 - 上游分支：`main`
 - `UPSTREAM_OLD_SHA`：`60013c5f100be7b4f2e6caee415883d221d33e32`
@@ -553,6 +553,7 @@
 - 上游范围整体映射到 merge commit `68f708d11fc13eaa7dc0f6738fdae2a5c1b8dac0`，其双亲为同步前本地 SHA 和固定上游 SHA。
 - merge commit 相对 `LOCAL_PRE_SYNC_SHA` 修改 246 个文件：新增 53 个、修改 193 个、删除 0 个，共增加 19218 行、删除 547 行。
 - 二开台账基线与验证记录更新提交：`0a4763eb4040cc756ebeddf9adc33d345fc12aeb`。
+- 首轮 CI 批量图片 PostgreSQL 插入修复提交：`0ccedbc0a6df98bd4509ef50eed00a3a40a957a4`。
 - 主要新增：Composite 路由表及管理接口、Ollama Cloud 用量抓取与前端设置、用量 session ID、支付宝移动端深链、OpenAI 代理流熔断、Claude Opus 5 定价与测试。
 - Ent/Wire 从合并后的 schema/provider 重新生成；重复生成的受控差异 SHA-256 均为 `faf24976dec5dabde9d3b57542b6a39a8a76b2cb`。
 - `frontend/pnpm-lock.yaml` 仅包含上游依赖更新；安装、测试和构建后无额外未暂存锁文件变化。
@@ -597,11 +598,12 @@
 | 同步后 | `corepack pnpm run build` | 0 | TypeScript/Vite 生产构建通过；仅有大 chunk 非致命警告 |
 | 同步后 | Compose 哈希、关键环境参数、冲突标记、删除、敏感路径、锁文件和 `git diff --check` | 0 | 两份生产 Compose 完全一致；无源码冲突标记、删除文件、实际凭据路径、未暂存锁文件或空白错误 |
 | 远端 CI 首轮 | GitHub Actions `CI` / `Integration tests` | 2 | 其余 CI Job 与 `Security Scan` 通过；9 个批量图片 repository 用例统一因 `INSERT has more target columns than expressions` 失败，定位为合并后的占位符缺失 |
-| CI 修复 | `go test -tags=unit ./internal/repository -run '^TestCreateBatchImageJobWithSQLBindsAllColumns$'`、repository 全包 | 0 | 新增回归确认 38 个目标列绑定 `$1..$38` 和 38 个参数；等待修复提交的 GitHub Actions 集成测试复核 |
+| CI 修复 | `go test -tags=unit ./internal/repository -run '^TestCreateBatchImageJobWithSQLBindsAllColumns$'`、repository 全包 | 0 | 新增回归确认 38 个目标列绑定 `$1..$38` 和 38 个参数 |
+| 远端 CI 修复后 | GitHub Actions `CI` 运行 `30158725332`、`Security Scan` 运行 `30158725302` | 0 | shell、frontend、golangci-lint、Unit tests、Integration tests 与安全扫描全部通过 |
 
 ### 未验证项与残余风险
 
-- 本地未运行 `go test -tags=integration ./...`、Testcontainers、真实 PostgreSQL migration 或 `-race`；首次 GitHub Actions 已运行集成测试并暴露批量图片 SQL 问题，修复后的完整集成结果等待下一轮 CI。
+- 本地未运行 `go test -tags=integration ./...`、Testcontainers、真实 PostgreSQL migration 或 `-race`；GitHub Actions 已运行完整 Integration tests，修复批量图片 SQL 后全部通过。
 - 本机 `docker` 与 `govulncheck` 不在 PATH，未执行 Compose 启动、容器健康检查或 Go 漏洞可达性扫描。
 - 未读取 `.env`，未启动依赖 PostgreSQL/Redis 的真实服务，因此本地启动与健康检查标记为未验证。
 - 未使用真实 OpenAI、Anthropic、Grok、Ollama、支付、S3 或上游站点凭据；外部业务流程仅由本地单元、契约和前端测试覆盖。
