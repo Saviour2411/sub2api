@@ -97,7 +97,7 @@
 ## 2026-07-14 同步至 da85cc7e4
 
 - 执行时间：2026-07-14T23:31:44+08:00
-- 执行状态：同步分支完整合并并验证完成；本记录提交后使用 `--ff-only` 更新本地 `main`
+- 执行状态：同步分支完整合并并更新本地 `main`；首轮远端 CI 暴露批量图片插入占位符冲突，已修复并等待新一轮 CI 复核
 - 本地目标分支：`main`
 - `LOCAL_PRE_SYNC_SHA`：`ce7ff703925415b61855d5d3b67fcee413fc5e87`
 - 上游代码合并提交：`1774fb96e15e69a13956580c15318cc24ac624a0`
@@ -565,6 +565,7 @@
 - OpenAI Responses 同时保留本地 upstream/client stream 拆分、首 Token、WS 逐轮结算和审计，并接入 namespace/item ID 清洗及代理流熔断；修复请求视图未同步导致清洗字段被后续补丁恢复的问题。
 - 审计日志继续保留成功会话记录、敏感字段清理和本地响应包装，接入 session ID 但不记录 Ollama 会话明文。
 - 图片与批量图片路径保留本地分组成功率、请求质量/尺寸、公开字段和结算语义，并接入上游诊断字段与 Composite 路由。
+- 首轮 GitHub Actions 集成测试发现 `batch_image_jobs` 同时合入本地 `group_id` 和上游 `session_id` 后有 38 个目标列，但 `VALUES` 仅到 `$37`；补齐 `$38` 并增加 38 参数 SQLMock 回归，避免仅靠真实 PostgreSQL 才发现列值数量漂移。
 - `frontend/src/components/common/DataTable.vue` 保留本地非虚拟化和滚动稳定性，同时接入上游表格行为更新。
 - `deploy/docker-compose.yml` 与 `deploy/docker-compose.sub2api.yml` 保持完全一致，SHA-256 均为 `2A5CD7204F2B66A49ACBAF914108383B48D5E0F292E49AAEF16508059275A731`；继续使用 bind mount、回环地址、HTTP upstream 业务开关和既定 4 vCPU/8 GiB 参数。
 
@@ -595,15 +596,17 @@
 | 同步后 | `corepack pnpm run test:run` | 0 | 前端全量 Vitest 通过；仅输出既有 i18n 测试警告 |
 | 同步后 | `corepack pnpm run build` | 0 | TypeScript/Vite 生产构建通过；仅有大 chunk 非致命警告 |
 | 同步后 | Compose 哈希、关键环境参数、冲突标记、删除、敏感路径、锁文件和 `git diff --check` | 0 | 两份生产 Compose 完全一致；无源码冲突标记、删除文件、实际凭据路径、未暂存锁文件或空白错误 |
+| 远端 CI 首轮 | GitHub Actions `CI` / `Integration tests` | 2 | 其余 CI Job 与 `Security Scan` 通过；9 个批量图片 repository 用例统一因 `INSERT has more target columns than expressions` 失败，定位为合并后的占位符缺失 |
+| CI 修复 | `go test -tags=unit ./internal/repository -run '^TestCreateBatchImageJobWithSQLBindsAllColumns$'`、repository 全包 | 0 | 新增回归确认 38 个目标列绑定 `$1..$38` 和 38 个参数；等待修复提交的 GitHub Actions 集成测试复核 |
 
 ### 未验证项与残余风险
 
-- 未运行 `go test -tags=integration ./...`、Testcontainers、真实 PostgreSQL migration 或 `-race`；这些验证需要 Docker、隔离数据库或 CGO 环境。
+- 本地未运行 `go test -tags=integration ./...`、Testcontainers、真实 PostgreSQL migration 或 `-race`；首次 GitHub Actions 已运行集成测试并暴露批量图片 SQL 问题，修复后的完整集成结果等待下一轮 CI。
 - 本机 `docker` 与 `govulncheck` 不在 PATH，未执行 Compose 启动、容器健康检查或 Go 漏洞可达性扫描。
 - 未读取 `.env`，未启动依赖 PostgreSQL/Redis 的真实服务，因此本地启动与健康检查标记为未验证。
 - 未使用真实 OpenAI、Anthropic、Grok、Ollama、支付、S3 或上游站点凭据；外部业务流程仅由本地单元、契约和前端测试覆盖。
 - 未执行真实浏览器端到端交互；移动端支付、Ollama Cloud 设置和 Composite 管理页面由组件测试、typecheck 和生产构建覆盖。
-- 未执行 push、PR、部署、远程服务器访问、容器重启或生产数据操作。
+- 已按用户授权推送 `main` 以执行 GitHub Actions；未执行 PR、部署、远程服务器访问、容器重启或生产数据操作。
 
 ## 2026-07-23 同步至 60013c5f1
 
