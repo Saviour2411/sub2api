@@ -56,13 +56,13 @@ func (p *newAPIUpstreamProvider) Sync(ctx context.Context, req UpstreamSyncReque
 		return upstreamResultWithCredential(result, state.credential), err
 	}
 
-	reauthenticated, authErr := p.login(ctx, req.Site, state.credential)
+	reauthenticated, authErr := p.renewAuthentication(ctx, req.Site, state.credential)
 	if authErr != nil {
 		credential := state.credential
 		if reauthenticated != nil {
 			credential = reauthenticated.credential
 		}
-		return upstreamResultWithCredential(result, credential), fmt.Errorf("重新登录 New API: %w", authErr)
+		return upstreamResultWithCredential(result, credential), fmt.Errorf("重新认证 New API: %w", authErr)
 	}
 	state = reauthenticated
 	result, err = p.syncAuthenticated(ctx, req, state)
@@ -118,6 +118,24 @@ func (p *newAPIUpstreamProvider) authenticate(ctx context.Context, site *Upstrea
 		if !isUpstreamAuthenticationError(err) {
 			return state, err
 		}
+		return p.renewAuthentication(ctx, site, state.credential)
+	}
+	return p.login(ctx, site, credential)
+}
+
+func (p *newAPIUpstreamProvider) renewAuthentication(ctx context.Context, site *UpstreamSite, credential UpstreamCredential) (*newAPIAuthState, error) {
+	if credential.Cookie != "" {
+		state, err := p.refresh(ctx, site, credential)
+		if err == nil {
+			verified, verifyErr := p.loadAuthState(ctx, site, state.credential)
+			if verifyErr != nil {
+				return verified, fmt.Errorf("刷新 New API 登录会话后验证失败: %w", verifyErr)
+			}
+			return verified, nil
+		}
+		if !newAPIRefreshAllowsLoginFallback(err) {
+			return state, err
+		}
 	}
 	return p.login(ctx, site, credential)
 }
@@ -134,12 +152,51 @@ func (p *newAPIUpstreamProvider) login(ctx context.Context, site *UpstreamSite, 
 		return nil, fmt.Errorf("new API 登录未返回 Cookie")
 	}
 	credential.Cookie = cookie
-	credential.NewAPIUserID = stringValue(valueByKeys(apiData(login), "id", "user_id"))
+	credential = applyNewAPIAuthPayload(credential, login)
 	return p.loadAuthState(ctx, site, credential)
+}
+
+func (p *newAPIUpstreamProvider) refresh(ctx context.Context, site *UpstreamSite, credential UpstreamCredential) (*newAPIAuthState, error) {
+	state := &newAPIAuthState{credential: credential}
+	payload, cookie, err := p.http.doJSON(ctx, http.MethodPost, site.BaseURL, "/api/user/auth/refresh", nil, credential.Cookie, nil)
+	if err != nil {
+		return state, fmt.Errorf("刷新 New API 登录会话: %w", err)
+	}
+	if cookie != "" {
+		credential.Cookie = cookie
+	}
+	credential = applyNewAPIAuthPayload(credential, payload)
+	if credential.AccessToken == "" {
+		state.credential = credential
+		return state, fmt.Errorf("刷新 New API 登录会话未返回 access_token")
+	}
+	state.credential = credential
+	return state, nil
+}
+
+func applyNewAPIAuthPayload(credential UpstreamCredential, payload map[string]any) UpstreamCredential {
+	data := apiData(payload)
+	if accessToken := stringValue(valueByKeys(data, "access_token")); accessToken != "" {
+		credential.AccessToken = accessToken
+	}
+	if userID := stringValue(valueByKeys(data, "id", "user_id")); userID != "" {
+		credential.NewAPIUserID = userID
+	}
+	return credential
+}
+
+func newAPIRefreshAllowsLoginFallback(err error) bool {
+	return isHTTPStatus(err, http.StatusUnauthorized) ||
+		isHTTPStatus(err, http.StatusForbidden) ||
+		isHTTPStatus(err, http.StatusNotFound) ||
+		isHTTPStatus(err, http.StatusMethodNotAllowed)
 }
 
 func (p *newAPIUpstreamProvider) loadAuthState(ctx context.Context, site *UpstreamSite, credential UpstreamCredential) (*newAPIAuthState, error) {
 	headers := map[string]string{}
+	if credential.AccessToken != "" {
+		headers["Authorization"] = "Bearer " + credential.AccessToken
+	}
 	if credential.NewAPIUserID != "" {
 		headers["New-Api-User"] = credential.NewAPIUserID
 	}

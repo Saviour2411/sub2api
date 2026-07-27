@@ -584,6 +584,144 @@ func TestNewAPIUpstreamProviderReusesCachedCookie(t *testing.T) {
 	require.Equal(t, "9", credential.NewAPIUserID)
 }
 
+func TestNewAPIUpstreamProviderUsesRC22BearerTokenFromLogin(t *testing.T) {
+	var loginCalls int
+	var refreshCalls int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/user/login", func(w http.ResponseWriter, r *http.Request) {
+		loginCalls++
+		require.Equal(t, http.MethodPost, r.Method)
+		http.SetCookie(w, &http.Cookie{Name: "refresh_session", Value: "refresh-1"})
+		writeUpstreamJSON(t, w, map[string]any{
+			"access_token":      "access-1",
+			"token_type":        "Bearer",
+			"access_expires_at": time.Now().Add(time.Hour).Unix(),
+			"user":              map[string]any{"id": 9},
+			"session":           map[string]any{"sid": "session-1"},
+		})
+	})
+	mux.HandleFunc("/api/user/auth/refresh", func(w http.ResponseWriter, _ *http.Request) {
+		refreshCalls++
+		http.Error(w, "不应刷新", http.StatusInternalServerError)
+	})
+	mux.HandleFunc("/api/user/self", func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "Bearer access-1", r.Header.Get("Authorization"))
+		require.Equal(t, "refresh_session=refresh-1", r.Header.Get("Cookie"))
+		require.Equal(t, "9", r.Header.Get("New-Api-User"))
+		writeUpstreamJSON(t, w, map[string]any{"id": 9, "quota": 100})
+	})
+	mux.HandleFunc("/api/status", func(w http.ResponseWriter, _ *http.Request) {
+		writeUpstreamJSON(t, w, map[string]any{"quota_per_unit": 100})
+	})
+	mux.HandleFunc("/api/user/self/groups", func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "Bearer access-1", r.Header.Get("Authorization"))
+		require.Equal(t, "refresh_session=refresh-1", r.Header.Get("Cookie"))
+		writeUpstreamJSON(t, w, map[string]any{})
+	})
+	mux.HandleFunc("/api/pricing", func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "Bearer access-1", r.Header.Get("Authorization"))
+		require.Equal(t, "refresh_session=refresh-1", r.Header.Get("Cookie"))
+		writeUpstreamJSON(t, w, map[string]any{})
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	provider := newNewAPIUpstreamProvider(newTestUpstreamHTTPClient(t))
+	result, err := provider.Sync(context.Background(), UpstreamSyncRequest{
+		Site: &UpstreamSite{
+			BaseURL: server.URL, Platform: UpstreamPlatformNewAPI,
+			AuthMode: UpstreamAuthPassword, Account: "admin",
+		},
+		Credential: UpstreamCredential{Password: "secret"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, loginCalls)
+	require.Zero(t, refreshCalls)
+	require.Equal(t, "access-1", result.Credential.AccessToken)
+	require.Equal(t, "refresh_session=refresh-1", result.Credential.Cookie)
+	require.Equal(t, "9", result.Credential.NewAPIUserID)
+}
+
+func TestNewAPIUpstreamProviderRefreshesRC22SessionBeforeRelogin(t *testing.T) {
+	var loginCalls int
+	var refreshCalls int
+	var selfCalls int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/user/login", func(w http.ResponseWriter, _ *http.Request) {
+		loginCalls++
+		http.Error(w, "不应重新登录", http.StatusInternalServerError)
+	})
+	mux.HandleFunc("/api/user/auth/refresh", func(w http.ResponseWriter, r *http.Request) {
+		refreshCalls++
+		require.Equal(t, "refresh_session=stored", r.Header.Get("Cookie"))
+		http.SetCookie(w, &http.Cookie{Name: "refresh_session", Value: "rotated"})
+		writeUpstreamJSON(t, w, map[string]any{
+			"access_token":      "refreshed-access",
+			"token_type":        "Bearer",
+			"access_expires_at": time.Now().Add(time.Hour).Unix(),
+			"user":              map[string]any{"id": 9},
+			"session":           map[string]any{"sid": "session-1"},
+		})
+	})
+	mux.HandleFunc("/api/user/self", func(w http.ResponseWriter, r *http.Request) {
+		selfCalls++
+		if r.Header.Get("Authorization") == "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"code":"AUTH_UNAUTHORIZED","message":"Unauthorized, invalid access token","success":false}`))
+			return
+		}
+		require.Equal(t, "Bearer refreshed-access", r.Header.Get("Authorization"))
+		require.Equal(t, "refresh_session=rotated", r.Header.Get("Cookie"))
+		writeUpstreamJSON(t, w, map[string]any{"id": 9, "quota": 100})
+	})
+	mux.HandleFunc("/api/status", func(w http.ResponseWriter, _ *http.Request) {
+		writeUpstreamJSON(t, w, map[string]any{"quota_per_unit": 100})
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	provider := newNewAPIUpstreamProvider(newTestUpstreamHTTPClient(t))
+	credential, err := provider.Validate(context.Background(), &UpstreamSite{
+		BaseURL: server.URL, Platform: UpstreamPlatformNewAPI,
+		AuthMode: UpstreamAuthPassword, Account: "admin",
+	}, UpstreamCredential{Password: "secret", Cookie: "refresh_session=stored", NewAPIUserID: "9"})
+	require.NoError(t, err)
+	require.Zero(t, loginCalls)
+	require.Equal(t, 1, refreshCalls)
+	require.Equal(t, 2, selfCalls)
+	require.Equal(t, "refreshed-access", credential.AccessToken)
+	require.Equal(t, "refresh_session=rotated", credential.Cookie)
+}
+
+func TestNewAPIUpstreamProviderDoesNotLoginAfterNonRecoverableRefreshFailure(t *testing.T) {
+	var loginCalls int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/user/login", func(w http.ResponseWriter, _ *http.Request) {
+		loginCalls++
+		http.Error(w, "不应重新登录", http.StatusInternalServerError)
+	})
+	mux.HandleFunc("/api/user/auth/refresh", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"code":"AUTH_SESSION_LIMIT","message":"Conflict","success":false}`))
+	})
+	mux.HandleFunc("/api/user/self", func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "expired", http.StatusUnauthorized)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	provider := newNewAPIUpstreamProvider(newTestUpstreamHTTPClient(t))
+	_, err := provider.Validate(context.Background(), &UpstreamSite{
+		BaseURL: server.URL, Platform: UpstreamPlatformNewAPI,
+		AuthMode: UpstreamAuthPassword, Account: "admin",
+	}, UpstreamCredential{Password: "secret", Cookie: "refresh_session=stored", NewAPIUserID: "9"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "HTTP 409")
+	require.Zero(t, loginCalls)
+}
+
 func TestNewAPIUpstreamProviderReloginsAfterCookieRejected(t *testing.T) {
 	var loginCalls int
 	mux := http.NewServeMux()
