@@ -236,7 +236,21 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
 		forwardCtx := withPreResponseKeepalive(c.Request.Context(), preResponseKeepalive)
-		result, err := h.gatewayService.ForwardAsResponses(forwardCtx, c, account, forwardBody, parsedReq)
+		var result *service.ForwardResult
+		setActualUpstreamEndpoint(c, "")
+		if shouldUseAntigravityCompat(account) {
+			if h.antigravityGatewayService == nil {
+				h.responsesErrorResponse(c, http.StatusBadGateway, "upstream_error", "Antigravity compatibility service is not configured")
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+				}
+				return
+			}
+			setActualUpstreamEndpoint(c, EndpointAntigravityGenerateContent)
+			result, err = h.antigravityGatewayService.ForwardAsResponses(forwardCtx, c, account, forwardBody, parsedReq)
+		} else {
+			result, err = h.gatewayService.ForwardAsResponses(forwardCtx, c, account, forwardBody, parsedReq)
+		}
 		preResponseStarted := stopPreResponseKeepaliveFromContext(forwardCtx)
 		if preResponseStarted {
 			streamStarted = true

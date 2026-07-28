@@ -7,6 +7,94 @@
 - 本次恢复两份生产 Compose 的 `./data`、`./postgres_data`、`./redis_data` bind mount 和 `127.0.0.1:18080` 默认监听，保留本轮上游新增环境变量及本地批准的连接池、worker、PostgreSQL、Go 内存和日志参数。
 - 自动部署继续默认不上传 Compose；生产服务器活动 Compose 在更新前后均未切换到命名卷，生产数据目录未迁移或清理。
 
+## 2026-07-29 同步至 8fd01c281
+
+- 执行时间：2026-07-29T03:34:27+08:00
+- 执行状态：同步分支完整合并并通过本地验证；本记录与 merge commit 同一提交，随后使用 `--ff-only` 更新本地 `main`
+- 本地目标分支：`main`
+- `LOCAL_PRE_SYNC_SHA`：`b77f979d61cea38f2acfc248480a2a8b9d8ff172`
+- 上游代码合并提交：本记录与 merge commit 同一提交，最终 SHA 仅在执行总结中报告
+- 上游仓库：`https://github.com/Wei-Shaw/sub2api.git`
+- 上游分支：`main`
+- `UPSTREAM_OLD_SHA`：`6d956bdc20f0d8c38275d4d77b628a8ff776711c`
+- `UPSTREAM_NEW_SHA`：`8fd01c2814f42997d79bdb4bafcbcfab2fabeee3`
+- merge-base：`6d956bdc20f0d8c38275d4d77b628a8ff776711c`
+- `LAST_FULLY_INTEGRATED_UPSTREAM_SHA`：`8fd01c2814f42997d79bdb4bafcbcfab2fabeee3`
+- 集成策略：在隔离同步分支使用 `git merge --no-ff --no-commit` 完整合并固定上游 SHA，逐文件解决 29 个文本冲突和关联语义冲突，重新生成 Ent/Wire，并将二开兼容处理及两份历史台账纳入同一 merge commit
+- 备份分支：`backup/pre-upstream-sync-20260729-014042-b77f979d6`
+- 同步分支：`sync/upstream-20260729-8fd01c281`
+
+### 上游提交处置
+
+本次固定范围共 127 个提交，其中 53 个 merge commit、74 个 non-merge commit。127 个提交均通过完整 merge 保留祖先关系并记为 `Applied`，其中下表列出的 13 个提交同时按本地二次开发边界记为 `Applied + Overridden`；无 `Already Applied`、`Skipped`、`Deferred` 或未解决 `Conflict`。
+
+| 上游提交集合 | 数量 | 状态 | 内容与处置 |
+| --- | ---: | --- | --- |
+| `6d956bdc2..8fd01c281` | 127 | Applied | 完整接入 OpenAI Live 与 macOS attestation、Passkey、上游 Model Plaza、面板 API 限流、Ollama Cloud 用量刷新、注册邮箱别名去重、Kimi K3、Responses/Anthropic 工具兼容、支付统计、公告样式、Caddy SSE、依赖安全更新及相关测试 |
+| `2730c1c43`、`59ce11c78` | 2 | Applied + Overridden | 保留上游版本提交的祖先关系，最终版本继续使用本地较新的 `0.1.211`，不回退到上游 `0.1.165` 或 `0.1.166` |
+| `1f45c99de`、`be65c713f` | 2 | Applied + Overridden | 接入映射模型与最终上游模型的用量归因并始终记录 `upstream_model`；普通文本计费继续严格使用用户请求模型，Composite 保留显式别名渠道价例外，图片和视频继续使用专用媒体计费模型 |
+| `7ce6e8d65`、`eb6e3d1f1` | 2 | Applied + Overridden | 接入 WS 每轮模型跟踪；每轮只执行一次渠道映射和账号映射，并继续保留逐轮并发释放、用量快照、请求体哈希、失败停调度和审计 |
+| `7b3ed2a96`、`b468e428e` | 2 | Applied + Overridden | 保留 OAuth prompt cache 修复提交的祖先关系和缓存断点处理；真实 Claude Code 仍只信任 handler 的严格客户端判定，不采用仅凭 body billing block 的宽松识别 |
+| `71d7f8688`、`3ce8efc12`、`d96b6a31f` | 3 | Applied + Overridden | 接入 Antigravity OpenAI 兼容、非流式空响应拒绝及流式转换修复；只有账号启用 Pool Mode 时才允许空响应在同账号重试，避免普通账号绕过既有故障转移边界 |
+| `720c405e3`、`8fd01c281` | 2 | Applied + Overridden | 接入上游 `/model-plaza`、分组范围和定价展示，但默认关闭；本地 `/models` 模型市场、默认值、管理配置和公开字段白名单继续独立保留 |
+
+### 本地提交与文件
+
+- 在写入两份台账前，合并树相对 `LOCAL_PRE_SYNC_SHA` 修改 354 个代码、配置、资源和测试文件：新增 66 个、修改 283 个、删除 5 个，共增加 20129 行、删除 1101 行。
+- 主要新增：OpenAI Live HTTP/WS 入口与 attestation、Passkey 登录和用户凭据管理、上游 Model Plaza、面板 API 分层限流、分组 `allow_live` 字段及 4 个数据库迁移。
+- 主要修复：Ollama Cloud 刷新节流、注册邮箱别名并发去重、设置部分更新、OpenAI reasoning 故障转移、WS 每轮模型归因、Responses 工具配对、Antigravity/Gemini/Grok 兼容、支付多币种统计和 Caddy SSE 压缩缓冲。
+- Ent 通过临时 target 完整生成并与正式 `backend/ent` 逐文件 SHA-256 比对一致；临时目录已删除。Wire 重复生成结果稳定，`wire_gen.go` SHA-256 为 `DA4B0969FC7CC3061E653CA7D3E9F9DB511F86DDFED857AB2148038173A11539`。
+- 上游 sponsor 更新删除 5 个不再引用的合作方 PNG；未删除本地业务资源。
+- `go.sum` 使用官方依赖下载补齐 `github.com/google/subcommands` 校验项；前端测试、lint 和构建后没有锁文件或其他未暂存受控差异。
+
+### 冲突与最终解决方案
+
+- 29 个文本冲突均逐文件解决，无整文件采用 `ours` 或 `theirs`，最终索引无未解决路径。
+- OpenAI Live、Passkey、上游 Model Plaza 和面板限流完整接入；`/model-plaza` 默认关闭，本地 `/models` 模型市场和每日签到继续保留各自设置及前端入口。
+- OpenAI REST/WS 同时接入首响应心跳、首 Token 检测、Responses 工具映射、reasoning 故障转移和每轮模型跟踪；本地逐轮并发释放、用量快照、请求体哈希、失败停调度、审计及每轮只映射一次的边界保持不变。
+- `UpstreamModel` 只用于转发日志和账号成本归因；普通文本用户计费继续严格按请求模型，Composite 保留既有例外，图片和视频通过 `BillingModel` 按实际媒体模型计费。
+- Claude CLI 版本更新到 `2.1.220`，并接入原始 system cache breakpoint；OAuth 模拟继续只信任 handler 严格判定，不接受 body 特征放宽客户端身份。
+- Antigravity 接入非流式空响应与流式兼容修复，但同账号重试继续受 Pool Mode 约束；首响应心跳、失败切换和流内用量语义保持本地边界。
+- 修复合并后的注册页未定义 `registrationActionDisabled`、Grok 测试遗漏 `prompt` 参数、语义错误默认值测试依赖全局缓存、Groups Live 能力旧 Mock 和 Profile Passkey 布局旧 Stub。
+- 删除冲突解决后不再使用、且会绕过本地严格计费或客户端判定的 3 个 helper，`golangci-lint` 最终为 `0 issues`。
+- `deploy/docker-compose.yml` 与 `deploy/docker-compose.sub2api.yml` 本轮未改动且保持完全一致，SHA-256 均为 `7091912E26F962DD1A37CAC5E16876E6489E59E4192DE0989DBCD3BE920B3D1E`；生产 bind mount、回环暴露、HTTP upstream 开关和 4 vCPU/8 GiB 参数基线均未改变。
+
+### 刻意保留的二次开发功能
+
+- 首 Token 超时、首响应前心跳边界、upstream/client stream 拆分、WS 逐轮并发释放/结算、成功会话审计与失败调度保护。
+- 普通分组严格按用户请求模型计费、Composite 显式别名价例外、严格缺价错误、图片/视频实际媒体模型计费、按用户串行扣费和 5 秒 usage task 超时。
+- Claude Code 严格客户端判定、全局上游模拟、Codex 图片工具策略、API Key 请求头覆写、内容审核/Cyber 阻断及渠道监控结构化 Responses `input`。
+- 本地每日签到、`/models` 模型市场、充值赠送、专属倍率用户禁返利、图片分组成功率和批量图片结算。
+- 账号列表禁用虚拟化、查询后滚动重置、DataTable 稳定性、二开管理入口和生产双 Compose 约束。
+
+### 验证记录
+
+验证使用 Go 1.26.5、corepack 管理的 pnpm、golangci-lint 2.9.0 和既有本地依赖缓存。
+
+| 阶段 | 命令 | 退出码 | 结果 |
+| --- | --- | ---: | --- |
+| 同步前 | 完整回归基线 | 未保留 | 执行上下文交接时已进入 merge 现场；未伪造同步前命令或退出码，`main` 与备份分支始终保持 `LOCAL_PRE_SYNC_SHA` |
+| 生成 | Ent 临时 target 完整生成和逐文件 SHA-256 比对、`go generate ./cmd/server` 重复执行 | 0 | Ent 与正式目录完全一致；Wire 两次结果稳定，无临时目录或锁文件残留 |
+| 适配 | `go test -tags=unit -run '^$' ./...` | 0 | Go 全包编译通过 |
+| 适配 | OpenAI WS/Live、Gateway 用量、Antigravity、Passkey、设置、server/routes/middleware 定向测试 | 0 | 所有受影响后端定向测试通过 |
+| 适配 | 前端冲突点 4 文件定向 Vitest | 0 | 40 个测试通过 |
+| 同步后 | `go test -tags=unit ./...` | 1 / 0 | 首次发现语义错误默认值测试依赖全局缓存；显式注入空设置仓库并重置缓存后全包通过 |
+| 同步后 | `golangci-lint run --timeout=30m ./...` | 1 / 0 | 首次发现 3 个冲突解决后的未使用 helper；按本地严格计费和客户端判定边界删除后 `0 issues` |
+| 同步后 | `CGO_ENABLED=0 go build -trimpath -o bin/server-sync.exe ./cmd/server` | 0 | 后端构建通过，产物位于忽略目录 |
+| 同步后 | `corepack pnpm lint:check`、`corepack pnpm typecheck` | 0 | 串行复验均通过；一次与 Vitest 并行的 lint 仅因扫描到 Vitest 瞬时配置文件失败，不属于代码错误 |
+| 同步后 | `corepack pnpm test:run` | 1 / 1 / 0 | 两轮分别发现 Groups Live 能力 Mock 和 Profile Passkey 子组件 Stub 过期；修复测试隔离后全量 Vitest 通过 |
+| 同步后 | `corepack pnpm build` | 0 | `vue-tsc -b` 与 Vite 生产构建通过；仅有既有 Browserslist、动态导入和大 chunk 非致命警告 |
+| 同步后 | `git diff --cached --check`、冲突路径、未暂存文件和 Compose 一致性检查 | 0 | 无空白错误、未解决冲突或未暂存受控差异；两份生产 Compose 字节一致且未被本轮修改 |
+
+### 未验证项与残余风险
+
+- 本机 Docker 与 `govulncheck` 不可用，未运行 Testcontainers、真实 PostgreSQL migration、Compose 启动或 Go 漏洞可达性扫描。
+- 未运行 `go test -tags=integration ./...` 或 `-race`；当前验证覆盖全量 unit、静态检查、构建和受影响定向用例。
+- 未读取 `.env`，未启动依赖 PostgreSQL/Redis 的真实服务，因此本地启动和健康检查标记为未验证。
+- 未使用真实 OpenAI Live attestation、Passkey 硬件、OpenAI、Anthropic、Grok、Ollama、支付、S3 或上游站点凭据；外部业务流程仅由本地单元、契约和前端测试覆盖。
+- 未执行真实浏览器端到端交互；Passkey、Model Plaza、面板限流和 Live 管理路径由 API/组件测试、typecheck 和生产构建覆盖。
+- 未执行 push、PR、部署、远程服务器访问、容器重启或生产数据操作。
+
 ## 2026-07-12 同步至 e316ebf52
 
 - 执行时间：2026-07-12T21:28:10+08:00

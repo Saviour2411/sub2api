@@ -5,6 +5,14 @@ import (
 	"testing"
 )
 
+type semanticErrorSettingRepo struct {
+	SettingRepository
+}
+
+func (*semanticErrorSettingRepo) GetMultiple(context.Context, []string) (map[string]string, error) {
+	return map[string]string{}, nil
+}
+
 func TestMatchSemanticErrorRules(t *testing.T) {
 	rules := []SemanticErrorRule{
 		{
@@ -80,7 +88,12 @@ func TestValidateSemanticErrorRulesRejectsInvalidRegex(t *testing.T) {
 }
 
 func TestSettingServiceMatchSemanticErrorDisabledByDefault(t *testing.T) {
-	svc := &SettingService{}
+	gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{})
+	t.Cleanup(func() {
+		gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{})
+	})
+
+	svc := NewSettingService(&semanticErrorSettingRepo{}, nil)
 	match := svc.MatchSemanticError(context.Background(), PlatformOpenAI, []byte("quota exceeded"))
 	if match != nil {
 		t.Fatalf("expected nil match, got %#v", match)

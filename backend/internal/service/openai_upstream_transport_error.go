@@ -125,6 +125,11 @@ func (s *OpenAIGatewayService) handleOpenAIUpstreamTransportError(ctx context.Co
 	}
 
 	classification := classifyOpenAITransportError(err)
+	// Transport attempt reached the network path; count as Ollama Cloud activity.
+	if s != nil {
+		scheduleOllamaCloudUsageActivity(s.deferredService, account)
+	}
+
 	if classification.Persistent {
 		s.tempUnscheduleOpenAITransportError(ctx, account, safeErr)
 	}
