@@ -398,7 +398,7 @@ describe('admin UsageView distribution metric toggles', () => {
     await wrapper.get('button[title="admin.users.columnSettings"]').trigger('click')
     await flushPromises()
 
-    const dropdown = document.body.querySelector<HTMLElement>('.usage-column-dropdown')
+    const dropdown = document.body.querySelector<HTMLElement>('.column-settings-dropdown')
     expect(dropdown).not.toBeNull()
     expect(wrapper.element.contains(dropdown)).toBe(false)
     expect(dropdown?.className).toContain('fixed')
