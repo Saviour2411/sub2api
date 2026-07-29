@@ -7,6 +7,93 @@
 - 本次恢复两份生产 Compose 的 `./data`、`./postgres_data`、`./redis_data` bind mount 和 `127.0.0.1:18080` 默认监听，保留本轮上游新增环境变量及本地批准的连接池、worker、PostgreSQL、Go 内存和日志参数。
 - 自动部署继续默认不上传 Compose；生产服务器活动 Compose 在更新前后均未切换到命名卷，生产数据目录未迁移或清理。
 
+## 2026-07-29 同步至 5a6143097
+
+- 执行时间：2026-07-29T01:44:21+08:00
+- 执行状态：同步分支完整合并并通过本地验证；本记录提交后使用 `--ff-only` 更新本地 `main`
+- 本地目标分支：`main`
+- `LOCAL_PRE_SYNC_SHA`：`ae833c83c283a36943bab17251530c3f3b20e1ec`
+- 上游代码合并提交：`565c685f88d698db65d21d160bcb1027252db515`
+- 最后一个代码/测试提交：`ee222f0307fe8297c9dfdaa98991906bcf674d63`
+- 上游仓库：`https://github.com/Wei-Shaw/sub2api.git`
+- 上游分支：`main`
+- `UPSTREAM_OLD_SHA`：`8fd01c2814f42997d79bdb4bafcbcfab2fabeee3`
+- `UPSTREAM_NEW_SHA`：`5a6143097db142b72a6fc848c214e97214470bdd`
+- merge-base：`8fd01c2814f42997d79bdb4bafcbcfab2fabeee3`
+- `LAST_FULLY_INTEGRATED_UPSTREAM_SHA`：`5a6143097db142b72a6fc848c214e97214470bdd`
+- 集成策略：在隔离同步分支使用 `git merge --no-ff --no-commit` 完整合并固定上游 SHA；逐文件解决唯一文本冲突，复核自动合并路径的二开语义，并以独立测试提交补充 Passkey 禁用状态回归
+- 备份分支：`backup/pre-upstream-sync-20260729-014421-ae833c83c`
+- 同步分支：`sync/upstream-20260729-5a6143097`
+
+### 上游提交处置
+
+本次固定范围共 8 个提交，其中 3 个 merge commit、5 个 non-merge commit。6 个提交为 `Applied`，2 个版本提交因 patch-id 已在本地历史等价存在并继续保留本地较新版本，记为 `Already Applied + Overridden`；无 `Skipped`、`Deferred` 或未解决 `Conflict`。
+
+| 上游提交 | 状态 | 内容与处置 |
+| --- | --- | --- |
+| `1c26dc7ad` | Applied | OpenAI Live finalize 的唯一用量日志改走 `writeUsageLogBestEffort`；observer 区分 store 故障与控制权接管，有限重试后按 `ExpiresAt` 兜底 finalize，避免租约和用量记录静默丢失 |
+| `99c8e4bf7` | Applied | 合并 OpenAI Live store 容错修复；完整保留对应祖先关系 |
+| `32618e71e` | Applied | 账号状态显示增加 `claude-sonnet-5` 到 `CSon5` 的别名 |
+| `f2d824836` | Applied | 合并 Claude Sonnet 5 状态别名修复；完整保留对应祖先关系 |
+| `acad7f1a0` | Applied | Passkey 功能禁用时不再请求凭据列表，并按 API 规范化错误的 `reason` 字段静默处理 `PASSKEY_DISABLED` |
+| `6e1cbed42` | Applied | 合并 Passkey 禁用状态提示修复；完整保留对应祖先关系 |
+| `b9c7cb8e2` | Already Applied + Overridden | 上游版本同步到 `0.1.167` 的 patch-id 已在本地历史等价存在；完整 merge 保留祖先关系，最终不回退本地版本 |
+| `5a6143097` | Already Applied + Overridden | 上游版本同步到 `0.1.168` 的 patch-id 已在本地历史等价存在；完整 merge 保留祖先关系，最终继续使用本地 `0.1.211` |
+
+### 本地提交与文件
+
+- 上游范围整体映射到本地 merge commit `565c685f88d698db65d21d160bcb1027252db515`；其双亲为同步前本地 SHA 与固定上游 SHA。
+- 独立回归测试提交 `ee222f0307fe8297c9dfdaa98991906bcf674d63` 新增 `ProfilePasskeyCard.spec.ts`，覆盖功能禁用时不发请求、`PASSKEY_DISABLED` 静默及其他错误仍提示三个场景。
+- 写入两份台账前，代码与测试相对 `LOCAL_PRE_SYNC_SHA` 修改 6 个文件：新增 1 个、修改 5 个，共增加 335 行、删除 14 行，无删除文件。
+- 主要更新：OpenAI Live observer/store 故障容错与 usage log 兜底、Claude Sonnet 5 状态缩写、Passkey 禁用状态请求和提示抑制。
+- `backend/cmd/server/VERSION` 最终保持 `0.1.211`；前端构建未留下锁文件或其他未提交受控差异。
+
+### 冲突与最终解决方案
+
+- 唯一文本冲突位于 `backend/cmd/server/VERSION`；按批准方案保留本地 `0.1.211`，不回退到上游 `0.1.168`。
+- `frontend/src/components/account/AccountStatusIndicator.vue` 自动合并后同时保留本地连续失败停调度状态逻辑和上游 `claude-sonnet-5 → CSon5` 别名。
+- OpenAI Live 接入上游 store 故障容错和同步 usage log 兜底；本地连续失败停调度、按用户串行扣费、5 秒 usage task 超时及 Live 当前零计费行为均未改变。
+- Passkey 组件在功能禁用时清空本地列表并跳过请求；配置变更竞态下仍按 `error.reason` 静默处理 `PASSKEY_DISABLED`，其他错误保持原有提示。
+- 最终索引无未解决路径，未整文件采用 `ours` 或 `theirs`。
+
+### 刻意保留的二次开发功能
+
+- 账号连续失败停调度、strict 调度、pending/final outcome、streak 清理和调度 outbox 协同。
+- OpenAI Live 当前零计费边界、用量明细归因、按用户串行扣费和 5 秒 usage task 超时；未仅为匹配 worker 数提高数据库连接池。
+- 首 Token、WS 逐轮并发/结算/审计、普通文本严格请求模型计费、Composite 例外和媒体实际模型计费。
+- 生产 bind mount、仅回环暴露、HTTP upstream 业务开关、实例级性能参数透传和双生产 Compose 一致性约束。
+
+### 验证记录
+
+验证使用 Go 1.26.3、Node 24、corepack 管理的 pnpm 9.15.9 和 golangci-lint 2.9.0；CI 基线为 Go 1.26.5 与 Node 20。
+
+| 阶段 | 命令 | 退出码 | 结果 |
+| --- | --- | ---: | --- |
+| 同步前 | `go test -tags=unit ./...` | 0 | Go 全量 unit 通过，耗时 203.1 秒 |
+| 同步前 | `golangci-lint run --timeout=30m ./...` | 0 | `0 issues` |
+| 同步前 | `CGO_ENABLED=0 go build -trimpath ./cmd/server` | 0 | 后端构建通过 |
+| 同步前 | `corepack pnpm install --offline --frozen-lockfile`、`lint:check`、`typecheck`、`test:run`、`build` | 0 | 前端离线冻结安装、静态检查、类型检查、全量 Vitest 和生产构建均通过 |
+| 适配 | `go test -tags=unit -run '^$' ./...` | 0 | Go 全包编译通过 |
+| 适配 | OpenAI Live 6 个定向测试 | 0 | observer/store 故障重试、到期 finalize、usage log 兜底和既有生命周期场景通过 |
+| 适配 | `AccountStatusIndicator.spec.ts` | 0 | 11 个测试通过，覆盖 Sonnet 5 别名及既有停调度状态 |
+| 适配 | `ProfilePasskeyCard.spec.ts` | 0 | 3 个测试通过 |
+| 同步后 | `go test -tags=unit ./...` | 0 | Go 全量 unit 通过，耗时 174.8 秒 |
+| 同步后 | `golangci-lint run --timeout=30m ./...` | 0 | `0 issues` |
+| 同步后 | `CGO_ENABLED=0 go build -trimpath ./cmd/server` | 0 | 后端构建通过 |
+| 同步后 | `corepack pnpm install --offline --frozen-lockfile`、`lint:check`、`typecheck` | 0 | 均通过 |
+| 同步后 | `corepack pnpm run test:run` | 0 | 前端全量 Vitest 通过，耗时 34.5 秒；仅输出既有 Vue/i18n 警告 |
+| 同步后 | `corepack pnpm run build` | 0 | `vue-tsc -b` 与 Vite 生产构建通过；仅有既有 Browserslist、动态/静态导入和大 chunk 非致命警告 |
+| 同步后 | Compose 哈希、bind mount/回环/性能变量静态复核、祖先关系、冲突标记、意外删除、敏感路径和 `git diff --check` | 0 | 两份生产 Compose 字节一致且 SHA-256 均为 `7091912E26F962DD1A37CAC5E16876E6489E59E4192DE0989DBCD3BE920B3D1E`；固定上游 SHA 已成为当前分支祖先；无新增异常 |
+
+### 未验证项与残余风险
+
+- 未运行 Docker、Testcontainers、`go test -tags=integration ./...`、真实 PostgreSQL migration 或 `-race`。
+- 未运行 `govulncheck`；漏洞可达性需由后续 CI 或具备相应工具的隔离环境复核。
+- 未读取 `.env`，未启动依赖 PostgreSQL/Redis 的真实服务，因此实例专用性能值、本地服务启动和健康检查未验证。
+- 未注入真实 Redis 故障，未使用真实 OpenAI Live attestation/媒体会话或 Passkey 硬件；相关行为由本地单元和组件回归覆盖。
+- 本地 Go 1.26.3、Node 24 与 CI Go 1.26.5、Node 20 存在环境差异，需以后续远端 CI 为发布门禁。
+- 未执行 push、PR、部署、远程服务器访问、容器重启或生产数据操作。
+
 ## 2026-07-29 同步至 8fd01c281
 
 - 执行时间：2026-07-29T03:34:27+08:00
