@@ -209,12 +209,11 @@ const openColumnSettings = async (wrapper: ReturnType<typeof mount>) => {
   await wrapper.get('button[title="Column Settings"]').trigger('click')
 }
 
-const clickColumnToggle = async (wrapper: ReturnType<typeof mount>, label: string) => {
-  const button = wrapper
-    .findAll('button')
-    .find((item) => item.text().includes(label))
+const clickColumnToggle = async (label: string) => {
+  const button = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button'))
+    .find((item) => item.textContent?.includes(label))
   expect(button, `column toggle ${label}`).toBeTruthy()
-  await button!.trigger('click')
+  button!.click()
   await flushPromises()
 }
 
@@ -250,6 +249,7 @@ describe('admin GroupsView column settings', () => {
 
   afterEach(() => {
     localStorage.clear()
+    document.body.innerHTML = ''
   })
 
   it('hides the id column by default while keeping other group columns visible', async () => {
@@ -320,7 +320,7 @@ describe('admin GroupsView column settings', () => {
     const wrapper = await mountView()
 
     await openColumnSettings(wrapper)
-    await clickColumnToggle(wrapper, 'Usage')
+    await clickColumnToggle('Usage')
 
     expect(columnKeys(wrapper)).toEqual([
       'name',
@@ -342,7 +342,7 @@ describe('admin GroupsView column settings', () => {
     const wrapper = await mountView()
 
     await openColumnSettings(wrapper)
-    await clickColumnToggle(wrapper, 'ID')
+    await clickColumnToggle('ID')
 
     expect(columnKeys(wrapper)).toEqual([
       'name',
@@ -372,11 +372,11 @@ describe('admin GroupsView column settings', () => {
     expect(getCapacitySummary).not.toHaveBeenCalled()
 
     await openColumnSettings(wrapper)
-    await clickColumnToggle(wrapper, 'Usage')
+    await clickColumnToggle('Usage')
     expect(getUsageSummary).toHaveBeenCalledTimes(1)
     expect(getCapacitySummary).not.toHaveBeenCalled()
 
-    await clickColumnToggle(wrapper, 'Capacity')
+    await clickColumnToggle('Capacity')
     expect(getUsageSummary).toHaveBeenCalledTimes(1)
     expect(getCapacitySummary).toHaveBeenCalledTimes(1)
   })

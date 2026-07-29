@@ -85,43 +85,37 @@
 
         <UsageFilters v-model="filters" ref="usageFiltersRef" flat :mode="activeTab" class="border-b border-gray-100 dark:border-dark-700/50" :start-date="startDate" :end-date="endDate" :exporting="exporting" :model-options="modelNameOptions" @change="applyFilters" @refresh="refreshData" @reset="resetFilters" @cleanup="openCleanupDialog" @export="exportToExcel">
           <template #after-reset>
-            <div v-if="activeTab !== 'ranking'" class="relative" ref="columnDropdownRef">
-              <button
-                @click="toggleColumnDropdown"
-                class="btn btn-secondary px-2 md:px-3"
-                :title="t('admin.users.columnSettings')"
-              >
-                <svg class="h-4 w-4 md:mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
-                </svg>
-                <span class="hidden md:inline">{{ t('admin.users.columnSettings') }}</span>
-              </button>
-              <Teleport to="body">
-                <div
-                  v-if="showColumnDropdown && columnDropdownPosition"
-                  ref="columnDropdownPortalRef"
-                  class="usage-column-dropdown fixed z-[100000020] w-48 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-xl ring-1 ring-black/5 dark:border-dark-600 dark:bg-dark-800 dark:ring-white/10"
-                  :style="columnDropdownStyle"
-                  @click.stop
+            <ColumnSettingsDropdown v-if="activeTab !== 'ranking'">
+              <template #trigger="{ open, toggle }">
+                <button
+                  class="btn btn-secondary px-2 md:px-3"
+                  :title="t('admin.users.columnSettings')"
+                  :aria-expanded="open"
+                  aria-haspopup="menu"
+                  @click="toggle"
                 >
-                  <button
-                    v-for="col in currentToggleableColumns"
-                    :key="col.key"
-                    @click="toggleCurrentColumn(col.key)"
-                    class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
-                  >
-                    <span>{{ col.label }}</span>
-                    <Icon
-                      v-if="isCurrentColumnVisible(col.key)"
-                      name="check"
-                      size="sm"
-                      class="text-primary-500"
-                      :stroke-width="2"
-                    />
-                  </button>
-                </div>
-              </Teleport>
-            </div>
+                  <svg class="h-4 w-4 md:mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
+                  </svg>
+                  <span class="hidden md:inline">{{ t('admin.users.columnSettings') }}</span>
+                </button>
+              </template>
+              <button
+                v-for="col in currentToggleableColumns"
+                :key="col.key"
+                @click="toggleCurrentColumn(col.key)"
+                class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+              >
+                <span>{{ col.label }}</span>
+                <Icon
+                  v-if="isCurrentColumnVisible(col.key)"
+                  name="check"
+                  size="sm"
+                  class="text-primary-500"
+                  :stroke-width="2"
+                />
+              </button>
+            </ColumnSettingsDropdown>
           </template>
         </UsageFilters>
 
@@ -187,7 +181,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { saveAs } from 'file-saver'
 import { useRoute } from 'vue-router'
@@ -207,6 +201,7 @@ import { listErrorLogs } from '@/api/admin/ops'
 import type { OpsErrorLog } from '@/api/admin/ops'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'; import GroupDistributionChart from '@/components/charts/GroupDistributionChart.vue'; import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import EndpointDistributionChart from '@/components/charts/EndpointDistributionChart.vue'
+import ColumnSettingsDropdown from '@/components/common/ColumnSettingsDropdown.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { AdminUsageLog, TrendDataPoint, ModelStat, GroupStat, EndpointStat, AdminUser } from '@/types'; import type { AdminUsageStatsResponse, AdminUsageQueryParams } from '@/api/admin/usage'
 
@@ -836,83 +831,6 @@ const onErrPage = (p: number) => { errPage.value = p; loadAdminErrors() }
 const onErrPageSize = (s: number) => { errPageSize.value = s; errPage.value = 1; loadAdminErrors() }
 const openError = (id: number) => { selectedErrorId.value = id; showErrorModal.value = true }
 
-const showColumnDropdown = ref(false)
-const columnDropdownRef = ref<HTMLElement | null>(null)
-const columnDropdownPortalRef = ref<HTMLElement | null>(null)
-const columnDropdownPosition = ref<{ top?: number; bottom?: number; left: number; maxHeight: number } | null>(null)
-
-const updateColumnDropdownPosition = () => {
-  const trigger = columnDropdownRef.value?.querySelector('button')
-  if (!trigger) return
-
-  const rect = trigger.getBoundingClientRect()
-  const viewportWidth = window.innerWidth || 192
-  const viewportHeight = window.innerHeight || 320
-  const padding = 12
-  const gap = 6
-  const dropdownWidth = 192
-  const preferredHeight = 320
-  const left = Math.min(
-    Math.max(rect.right - dropdownWidth, padding),
-    Math.max(padding, viewportWidth - dropdownWidth - padding)
-  )
-  const spaceBelow = viewportHeight - rect.bottom - padding - gap
-  const spaceAbove = rect.top - padding - gap
-
-  if (spaceBelow < 220 && spaceAbove > spaceBelow) {
-    columnDropdownPosition.value = {
-      bottom: Math.max(padding, viewportHeight - rect.top + gap),
-      left,
-      maxHeight: Math.min(preferredHeight, Math.max(160, spaceAbove))
-    }
-    return
-  }
-
-  columnDropdownPosition.value = {
-    top: Math.min(rect.bottom + gap, viewportHeight - padding),
-    left,
-    maxHeight: Math.min(preferredHeight, Math.max(160, spaceBelow))
-  }
-}
-
-const columnDropdownStyle = computed(() => {
-  const position = columnDropdownPosition.value
-  if (!position) return {}
-
-  return {
-    top: position.top !== undefined ? `${position.top}px` : undefined,
-    bottom: position.bottom !== undefined ? `${position.bottom}px` : undefined,
-    left: `${position.left}px`,
-    maxHeight: `${position.maxHeight}px`
-  }
-})
-
-const toggleColumnDropdown = async () => {
-  showColumnDropdown.value = !showColumnDropdown.value
-  if (!showColumnDropdown.value) {
-    columnDropdownPosition.value = null
-    return
-  }
-  updateColumnDropdownPosition()
-  await nextTick()
-  updateColumnDropdownPosition()
-}
-
-const handleColumnViewportChange = () => {
-  if (showColumnDropdown.value) {
-    updateColumnDropdownPosition()
-  }
-}
-
-const handleColumnClickOutside = (event: MouseEvent) => {
-  const target = event.target as Node
-  if (columnDropdownRef.value?.contains(target) || columnDropdownPortalRef.value?.contains(target)) {
-    return
-  }
-  showColumnDropdown.value = false
-  columnDropdownPosition.value = null
-}
-
 onMounted(() => {
   applyRouteQueryFilters()
   void loadRouteUserFilterLabel()
@@ -924,16 +842,10 @@ onMounted(() => {
   }, 120)
   loadSavedColumns()
   loadSavedErrColumns()
-  document.addEventListener('click', handleColumnClickOutside)
-  window.addEventListener('resize', handleColumnViewportChange)
-  window.addEventListener('scroll', handleColumnViewportChange, true)
 })
 onUnmounted(() => {
   abortController?.abort()
   exportAbortController?.abort()
-  document.removeEventListener('click', handleColumnClickOutside)
-  window.removeEventListener('resize', handleColumnViewportChange)
-  window.removeEventListener('scroll', handleColumnViewportChange, true)
 })
 
 watch(modelDistributionSource, (source) => {

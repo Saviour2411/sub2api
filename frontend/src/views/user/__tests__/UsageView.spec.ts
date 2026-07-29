@@ -207,6 +207,22 @@ describe('user UsageView', () => {
     expect(getAvailable).toHaveBeenCalled()
   })
 
+  it('将列设置下拉框挂载到 body，避免被使用记录表头覆盖', async () => {
+    const wrapper = mountUsageView()
+    await flushPromises()
+
+    await wrapper.get('button[title="Columns"]').trigger('click')
+    await flushPromises()
+
+    const dropdown = document.body.querySelector<HTMLElement>('.column-settings-dropdown')
+    expect(dropdown).not.toBeNull()
+    expect(wrapper.element.contains(dropdown)).toBe(false)
+    expect(dropdown?.className).toContain('fixed')
+    expect(dropdown?.className).toContain('z-[100000020]')
+
+    wrapper.unmount()
+  })
+
   it('exports csv with current filters and without admin-only fields', async () => {
     const wrapper = mountUsageView()
     await flushPromises()
