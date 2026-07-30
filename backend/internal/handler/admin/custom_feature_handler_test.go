@@ -123,6 +123,8 @@ func TestCustomFeatureHandler_UpdateGateway_ReturnsNormalizedSettings(t *testing
 	body := bytes.NewBufferString(`{
 		"default_pool_mode_retry_count":1,
 		"default_pool_mode_retry_status_codes":[503,429,503],
+		"additional_failover_status_codes_enabled":true,
+		"additional_failover_status_codes":[451,409,451],
 		"auto_managed_probe_backoff_minutes":[5,10,30],
 		"first_token_timeout_seconds":60,
 		"image_group_success_rate_visible":true
@@ -134,6 +136,8 @@ func TestCustomFeatureHandler_UpdateGateway_ReturnsNormalizedSettings(t *testing
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Equal(t, `[429,503]`, repo.values[service.SettingKeyGatewayDefaultPoolModeRetryStatusCodes])
+	require.Equal(t, "true", repo.values[service.SettingKeyGatewayAdditionalFailoverStatusCodesEnabled])
+	require.Equal(t, `[409,451]`, repo.values[service.SettingKeyGatewayAdditionalFailoverStatusCodes])
 	require.Equal(t, `[5,10,30]`, repo.values[service.SettingKeyGatewayAutoManagedProbeBackoffMinutes])
 }
 
@@ -197,4 +201,6 @@ func TestCustomFeatureHandler_UpdateGateway_部分更新保留ClaudeCode模拟�
 	require.Equal(t, "true", repo.values[service.SettingKeyGatewayAnthropicSamplingParameterFilterEnabled])
 	require.Equal(t, `["claude-opus-4-8"]`, repo.values[service.SettingKeyGatewayAnthropicSamplingParameterFilterModels])
 	require.Equal(t, "true", repo.values[service.SettingKeyGatewayDisableRechargeBonusForCustomRateUsers])
+	require.Equal(t, "false", repo.values[service.SettingKeyGatewayAdditionalFailoverStatusCodesEnabled])
+	require.Equal(t, `[451]`, repo.values[service.SettingKeyGatewayAdditionalFailoverStatusCodes])
 }

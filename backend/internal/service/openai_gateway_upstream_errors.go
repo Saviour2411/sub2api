@@ -214,12 +214,18 @@ func (s *OpenAIGatewayService) shouldFailoverUpstreamError(statusCode int) bool 
 	case 401, 402, 403, 429, 529:
 		return true
 	default:
-		return statusCode >= 500
+		if statusCode >= 500 {
+			return true
+		}
+		return isAdditionalFailoverStatus(s.settingService, statusCode)
 	}
 }
 
 func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(statusCode int, upstreamMsg string, upstreamBody []byte) bool {
 	if isOpenAIContextWindowError(upstreamMsg, upstreamBody) {
+		return false
+	}
+	if hit, _, _ := detectOpenAICyberPolicy(upstreamBody); hit {
 		return false
 	}
 	if isOpenAIRequestBodyTooLargeError(statusCode, upstreamMsg, upstreamBody) {
@@ -327,8 +333,8 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 	}
 
 	// cyber_policy 硬阻断：透传上游原始错误体给客户端（不重包成通用 502），不冷却账号。
-	// 当前请求恒透传（需求1）；标记供 handler 事后写风控/邮件。400 cyber 不可 failover
-	// （shouldFailoverUpstreamError(400)=false），故走到此处即可安全早返回。
+	// 当前请求恒透传（需求1）；标记供 handler 事后写风控/邮件。正文感知的换号判断
+	// 已确保 cyber_policy 不会被附加状态码配置覆盖，故走到此处即可安全早返回。
 	if hit, code, cyberMsg := detectOpenAICyberPolicy(body); hit {
 		MarkOpsCyberPolicy(c, CyberPolicyMark{
 			Code:           code,

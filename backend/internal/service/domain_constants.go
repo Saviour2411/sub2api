@@ -298,6 +298,8 @@ const (
 	// 二开功能 - 网关配置。
 	SettingKeyGatewayDefaultPoolModeRetryCount               = "gateway_default_pool_mode_retry_count"
 	SettingKeyGatewayDefaultPoolModeRetryStatusCodes         = "gateway_default_pool_mode_retry_status_codes"
+	SettingKeyGatewayAdditionalFailoverStatusCodesEnabled    = "gateway_additional_failover_status_codes_enabled"
+	SettingKeyGatewayAdditionalFailoverStatusCodes           = "gateway_additional_failover_status_codes"
 	SettingKeyGatewayAutoManagedProbeBackoffMinutes          = "gateway_auto_managed_probe_backoff_minutes"
 	SettingKeyGatewayFirstTokenTimeoutSeconds                = "gateway_first_token_timeout_seconds"
 	SettingKeyGatewayFirstTokenTimeoutConsecutiveThreshold   = "gateway_first_token_timeout_consecutive_threshold"

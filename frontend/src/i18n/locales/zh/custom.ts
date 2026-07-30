@@ -362,7 +362,7 @@ export default {
       },
       gateway: {
         title: '网关配置',
-        description: '配置新账号的池模式默认值、自动测活退避、流式首 Token 超时和 Image 分组成功率。',
+        description: '配置账号池默认值、附加换号状态码、自动测活退避、流式首 Token 超时和 Image 分组成功率。',
         minutes: '分钟',
         saved: '网关配置已保存',
         anthropicClaudeCodeMimicry: {
@@ -387,6 +387,13 @@ export default {
           retryCountHint: '允许 0 到 10 次；新账号默认开启池模式。',
           retryStatusCodes: '池内重试状态码',
           retryStatusCodesHint: '使用逗号或空格分隔，可留空；保存时会去重并按升序排列。',
+        },
+        additionalFailoverStatusCodes: {
+          title: '附加换号状态码',
+          description: '开启后，命中下列上游 HTTP 状态码也会进入现有账号换号流程。该列表只补充内置规则，不会关闭内置换号条件，也不会覆盖请求级语义终止保护。',
+          enabled: '启用附加换号',
+          statusCodes: '附加状态码',
+          statusCodesHint: '使用逗号或空格分隔，范围为 100 到 599；保存时会去重并按升序排列。默认预填 451。',
         },
         probeBackoff: {
           title: '自动测活退避',
@@ -426,6 +433,8 @@ export default {
         validation: {
           retryCount: '池内重试次数必须是 0 到 10 之间的整数',
           retryStatusCodes: '重试状态码必须是 100 到 599 之间的整数，并使用逗号或空格分隔',
+          additionalFailoverStatusCodes: '附加换号状态码必须是 100 到 599 之间的整数，并使用逗号或空格分隔',
+          additionalFailoverStatusCodesRequired: '启用附加换号状态码时必须至少填写一个状态码',
           probeBackoffRange: '自动测活退避必须包含 1 到 10 个、范围为 1 到 1440 的整数',
           probeBackoffOrder: '自动测活退避必须按非递减顺序排列',
           firstTokenTimeout: '首 Token 超时必须是 0 到 600 之间的整数',

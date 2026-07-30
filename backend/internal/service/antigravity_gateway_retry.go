@@ -809,7 +809,10 @@ func (s *AntigravityGatewayService) shouldFailoverUpstreamError(statusCode int) 
 	case 401, 403, 429, 529:
 		return true
 	default:
-		return statusCode >= 500
+		if statusCode >= 500 {
+			return true
+		}
+		return isAdditionalFailoverStatus(s.settingService, statusCode)
 	}
 }
 

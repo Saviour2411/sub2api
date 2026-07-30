@@ -362,7 +362,7 @@ export default {
       },
       gateway: {
         title: 'Gateway Settings',
-        description: 'Configure account pool defaults, managed probe backoff, streaming first-token timeout and Image group success rates.',
+        description: 'Configure account pool defaults, additional failover statuses, managed probe backoff, streaming first-token timeout and Image group success rates.',
         minutes: 'minutes',
         saved: 'Gateway settings saved',
         anthropicClaudeCodeMimicry: {
@@ -387,6 +387,13 @@ export default {
           retryCountHint: 'Enter 0 to 10. Pool mode is enabled by default for new accounts.',
           retryStatusCodes: 'In-pool Retry Status Codes',
           retryStatusCodesHint: 'Separate values with commas or spaces, or leave empty. Values are deduplicated and sorted when saved.',
+        },
+        additionalFailoverStatusCodes: {
+          title: 'Additional Failover Status Codes',
+          description: 'When enabled, the configured upstream HTTP statuses also enter the existing account failover flow. This only extends built-in rules and does not override request-level semantic terminal protections.',
+          enabled: 'Enable additional failover',
+          statusCodes: 'Additional Status Codes',
+          statusCodesHint: 'Separate values from 100 to 599 with commas or spaces. Values are deduplicated and sorted when saved. The default value is 451.',
         },
         probeBackoff: {
           title: 'Managed Probe Backoff',
@@ -426,6 +433,8 @@ export default {
         validation: {
           retryCount: 'The in-pool retry count must be an integer from 0 to 10',
           retryStatusCodes: 'Retry status codes must be integers from 100 to 599 separated by commas or spaces',
+          additionalFailoverStatusCodes: 'Additional failover status codes must be integers from 100 to 599 separated by commas or spaces',
+          additionalFailoverStatusCodesRequired: 'Enter at least one status code when additional failover is enabled',
           probeBackoffRange: 'Managed probe backoff requires 1 to 10 integer values from 1 to 1440',
           probeBackoffOrder: 'Managed probe backoff values must be in nondecreasing order',
           firstTokenTimeout: 'The first-token timeout must be an integer from 0 to 600',

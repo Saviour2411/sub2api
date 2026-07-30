@@ -277,6 +277,47 @@
             </div>
           </section>
 
+          <section class="border-t border-gray-100 pt-8 dark:border-dark-700" aria-labelledby="gateway-additional-failover-title">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 id="gateway-additional-failover-title" class="font-semibold text-gray-900 dark:text-white">
+                  {{ t('admin.customFeatures.gateway.additionalFailoverStatusCodes.title') }}
+                </h3>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.customFeatures.gateway.additionalFailoverStatusCodes.description') }}
+                </p>
+              </div>
+              <div class="flex flex-shrink-0 items-center gap-3">
+                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.customFeatures.gateway.additionalFailoverStatusCodes.enabled') }}
+                </span>
+                <Toggle
+                  v-model="gateway.additional_failover_status_codes_enabled"
+                  data-test="gateway-additional-failover-status-codes-enabled"
+                />
+              </div>
+            </div>
+            <div
+              v-if="gateway.additional_failover_status_codes_enabled"
+              class="mt-5 max-w-xl"
+            >
+              <label class="input-label" for="gateway-additional-failover-status-codes">
+                {{ t('admin.customFeatures.gateway.additionalFailoverStatusCodes.statusCodes') }}
+              </label>
+              <input
+                id="gateway-additional-failover-status-codes"
+                v-model="gatewayAdditionalFailoverStatusCodesInput"
+                data-test="gateway-additional-failover-status-codes"
+                type="text"
+                class="input"
+                placeholder="451"
+              />
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.customFeatures.gateway.additionalFailoverStatusCodes.statusCodesHint') }}
+              </p>
+            </div>
+          </section>
+
           <section class="border-t border-gray-100 pt-8 dark:border-dark-700" aria-labelledby="gateway-probe-title">
             <h3 id="gateway-probe-title" class="font-semibold text-gray-900 dark:text-white">
               {{ t('admin.customFeatures.gateway.probeBackoff.title') }}
@@ -788,6 +829,8 @@ const dailyCheckin = reactive<DailyCheckinSettings>({
 const gateway = reactive<GatewaySettings>({
   default_pool_mode_retry_count: 1,
   default_pool_mode_retry_status_codes: [401, 403, 429, 502, 503, 504],
+  additional_failover_status_codes_enabled: false,
+  additional_failover_status_codes: [451],
   auto_managed_probe_backoff_minutes: [5, 10, 15, 30, 60],
   first_token_timeout_seconds: 60,
   first_token_timeout_consecutive_threshold: 3,
@@ -800,6 +843,9 @@ const gateway = reactive<GatewaySettings>({
   disable_recharge_bonus_for_custom_rate_users: false
 })
 const gatewayRetryStatusCodesInput = ref(gateway.default_pool_mode_retry_status_codes.join(', '))
+const gatewayAdditionalFailoverStatusCodesInput = ref(
+  gateway.additional_failover_status_codes.join(', ')
+)
 const gatewayUpstreamErrorStatusCodesInput = ref(gateway.upstream_error_status_codes.join(', '))
 
 const subscriptionGroupOptions = computed(() =>
@@ -836,6 +882,11 @@ function cloneGateway(settings?: Partial<GatewaySettings>): GatewaySettings {
     default_pool_mode_retry_status_codes: [
       ...(settings?.default_pool_mode_retry_status_codes ?? [401, 403, 429, 502, 503, 504])
     ],
+    additional_failover_status_codes_enabled:
+      settings?.additional_failover_status_codes_enabled ?? false,
+    additional_failover_status_codes: [
+      ...(settings?.additional_failover_status_codes ?? [451])
+    ],
     auto_managed_probe_backoff_minutes: [
       ...(settings?.auto_managed_probe_backoff_minutes ?? [5, 10, 15, 30, 60])
     ],
@@ -861,6 +912,8 @@ function assignGateway(settings?: Partial<GatewaySettings>) {
   const next = cloneGateway(settings)
   Object.assign(gateway, next)
   gatewayRetryStatusCodesInput.value = next.default_pool_mode_retry_status_codes.join(', ')
+  gatewayAdditionalFailoverStatusCodesInput.value =
+    next.additional_failover_status_codes.join(', ')
   gatewayUpstreamErrorStatusCodesInput.value = next.upstream_error_status_codes.join(', ')
 }
 
@@ -919,6 +972,7 @@ function parseGatewayStatusCodes(input: string): number[] | null {
 type GatewayValidationResult = {
   error: string | null
   retryStatusCodes: number[]
+  additionalFailoverStatusCodes: number[]
   upstreamErrorStatusCodes: number[]
   samplingParameterFilterModels: string[]
 }
@@ -928,7 +982,13 @@ function gatewayValidationError(
   retryStatusCodes: number[] = [],
   upstreamErrorStatusCodes: number[] = []
 ): GatewayValidationResult {
-  return { error, retryStatusCodes, upstreamErrorStatusCodes, samplingParameterFilterModels: [] }
+  return {
+    error,
+    retryStatusCodes,
+    additionalFailoverStatusCodes: [],
+    upstreamErrorStatusCodes,
+    samplingParameterFilterModels: []
+  }
 }
 
 function validateGateway(): GatewayValidationResult {
@@ -940,6 +1000,23 @@ function validateGateway(): GatewayValidationResult {
   const retryStatusCodes = parseGatewayStatusCodes(gatewayRetryStatusCodesInput.value)
   if (retryStatusCodes === null) {
     return gatewayValidationError(t('admin.customFeatures.gateway.validation.retryStatusCodes'))
+  }
+
+  const additionalFailoverStatusCodes = parseGatewayStatusCodes(
+    gatewayAdditionalFailoverStatusCodesInput.value
+  )
+  if (additionalFailoverStatusCodes === null) {
+    return gatewayValidationError(
+      t('admin.customFeatures.gateway.validation.additionalFailoverStatusCodes')
+    )
+  }
+  if (
+    gateway.additional_failover_status_codes_enabled &&
+    additionalFailoverStatusCodes.length === 0
+  ) {
+    return gatewayValidationError(
+      t('admin.customFeatures.gateway.validation.additionalFailoverStatusCodesRequired')
+    )
   }
 
   const backoff = gateway.auto_managed_probe_backoff_minutes
@@ -1034,6 +1111,7 @@ function validateGateway(): GatewayValidationResult {
   return {
     error: null,
     retryStatusCodes,
+    additionalFailoverStatusCodes,
     upstreamErrorStatusCodes,
     samplingParameterFilterModels
   }
@@ -1051,6 +1129,9 @@ async function saveGateway() {
     const saved = await customFeaturesAPI.updateGateway({
       default_pool_mode_retry_count: Number(gateway.default_pool_mode_retry_count),
       default_pool_mode_retry_status_codes: validation.retryStatusCodes,
+      additional_failover_status_codes_enabled:
+        gateway.additional_failover_status_codes_enabled,
+      additional_failover_status_codes: validation.additionalFailoverStatusCodes,
       auto_managed_probe_backoff_minutes: gateway.auto_managed_probe_backoff_minutes.map(Number),
       first_token_timeout_seconds: Number(gateway.first_token_timeout_seconds),
       first_token_timeout_consecutive_threshold: Number(

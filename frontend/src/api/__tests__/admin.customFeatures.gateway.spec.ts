@@ -18,6 +18,8 @@ import {
 const gatewaySettings: GatewaySettings = {
   default_pool_mode_retry_count: 1,
   default_pool_mode_retry_status_codes: [401, 403, 429, 502, 503, 504],
+  additional_failover_status_codes_enabled: false,
+  additional_failover_status_codes: [451],
   auto_managed_probe_backoff_minutes: [5, 10, 15, 30, 60],
   first_token_timeout_seconds: 60,
   first_token_timeout_consecutive_threshold: 3,

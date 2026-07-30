@@ -242,6 +242,8 @@ func TestSettingService_GetGatewaySettings_UsesDefaultsAndStoredValues(t *testin
 	require.NoError(t, err)
 	require.Equal(t, 1, defaults.DefaultPoolModeRetryCount)
 	require.Equal(t, []int{401, 403, 429, 502, 503, 504}, defaults.DefaultPoolModeRetryStatusCodes)
+	require.False(t, defaults.AdditionalFailoverStatusCodesEnabled)
+	require.Equal(t, []int{451}, defaults.AdditionalFailoverStatusCodes)
 	require.Equal(t, []int{5, 10, 15, 30, 60}, defaults.AutoManagedProbeBackoffMinutes)
 	require.Equal(t, 60, defaults.FirstTokenTimeoutSeconds)
 	require.Equal(t, 3, defaults.FirstTokenTimeoutConsecutiveThreshold)
@@ -258,6 +260,8 @@ func TestSettingService_GetGatewaySettings_UsesDefaultsAndStoredValues(t *testin
 	repo := &customFeatureSettingsRepoStub{values: map[string]string{
 		SettingKeyGatewayDefaultPoolModeRetryCount:               "4",
 		SettingKeyGatewayDefaultPoolModeRetryStatusCodes:         `[504,429,429]`,
+		SettingKeyGatewayAdditionalFailoverStatusCodesEnabled:    "true",
+		SettingKeyGatewayAdditionalFailoverStatusCodes:           `[451,409,451]`,
 		SettingKeyGatewayAutoManagedProbeBackoffMinutes:          `[2,8,8,30]`,
 		SettingKeyGatewayFirstTokenTimeoutSeconds:                "0",
 		SettingKeyGatewayFirstTokenTimeoutConsecutiveThreshold:   "4",
@@ -275,6 +279,8 @@ func TestSettingService_GetGatewaySettings_UsesDefaultsAndStoredValues(t *testin
 	require.NoError(t, err)
 	require.Equal(t, 4, settings.DefaultPoolModeRetryCount)
 	require.Equal(t, []int{429, 504}, settings.DefaultPoolModeRetryStatusCodes)
+	require.True(t, settings.AdditionalFailoverStatusCodesEnabled)
+	require.Equal(t, []int{409, 451}, settings.AdditionalFailoverStatusCodes)
 	require.Equal(t, []int{2, 8, 8, 30}, settings.AutoManagedProbeBackoffMinutes)
 	require.Zero(t, settings.FirstTokenTimeoutSeconds)
 	require.Equal(t, 4, settings.FirstTokenTimeoutConsecutiveThreshold)
@@ -297,6 +303,8 @@ func TestSettingService_UpdateGatewaySettings_NormalizesCachesAndReschedules(t *
 	updated, err := svc.UpdateGatewaySettings(context.Background(), GatewaySettings{
 		DefaultPoolModeRetryCount:               2,
 		DefaultPoolModeRetryStatusCodes:         []int{503, 429, 503},
+		AdditionalFailoverStatusCodesEnabled:    true,
+		AdditionalFailoverStatusCodes:           []int{451, 409, 451},
 		AutoManagedProbeBackoffMinutes:          []int{1, 3, 10},
 		FirstTokenTimeoutSeconds:                25,
 		FirstTokenTimeoutConsecutiveThreshold:   4,
@@ -310,8 +318,12 @@ func TestSettingService_UpdateGatewaySettings_NormalizesCachesAndReschedules(t *
 	})
 	require.NoError(t, err)
 	require.Equal(t, []int{429, 503}, updated.DefaultPoolModeRetryStatusCodes)
+	require.True(t, updated.AdditionalFailoverStatusCodesEnabled)
+	require.Equal(t, []int{409, 451}, updated.AdditionalFailoverStatusCodes)
 	require.Equal(t, "2", repo.updates[SettingKeyGatewayDefaultPoolModeRetryCount])
 	require.Equal(t, `[429,503]`, repo.updates[SettingKeyGatewayDefaultPoolModeRetryStatusCodes])
+	require.Equal(t, "true", repo.updates[SettingKeyGatewayAdditionalFailoverStatusCodesEnabled])
+	require.Equal(t, `[409,451]`, repo.updates[SettingKeyGatewayAdditionalFailoverStatusCodes])
 	require.Equal(t, `[1,3,10]`, repo.updates[SettingKeyGatewayAutoManagedProbeBackoffMinutes])
 	require.Equal(t, "4", repo.updates[SettingKeyGatewayFirstTokenTimeoutConsecutiveThreshold])
 	require.Equal(t, `[502,504]`, repo.updates[SettingKeyGatewayUpstreamErrorStatusCodes])
@@ -327,6 +339,8 @@ func TestSettingService_UpdateGatewaySettings_NormalizesCachesAndReschedules(t *
 
 	runtime := svc.GetGatewayRuntime(context.Background())
 	require.Equal(t, 25, runtime.FirstTokenTimeoutSeconds)
+	require.True(t, runtime.AdditionalFailoverStatusCodesEnabled)
+	require.Equal(t, []int{409, 451}, runtime.AdditionalFailoverStatusCodes)
 	require.Equal(t, []int{502, 504}, runtime.UpstreamErrorStatusCodes)
 	require.False(t, runtime.ImageGroupSuccessRateVisible)
 	require.True(t, runtime.AnthropicClaudeCodeMimicryEnabled)
@@ -335,9 +349,11 @@ func TestSettingService_UpdateGatewaySettings_NormalizesCachesAndReschedules(t *
 	require.True(t, runtime.DisableRechargeBonusForCustomRateUsers)
 
 	updated.DefaultPoolModeRetryStatusCodes[0] = 500
+	updated.AdditionalFailoverStatusCodes[0] = 500
 	updated.UpstreamErrorStatusCodes[0] = 500
 	updated.AnthropicSamplingParameterFilterModels[0] = "mutated"
 	require.Equal(t, []int{429, 503}, svc.GetGatewayRuntime(context.Background()).DefaultPoolModeRetryStatusCodes)
+	require.Equal(t, []int{409, 451}, svc.GetGatewayRuntime(context.Background()).AdditionalFailoverStatusCodes)
 	require.Equal(t, []int{502, 504}, svc.GetGatewayRuntime(context.Background()).UpstreamErrorStatusCodes)
 	require.Equal(t, []string{"claude-opus-4-8", "claude-opus-*"}, svc.GetGatewayRuntime(context.Background()).AnthropicSamplingParameterFilterModels)
 
@@ -405,6 +421,8 @@ func TestSettingService_UpdateGatewaySettings_RejectsInvalidValues(t *testing.T)
 	valid := GatewaySettings{
 		DefaultPoolModeRetryCount:             1,
 		DefaultPoolModeRetryStatusCodes:       []int{429},
+		AdditionalFailoverStatusCodesEnabled:  true,
+		AdditionalFailoverStatusCodes:         []int{451},
 		AutoManagedProbeBackoffMinutes:        []int{5, 10},
 		FirstTokenTimeoutSeconds:              60,
 		FirstTokenTimeoutConsecutiveThreshold: 3,
@@ -418,6 +436,8 @@ func TestSettingService_UpdateGatewaySettings_RejectsInvalidValues(t *testing.T)
 	}{
 		{name: "retry count", mutate: func(v *GatewaySettings) { v.DefaultPoolModeRetryCount = 11 }},
 		{name: "status code", mutate: func(v *GatewaySettings) { v.DefaultPoolModeRetryStatusCodes = []int{99} }},
+		{name: "附加换号状态码越界", mutate: func(v *GatewaySettings) { v.AdditionalFailoverStatusCodes = []int{600} }},
+		{name: "附加换号状态码开启但为空", mutate: func(v *GatewaySettings) { v.AdditionalFailoverStatusCodes = []int{} }},
 		{name: "empty backoff", mutate: func(v *GatewaySettings) { v.AutoManagedProbeBackoffMinutes = nil }},
 		{name: "decreasing backoff", mutate: func(v *GatewaySettings) { v.AutoManagedProbeBackoffMinutes = []int{10, 5} }},
 		{name: "backoff range", mutate: func(v *GatewaySettings) { v.AutoManagedProbeBackoffMinutes = []int{1441} }},

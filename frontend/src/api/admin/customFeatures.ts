@@ -41,6 +41,8 @@ export interface DailyCheckinSettings {
 export interface GatewaySettings {
   default_pool_mode_retry_count: number
   default_pool_mode_retry_status_codes: number[]
+  additional_failover_status_codes_enabled: boolean
+  additional_failover_status_codes: number[]
   auto_managed_probe_backoff_minutes: number[]
   first_token_timeout_seconds: number
   first_token_timeout_consecutive_threshold: number

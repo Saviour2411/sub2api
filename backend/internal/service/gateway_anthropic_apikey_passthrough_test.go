@@ -1165,6 +1165,77 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardDirect_NonStreamingSuc
 	require.Equal(t, upstreamJSON, rec.Body.String())
 }
 
+func TestGatewayService_AnthropicAPIKeyPassthrough_附加451换号后下一账号成功(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	settings := DefaultGatewaySettings()
+	settings.AdditionalFailoverStatusCodesEnabled = true
+	settings.AdditionalFailoverStatusCodes = []int{http.StatusUnavailableForLegalReasons}
+	settingService := &SettingService{}
+	settingService.storeGatewaySettingsCache(settings, time.Hour)
+
+	body := []byte(`{"model":"claude-3-5-sonnet-latest","messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`)
+	firstRecorder := httptest.NewRecorder()
+	firstContext, _ := gin.CreateTestContext(firstRecorder)
+	firstContext.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	service := &GatewayService{
+		cfg: &config.Config{},
+		httpUpstream: &anthropicHTTPUpstreamRecorder{resp: &http.Response{
+			StatusCode: http.StatusUnavailableForLegalReasons,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"content_policy_violation","message":"内容审计命中风险规则"}}`)),
+		}},
+		rateLimitService: &RateLimitService{},
+		settingService:   settingService,
+	}
+
+	firstAccount := newAnthropicAPIKeyAccountForTest()
+	firstAccount.ID = 201
+	result, err := service.forwardAnthropicAPIKeyPassthrough(
+		context.Background(),
+		firstContext,
+		firstAccount,
+		body,
+		"claude-3-5-sonnet-latest",
+		"claude-3-5-sonnet-latest",
+		false,
+		time.Now(),
+	)
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusUnavailableForLegalReasons, failoverErr.StatusCode)
+	require.False(t, failoverErr.RetryableOnSameAccount)
+	require.False(t, firstContext.Writer.Written())
+
+	successJSON := `{"id":"msg_2","type":"message","usage":{"input_tokens":8,"output_tokens":5}}`
+	secondRecorder := httptest.NewRecorder()
+	secondContext, _ := gin.CreateTestContext(secondRecorder)
+	secondContext.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	service.httpUpstream = &anthropicHTTPUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(successJSON)),
+	}}
+	secondAccount := newAnthropicAPIKeyAccountForTest()
+	secondAccount.ID = 202
+
+	result, err = service.forwardAnthropicAPIKeyPassthrough(
+		context.Background(),
+		secondContext,
+		secondAccount,
+		body,
+		"claude-3-5-sonnet-latest",
+		"claude-3-5-sonnet-latest",
+		false,
+		time.Now(),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 8, result.Usage.InputTokens)
+	require.Equal(t, 5, result.Usage.OutputTokens)
+	require.Equal(t, successJSON, secondRecorder.Body.String())
+}
+
 func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardDirect_InvalidTokenType(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()

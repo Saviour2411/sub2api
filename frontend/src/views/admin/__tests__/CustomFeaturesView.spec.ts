@@ -128,6 +128,8 @@ function settingsFixture(): CustomFeatureSettings {
     gateway: {
       default_pool_mode_retry_count: 1,
       default_pool_mode_retry_status_codes: [401, 403, 429, 502, 503, 504],
+      additional_failover_status_codes_enabled: false,
+      additional_failover_status_codes: [451],
       auto_managed_probe_backoff_minutes: [5, 10, 15, 30, 60],
       first_token_timeout_seconds: 60,
       first_token_timeout_consecutive_threshold: 3,
@@ -217,14 +219,20 @@ describe('admin CustomFeaturesView', () => {
     expect(wrapper.get<HTMLInputElement>('[data-test="gateway-pool-retry-count"]').element.value).toBe('1')
     expect(wrapper.get<HTMLInputElement>('[data-test="gateway-first-token-consecutive-threshold"]').element.value).toBe('3')
     expect(wrapper.get<HTMLInputElement>('[data-test="gateway-upstream-error-consecutive-threshold"]').element.value).toBe('10')
+    expect(
+      wrapper.get('[data-test="gateway-additional-failover-status-codes-enabled"]').text()
+    ).toBe('off')
+    expect(wrapper.find('[data-test="gateway-additional-failover-status-codes"]').exists()).toBe(false)
 
     await wrapper.get('[data-test="gateway-anthropic-claude-code-mimicry-enabled"]').trigger('click')
     await wrapper.get('[data-test="gateway-anthropic-sampling-parameter-filter-enabled"]').trigger('click')
     expect(wrapper.find('[data-test="gateway-anthropic-sampling-parameter-filter-models"]').exists()).toBe(true)
     await wrapper.get('[data-test="add-sampling-filter-model"]').trigger('click')
     await wrapper.get('[data-test="gateway-disable-recharge-bonus-for-custom-rate-users"]').trigger('click')
+    await wrapper.get('[data-test="gateway-additional-failover-status-codes-enabled"]').trigger('click')
 
     await wrapper.get('[data-test="gateway-pool-retry-status-codes"]').setValue('504 401, 504, 429')
+    await wrapper.get('[data-test="gateway-additional-failover-status-codes"]').setValue('451 409, 451')
     await wrapper.get('[data-test="gateway-upstream-error-status-codes"]').setValue('504 502, 504')
     await wrapper.get('[data-test="gateway-form"]').trigger('submit')
     await flushPromises()
@@ -232,6 +240,8 @@ describe('admin CustomFeaturesView', () => {
     expect(updateGateway).toHaveBeenCalledWith({
       default_pool_mode_retry_count: 1,
       default_pool_mode_retry_status_codes: [401, 429, 504],
+      additional_failover_status_codes_enabled: true,
+      additional_failover_status_codes: [409, 451],
       auto_managed_probe_backoff_minutes: [5, 10, 15, 30, 60],
       first_token_timeout_seconds: 60,
       first_token_timeout_consecutive_threshold: 3,
@@ -251,6 +261,8 @@ describe('admin CustomFeaturesView', () => {
     const legacySettings = settingsFixture()
     const legacyGateway: Partial<GatewaySettings> = { ...legacySettings.gateway }
     delete legacyGateway.first_token_timeout_consecutive_threshold
+    delete legacyGateway.additional_failover_status_codes_enabled
+    delete legacyGateway.additional_failover_status_codes
     delete legacyGateway.upstream_error_status_codes
     delete legacyGateway.upstream_error_consecutive_threshold
     delete legacyGateway.anthropic_claude_code_mimicry_enabled
@@ -290,6 +302,14 @@ describe('admin CustomFeaturesView', () => {
     expect(
       wrapper.get('[data-test="gateway-disable-recharge-bonus-for-custom-rate-users"]').text()
     ).toBe('off')
+    expect(
+      wrapper.get('[data-test="gateway-additional-failover-status-codes-enabled"]').text()
+    ).toBe('off')
+    await wrapper.get('[data-test="gateway-additional-failover-status-codes-enabled"]').trigger('click')
+    expect(
+      wrapper.get<HTMLInputElement>('[data-test="gateway-additional-failover-status-codes"]')
+        .element.value
+    ).toBe('451')
   })
 
   it('校验 Anthropic 采样参数过滤模型并在关闭时保留选择', async () => {
@@ -345,6 +365,24 @@ describe('admin CustomFeaturesView', () => {
     expect(showError).toHaveBeenLastCalledWith('admin.customFeatures.gateway.validation.retryStatusCodes')
 
     await wrapper.get('[data-test="gateway-pool-retry-status-codes"]').setValue('')
+    await wrapper.get('[data-test="gateway-additional-failover-status-codes-enabled"]').trigger('click')
+    await wrapper.get('[data-test="gateway-additional-failover-status-codes"]').setValue('451, invalid')
+    await wrapper.get('[data-test="gateway-form"]').trigger('submit')
+    await flushPromises()
+    expect(updateGateway).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenLastCalledWith(
+      'admin.customFeatures.gateway.validation.additionalFailoverStatusCodes'
+    )
+
+    await wrapper.get('[data-test="gateway-additional-failover-status-codes"]').setValue('')
+    await wrapper.get('[data-test="gateway-form"]').trigger('submit')
+    await flushPromises()
+    expect(updateGateway).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenLastCalledWith(
+      'admin.customFeatures.gateway.validation.additionalFailoverStatusCodesRequired'
+    )
+
+    await wrapper.get('[data-test="gateway-additional-failover-status-codes"]').setValue('451')
     const backoffInputs = wrapper.findAll<HTMLInputElement>('[data-test^="gateway-probe-backoff-"] input')
     await backoffInputs[1].setValue('2')
     await wrapper.get('[data-test="gateway-form"]').trigger('submit')

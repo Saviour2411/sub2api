@@ -46,6 +46,7 @@ const (
 
 var (
 	defaultGatewayPoolModeRetryStatusCodes = []int{401, 403, 429, 502, 503, 504}
+	defaultGatewayAdditionalFailoverCodes  = []int{451}
 	defaultGatewayUpstreamErrorStatusCodes = []int{502, 503, 504}
 	defaultGatewayProbeBackoffMinutes      = []int{5, 10, 15, 30, 60}
 )
@@ -76,6 +77,8 @@ type DailyCheckinSettings struct {
 type GatewaySettings struct {
 	DefaultPoolModeRetryCount               int      `json:"default_pool_mode_retry_count"`
 	DefaultPoolModeRetryStatusCodes         []int    `json:"default_pool_mode_retry_status_codes"`
+	AdditionalFailoverStatusCodesEnabled    bool     `json:"additional_failover_status_codes_enabled"`
+	AdditionalFailoverStatusCodes           []int    `json:"additional_failover_status_codes"`
 	AutoManagedProbeBackoffMinutes          []int    `json:"auto_managed_probe_backoff_minutes"`
 	FirstTokenTimeoutSeconds                int      `json:"first_token_timeout_seconds"`
 	FirstTokenTimeoutConsecutiveThreshold   int      `json:"first_token_timeout_consecutive_threshold"`
@@ -116,6 +119,8 @@ type CustomFeatureSettings struct {
 var gatewaySettingKeys = []string{
 	SettingKeyGatewayDefaultPoolModeRetryCount,
 	SettingKeyGatewayDefaultPoolModeRetryStatusCodes,
+	SettingKeyGatewayAdditionalFailoverStatusCodesEnabled,
+	SettingKeyGatewayAdditionalFailoverStatusCodes,
 	SettingKeyGatewayAutoManagedProbeBackoffMinutes,
 	SettingKeyGatewayFirstTokenTimeoutSeconds,
 	SettingKeyGatewayFirstTokenTimeoutConsecutiveThreshold,
@@ -144,6 +149,8 @@ var customFeatureSettingKeys = []string{
 	SettingKeyDailyCheckinLinuxDoExemptEnabled,
 	SettingKeyGatewayDefaultPoolModeRetryCount,
 	SettingKeyGatewayDefaultPoolModeRetryStatusCodes,
+	SettingKeyGatewayAdditionalFailoverStatusCodesEnabled,
+	SettingKeyGatewayAdditionalFailoverStatusCodes,
 	SettingKeyGatewayAutoManagedProbeBackoffMinutes,
 	SettingKeyGatewayFirstTokenTimeoutSeconds,
 	SettingKeyGatewayFirstTokenTimeoutConsecutiveThreshold,
@@ -205,6 +212,8 @@ func DefaultGatewaySettings() GatewaySettings {
 	return GatewaySettings{
 		DefaultPoolModeRetryCount:               DefaultGatewayPoolModeRetryCount,
 		DefaultPoolModeRetryStatusCodes:         append([]int(nil), defaultGatewayPoolModeRetryStatusCodes...),
+		AdditionalFailoverStatusCodesEnabled:    false,
+		AdditionalFailoverStatusCodes:           append([]int(nil), defaultGatewayAdditionalFailoverCodes...),
 		AutoManagedProbeBackoffMinutes:          append([]int(nil), defaultGatewayProbeBackoffMinutes...),
 		FirstTokenTimeoutSeconds:                DefaultGatewayFirstTokenTimeout,
 		FirstTokenTimeoutConsecutiveThreshold:   DefaultGatewayFirstTokenTimeoutConsecutiveThreshold,
@@ -286,6 +295,10 @@ func (s *SettingService) UpdateGatewaySettings(ctx context.Context, input Gatewa
 	if err != nil {
 		return nil, fmt.Errorf("序列化默认重试状态码: %w", err)
 	}
+	additionalFailoverStatusCodesJSON, err := json.Marshal(input.AdditionalFailoverStatusCodes)
+	if err != nil {
+		return nil, fmt.Errorf("序列化附加换号状态码: %w", err)
+	}
 	backoffJSON, err := json.Marshal(input.AutoManagedProbeBackoffMinutes)
 	if err != nil {
 		return nil, fmt.Errorf("序列化自动测活退避配置: %w", err)
@@ -301,6 +314,8 @@ func (s *SettingService) UpdateGatewaySettings(ctx context.Context, input Gatewa
 	updates := map[string]string{
 		SettingKeyGatewayDefaultPoolModeRetryCount:               strconv.Itoa(input.DefaultPoolModeRetryCount),
 		SettingKeyGatewayDefaultPoolModeRetryStatusCodes:         string(statusCodesJSON),
+		SettingKeyGatewayAdditionalFailoverStatusCodesEnabled:    strconv.FormatBool(input.AdditionalFailoverStatusCodesEnabled),
+		SettingKeyGatewayAdditionalFailoverStatusCodes:           string(additionalFailoverStatusCodesJSON),
 		SettingKeyGatewayAutoManagedProbeBackoffMinutes:          string(backoffJSON),
 		SettingKeyGatewayFirstTokenTimeoutSeconds:                strconv.Itoa(input.FirstTokenTimeoutSeconds),
 		SettingKeyGatewayFirstTokenTimeoutConsecutiveThreshold:   strconv.Itoa(input.FirstTokenTimeoutConsecutiveThreshold),
@@ -411,6 +426,15 @@ func parseGatewaySettings(values map[string]string) GatewaySettings {
 			settings.DefaultPoolModeRetryStatusCodes = normalizeRetryStatusCodes(codes)
 		}
 	}
+	if raw, ok := values[SettingKeyGatewayAdditionalFailoverStatusCodesEnabled]; ok {
+		settings.AdditionalFailoverStatusCodesEnabled = strings.EqualFold(strings.TrimSpace(raw), "true")
+	}
+	if raw, ok := values[SettingKeyGatewayAdditionalFailoverStatusCodes]; ok && strings.TrimSpace(raw) != "" {
+		var codes []int
+		if err := json.Unmarshal([]byte(raw), &codes); err == nil && validateRetryStatusCodes(codes) == nil {
+			settings.AdditionalFailoverStatusCodes = normalizeRetryStatusCodes(codes)
+		}
+	}
 	if raw, ok := values[SettingKeyGatewayAutoManagedProbeBackoffMinutes]; ok && strings.TrimSpace(raw) != "" {
 		var minutes []int
 		if err := json.Unmarshal([]byte(raw), &minutes); err == nil && validateProbeBackoffMinutes(minutes) == nil {
@@ -478,6 +502,12 @@ func validateGatewaySettings(settings *GatewaySettings) error {
 	if err := validateRetryStatusCodes(settings.DefaultPoolModeRetryStatusCodes); err != nil {
 		return ErrGatewaySettingsInvalid.WithMetadata(map[string]string{"field": "default_pool_mode_retry_status_codes"})
 	}
+	if err := validateRetryStatusCodes(settings.AdditionalFailoverStatusCodes); err != nil {
+		return ErrGatewaySettingsInvalid.WithMetadata(map[string]string{"field": "additional_failover_status_codes"})
+	}
+	if settings.AdditionalFailoverStatusCodesEnabled && len(settings.AdditionalFailoverStatusCodes) == 0 {
+		return ErrGatewaySettingsInvalid.WithMetadata(map[string]string{"field": "additional_failover_status_codes"})
+	}
 	if err := validateProbeBackoffMinutes(settings.AutoManagedProbeBackoffMinutes); err != nil {
 		return ErrGatewaySettingsInvalid.WithMetadata(map[string]string{"field": "auto_managed_probe_backoff_minutes"})
 	}
@@ -488,6 +518,7 @@ func validateGatewaySettings(settings *GatewaySettings) error {
 		return ErrGatewaySettingsInvalid.WithMetadata(map[string]string{"field": "anthropic_sampling_parameter_filter_models"})
 	}
 	settings.DefaultPoolModeRetryStatusCodes = normalizeRetryStatusCodes(settings.DefaultPoolModeRetryStatusCodes)
+	settings.AdditionalFailoverStatusCodes = normalizeRetryStatusCodes(settings.AdditionalFailoverStatusCodes)
 	settings.UpstreamErrorStatusCodes = normalizeRetryStatusCodes(settings.UpstreamErrorStatusCodes)
 	settings.AutoManagedProbeBackoffMinutes = append([]int(nil), settings.AutoManagedProbeBackoffMinutes...)
 	return nil
@@ -562,6 +593,7 @@ func validateAnthropicSamplingParameterFilterModels(models []string) error {
 
 func cloneGatewaySettings(settings GatewaySettings) GatewaySettings {
 	settings.DefaultPoolModeRetryStatusCodes = append([]int{}, settings.DefaultPoolModeRetryStatusCodes...)
+	settings.AdditionalFailoverStatusCodes = append([]int{}, settings.AdditionalFailoverStatusCodes...)
 	settings.UpstreamErrorStatusCodes = append([]int{}, settings.UpstreamErrorStatusCodes...)
 	settings.AutoManagedProbeBackoffMinutes = append([]int(nil), settings.AutoManagedProbeBackoffMinutes...)
 	settings.AnthropicSamplingParameterFilterModels = append([]string{}, settings.AnthropicSamplingParameterFilterModels...)

@@ -41,13 +41,16 @@ func (s *GatewayService) shouldRetryUpstreamError(account *Account, statusCode i
 	return !account.ShouldHandleErrorCode(statusCode)
 }
 
-// shouldFailoverUpstreamError determines whether an upstream error should trigger account failover.
+// shouldFailoverUpstreamError 判断上游错误是否应触发账号换号。
 func (s *GatewayService) shouldFailoverUpstreamError(statusCode int) bool {
 	switch statusCode {
 	case 401, 403, 429, 529:
 		return true
 	default:
-		return statusCode >= 500
+		if statusCode >= 500 {
+			return true
+		}
+		return isAdditionalFailoverStatus(s.settingService, statusCode)
 	}
 }
 
