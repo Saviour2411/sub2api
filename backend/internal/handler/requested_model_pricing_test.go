@@ -294,7 +294,7 @@ func TestOpenAIChatValidateRequestedModelPricingBeforeConcurrencyAndRPM(t *testi
 		&contentModerationHandlerSettingRepo{values: map[string]string{
 			service.SettingKeyRiskControlEnabled:      "true",
 			service.SettingKeyContentModerationConfig: string(moderationConfig),
-		}}, nil, nil, nil, nil, nil, nil,
+		}}, nil, nil, nil, nil, nil, nil, nil,
 	)
 
 	recorder := httptest.NewRecorder()

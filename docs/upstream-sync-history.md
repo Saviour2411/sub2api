@@ -887,3 +887,110 @@
 - 未执行真实浏览器端到端交互；移动端和 iOS 变更由组件测试、typecheck 和生产构建覆盖。
 - `pnpm audit` 仍报告 2 high、30 moderate、8 low，均为同步前已有且通过仓库例外门禁；发布前仍需远端 CI 复核。
 - 未执行 push、PR、部署、远程服务器访问、容器重启或生产数据操作。
+
+## 2026-08-02 同步至 7e2e9ba05
+
+- 执行时间：2026-08-02T17:36:21+08:00
+- 执行状态：同步分支完整合并并通过可在当前本机执行的关键验证；integration 与 Apple 生命周期 fixture 的环境限制已如实记录；本记录提交后使用 `--ff-only` 更新本地 `main`
+- 本地目标分支：`main`
+- `LOCAL_PRE_SYNC_SHA`：`7b65f71d43e33925dceb6eb6728bdc54cbc81c0e`
+- 上游代码合并提交：`6884fa6826883f1cccb1c119d22b7095d77eb3ee`
+- 最后一个代码/测试提交：`6884fa6826883f1cccb1c119d22b7095d77eb3ee`
+- 上游仓库：`https://github.com/Wei-Shaw/sub2api.git`
+- 上游分支：`main`
+- `UPSTREAM_OLD_SHA`：`5a6143097db142b72a6fc848c214e97214470bdd`
+- `UPSTREAM_NEW_SHA`：`7e2e9ba05026b7126318aa0754c1afa0ac00bc58`
+- merge-base：`5a6143097db142b72a6fc848c214e97214470bdd`
+- `LAST_FULLY_INTEGRATED_UPSTREAM_SHA`：`7e2e9ba05026b7126318aa0754c1afa0ac00bc58`
+- 集成策略：在隔离同步分支使用 `git merge --no-ff --no-commit` 完整合并固定上游 SHA，逐文件解决 22 个文本冲突，复核自动合并路径的二开语义，补齐合并后测试契约并重复生成 Ent/Wire；上游祖先关系由独立 merge commit 完整保留
+- 备份分支：`backup/pre-upstream-sync-20260802-173621-7b65f71d4`
+- 同步分支：`sync/upstream-20260802-7e2e9ba05`
+
+### 上游提交处置
+
+本次固定范围共 99 个提交，其中 40 个 merge commit、59 个 non-merge commit。99 个提交均通过完整 merge 保留祖先关系并记为 `Applied`；下表重点提交组同时按本地二次开发边界记为 `Applied + Overridden`。重点组是总范围的子集，数量不可与 99 重复相加。无 `Already Applied`、`Skipped`、`Deferred` 或未解决 `Conflict`。
+
+| 上游提交集合 | 状态 | 内容与处置 |
+| --- | --- | --- |
+| `5a6143097..7e2e9ba05`（99 个） | Applied | 完整接入 Anthropic classifier/count-tokens、Codex namespace 与工具图片、OpenAI WS/compaction、流式部分 usage、全 API-key 平台倍率探测与写回、分组利润控制、安全审计、内容审核代理、Compact 首页、支付设置、模型定价、部署安全及相关测试 |
+| `7ceabb3fd`、`7e2e9ba05` | Applied + Overridden | 保留上游版本提交的祖先关系，最终版本继续使用本地较新的 `0.1.213`，不回退到上游 `0.1.169` 或 `0.1.170` |
+| `efa5a2240`、`54b1f8f6b`、`352b21f4e`、`2ef124629`、`53aa5cd24`、`2be08f3f3`、`a8cd33eea`、`8f5caef78` | Applied + Overridden | 接入 count-tokens 的 `max_tokens` 清理和 classifier 多 system/auto 分类兼容；真实 Claude Code 仍要求严格协议头判定，测试补齐 `interleaved-thinking`，不因宽松 body 特征放大客户端信任面 |
+| `272735b0a`、`dfdbc2770`、`2bf9c6d56`、`fe2172586`、`21aacde0b` 及对应 merge commit | Applied + Overridden | 接入 Codex namespace、缺失 instructions 默认值、工具输出图片桥接、加密 compaction 恢复和 WS relay 关闭竞态修复；继续保留本地图片工具策略、图片尺寸能力透传、逐轮 WS 结算，以及非流式 HTTP 不转入 WS 的边界 |
+| `7d3bf86e5`、`da49ce3f2`、`85a27fae3`、`bd52e5d77` 及对应 merge commit | Applied + Overridden | 接入 pool mode 流式容量重试、代理流熔断、SSE 429 和 Anthropic 中断流已观测 usage 记录；首 Token 缓冲器会先交付已读取 prelude，再向协议层报告上游读错误，已观测 Anthropic usage 后禁止错误 failover，避免漏计或重复计费 |
+| `f3a3d8684`、`56f3d3c9b`、`b0f5007f0`、`0b6b4ea95`、`20ad5ec50`、`fad2f215e`、`dec47e8fa`、`d99ee7291`、`11c1e944b`、`c043c2477` | Applied + Overridden | 接入全 API-key 平台倍率探测、受控倍率写回和分组利润控制；CreateAccount 向所有 API-key 平台传递探测开关，调度使用映射后模型限制辅助逻辑，同时继续保留专属分组约束、普通分组按请求模型计费、Composite 显式例外和严格缺价处理 |
+| `fc495e087`、`d74e669a2`、`570ea74d1`、`948b63c9c`、`682c4fe0e` | Applied + Overridden | 接入 Qwen3Guard 辅助字段、窄范围阻断审计和内容审核代理；兼容新增仓储参数，继续保留本地人工审核、统一安全审计协调器、Cyber 会话阻断与过载回退边界 |
+| `b2d895fb8`、`488d3b09e`、`313121f3f`、`493955f7b`、`f54e9827a`、`698547418` 及对应 merge commit | Applied + Overridden | 接入 GPT-5.6、GLM-5.2、Codex Auto-review 定价与 release fallback 资源；普通文本仍严格按用户请求模型计费，媒体继续使用实际模型，未以映射名或最终上游模型静默改变本地计费来源 |
+| `739c0ff9c`、`beeb2f989`、`2980ff385`、`0ee9ea576`、`3deb2f17d`、`8ed9f754c`、`c772d1866`、`132d446ca` | Applied + Overridden | 接入 Compact 首页和支付标题、可见支付方式、选择器布局修复；Home compact 测试补齐本地模型市场所需 app store mock，本地 `/models`、充值赠送及支付增强继续保留 |
+| `0010894f9`、`0a45be17d` | Applied + Overridden | 接入容器 `no-new-privileges` 安全配置，同时保持两份生产 Compose 的 bind mount、仅回环暴露、HTTP upstream 业务开关和 4 vCPU/8 GiB 资源参数基线 |
+
+### 本地提交与文件
+
+- 上游固定范围整体映射到 merge commit `6884fa6826883f1cccb1c119d22b7095d77eb3ee`；双亲分别为同步前本地 SHA `7b65f71d43e33925dceb6eb6728bdc54cbc81c0e` 与固定上游 SHA `7e2e9ba05026b7126318aa0754c1afa0ac00bc58`。
+- 写入两份台账前，代码、配置、资源和测试相对 `LOCAL_PRE_SYNC_SHA` 修改 295 个文件：新增 57 个、修改 237 个、删除 1 个，共增加 16820 行、删除 1189 行。
+- 唯一删除文件为上游不再引用的合作方资源 `assets/partners/logos/666api.jpg`；未删除本地业务文件。
+- Ent 与 Wire 重复生成结果稳定；冲突中的 `backend/ent/client.go` 及关联生成文件由最终 schema/Wire 图重新生成，不手工维护生成代码。
+- `backend/cmd/server/VERSION` 最终保持 `0.1.213`。
+- `deploy/docker-compose.yml` 与 `deploy/docker-compose.sub2api.yml` 字节完全一致，SHA-256 均为 `2865001838D1C9E8FEDC798E77742481BA7B6AC09774E417E889945BBB49A05A`。
+
+### 冲突与最终解决方案
+
+22 个文本冲突均逐文件解决，无整文件采用 `ours` 或 `theirs`，最终索引无未解决路径：
+
+- 版本与生成代码（2）：`backend/cmd/server/VERSION`、`backend/ent/client.go`。
+- 管理、审核与支付服务（4）：`backend/internal/handler/admin/content_moderation_handler.go`、`backend/internal/service/admin_service.go`、`backend/internal/service/content_moderation.go`、`backend/internal/service/payment_config_service.go`。
+- 网关、调度、计费与协议测试（12）：`backend/internal/handler/failover_loop.go`、`backend/internal/handler/gateway_handler.go`、`backend/internal/handler/openai_gateway_handler.go`、`backend/internal/handler/openai_gateway_handler_test.go`、`backend/internal/server/routes/gateway.go`、`backend/internal/service/gateway_anthropic_apikey_passthrough_test.go`、`backend/internal/service/gateway_count_tokens.go`、`backend/internal/service/gateway_scheduling.go`、`backend/internal/service/gateway_usage_billing.go`、`backend/internal/service/openai_gateway_grok.go`、`backend/internal/service/openai_gateway_passthrough.go`、`backend/internal/service/openai_ws_protocol_forward_test.go`。
+- 生产 Compose（1）：`deploy/docker-compose.yml`。
+- 前端与组件测试（3）：`frontend/src/components/account/CreateAccountModal.vue`、`frontend/src/views/HomeView.vue`、`frontend/src/views/user/__tests__/PaymentView.spec.ts`。
+
+最终兼容决策：
+
+- 版本保持本地 `0.1.213`；Ent/Wire 以双方最终 schema 和依赖注入图重新生成，重复生成稳定。
+- Claude Code 继续由严格协议头判定；上游 classifier 多 system/auto 兼容完整接入，测试补齐 `interleaved-thinking`。
+- 首 Token 缓冲在读错误前先交付已读取 prelude；Anthropic 已观测 usage 后不再 failover，继续保留 pending/final outcome、部分响应、按用户串行扣费和 5 秒 usage task 超时。
+- WSv2 encrypted reasoning/compaction 恢复测试使用 `stream:true`；本地非流式 HTTP 不走 WS、逐轮并发释放、结算与审计边界不变。
+- CreateAccount 对全部 API-key 平台传递上游倍率探测开关；渠道调度补齐映射后模型限制，仍执行专属分组访问和本地请求模型计费约束。
+- OpenAI 工具输出图片完整接入并补传图片尺寸能力参数；本地 Codex 图片工具禁用/桥接策略、媒体实际模型计费和图片结果统计边界保留。
+- 内容审核接入上游代理配置与新增仓储参数，同时保留本地人工审核、Cyber 阻断和协调器回退。
+- Home compact 测试补齐模型市场读取所需 app store mock；支付可见方式修复与本地充值赠送、支付增强共存。
+- 生产 Compose 接入上游容器安全项，但继续使用 bind mount、`127.0.0.1:18080`、允许 HTTP upstream 的业务开关及既定资源参数；冲突解决后同步到 `docker-compose.sub2api.yml` 并验证字节一致。
+
+### 刻意保留的二次开发功能
+
+- 首 Token 超时、首响应/首有效输出区分、部分 usage 归因、已提交响应保护、增强 failover 和连续失败停调度。
+- 普通分组严格按用户请求模型计费、Composite 显式别名价例外、严格缺价错误、媒体实际模型计费、按用户串行扣费和 5 秒 usage task 超时。
+- Claude Code 严格客户端判定、全局上游模拟、Anthropic 采样参数过滤、API Key 请求头覆写、Codex namespace/图片工具策略及非流式 HTTP 不走 WS。
+- 专属分组访问、账号模型白名单、增强账号测试、本地模型市场、充值赠送、内容人工审核/Cyber、附加换号状态码和表格稳定性。
+- 生产 bind mount、仅回环暴露、HTTP upstream 业务开关、双生产 Compose 一致性、本地 CI 门禁和实例资源保护参数。
+
+### 验证记录
+
+| 阶段 | 命令 | 退出码 | 结果 |
+| --- | --- | ---: | --- |
+| 同步前 | `go test -tags=unit ./...` | 0 | Go 全量 unit 通过 |
+| 同步前 | `golangci-lint run --timeout=30m ./...` | 0 | `0 issues` |
+| 同步前 | `CGO_ENABLED=0 go build -trimpath -o bin/server ./cmd/server` | 0 | 后端无 CGO 构建通过 |
+| 同步前 | `corepack pnpm run lint:check`、`corepack pnpm run typecheck`、`corepack pnpm run test:run`、`corepack pnpm run build` | 0 | 前端 lint、类型检查、全量 Vitest 与生产构建均通过 |
+| 生成 | Ent/Wire 重复生成及差异复核 | 0 | 重复生成稳定，无意外受控差异 |
+| 适配 | 3 类定向后端失败复现与修复 | 1 / 0 | 修复测试辅助类型重名、内容审核新增仓储参数和 Failover API 新参数后，相关定向集合通过 |
+| 适配 | `go test -tags=unit ./internal/handler/... ./internal/server/routes/... ./internal/service/...` | 0 | 受影响 handler、routes、service 全部通过 |
+| 适配 | `corepack pnpm exec vitest run` 的 6 个受影响测试文件 | 0 | 6 个文件、60 个测试通过 |
+| 同步后 | `go test -tags=unit ./...` | 0 | Go 全量 unit 通过 |
+| 同步后 | `golangci-lint run --timeout=30m ./...` | 0 | `0 issues` |
+| 同步后 | `CGO_ENABLED=0 go build -trimpath -o bin/server ./cmd/server` | 0 | 后端无 CGO 构建通过 |
+| 同步后 | `corepack pnpm run test:run` | 0 | 前端全量 Vitest 通过 |
+| 同步后 | `corepack pnpm run lint:check`、`corepack pnpm run typecheck` | 0 | lint 与类型检查通过 |
+| 同步后 | `corepack pnpm run build` | 0 | 生产构建通过；仅有既有动态导入和大 chunk 非致命警告 |
+| 部署静态检查 | `bash -n deploy/apple-container.sh` | 0 | Shell 语法检查通过 |
+| 部署静态检查 | `bash deploy/tests/docker-compose-security-test.sh`、`bash deploy/tests/docker-runtime-resources-test.sh`、`bash deploy/test-caddyfile-cache.sh` | 0 | Compose 安全、运行时资源和 Caddy 缓存测试通过 |
+| Apple fixture | `bash deploy/tests/apple-container-test.sh` | 1 | Windows Git Bash 的 `stat` 不支持 macOS `stat -f '%Lp'`，fixture 在权限校验阶段退出；未证明 macOS 生命周期失败 |
+| Integration | `go test -tags=integration ./...` | 1 | 本机无 Docker 导致 3 个 Testcontainers 包 setup 失败；`tls.peet.ws` 探针访问被拒绝；未缓存 `go.opentelemetry.io/auto/sdk` 且从 `proxy.golang.org` 下载超时；其余可运行 integration 包通过 |
+| 最终静态复核 | Compose SHA-256、祖先关系、冲突标记、未跟踪文件、意外删除、敏感路径、`git diff --check` | 0 | 双生产 Compose 字节一致，固定上游 SHA 已成为当前分支祖先，无未解决冲突或未跟踪文件；仅删除上游不再引用的 `666api.jpg` |
+
+### 未验证项与残余风险
+
+- `go test -tags=integration ./...` 未整体通过，Docker/Testcontainers、真实 PostgreSQL migration、TLS 指纹外部探针和需在线补齐的 OpenTelemetry 依赖仍需在具备 Docker 与稳定网络的隔离环境或远端 CI 复核。
+- Apple container 生命周期 fixture 未在 macOS 原生 `stat` 环境完成；Windows Git Bash 的命令兼容问题不代表脚本在目标平台通过。
+- 未运行 `-race` 或 `govulncheck`；当前结论不覆盖数据竞争和最新漏洞可达性。
+- 未读取 `.env`，未启动依赖 PostgreSQL/Redis 的真实服务，未执行本地健康检查或真实数据库迁移。
+- 未使用真实 OpenAI、Anthropic、Grok、支付、S3、SMTP 或安全审计服务凭据；相关路径由单元、组件和契约测试覆盖。
+- 未执行 push、PR、部署、远程服务器访问、容器重启或生产数据操作。
