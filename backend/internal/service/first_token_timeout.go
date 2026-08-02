@@ -790,12 +790,17 @@ func (r *firstTokenReadCloser) Read(p []byte) (int, error) {
 			case firstTokenAttemptTimedOut:
 				return 0, errFirstTokenAttemptTimedOut
 			}
+			// 上游在首个语义 Token 前中断时，仍需先把已完整读取的 SSE prelude
+			// 交给协议层解析。该 prelude 可能已经包含可计费 usage；若直接返回读错误，
+			// scanner 看不到这些字节，Forward 会误判为可安全 failover 并造成重复计费。
+			if len(r.buffer) > 0 {
+				r.attempt.markDecidedWithoutToken()
+				r.readable = true
+				continue
+			}
 			if errors.Is(err, io.EOF) {
 				r.attempt.markDecidedWithoutToken()
 				r.readable = true
-				if len(r.buffer) > 0 {
-					continue
-				}
 			}
 			return 0, err
 		}

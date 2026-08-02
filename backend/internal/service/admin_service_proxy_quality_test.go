@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type roundTripFunc func(*http.Request) (*http.Response, error)
+type proxyQualityRoundTripFunc func(*http.Request) (*http.Response, error)
 
-func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+func (f proxyQualityRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
@@ -21,7 +21,7 @@ func newProxyQualityTestClient(t *testing.T, status int, headers http.Header, bo
 	t.Helper()
 
 	return &http.Client{
-		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		Transport: proxyQualityRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 			require.Equal(t, http.MethodGet, req.Method)
 			require.Equal(t, "application/json,text/html,*/*", req.Header.Get("Accept"))
 			require.Equal(t, proxyQualityClientUserAgent, req.Header.Get("User-Agent"))

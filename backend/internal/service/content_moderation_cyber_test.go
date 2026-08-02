@@ -93,6 +93,7 @@ func TestRecordCyberPolicyEvent_DisabledWhenRiskControlOff(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 
 	svc.RecordCyberPolicyEvent(context.Background(), CyberPolicyRecordInput{
@@ -116,6 +117,7 @@ func TestRecordCyberPolicyEvent_WritesLogWhenEnabled(t *testing.T) {
 			SettingKeyContentModerationConfig: cyberPolicyTestConfig(t, nil),
 		}},
 		repo,
+		nil,
 		nil,
 		nil,
 		nil,
@@ -231,7 +233,7 @@ func TestRecordCyberPolicyEvent_RequiresConfiguredAuditScope(t *testing.T) {
 					SettingKeyRiskControlEnabled:      "true",
 					SettingKeyContentModerationConfig: cyberPolicyTestConfig(t, tt.mutate),
 				}},
-				repo, nil, nil, nil, nil, nil,
+				repo, nil, nil, nil, nil, nil, nil,
 			)
 			tt.input.UserID = 7
 			tt.input.Endpoint = "/v1/responses"
@@ -248,7 +250,7 @@ func TestRecordCyberPolicyEvent_RequiresConfiguredAuditScope(t *testing.T) {
 func TestRecordCyberPolicyEvent_RuntimeLoadFailureHasNoSideEffects(t *testing.T) {
 	settings := &contentModerationRuntimeSettingRepo{getMultipleErr: errors.New("database unavailable")}
 	repo := &banCountArgsTestRepo{}
-	svc := NewContentModerationService(settings, repo, nil, nil, nil, nil, nil)
+	svc := NewContentModerationService(settings, repo, nil, nil, nil, nil, nil, nil)
 	svc.RecordCyberPolicyEvent(context.Background(), CyberPolicyRecordInput{UserID: 7, Model: "gpt-5"})
 	require.Empty(t, repo.snapshotLogs())
 	require.Empty(t, repo.snapshotCountCalls())
@@ -268,7 +270,7 @@ func TestRecordCyberPolicyEvent_EmailOnHitControlsCyberNotice(t *testing.T) {
 
 			repo := &cyberOrderingTestRepo{}
 			emailService := NewEmailService(settings, nil)
-			svc := NewContentModerationService(settings, repo, nil, nil, nil, nil, emailService)
+			svc := NewContentModerationService(settings, repo, nil, nil, nil, nil, nil, emailService)
 			groupID := int64(26)
 			svc.RecordCyberPolicyEvent(context.Background(), CyberPolicyRecordInput{
 				UserID:          7,
@@ -311,6 +313,7 @@ func TestRecordCyberPolicyEvent_CreateLogBeforeEmail(t *testing.T) {
 			SettingKeyContentModerationConfig: cyberPolicyTestConfig(t, nil),
 		}},
 		repo,
+		nil,
 		nil,
 		nil,
 		nil,
@@ -369,7 +372,7 @@ func TestApplyFlaggedAccountSideEffects_PassesExcludeCyberFlag(t *testing.T) {
 	repo := &banCountArgsTestRepo{}
 	svc := NewContentModerationService(
 		&contentModerationTestSettingRepo{values: map[string]string{}},
-		repo, nil, nil, nil, nil, nil,
+		repo, nil, nil, nil, nil, nil, nil,
 	)
 	userID := int64(42)
 
@@ -393,7 +396,7 @@ func TestRecordCyberPolicyEvent_ExcludeFromBanCount_SkipsBanJudgment(t *testing.
 				cfg.CyberPolicyExcludeFromBanCount = true
 			}),
 		}},
-		repo, nil, nil, nil, nil, nil,
+		repo, nil, nil, nil, nil, nil, nil,
 	)
 
 	svc.RecordCyberPolicyEvent(context.Background(), CyberPolicyRecordInput{
@@ -421,7 +424,7 @@ func TestRecordCyberPolicyEvent_DefaultCountsTowardBan(t *testing.T) {
 			SettingKeyRiskControlEnabled:      "true",
 			SettingKeyContentModerationConfig: cyberPolicyTestConfig(t, nil),
 		}},
-		repo, nil, nil, nil, nil, nil,
+		repo, nil, nil, nil, nil, nil, nil,
 	)
 
 	svc.RecordCyberPolicyEvent(context.Background(), CyberPolicyRecordInput{
