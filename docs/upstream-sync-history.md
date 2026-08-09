@@ -994,3 +994,95 @@
 - 未读取 `.env`，未启动依赖 PostgreSQL/Redis 的真实服务，未执行本地健康检查或真实数据库迁移。
 - 未使用真实 OpenAI、Anthropic、Grok、支付、S3、SMTP 或安全审计服务凭据；相关路径由单元、组件和契约测试覆盖。
 - 未执行 push、PR、部署、远程服务器访问、容器重启或生产数据操作。
+
+## 2026-08-09 同步至 48eb3766d
+
+- 执行时间：2026-08-09T23:21:00+08:00
+- 执行状态：同步分支完整合并并通过当前本机可执行的全量 unit、静态检查与构建验证；本记录提交后使用 `--ff-only` 更新本地 `main`
+- 本地目标分支：`main`
+- `LOCAL_PRE_SYNC_SHA`：`fbd42f0d5ff1dc39ec60e7bd2ce081b03464f285`
+- 上游代码合并提交：`9c63ee6f6917e2c945a9e738077de405f5c4da0b`
+- 最后一个代码/测试提交：`9c63ee6f6917e2c945a9e738077de405f5c4da0b`
+- 上游仓库：`https://github.com/Wei-Shaw/sub2api.git`
+- 上游分支：`main`
+- `UPSTREAM_OLD_SHA`：`7e2e9ba05026b7126318aa0754c1afa0ac00bc58`
+- `UPSTREAM_NEW_SHA`：`48eb3766d2da817b171b45bb3036d42575e42b8f`
+- merge-base：`7e2e9ba05026b7126318aa0754c1afa0ac00bc58`
+- `LAST_FULLY_INTEGRATED_UPSTREAM_SHA`：`48eb3766d2da817b171b45bb3036d42575e42b8f`
+- 集成策略：在隔离同步分支使用 `git merge --no-ff --no-commit` 完整合并固定上游 SHA，逐文件解决 49 个文本冲突，复核自动合并路径的二开语义，补齐合并后的测试契约并重复生成 Ent/Wire；上游祖先关系由独立 merge commit 完整保留
+- 备份分支：`backup/pre-upstream-sync-20260809-221027-fbd42f0d5`
+- 同步分支：`sync/upstream-20260809-48eb3766d`
+
+### 上游提交处置
+
+本次固定范围共 223 个提交，其中 52 个 merge commit、171 个 non-merge commit。223 个提交均通过完整 merge 保留祖先关系并记为 `Applied`；下表重点提交组同时按本地二次开发边界记为 `Applied + Overridden`。重点组是总范围的子集，数量不可与 223 重复相加。无 `Already Applied`、`Skipped`、`Deferred` 或未解决 `Conflict`。
+
+| 上游提交集合 | 状态 | 内容与处置 |
+| --- | --- | --- |
+| `7e2e9ba05..48eb3766d`（223 个） | Applied | 完整接入支付/订阅并发安全、Codex 身份与版本同步、腾讯和阿里云 Captcha、OAuth pending 安全、Channel Monitor V2、Grok 搜索/视频/语音/实时链路、上游响应模型诊断、Responses/Anthropic 协议修复、邮箱域名注册额度、Gemini 图片计费、依赖安全及相关测试 |
+| `aac53afe0`、`68d8f122e`、`48eb3766d` | Applied + Overridden | 保留上游版本提交的祖先关系，最终版本继续使用本地较新的 `0.1.214`，不回退到上游 `0.1.171`、`0.1.172` 或 `0.1.173` |
+| `2eb24814f`、`4c4ff3638`、`c899c8cf3`、`2d3e84520`、`dbb42881c` 及对应 merge commit | Applied + Overridden | 接入 Codex 官方 release 版本同步、启动防抖、统一出站版本身份和 `codex-tui` 默认身份；继续保留本地 Codex CLI 模拟、图片工具策略、App Server 识别和管理员 UA 只贡献非版本指纹的边界 |
+| `e592c5f9e`、`635a27189`、`26e0a8932`、`02e50cc22`、`899157487` 及对应 merge commit | Applied + Overridden | 接入腾讯/阿里云 Captcha、pending OAuth 创建账号门禁和账号接管防护；继续保留公开注册页 401 不强制跳登录、安全 storage 降级、刷新令牌并发/换号保护，并限制仅从 auth store 恢复的 pending 会话复用普通注册残留邀请码 |
+| `a58048ac3` 至 `59b5ac545`、`0d98176c5`、`9f3ee38d4`、`64d1ebe4a`、`800533574`、`3c22aeeb3`、`825f9c78d`、`04d9eeaf0` 及对应 merge commit | Applied + Overridden | 完整接入 Channel Monitor V2 聚合、模式开关、隐私默认、渐进回填、错误去重和用户/管理界面；默认继续使用 V1，可显式切换 V2，同时把本地图片分组成功率接回 V1/V2 用户展示 |
+| `74249b8fe` 至 `79df1647d`、`25d2b03e` 至 `245d06960`、`d7c9e7167` 至 `72a56f862`、`d0767eab9` 至 `fb0475656` 及对应 merge commit | Applied + Overridden | 接入 Grok 模型映射、密码/SSO/RT 授权、搜索、图片、视频、Voice TTS/STT、Realtime、free/P2 配额、媒体计费和管理端多模式测试；继续保留严格按用户请求模型计费、实际媒体结果结算、失败关闭安全边界及本地默认测试提示词 |
+| `30d2589ef`、`0b9f40e23`、`e2652eb85`、`f3c94d209`、`db0bff82c`、`c33c3208e`、`cbf2be05a`、`6e34fb09c` 及对应 merge commit | Applied + Overridden | 接入 WS lease 丢失终态、未结算 usage 保留、金额量化、Responses 工具 schema、上游响应模型审计、流内降载恢复、图片请求与客户端 context 解耦和响应模型观测优化；继续保留首 Token/部分输出禁止重试、客户端断连和成功审计、请求体及时释放、WS 逐轮并发/计费/终态错误及响应模型仅诊断不改计费来源 |
+| `f970bd48c`、`7d38e6712`、`e687ca3e9`、`99b357083`、`38081ef72`、`db725a775` 及对应 merge commit | Applied + Overridden | 接入请求取消停止调度、稀疏流量失败 streak、系统日志落库退避、每日配额午夜重置、刷新令牌竞态和订阅续费串行化；继续保留按用户串行扣费和 5 秒 usage task 超时，不为匹配 worker 数量扩大数据库连接池 |
+
+### 本地提交与文件
+
+- 上游固定范围整体映射到 merge commit `9c63ee6f6917e2c945a9e738077de405f5c4da0b`；双亲分别为同步前本地 SHA `fbd42f0d5ff1dc39ec60e7bd2ce081b03464f285` 与固定上游 SHA `48eb3766d2da817b171b45bb3036d42575e42b8f`。
+- 写入两份台账前，代码、配置、资源和测试相对 `LOCAL_PRE_SYNC_SHA` 修改 588 个文件：新增 161 个、修改 424 个、删除 3 个，共增加 50944 行、删除 3840 行。
+- 删除文件均为上游已移除的合作方资源：`assets/partners/logos/AICodeMirror.jpg`、`assets/partners/logos/anpin.jpg`、`assets/partners/logos/unity2.png`；未删除本地业务文件。
+- `backend/cmd/server/VERSION` 最终保持 `0.1.214`。
+- Ent 在隔离恢复模块中连续两次生成的摘要均为 `5CFD9B182E07A04B5AB01925E121B0D517C4660B4232A18B8E584F0309812F5D`；Wire 连续生成摘要均为 `BA7243E941F7541C1DC43AA9B1622656B25B20A4CD31C842A5E4623B1924E88A`。临时恢复目录已删除。
+- `go mod tidy` 将测试直接使用的 `github.com/go-playground/validator/v10` 提升为直接依赖，并保留 Wire 生成器需要的 `github.com/google/subcommands v1.2.0` 间接依赖及完整校验和。
+- `deploy/docker-compose.yml` 与 `deploy/docker-compose.sub2api.yml` 字节完全一致，SHA-256 均为 `2865001838D1C9E8FEDC798E77742481BA7B6AC09774E417E889945BBB49A05A`。
+
+### 冲突与最终解决方案
+
+49 个文本冲突均逐文件解决，无整文件采用 `ours` 或 `theirs`，最终索引无未解决路径。冲突集中在版本与 Go 依赖、Ent/Wire 生成代码、设置与账号 schema、OpenAI/Grok 网关和 WS、计费与 usage、认证/Captcha、Channel Monitor、管理端设置及用户页面。
+
+最终兼容决策：
+
+- 版本保持本地 `0.1.214`；Ent/Wire 以双方最终 schema 和依赖注入图重新生成，不手工拼接生成代码。
+- 设置系统同时保留本地默认测试提示词、每日签到、本地模型市场、缓存/测活配置，并接入上游 Captcha、Codex 版本同步、账号调度阈值和 Channel Monitor V2 设置。
+- OpenAI/Grok/WS 同时保留首 Token 与部分输出禁止重试、客户端断连和成功审计、请求体及时释放、逐轮并发释放/计费/终态错误，以及严格按用户请求模型计费；上游响应模型仅用于诊断。
+- Grok 搜索、图片、视频、语音和实时模式完整接入；搜索附加计费、视频按完成结果结算、音频定价和免费额度门禁与本地计费边界共存。
+- 认证页接入腾讯/阿里云 Captcha 和 pending OAuth 安全修复；公开注册页 401 仍不强制跳登录，storage 不可用时安全降级，刷新令牌并发换号保护保留，陈旧普通注册邀请码不进入仅由 auth store 恢复的 pending OAuth 创建账号请求。
+- Channel Monitor 保留 V1/V2 可切换模式，V2 使用上游隐私默认和渐进回填；本地图片分组成功率继续在用户端展示。
+- 生产 Compose 未切换到命名卷，继续保持 bind mount、`127.0.0.1:18080`、允许 HTTP upstream 的业务开关、4 vCPU/8 GiB 实例参数和按用户串行扣费/5 秒 usage task 超时。
+
+### 刻意保留的二次开发功能
+
+- 首 Token 超时、首响应/首有效输出区分、部分输出后禁止重试、客户端断连与成功审计、增强 failover、连续失败停调度和大请求体及时释放。
+- 普通分组严格按用户请求模型计费、Composite 显式别名价例外、严格缺价错误、媒体实际模型计费、图片分组成功率、按用户串行扣费和 5 秒 usage task 超时。
+- Claude/Codex 严格客户端与协议策略、API Key 请求头覆写、非流式 HTTP 不走 WS、WS 逐轮并发释放/结算/终态错误，以及上游响应模型仅用于诊断。
+- 可配置账号测试默认提示词、Grok 多测试模式、本地 `/models` 模型市场、每日签到、内容人工审核/Cyber、附加换号状态码、公开注册页和 storage/刷新令牌容错。
+- 生产 bind mount、仅回环暴露、HTTP upstream 业务开关、双生产 Compose 一致性、本地 CI 门禁和实例资源保护参数。
+
+### 验证记录
+
+验证使用 Go 1.26.3、Node 24.15.0、corepack pnpm 9.15.9 和 golangci-lint 2.9.0。
+
+| 阶段 | 命令 | 退出码 | 结果 |
+| --- | --- | ---: | --- |
+| 同步前 | 审批阶段记录的 Go unit/lint/build 与前端 lint/typecheck/Vitest/build 基线 | 0 | 同步前 `main` 基线通过，作为本次新增失败判断基准 |
+| 合并编译 | `go test -tags=unit -run '^$' ./...` | 0 | 全包编译通过 |
+| 生成 | Ent 隔离恢复模块连续两次生成与摘要复核 | 0 | 两次摘要均为 `5CFD9B182E07A04B5AB01925E121B0D517C4660B4232A18B8E584F0309812F5D` |
+| 生成 | Wire 连续生成与摘要复核 | 0 | 两次摘要均为 `BA7243E941F7541C1DC43AA9B1622656B25B20A4CD31C842A5E4623B1924E88A` |
+| 适配 | `corepack pnpm exec vitest run src/i18n/__tests__/staticKeys.spec.ts src/views/auth/__tests__/EmailVerifyView.spec.ts` | 0 | 2 个文件、19 个测试通过；修复翻译键层级和 pending OAuth affiliate 来源边界 |
+| 同步后 | `go test -tags=unit ./...` | 0 | Go 全量 unit 通过 |
+| 同步后 | `golangci-lint run --timeout=30m ./...` | 0 | `0 issues` |
+| 同步后 | `CGO_ENABLED=0 go build -trimpath -o bin/server.exe ./cmd/server` | 0 | 后端无 CGO 构建通过；验证产物已删除 |
+| 同步后 | `corepack pnpm run test:run` | 0 | 前端全量 Vitest 通过；仅输出既有模拟异常和组件告警 |
+| 同步后 | `corepack pnpm run lint:check`、`corepack pnpm run typecheck` | 0 | lint 与类型检查通过 |
+| 同步后 | `corepack pnpm run build` | 0 | 生产构建通过；仅有既有动态导入、大 chunk、Browserslist 数据和 Node shell 参数非致命警告 |
+| 最终静态复核 | Compose SHA-256、上游祖先关系、冲突标记、未跟踪文件、临时目录、版本、`git diff --check` | 0 | 双生产 Compose 一致，固定上游 SHA 为 merge commit 第二父提交，无未解决冲突、Ent 临时目录或意外文件 |
+
+### 未验证项与残余风险
+
+- 未运行 `go test -tags=integration ./...`、`-race` 或 `govulncheck`；当前结论不覆盖真实 PostgreSQL/Redis 集成、数据竞争和最新漏洞可达性。
+- 未启动依赖 PostgreSQL/Redis 的本地服务，未执行真实数据库迁移或本地健康检查。
+- 未使用真实 OpenAI、Anthropic、Grok、Captcha、支付、S3、SMTP 或安全审计服务凭据；相关路径由单元、组件和契约测试覆盖。
+- 未在 Node 20 / Go 1.26.5 的 CI 同构环境复核；本地 Node 24.15.0 / Go 1.26.3 验证已通过。
+- 未执行 push、PR、部署、远程服务器访问、容器重启或生产数据操作。

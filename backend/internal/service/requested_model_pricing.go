@@ -131,7 +131,7 @@ func resolveRequestedMediaPricing(
 		}
 	} else {
 		sizeTier = NormalizeVideoBillingResolutionOrDefault(sizeTier)
-		if apiKeyHasConfiguredVideoPrice(apiKey, sizeTier) {
+		if apiKeyHasConfiguredVideoPrice(apiKey, model, sizeTier) {
 			return model, nil
 		}
 	}

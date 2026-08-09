@@ -11,13 +11,13 @@
 
 ## 当前基线
 
-- 基线日期：2026-07-25
-- 本地版本：`0.1.210`
-- 本地代码基线提交：`68f708d11fc13eaa7dc0f6738fdae2a5c1b8dac0`
-- 已完整集成的上游提交：`6d956bdc20f0d8c38275d4d77b628a8ff776711c`
-- 比较范围：`6d956bdc2..68f708d11`
-- 基线差异：673 个文件，新增 88899 行、删除 4060 行；本地独有提交 431 个
-- 当前能力族：51 项，分布在 9 个功能域
+- 基线日期：2026-08-09
+- 本地版本：`0.1.214`
+- 本地代码基线提交：`9c63ee6f6917e2c945a9e738077de405f5c4da0b`
+- 已完整集成的上游提交：`48eb3766d2da817b171b45bb3036d42575e42b8f`
+- 比较范围：`48eb3766d..9c63ee6f6`
+- 基线差异：693 个文件，新增 90473 行、删除 4455 行；本地独有提交 453 个
+- 当前能力族：52 项，分布在 9 个功能域
 
 这组数字只用于确认分析边界，不能直接等同于功能数量。生成代码、测试、文案、上游提交的本地适配和同一能力的连续修复均会放大差异规模。
 
@@ -82,7 +82,7 @@
 
 | 编号 | 功能 | 当前行为与边界 | 关键入口 | 状态 |
 | --- | --- | --- | --- | --- |
-| `CUST-PROTO-001` | OpenAI Codex CLI 模拟与客户端策略 | API Key/OAuth 路径支持 Codex CLI 请求模拟、User-Agent 和版本范围策略、App Server 客户端识别及能力探测一致性。 | `backend/internal/service/openai_codex_emulation.go`、`backend/internal/service/openai_codex_identity.go` | 生效中 |
+| `CUST-PROTO-001` | OpenAI Codex CLI 模拟与客户端策略 | API Key/OAuth 路径支持 Codex CLI 请求模拟、统一出站身份、User-Agent 和版本范围策略、App Server 客户端识别及能力探测一致性；有效版本可按 GitHub 最新 release 定期同步，管理员 UA 只贡献非版本指纹。 | `backend/internal/service/openai_codex_emulation.go`、`backend/internal/service/openai_codex_identity.go`、`backend/internal/service/openai_codex_version_sync_service.go` | 生效中 |
 | `CUST-PROTO-002` | Codex 图片工具策略 | 可完全禁用或按策略处理图片生成工具；覆盖原生 Responses、Chat fallback、namespace 和 WSv2，防止换名、嵌套或重复注入绕过。 | `backend/internal/service/codex_image_generation_bridge.go`、`backend/internal/service/openai_responses_namespace.go`、`backend/internal/service/setting_service_codex_policy_test.go` | 生效中 |
 | `CUST-PROTO-003` | Anthropic Claude Code 上游模拟 | 支持全局开关，将普通下游请求按 Claude Code 客户端规则清洗、补充和转发；账号测试与真实网关使用同一策略。 | `backend/internal/service/gateway_anthropic_mimicry_sanitize.go`、`backend/internal/service/gateway_anthropic_oauth_mimicry.go` | 生效中 |
 | `CUST-PROTO-004` | Claude OAuth 提示词与协议清洗 | 可配置 OAuth system prompt/blocks，处理 beta header、thinking block、Bedrock CC 兼容和重试时的协议字段。 | `backend/internal/service/gateway_claude_oauth_body.go`、`backend/internal/service/gateway_tool_rewrite.go`、`backend/internal/service/setting_update.go` | 生效中 |
@@ -99,17 +99,17 @@
 | `CUST-ACC-002` | 账号数据批量导入与可见性增强 | 前端支持拖拽/批量导入账号数据；账号列表展示账号 ID，并改进 API Key 查看、滚动和查询上下文重置。 | `frontend/src/views/admin/AccountsView.vue`、`frontend/src/components/account/CreateAccountModal.vue` | 生效中 |
 | `CUST-ACC-003` | API Key 分组访问约束 | 严格校验 API Key 的专属分组访问，拒绝跨专属分组调度，并支持管理员按用户 API Key 所在分组筛选。 | `backend/internal/service/gateway_channel_restriction_test.go`、`backend/internal/service/admin_user.go`、`frontend/src/views/admin/AccountsView.vue` | 生效中 |
 | `CUST-ACC-004` | OpenAI 额度查询与重置 | 账号管理可查询 rate-limit credits，并在明确操作时重置额度；调度器同步刷新相关快照。 | `backend/internal/service/openai_quota_service.go`、`backend/internal/service/openai_quota_reset_credits.go` | 生效中 |
-| `CUST-ACC-005` | 增强账号测试 | 手动和定时测试覆盖 OpenAI Responses/compact/Images、Anthropic 模拟、Gemini 等平台，并执行语义错误、工具调用和提示词校验。 | `backend/internal/service/account_test_service.go`、`frontend/src/components/admin/account/AccountTestModal.vue` | 生效中 |
+| `CUST-ACC-005` | 增强账号测试 | 手动和定时测试覆盖 OpenAI Responses/compact/Images、Anthropic 模拟、Gemini，以及 Grok 搜索、图片、视频、语音和实时模式，并执行语义错误、工具调用、媒体结果和提示词校验。 | `backend/internal/service/account_test_service.go`、`frontend/src/components/admin/account/AccountTestModal.vue` | 生效中 |
 | `CUST-ACC-006` | 本地数据兼容迁移 | 维护注册来源默认授权、平台 quota、订阅到期通知和账号扩展字段的迁移兼容，避免本地历史数据在上游同步后丢失约束。 | `backend/migrations/142_extend_user_provider_default_grants_check.sql`、`backend/migrations/143_subscription_expiry_notify_enabled.sql`、`backend/migrations/144_user_platform_quotas.sql` | 兼容覆盖 |
 
 ### 计费、定价与可观测性
 
 | 编号 | 功能 | 当前行为与边界 | 关键入口 | 状态 |
 | --- | --- | --- | --- | --- |
-| `CUST-BILL-001` | 按用户请求模型计费 | 普通分组严格按用户请求模型计费，不使用渠道映射名或最终上游模型回退；Composite 分组仅在公开别名存在显式渠道价时按别名计费，否则按实际路由的具体模型计费。Chat、Responses、Images、Messages 与 WS 入口统一记录请求模型、映射链和上游模型。 | `backend/internal/handler/requested_model_pricing.go`、`backend/internal/service/requested_model_pricing.go`、`backend/internal/service/gateway_usage_billing.go`、`backend/migrations/175_force_requested_billing_model_source.sql` | 生效中 |
+| `CUST-BILL-001` | 按用户请求模型计费 | 普通分组严格按用户请求模型计费，不使用渠道映射名或最终上游模型回退；Composite 分组仅在公开别名存在显式渠道价时按别名计费，否则按实际路由的具体模型计费。Chat、Responses、Images、Messages 与 WS 入口统一记录请求模型、映射链和上游响应模型；上游响应模型只用于诊断，不反向改变本地计费来源。 | `backend/internal/handler/requested_model_pricing.go`、`backend/internal/service/requested_model_pricing.go`、`backend/internal/service/gateway_usage_billing.go`、`backend/migrations/175_force_requested_billing_model_source.sql` | 生效中 |
 | `CUST-BILL-002` | 多层定价与严格缺价处理 | 支持部分渠道区间回退、渠道默认定价、DeepSeek/GLM/Kimi/MiniMax/豆包等兜底定价，以及 thinking、图片和视频计价补充；非简单模式下选定计费模型缺价必须返回错误，不得静默记为零费用。Composite 的具体模型回退仅用于公开别名未配置渠道价的场景，不改变普通分组边界。 | `backend/internal/service/model_pricing_resolver.go`、`backend/internal/service/pricing_service.go`、`backend/internal/service/requested_model_pricing.go`、`backend/internal/service/gateway_usage_billing.go`、`backend/migrations/147_channel_default_pricing.sql` | 生效中 |
 | `CUST-BILL-003` | OpenAI 长上下文计费兼容策略 | 账号开关叠加本地区间计价逻辑；只有实际命中渠道区间时才禁用内置倍率。历史缺失开关的主账号回填为开启，新账号默认关闭。 | `backend/internal/service/billing_service.go`、`backend/migrations/175_default_openai_long_context_billing.sql` | 兼容覆盖 |
-| `CUST-BILL-004` | Image 分组成功率 | 统计单次和批量图片请求的分组请求数/失败数，支持代次式原子清零、用户展示开关，并排除 keepalive 字节对结果判断的干扰。 | `backend/internal/service/image_group_success_rate.go`、`backend/internal/repository/image_group_success_rate_repo.go`、`backend/migrations/177_image_group_success_rates.sql` | 生效中 |
+| `CUST-BILL-004` | Image 分组成功率 | 统计单次和批量图片请求的分组请求数/失败数，支持代次式原子清零、用户展示开关，并排除 keepalive 字节对结果判断的干扰；用户端 Channel Monitor V1/V2 均可展示该统计。 | `backend/internal/service/image_group_success_rate.go`、`backend/internal/repository/image_group_success_rate_repo.go`、`frontend/src/views/user/ChannelStatusV1View.vue`、`frontend/src/views/user/ChannelStatusV2View.vue`、`backend/migrations/177_image_group_success_rates.sql` | 生效中 |
 | `CUST-BILL-005` | 用量与费用明细增强 | 展示缓存 Token、请求模型、余额调整和图片/视频费用信息；错误请求和上游端点记录使用本地归因规则。 | `backend/internal/service/gateway_usage_billing.go`、`frontend/src/views/admin/UsageView.vue`、`frontend/src/components/admin/user/UserBalanceHistoryModal.vue` | 生效中 |
 | `CUST-BILL-006` | 高并发余额扣费整流 | 单实例内对同一用户的余额扣费事务串行排队，不同用户仍可并行；usage worker 在执行前按用户聚合，同一热用户只占一个 worker，任务开始执行时再创建超时 context。余额事务 gate 继续在 `BeginTx` 前提供最终进程内串行。 | `backend/internal/repository/usage_billing_repo.go`、`backend/internal/service/gateway_usage_billing.go`、`backend/internal/service/usage_record_worker_pool.go` | 生效中 |
 
@@ -147,7 +147,7 @@
 | `CUST-UI-002` | 统一功能开关注册表 | 公共设置驱动的入口统一声明 opt-in/opt-out 语义，避免 SSR 注入缺字段导致刷新闪烁或错误隐藏。 | `frontend/src/utils/featureFlags.ts`、`frontend/src/__tests__/featureFlags.spec.ts` | 生效中 |
 | `CUST-UI-003` | 机甲冷蓝主题与浅色默认 | 保留自定义认证背景、扫描线、计数、倾斜等视觉组件，默认使用浅色主题并提供暗色兼容。 | `frontend/src/components/common/BackgroundFX.vue`、`frontend/src/composables/useTilt.ts`、`frontend/src/stores/app.ts` | 生效中 |
 | `CUST-UI-004` | 表格和导航稳定性 | 保留账号列表禁用虚拟化、查询后滚动重置、分页大小持久化、侧边栏滚动位置，以及日期和列设置下拉浮层不被表格 sticky 表头覆盖。 | `frontend/src/components/common/DataTable.vue`、`frontend/src/components/common/ColumnSettingsDropdown.vue`、`frontend/src/components/layout/TablePageLayout.vue`、`frontend/src/components/layout/AppSidebar.vue` | 生效中 |
-| `CUST-UI-005` | 认证页加载与存储容错 | 注册页等待公共设置后再开放输入和提交，登录协议、Turnstile 与 OAuth 开关使用同一设置快照；local/session storage 不可用时安全降级，避免新会话白屏。 | `frontend/src/views/auth/RegisterView.vue`、`frontend/src/stores/auth.ts`、`frontend/src/utils/browserStorage.ts` | 生效中 |
+| `CUST-UI-005` | 认证页加载与存储容错 | 注册页等待公共设置后再开放输入和提交，登录协议、Captcha 与 OAuth 开关使用同一设置快照；local/session storage 不可用时安全降级，刷新令牌并发时防止旧会话覆盖换号后的新会话；仅从 auth store 恢复 pending OAuth 时不会复用普通邮箱注册残留的邀请码。 | `frontend/src/views/auth/RegisterView.vue`、`frontend/src/views/auth/EmailVerifyView.vue`、`frontend/src/stores/auth.ts`、`frontend/src/api/tokenRefresh.ts`、`frontend/src/utils/browserStorage.ts` | 生效中 |
 
 ### CI、发布与生产约束
 
@@ -165,6 +165,7 @@
 
 | 日期 | 版本/提交 | 类型 | 功能编号 | 变更与原因 | 验证 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-08-09 | `0.1.214` / `9c63ee6f6` | 上游适配 | `CUST-GW-001`、`CUST-GW-003`、`CUST-GW-006`、`CUST-GW-007`、`CUST-GW-008`、`CUST-GW-010`、`CUST-PROTO-001`、`CUST-PROTO-003`、`CUST-PROTO-004`、`CUST-PROTO-005`、`CUST-PROTO-006`、`CUST-PROTO-007`、`CUST-ACC-001`、`CUST-ACC-004`、`CUST-ACC-005`、`CUST-ACC-006`、`CUST-BILL-001`、`CUST-BILL-002`、`CUST-BILL-004`、`CUST-BILL-005`、`CUST-BILL-006`、`CUST-OBS-001`、`CUST-PROD-002`、`CUST-PROD-006`、`CUST-RISK-001`、`CUST-RISK-002`、`CUST-UI-002`、`CUST-UI-004`、`CUST-UI-005`、`CUST-OPS-003`、`CUST-OPS-004`、`CUST-OPS-005` | 完整合并上游 `7e2e9ba05..48eb3766d` 的 223 个提交，接入 Captcha/OAuth 安全修复、Codex 官方版本同步、Channel Monitor V2、Grok 搜索/媒体/语音/实时完整链路、上游响应模型诊断、订阅/退款并发修复、邮箱域名注册额度与依赖安全更新；逐文件解决 49 个文本冲突。继续保留首 Token 与部分输出禁止重试、客户端断连及成功审计、请求体及时释放、WS 逐轮并发/计费/终态错误、严格按用户请求模型计费、Claude/Codex 本地协议策略、图片分组成功率、公开注册页与存储容错、本地模型市场、内容审核/Cyber，以及生产 bind mount、仅回环暴露和实例资源参数。版本保持本地 `0.1.214`，未新增二开编号。 | Go 全量 unit、golangci-lint、CGO 关闭构建、前端 lint/typecheck/全量 Vitest/生产构建及受影响定向回归通过；Ent/Wire 重复生成摘要稳定，双生产 Compose SHA-256 一致。integration、race、govulncheck、真实外部凭据、本地依赖服务启动和生产部署未验证 |
 | 2026-08-02 | `0.1.213` / `6884fa682` | 上游适配 | `CUST-GW-001`、`CUST-GW-003`、`CUST-GW-004`、`CUST-GW-006`、`CUST-GW-007`、`CUST-GW-008`、`CUST-GW-010`、`CUST-GW-011`、`CUST-PROTO-001`、`CUST-PROTO-002`、`CUST-PROTO-003`、`CUST-PROTO-004`、`CUST-PROTO-005`、`CUST-PROTO-006`、`CUST-PROTO-008`、`CUST-ACC-001`、`CUST-ACC-003`、`CUST-ACC-005`、`CUST-ACC-006`、`CUST-BILL-001`、`CUST-BILL-002`、`CUST-BILL-005`、`CUST-BILL-006`、`CUST-PROD-002`、`CUST-PROD-006`、`CUST-RISK-001`、`CUST-RISK-002`、`CUST-UI-002`、`CUST-UI-004`、`CUST-OPS-003`、`CUST-OPS-004`、`CUST-OPS-005` | 完整合并上游 `5a6143097..7e2e9ba05` 的 99 个提交，接入 Anthropic classifier/count-tokens、Codex namespace 与工具图片、OpenAI WS/compaction、流式部分 usage、全 API-key 平台倍率探测与写回、分组利润控制、安全审计、内容审核代理、支付设置、Compact 首页、依赖定价及部署安全更新；逐文件解决 22 个文本冲突。继续保留严格 Claude Code 协议头判定、非流式 HTTP 不走 WS、首 Token/usage/failover 结算边界、普通分组按请求模型计费、Composite 例外、媒体实际模型计费、按用户串行扣费与 5 秒 usage task 超时、本地模型市场、内容审核/Cyber、附加换号状态码、表格稳定性以及生产 bind mount、仅回环暴露和实例资源参数；版本保持 `0.1.213`。未新增二开编号。 | 同步前后 Go 全量 unit、golangci-lint、CGO 关闭构建、前端 lint/typecheck/全量 Vitest/生产构建及受影响定向回归通过；Ent/Wire 重复生成稳定，双生产 Compose 字节一致，部署静态脚本通过。`go test -tags=integration ./...` 因本机无 Docker、外部 TLS 探针被拒绝及未缓存依赖下载超时退出 1；Apple 生命周期 fixture 因 Windows Git Bash 不支持 macOS `stat -f '%Lp'` 退出 1，均作为环境限制记录 |
 | 2026-07-30 | `0.1.212` / 待提交 | 新增 | `CUST-GW-011` | 二开网关配置新增附加换号状态码开关和列表，默认关闭并预填 451；开启后在 Anthropic、OpenAI/Grok、Gemini、Antigravity、Bedrock 等路径中将命中状态码并入现有换号流程，同时保留上下文超限、cyber_policy 硬阻断和明确内容拒绝等语义终止规则。配置使用现有 settings 存储和运行时缓存，无需数据库迁移或重启。 | 配置默认值/持久化/规范化/非法值测试，Gateway、OpenAI/Grok、Gemini、Antigravity 换号判断与语义保护测试，Anthropic 首账号 451 后下一账号成功回归，管理接口和前端表单兼容/校验测试，Go 定向测试、前端 Vitest 与 typecheck |
 | 2026-07-29 | `0.1.211` / 待提交 | 修复 | `CUST-UI-004` | 用户使用记录、API 密钥及管理端使用记录、用户、分组、订阅页的列设置菜单统一改为挂载到 `body` 的 fixed 浮层，并按视口空间自动向上或向下展开；修复原有卡片内 absolute 菜单被 DataTable sticky 表头高层级覆盖的问题。账号页列设置已位于 Teleport 的更多工具浮层中，无需重复改造。 | 组件定位/层级/向上展开回归，用户与管理端使用记录页面回归，六个入口统一实现检查，前端 lint、typecheck、全量 Vitest 和生产构建 |
