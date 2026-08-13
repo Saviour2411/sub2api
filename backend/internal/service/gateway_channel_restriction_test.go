@@ -9,6 +9,36 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// --- resolveAccountUpstreamModel ---
+
+func TestResolveAccountUpstreamModel_Antigravity(t *testing.T) {
+	t.Parallel()
+	account := &Account{
+		Platform: PlatformAntigravity,
+	}
+	// Antigravity 平台使用 DefaultAntigravityModelMapping
+	got := resolveAccountUpstreamModel(account, "claude-sonnet-4-6")
+	require.Equal(t, "claude-sonnet-4-6", got)
+}
+
+func TestResolveAccountUpstreamModel_Antigravity_Unsupported(t *testing.T) {
+	t.Parallel()
+	account := &Account{
+		Platform: PlatformAntigravity,
+	}
+	got := resolveAccountUpstreamModel(account, "totally-unknown-model")
+	require.Equal(t, "", got, "unsupported model should return empty")
+}
+
+func TestResolveAccountUpstreamModel_NonAntigravity(t *testing.T) {
+	t.Parallel()
+	account := &Account{
+		Platform: PlatformAnthropic,
+	}
+	got := resolveAccountUpstreamModel(account, "claude-sonnet-4-6")
+	require.Equal(t, "claude-sonnet-4-6", got, "no mapping = passthrough")
+}
+
 // --- checkChannelPricingRestriction ---
 
 func TestCheckChannelPricingRestriction_NilGroupID(t *testing.T) {

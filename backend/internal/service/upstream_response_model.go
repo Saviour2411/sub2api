@@ -14,8 +14,10 @@ const (
 
 // upstreamResponseModelObserver tracks one forwarding attempt (or one WS turn).
 // A terminal declaration wins over an earlier declaration; otherwise the first
-// declaration is retained. Conflicts are diagnostic only and never affect the
-// forwarding or billing path.
+// declaration is retained. Observation never affects the forwarding path.
+//
+// 下游仅把观测结果用于使用日志和模型不一致诊断；用户扣费仍固定使用请求模型，
+// 不允许上游响应反向改变计费来源。
 type upstreamResponseModelObserver struct {
 	first    string
 	terminal string
