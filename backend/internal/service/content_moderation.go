@@ -3183,7 +3183,7 @@ func (s *ContentModerationService) RecordCyberPolicyEvent(ctx context.Context, i
 	}
 	runtimeSnapshot, err := s.loadRuntimeSnapshot(ctx)
 	if err != nil {
-		slog.Warn("content_moderation.cyber_load_runtime_failed", "error", err)
+		slog.Warn("content_moderation.cyber_runtime_snapshot_load_failed", "error", err)
 		return
 	}
 	cfg := runtimeSnapshot.config

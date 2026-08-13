@@ -297,6 +297,59 @@ func TestRecordCyberPolicyEvent_EmailOnHitControlsCyberNotice(t *testing.T) {
 	}
 }
 
+func TestRecordCyberPolicyEvent_InitialRuntimeSnapshotLoadFailureSkipsEvent(t *testing.T) {
+	repo := &banCountArgsTestRepo{}
+	settingRepo := &contentModerationRuntimeSettingRepo{values: map[string]string{
+		SettingKeyRiskControlEnabled:      "true",
+		SettingKeyContentModerationConfig: `{invalid`,
+	}}
+	svc := NewContentModerationService(settingRepo, repo, nil, nil, nil, nil, nil, nil)
+
+	svc.RecordCyberPolicyEvent(context.Background(), CyberPolicyRecordInput{
+		UserID: 1,
+		Model:  "gpt-5",
+	})
+
+	require.Empty(t, repo.snapshotCountCalls())
+	require.Empty(t, repo.snapshotLogs())
+	getValue, getMultiple := settingRepo.calls()
+	require.Zero(t, getValue)
+	require.GreaterOrEqual(t, getMultiple, 1)
+}
+
+func TestRecordCyberPolicyEvent_RuntimeSnapshotRefreshFailureKeepsStaleScope(t *testing.T) {
+	repo := &banCountArgsTestRepo{}
+	settingRepo := &contentModerationRuntimeSettingRepo{values: map[string]string{
+		SettingKeyRiskControlEnabled:      "true",
+		SettingKeyContentModerationConfig: `{"enabled":true,"mode":"block","all_groups":true,"model_filter":{"type":"include","models":["gpt-5"]}}`,
+	}}
+	svc := NewContentModerationService(settingRepo, repo, nil, nil, nil, nil, nil, nil)
+	svc.runtimeCacheTTL = time.Minute
+
+	_, err := svc.loadRuntimeSnapshot(context.Background())
+	require.NoError(t, err)
+	current := svc.runtimeSnapshot.Load()
+	require.NotNil(t, current)
+	expired := *current
+	expired.loadedAt = time.Now().Add(-2 * time.Minute)
+	svc.runtimeSnapshot.Store(&expired)
+	settingRepo.failMultiple(errors.New("database unavailable"))
+
+	svc.RecordCyberPolicyEvent(context.Background(), CyberPolicyRecordInput{
+		UserID: 1,
+		Model:  "gpt-5",
+	})
+
+	require.Len(t, repo.snapshotLogs(), 1)
+	require.Eventually(t, func() bool {
+		_, calls := settingRepo.calls()
+		return calls == 2
+	}, time.Second, time.Millisecond)
+	getValue, getMultiple := settingRepo.calls()
+	require.Zero(t, getValue)
+	require.Equal(t, 2, getMultiple)
+}
+
 // TestRecordCyberPolicyEvent_CreateLogBeforeEmail verifies F7: the moderation
 // log is persisted BEFORE email delivery, and EmailSent is patched afterwards —
 // SMTP hangs can no longer swallow the audit record.
