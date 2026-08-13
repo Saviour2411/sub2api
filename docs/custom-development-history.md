@@ -11,12 +11,12 @@
 
 ## 当前基线
 
-- 基线日期：2026-08-09
-- 本地版本：`0.1.214`
-- 本地代码基线提交：`9c63ee6f6917e2c945a9e738077de405f5c4da0b`
-- 已完整集成的上游提交：`48eb3766d2da817b171b45bb3036d42575e42b8f`
-- 比较范围：`48eb3766d..9c63ee6f6`
-- 基线差异：693 个文件，新增 90473 行、删除 4455 行；本地独有提交 453 个
+- 基线日期：2026-08-13
+- 本地版本：`0.1.215`
+- 本地代码基线提交：`fc9c1d839436b7e0d358e9ff6facf1cf503e646e`
+- 已完整集成的上游提交：`fbfdcef8184ae4b2e224d5cfc47cf1d0e3742710`
+- 比较范围：`fbfdcef81..fc9c1d839`
+- 基线差异：695 个文件，新增 90573 行、删除 5188 行；本地独有提交 457 个
 - 当前能力族：52 项，分布在 9 个功能域
 
 这组数字只用于确认分析边界，不能直接等同于功能数量。生成代码、测试、文案、上游提交的本地适配和同一能力的连续修复均会放大差异规模。
@@ -107,8 +107,8 @@
 | 编号 | 功能 | 当前行为与边界 | 关键入口 | 状态 |
 | --- | --- | --- | --- | --- |
 | `CUST-BILL-001` | 按用户请求模型计费 | 普通分组严格按用户请求模型计费，不使用渠道映射名或最终上游模型回退；Composite 分组仅在公开别名存在显式渠道价时按别名计费，否则按实际路由的具体模型计费。Chat、Responses、Images、Messages 与 WS 入口统一记录请求模型、映射链和上游响应模型；上游响应模型只用于诊断，不反向改变本地计费来源。 | `backend/internal/handler/requested_model_pricing.go`、`backend/internal/service/requested_model_pricing.go`、`backend/internal/service/gateway_usage_billing.go`、`backend/migrations/175_force_requested_billing_model_source.sql` | 生效中 |
-| `CUST-BILL-002` | 多层定价与严格缺价处理 | 支持部分渠道区间回退、渠道默认定价、DeepSeek/GLM/Kimi/MiniMax/豆包等兜底定价，以及 thinking、图片和视频计价补充；非简单模式下选定计费模型缺价必须返回错误，不得静默记为零费用。Composite 的具体模型回退仅用于公开别名未配置渠道价的场景，不改变普通分组边界。 | `backend/internal/service/model_pricing_resolver.go`、`backend/internal/service/pricing_service.go`、`backend/internal/service/requested_model_pricing.go`、`backend/internal/service/gateway_usage_billing.go`、`backend/migrations/147_channel_default_pricing.sql` | 生效中 |
-| `CUST-BILL-003` | OpenAI 长上下文计费兼容策略 | 账号开关叠加本地区间计价逻辑；只有实际命中渠道区间时才禁用内置倍率。历史缺失开关的主账号回填为开启，新账号默认关闭。 | `backend/internal/service/billing_service.go`、`backend/migrations/175_default_openai_long_context_billing.sql` | 兼容覆盖 |
+| `CUST-BILL-002` | 多层定价与严格缺价处理 | 定价优先级固定为“分组逐模型定价 → 渠道定价 → 内置/兜底价格”；支持渠道区间回退、渠道默认定价、DeepSeek/GLM/Kimi/MiniMax/豆包等兜底定价，以及 thinking、图片、视频和搜索/音频计价补充。非简单模式下选定计费模型缺价必须返回错误，不得静默记为零费用；Composite 的具体模型回退仅用于公开别名未配置渠道价的场景，不改变普通分组边界。 | `backend/internal/service/model_pricing_resolver.go`、`backend/internal/service/pricing_service.go`、`backend/internal/service/requested_model_pricing.go`、`backend/internal/service/gateway_usage_billing.go`、`backend/migrations/147_channel_default_pricing.sql`、`backend/migrations/221_group_model_pricing.sql` | 生效中 |
+| `CUST-BILL-003` | 长上下文计费兼容策略 | OpenAI 账号开关与真实分组配置共同约束长上下文阶梯；只有实际命中渠道区间时才禁用内置倍率。数据库中的分组开关默认开启且显式关闭有效；未携带真实分组配置的旧调用对象继续按兼容默认开启，Grok 只服从分组开关，不被 OpenAI 账号开关否决。 | `backend/internal/service/billing_service.go`、`backend/internal/service/model_pricing_resolver.go`、`backend/ent/schema/group.go`、`backend/migrations/175_default_openai_long_context_billing.sql`、`backend/migrations/221_group_model_pricing.sql` | 兼容覆盖 |
 | `CUST-BILL-004` | Image 分组成功率 | 统计单次和批量图片请求的分组请求数/失败数，支持代次式原子清零、用户展示开关，并排除 keepalive 字节对结果判断的干扰；用户端 Channel Monitor V1/V2 均可展示该统计。 | `backend/internal/service/image_group_success_rate.go`、`backend/internal/repository/image_group_success_rate_repo.go`、`frontend/src/views/user/ChannelStatusV1View.vue`、`frontend/src/views/user/ChannelStatusV2View.vue`、`backend/migrations/177_image_group_success_rates.sql` | 生效中 |
 | `CUST-BILL-005` | 用量与费用明细增强 | 展示缓存 Token、请求模型、余额调整和图片/视频费用信息；错误请求和上游端点记录使用本地归因规则。 | `backend/internal/service/gateway_usage_billing.go`、`frontend/src/views/admin/UsageView.vue`、`frontend/src/components/admin/user/UserBalanceHistoryModal.vue` | 生效中 |
 | `CUST-BILL-006` | 高并发余额扣费整流 | 单实例内对同一用户的余额扣费事务串行排队，不同用户仍可并行；usage worker 在执行前按用户聚合，同一热用户只占一个 worker，任务开始执行时再创建超时 context。余额事务 gate 继续在 `BeginTx` 前提供最终进程内串行。 | `backend/internal/repository/usage_billing_repo.go`、`backend/internal/service/gateway_usage_billing.go`、`backend/internal/service/usage_record_worker_pool.go` | 生效中 |
@@ -136,7 +136,7 @@
 | 编号 | 功能 | 当前行为与边界 | 关键入口 | 状态 |
 | --- | --- | --- | --- | --- |
 | `CUST-RISK-001` | 本地人工审核对话 | 内容审核可进入本地人工审计，持久化请求/响应记录；管理端支持列表、详情、下载和删除。统一安全审计协调器接入上游 prompt audit，协调器未配置时继续使用本地内容审核，审计服务过载时按配置执行回退。 | `backend/internal/securityaudit/coordinator.go`、`backend/internal/service/content_moderation_local_audit.go`、`backend/internal/handler/security_audit_helper.go` | 生效中 |
-| `CUST-RISK-002` | Cyber 会话阻断 | `cyber_policy` 命中可沿网关、审计和计费链路透传，并按配置对会话做 TTL 阻断；用量记录允许 `cyber_blocked` 类型。 | `backend/internal/service/content_moderation.go`、`backend/migrations/174_allow_cyber_blocked_usage_request_type.sql` | 生效中 |
+| `CUST-RISK-002` | Cyber 会话阻断 | `cyber_policy` 命中可沿网关、审计和计费链路透传，并按配置对会话做 TTL 阻断；用量记录允许 `cyber_blocked` 类型。事件只有在全局风险控制、内容审核、非 `off` 模式以及 group/model scope 均允许时才记录；运行时快照读取失败时安全跳过事后副作用，不扩大阻断范围。 | `backend/internal/service/content_moderation.go`、`backend/internal/handler/security_audit_helper.go`、`backend/migrations/174_allow_cyber_blocked_usage_request_type.sql` | 生效中 |
 | `CUST-RISK-003` | 错误请求详情可见性 | 管理端运维详情支持从账号、用户和请求上下文继续导航；可按设置允许用户查看自己的错误请求详情。 | `frontend/src/views/admin/ops/components/OpsRequestDetailsModal.vue`、`backend/internal/service/setting_user_error_view_test.go` | 生效中 |
 
 ### 前端与管理体验
@@ -165,6 +165,7 @@
 
 | 日期 | 版本/提交 | 类型 | 功能编号 | 变更与原因 | 验证 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-08-13 | `0.1.215` / `fc9c1d839` | 上游适配 | `CUST-GW-001`、`CUST-GW-003`、`CUST-GW-004`、`CUST-GW-005`、`CUST-GW-006`、`CUST-GW-008`、`CUST-GW-011`、`CUST-PROTO-001`、`CUST-PROTO-006`、`CUST-ACC-001`、`CUST-ACC-002`、`CUST-ACC-004`、`CUST-ACC-005`、`CUST-BILL-001`、`CUST-BILL-002`、`CUST-BILL-003`、`CUST-BILL-005`、`CUST-BILL-006`、`CUST-RISK-001`、`CUST-RISK-002`、`CUST-UI-001`、`CUST-UI-004`、`CUST-OPS-003`、`CUST-OPS-004`、`CUST-OPS-005` | 完整合并上游 `48eb3766d..fbfdcef81` 的 111 个提交，接入 Responses/WS 错误与 TTFT 修复、分卷备份、API Key 校验、Codex 指纹收敛、Grok 订阅档位与 4.6、原生 `x_search`、分组逐模型定价、长上下文开关、渠道缓存刷新、定时备份 leader 锁及相关前端展示。继续保留普通分组严格按用户请求模型计费、响应模型仅观测与 mismatch 诊断、Composite 显式别名价例外、分组定价优先级、真实分组长上下文门禁、Cyber Enabled/Mode/scope 门禁、附加换号与 Pool Mode 自定义状态码、自动托管测试/连续失败依赖、按用户串行扣费和 5 秒 usage task 超时；版本保持本地 `0.1.215`，未新增二开编号。 | 同步前后 Go 全量 unit、golangci-lint、CGO 关闭构建、前端冻结安装/lint/typecheck/全量 Vitest/生产构建通过；Ent 隔离双生成逐文件一致，Wire 重复生成稳定，双生产 Compose 字节一致且本次无 `deploy/` 变更。同步后 Go 全量测试与前端全量测试首轮各出现一次不可复现波动，串行复验均退出 0；Docker/integration/Testcontainers、真实 PostgreSQL migration、race、govulncheck、本地服务健康检查和生产部署未验证。 |
 | 2026-08-09 | `0.1.214` / `9c63ee6f6` | 上游适配 | `CUST-GW-001`、`CUST-GW-003`、`CUST-GW-006`、`CUST-GW-007`、`CUST-GW-008`、`CUST-GW-010`、`CUST-PROTO-001`、`CUST-PROTO-003`、`CUST-PROTO-004`、`CUST-PROTO-005`、`CUST-PROTO-006`、`CUST-PROTO-007`、`CUST-ACC-001`、`CUST-ACC-004`、`CUST-ACC-005`、`CUST-ACC-006`、`CUST-BILL-001`、`CUST-BILL-002`、`CUST-BILL-004`、`CUST-BILL-005`、`CUST-BILL-006`、`CUST-OBS-001`、`CUST-PROD-002`、`CUST-PROD-006`、`CUST-RISK-001`、`CUST-RISK-002`、`CUST-UI-002`、`CUST-UI-004`、`CUST-UI-005`、`CUST-OPS-003`、`CUST-OPS-004`、`CUST-OPS-005` | 完整合并上游 `7e2e9ba05..48eb3766d` 的 223 个提交，接入 Captcha/OAuth 安全修复、Codex 官方版本同步、Channel Monitor V2、Grok 搜索/媒体/语音/实时完整链路、上游响应模型诊断、订阅/退款并发修复、邮箱域名注册额度与依赖安全更新；逐文件解决 49 个文本冲突。继续保留首 Token 与部分输出禁止重试、客户端断连及成功审计、请求体及时释放、WS 逐轮并发/计费/终态错误、严格按用户请求模型计费、Claude/Codex 本地协议策略、图片分组成功率、公开注册页与存储容错、本地模型市场、内容审核/Cyber，以及生产 bind mount、仅回环暴露和实例资源参数。版本保持本地 `0.1.214`，未新增二开编号。 | Go 全量 unit、golangci-lint、CGO 关闭构建、前端 lint/typecheck/全量 Vitest/生产构建及受影响定向回归通过；Ent/Wire 重复生成摘要稳定，双生产 Compose SHA-256 一致。integration、race、govulncheck、真实外部凭据、本地依赖服务启动和生产部署未验证 |
 | 2026-08-02 | `0.1.213` / `6884fa682` | 上游适配 | `CUST-GW-001`、`CUST-GW-003`、`CUST-GW-004`、`CUST-GW-006`、`CUST-GW-007`、`CUST-GW-008`、`CUST-GW-010`、`CUST-GW-011`、`CUST-PROTO-001`、`CUST-PROTO-002`、`CUST-PROTO-003`、`CUST-PROTO-004`、`CUST-PROTO-005`、`CUST-PROTO-006`、`CUST-PROTO-008`、`CUST-ACC-001`、`CUST-ACC-003`、`CUST-ACC-005`、`CUST-ACC-006`、`CUST-BILL-001`、`CUST-BILL-002`、`CUST-BILL-005`、`CUST-BILL-006`、`CUST-PROD-002`、`CUST-PROD-006`、`CUST-RISK-001`、`CUST-RISK-002`、`CUST-UI-002`、`CUST-UI-004`、`CUST-OPS-003`、`CUST-OPS-004`、`CUST-OPS-005` | 完整合并上游 `5a6143097..7e2e9ba05` 的 99 个提交，接入 Anthropic classifier/count-tokens、Codex namespace 与工具图片、OpenAI WS/compaction、流式部分 usage、全 API-key 平台倍率探测与写回、分组利润控制、安全审计、内容审核代理、支付设置、Compact 首页、依赖定价及部署安全更新；逐文件解决 22 个文本冲突。继续保留严格 Claude Code 协议头判定、非流式 HTTP 不走 WS、首 Token/usage/failover 结算边界、普通分组按请求模型计费、Composite 例外、媒体实际模型计费、按用户串行扣费与 5 秒 usage task 超时、本地模型市场、内容审核/Cyber、附加换号状态码、表格稳定性以及生产 bind mount、仅回环暴露和实例资源参数；版本保持 `0.1.213`。未新增二开编号。 | 同步前后 Go 全量 unit、golangci-lint、CGO 关闭构建、前端 lint/typecheck/全量 Vitest/生产构建及受影响定向回归通过；Ent/Wire 重复生成稳定，双生产 Compose 字节一致，部署静态脚本通过。`go test -tags=integration ./...` 因本机无 Docker、外部 TLS 探针被拒绝及未缓存依赖下载超时退出 1；Apple 生命周期 fixture 因 Windows Git Bash 不支持 macOS `stat -f '%Lp'` 退出 1，均作为环境限制记录 |
 | 2026-07-30 | `0.1.212` / 待提交 | 新增 | `CUST-GW-011` | 二开网关配置新增附加换号状态码开关和列表，默认关闭并预填 451；开启后在 Anthropic、OpenAI/Grok、Gemini、Antigravity、Bedrock 等路径中将命中状态码并入现有换号流程，同时保留上下文超限、cyber_policy 硬阻断和明确内容拒绝等语义终止规则。配置使用现有 settings 存储和运行时缓存，无需数据库迁移或重启。 | 配置默认值/持久化/规范化/非法值测试，Gateway、OpenAI/Grok、Gemini、Antigravity 换号判断与语义保护测试，Anthropic 首账号 451 后下一账号成功回归，管理接口和前端表单兼容/校验测试，Go 定向测试、前端 Vitest 与 typecheck |
