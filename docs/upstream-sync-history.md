@@ -1094,7 +1094,7 @@
 - 本地目标分支：`main`
 - `LOCAL_PRE_SYNC_SHA`：`bb10cbc67d46664debfa4b4e09299845c10d8832`
 - 上游代码合并提交：`fc9c1d839436b7e0d358e9ff6facf1cf503e646e`
-- 最后一个代码/测试提交：`fc9c1d839436b7e0d358e9ff6facf1cf503e646e`
+- 最后一个代码/测试提交：`a39851432c31141416c0a86c656022199d6215d5`
 - 上游仓库：`https://github.com/Wei-Shaw/sub2api.git`
 - 上游分支：`main`
 - `UPSTREAM_OLD_SHA`：`48eb3766d2da817b171b45bb3036d42575e42b8f`
@@ -1125,9 +1125,10 @@
 ### 本地提交与文件
 
 - 上游固定范围整体映射到 merge commit `fc9c1d839436b7e0d358e9ff6facf1cf503e646e`；双亲分别为同步前本地 SHA `bb10cbc67d46664debfa4b4e09299845c10d8832` 与固定上游 SHA `fbfdcef8184ae4b2e224d5cfc47cf1d0e3742710`。
-- 写入两份台账前，代码、资源和测试相对 `LOCAL_PRE_SYNC_SHA` 修改 193 个文件：新增 33 个、修改 159 个、删除 1 个，共增加 10358 行、删除 671 行。
+- 写入两份台账前，代码、资源和测试相对 `LOCAL_PRE_SYNC_SHA` 修改 195 个文件：新增 33 个、修改 161 个、删除 1 个，共增加 10365 行、删除 676 行。
 - 唯一删除文件为上游已替换的合作方资源 `assets/partners/logos/haoai.svg`；同时新增 `duckip.png` 与 `swiftprox.png`，未删除本地业务文件。
 - `backend/cmd/server/VERSION` 最终保持 `0.1.215`。
+- PR #9 首轮 Security Scan 在 2026-08-13 新更新的 `GHSA-2v37-7h3g-55p8` 上失败；依赖修复提交 `a39851432c31141416c0a86c656022199d6215d5` 通过 pnpm override 将 PostCSS/Vue 生产依赖链中的 `nanoid` 从 `3.3.17` 精确升级到修复版 `3.3.18`，未新增审计例外。
 - Ent 在两个隔离的完整 backend 模块中各生成 371 个文件，两轮逐文件 SHA-256 完全一致，且与活动 `backend/ent` 树一致；Wire 连续两次生成哈希一致。
 - `deploy/` 相对同步前基线无受控差异；`deploy/docker-compose.yml` 与 `deploy/docker-compose.sub2api.yml` 字节一致，SHA-256 均为 `2865001838D1C9E8FEDC798E77742481BA7B6AC09774E417E889945BBB49A05A`。
 
@@ -1172,13 +1173,17 @@
 | 同步后 | `corepack pnpm run lint:check`、`corepack pnpm run typecheck` | 0 | lint 与类型检查通过 |
 | 同步后 | `corepack pnpm run test:run` | 1 / 0 | 首轮仅 `UsageView.spec.ts` 因未从 Teleport 容器查找按钮失败；修正测试后定向 13 项及全量 Vitest 均通过 |
 | 同步后 | `corepack pnpm run build` | 0 | 生产构建通过；仅有既有 Browserslist 数据和大 chunk 非致命警告 |
+| PR 首轮 | PR #9 的 push/PR 双触发 `Security Scan / frontend-security` | 1 | 两个 job 均发现 `nanoid 3.3.17` 命中高危 `GHSA-2v37-7h3g-55p8`；公告要求升级到 `3.3.18` 或更高版本 |
+| 安全修复 | `pnpm` 精确 override、离线冻结安装、`pnpm audit --prod --audit-level=high` 与 `check_pnpm_audit_exceptions.py` | 0 | 所有生产依赖链解析为 `nanoid 3.3.18`，仓库审计例外检查通过，未新增临时豁免 |
+| 安全修复 | `corepack pnpm run lint:check`、`typecheck`、`test:run`、`build` | 0 | 前端 lint、类型检查、全量 Vitest 与生产构建通过 |
+| PR 复验 | PR #9 对 `a39851432` 的 push/PR 双触发 CI 与 Security Scan | 0 | 两组 backend-security/govulncheck、frontend-security、Node 20 前端、golangci-lint、macOS shell 及 Go 1.26.5 Unit/Integration 全部通过；CLA 两项按设计 skipped，PR 状态为 `clean` |
 | 最终静态复核 | `git diff --check`、索引冲突项、真实冲突标记、敏感路径、Compose 哈希、祖先关系和临时产物检查 | 0 | 无未解决冲突、未暂存差异或敏感文件；固定上游 SHA 为 merge commit 第二父提交；双生产 Compose 一致，临时 Ent 目录和验证二进制已删除 |
 
 ### 未验证项与残余风险
 
-- 本机无可用 Docker，未运行 `go test -tags=integration ./...`、Testcontainers、真实 PostgreSQL migration 或 Compose 启动/健康检查。
-- 未运行 `-race` 或 `govulncheck`；当前结论不覆盖数据竞争和最新漏洞可达性。
+- 本机无可用 Docker，未在本地运行 Testcontainers、真实 PostgreSQL migration 或 Compose 启动/健康检查；PR #9 的 Ubuntu CI 已通过 `make test-integration`。
+- 未运行 `-race`；PR #9 的 Security Scan 已通过 `govulncheck ./...`，但当前结论仍不覆盖数据竞争。
 - 未读取 `.env`，因此实例专用资源参数仅能确认本次同步未修改 `deploy/` 和两份生产 Compose，不能声明已在运行实例中复核。
 - 未使用真实 OpenAI、Anthropic、Grok、S3、SMTP 或安全审计服务凭据；相关路径由单元、组件和契约测试覆盖。
-- 未在 Node 20 / Go 1.26.5 的 CI 同构环境复核；本地 Node 24.15.0 / Go 1.26.3 验证已通过。
-- 未执行 push、PR、部署、远程服务器访问、容器重启或生产数据操作。
+- PR #9 已在 Node 20 / Go 1.26.5 环境通过 CI；本地验证环境为 Node 24.15.0 / Go 1.26.3。
+- 已推送同步分支并创建 PR #9；未执行部署、远程服务器访问、容器重启或生产数据操作。
