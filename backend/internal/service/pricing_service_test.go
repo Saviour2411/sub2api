@@ -77,6 +77,96 @@ func TestParsePricingData_ParsesPriorityAndServiceTierFields(t *testing.T) {
 	require.True(t, pricing.SupportsServiceTier)
 }
 
+func TestParsePricingData_NormalizesXAIAbove200kPricing(t *testing.T) {
+	svc := &PricingService{}
+	body := []byte(`{
+		"grok-4.6": {
+			"input_cost_per_token": 0.000002,
+			"input_cost_per_token_above_200k_tokens": 0.000004,
+			"cache_read_input_token_cost": 0.0000005,
+			"cache_read_input_token_cost_above_200k_tokens": 0.000001,
+			"output_cost_per_token": 0.000006,
+			"output_cost_per_token_above_200k_tokens": 0.000012,
+			"litellm_provider": "xai"
+		}
+	}`)
+
+	data, err := svc.parsePricingData(body)
+	require.NoError(t, err)
+	pricing := data["grok-4.6"]
+	require.NotNil(t, pricing)
+	require.Equal(t, 200000, pricing.LongContextInputTokenThreshold)
+	require.InDelta(t, 2.0, pricing.LongContextInputCostMultiplier, 1e-12)
+	require.InDelta(t, 2.0, pricing.LongContextOutputCostMultiplier, 1e-12)
+}
+
+func TestParsePricingData_ExplicitLongContextFieldsOverrideXAIAbove200kPricing(t *testing.T) {
+	svc := &PricingService{}
+	body := []byte(`{
+		"xai/grok-future": {
+			"input_cost_per_token": 0.000002,
+			"input_cost_per_token_above_200k_tokens": 0.000004,
+			"cache_read_input_token_cost": 0.0000005,
+			"cache_read_input_token_cost_above_200k_tokens": 0.000001,
+			"output_cost_per_token": 0.000006,
+			"output_cost_per_token_above_200k_tokens": 0.000012,
+			"long_context_input_token_threshold": 250000,
+			"long_context_input_cost_multiplier": 3,
+			"long_context_output_cost_multiplier": 4,
+			"litellm_provider": "xai"
+		}
+	}`)
+
+	data, err := svc.parsePricingData(body)
+	require.NoError(t, err)
+	pricing := data["xai/grok-future"]
+	require.Equal(t, 250000, pricing.LongContextInputTokenThreshold)
+	require.InDelta(t, 3.0, pricing.LongContextInputCostMultiplier, 1e-12)
+	require.InDelta(t, 4.0, pricing.LongContextOutputCostMultiplier, 1e-12)
+}
+
+func TestParsePricingData_DoesNotNormalizeNonXAIAbove200kPricing(t *testing.T) {
+	svc := &PricingService{}
+	body := []byte(`{
+		"other-model": {
+			"input_cost_per_token": 0.000002,
+			"input_cost_per_token_above_200k_tokens": 0.000004,
+			"output_cost_per_token": 0.000006,
+			"output_cost_per_token_above_200k_tokens": 0.000012,
+			"litellm_provider": "other"
+		}
+	}`)
+
+	data, err := svc.parsePricingData(body)
+	require.NoError(t, err)
+	pricing := data["other-model"]
+	require.Zero(t, pricing.LongContextInputTokenThreshold)
+	require.Zero(t, pricing.LongContextInputCostMultiplier)
+	require.Zero(t, pricing.LongContextOutputCostMultiplier)
+}
+
+func TestParsePricingData_DoesNotNormalizeInconsistentXAICacheMultiplier(t *testing.T) {
+	svc := &PricingService{}
+	body := []byte(`{
+		"grok-inconsistent": {
+			"input_cost_per_token": 0.000002,
+			"input_cost_per_token_above_200k_tokens": 0.000004,
+			"cache_read_input_token_cost": 0.0000005,
+			"cache_read_input_token_cost_above_200k_tokens": 0.00000075,
+			"output_cost_per_token": 0.000006,
+			"output_cost_per_token_above_200k_tokens": 0.000012,
+			"litellm_provider": "xai"
+		}
+	}`)
+
+	data, err := svc.parsePricingData(body)
+	require.NoError(t, err)
+	pricing := data["grok-inconsistent"]
+	require.Zero(t, pricing.LongContextInputTokenThreshold)
+	require.Zero(t, pricing.LongContextInputCostMultiplier)
+	require.Zero(t, pricing.LongContextOutputCostMultiplier)
+}
+
 func TestBillingService_GPT56CacheWritePricingUsesOfficialMultiplier(t *testing.T) {
 	tests := []struct {
 		model             string
@@ -293,6 +383,37 @@ func TestDefaultPricingIncludesOfficialGPT56Rates(t *testing.T) {
 			require.Equal(t, 272000, pricing.LongContextInputThreshold)
 			require.InDelta(t, 2.0, pricing.LongContextInputMultiplier, 1e-12)
 			require.InDelta(t, 1.5, pricing.LongContextOutputMultiplier, 1e-12)
+		})
+	}
+}
+
+func TestDefaultPricingIncludesOfficialGrokLongContextRates(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "resources", "model-pricing", "model_prices_and_context_window.json"))
+	require.NoError(t, err)
+
+	pricingSvc := &PricingService{}
+	pricingData, err := pricingSvc.parsePricingData(data)
+	require.NoError(t, err)
+	pricingSvc.pricingData = pricingData
+	billingSvc := NewBillingService(&config.Config{}, pricingSvc)
+
+	tests := []struct {
+		model       string
+		cachedPrice float64
+	}{
+		{model: "grok-4.5", cachedPrice: 0.3e-6},
+		{model: "grok-4.6", cachedPrice: 0.5e-6},
+	}
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			pricing, err := billingSvc.GetModelPricing(tt.model)
+			require.NoError(t, err)
+			require.InDelta(t, 2e-6, pricing.InputPricePerToken, 1e-12)
+			require.InDelta(t, tt.cachedPrice, pricing.CacheReadPricePerToken, 1e-12)
+			require.InDelta(t, 6e-6, pricing.OutputPricePerToken, 1e-12)
+			require.Equal(t, 200000, pricing.LongContextInputThreshold)
+			require.InDelta(t, 2.0, pricing.LongContextInputMultiplier, 1e-12)
+			require.InDelta(t, 2.0, pricing.LongContextOutputMultiplier, 1e-12)
 		})
 	}
 }

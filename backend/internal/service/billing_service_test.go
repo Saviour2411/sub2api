@@ -1240,6 +1240,87 @@ func TestGetModelPricing_Grok46OfficialFallback(t *testing.T) {
 	}
 }
 
+func TestGetModelPricing_RepairsKnownIncompleteDynamicGrokPricing(t *testing.T) {
+	pricingSvc := &PricingService{pricingData: map[string]*LiteLLMModelPricing{
+		"grok-4.5": {
+			InputCostPerToken:       2e-6,
+			OutputCostPerToken:      6e-6,
+			CacheReadInputTokenCost: 0.5e-6,
+		},
+		"grok-4.6": {
+			InputCostPerToken:       2e-6,
+			OutputCostPerToken:      6e-6,
+			CacheReadInputTokenCost: 0.5e-6,
+		},
+	}}
+	svc := NewBillingService(&config.Config{}, pricingSvc)
+
+	grok45, err := svc.GetModelPricing("grok-4.5")
+	require.NoError(t, err)
+	require.InDelta(t, 0.3e-6, grok45.CacheReadPricePerToken, 1e-12)
+	require.Equal(t, 200000, grok45.LongContextInputThreshold)
+	require.InDelta(t, 2.0, grok45.LongContextInputMultiplier, 1e-12)
+	require.InDelta(t, 2.0, grok45.LongContextOutputMultiplier, 1e-12)
+
+	grok46, err := svc.GetModelPricing("grok-4.6")
+	require.NoError(t, err)
+	require.InDelta(t, 0.5e-6, grok46.CacheReadPricePerToken, 1e-12)
+	require.Equal(t, 200000, grok46.LongContextInputThreshold)
+	require.InDelta(t, 2.0, grok46.LongContextInputMultiplier, 1e-12)
+	require.InDelta(t, 2.0, grok46.LongContextOutputMultiplier, 1e-12)
+}
+
+func TestGetModelPricing_CompleteDynamicGrokPricingKeepsRemoteValues(t *testing.T) {
+	pricingSvc := &PricingService{pricingData: map[string]*LiteLLMModelPricing{
+		"grok-4.5": {
+			InputCostPerToken:               3e-6,
+			OutputCostPerToken:              8e-6,
+			CacheReadInputTokenCost:         0.7e-6,
+			LongContextInputTokenThreshold:  250000,
+			LongContextInputCostMultiplier:  3,
+			LongContextOutputCostMultiplier: 4,
+		},
+	}}
+	svc := NewBillingService(&config.Config{}, pricingSvc)
+
+	pricing, err := svc.GetModelPricing("grok-4.5")
+	require.NoError(t, err)
+	require.InDelta(t, 3e-6, pricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 8e-6, pricing.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 0.7e-6, pricing.CacheReadPricePerToken, 1e-12)
+	require.Equal(t, 250000, pricing.LongContextInputThreshold)
+	require.InDelta(t, 3.0, pricing.LongContextInputMultiplier, 1e-12)
+	require.InDelta(t, 4.0, pricing.LongContextOutputMultiplier, 1e-12)
+}
+
+func TestCalculateCostUnified_GrokLongContextUsesStrictlyAbove200kBoundary(t *testing.T) {
+	svc := newTestBillingService()
+	resolver := NewModelPricingResolver(nil, svc)
+	group := &Group{LongContextPricingEnabled: true}
+
+	atThreshold, err := svc.CalculateCostUnified(CostInput{
+		Model: "grok-4.6", Group: group,
+		Tokens:         UsageTokens{InputTokens: 150000, CacheReadTokens: 50000, OutputTokens: 1000},
+		RateMultiplier: 1, Resolver: resolver,
+	})
+	require.NoError(t, err)
+	require.False(t, atThreshold.LongContextBillingApplied)
+	require.InDelta(t, 150000*2e-6, atThreshold.InputCost, 1e-12)
+	require.InDelta(t, 50000*0.5e-6, atThreshold.CacheReadCost, 1e-12)
+	require.InDelta(t, 1000*6e-6, atThreshold.OutputCost, 1e-12)
+
+	aboveThreshold, err := svc.CalculateCostUnified(CostInput{
+		Model: "grok-4.6", Group: group,
+		Tokens:         UsageTokens{InputTokens: 150001, CacheReadTokens: 50000, OutputTokens: 1000},
+		RateMultiplier: 1, Resolver: resolver,
+	})
+	require.NoError(t, err)
+	require.True(t, aboveThreshold.LongContextBillingApplied)
+	require.InDelta(t, 150001*2e-6*2, aboveThreshold.InputCost, 1e-12)
+	require.InDelta(t, 50000*0.5e-6*2, aboveThreshold.CacheReadCost, 1e-12)
+	require.InDelta(t, 1000*6e-6*2, aboveThreshold.OutputCost, 1e-12)
+}
+
 func TestCalculateCostUnified_GroupLongContextToggleUsesPresetLadder(t *testing.T) {
 	svc := newTestBillingService()
 	resolver := NewModelPricingResolver(nil, svc)
