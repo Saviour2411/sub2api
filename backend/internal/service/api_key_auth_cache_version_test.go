@@ -59,3 +59,21 @@ func TestAPIKeyService_RejectsV15AuthSnapshotWithoutReasoningEffortPolicy(t *tes
 		t.Fatalf("expected no API key from stale snapshot, got %#v", apiKey)
 	}
 }
+
+func TestAPIKeyService_RejectsV19AuthSnapshotWithoutLongContextPricing(t *testing.T) {
+	svc := &APIKeyService{}
+
+	apiKey, ok, err := svc.applyAuthCacheEntry("k-legacy-long-context", &APIKeyAuthCacheEntry{
+		Snapshot: &APIKeyAuthSnapshot{Version: 19},
+	})
+
+	if err != nil {
+		t.Fatalf("旧快照应被忽略且不返回错误，实际错误：%v", err)
+	}
+	if ok {
+		t.Fatal("增加长上下文分组开关后，v19 认证快照应被拒绝")
+	}
+	if apiKey != nil {
+		t.Fatalf("旧快照不应还原 API Key，实际得到：%#v", apiKey)
+	}
+}
