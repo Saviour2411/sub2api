@@ -105,7 +105,7 @@ type ModelPricing struct {
 	CacheCreation1hPrice               float64 // 1小时缓存创建每token价格 (USD)
 	SupportsCacheBreakdown             bool    // 是否支持详细的缓存分类
 	LongContextInputThreshold          int     // 超过阈值后按整次会话提升输入价格
-	LongContextThresholdInclusive      bool    // 达到阈值即应用（xAI）；默认保持严格大于以兼容既有模型
+	LongContextThresholdInclusive      bool    // 达到阈值即应用；默认按“超过阈值”处理
 	LongContextInputMultiplier         float64 // 长上下文整次会话输入倍率
 	LongContextOutputMultiplier        float64 // 长上下文整次会话输出倍率
 	ImageOutputPricePerToken           float64 // 图片输出 token 价格 (USD)
@@ -611,56 +611,48 @@ func (s *BillingService) initFallbackPricing() {
 		SupportsCacheBreakdown:  false,
 	}
 
-	// xAI Grok 4.5: $2 input / $0.30 cached input / $6 output below 200k.
+	// xAI Grok 4.5：不超过 200K 时输入 $2、缓存输入 $0.30、输出 $6/MTok；超过后均为 2 倍。
 	s.fallbackPrices["grok-4.5"] = &ModelPricing{
-		InputPricePerToken:            2e-6,
-		OutputPricePerToken:           6e-6,
-		CacheReadPricePerToken:        0.3e-6,
-		SupportsCacheBreakdown:        false,
-		LongContextInputThreshold:     200000,
-		LongContextThresholdInclusive: true,
-		LongContextInputMultiplier:    2,
-		LongContextOutputMultiplier:   2,
+		InputPricePerToken:          2e-6,
+		OutputPricePerToken:         6e-6,
+		CacheReadPricePerToken:      0.3e-6,
+		SupportsCacheBreakdown:      false,
+		LongContextInputThreshold:   xAILongContextInputTokenThreshold,
+		LongContextInputMultiplier:  2,
+		LongContextOutputMultiplier: 2,
 	}
 
-	// xAI Grok 4.6 (docs.x.ai/developers/models: $2 input / $0.50 cached input /
-	// $6 output per MTok under 200k prompt tokens; ≥200k is 2× on input,
-	// cached input, and output).
+	// xAI Grok 4.6：不超过 200K 时输入 $2、缓存输入 $0.50、输出 $6/MTok；超过后均为 2 倍。
 	s.fallbackPrices["grok-4.6"] = &ModelPricing{
-		InputPricePerToken:            2e-6,
-		OutputPricePerToken:           6e-6,
-		CacheReadPricePerToken:        0.5e-6,
-		SupportsCacheBreakdown:        false,
-		LongContextInputThreshold:     200000,
-		LongContextThresholdInclusive: true,
-		LongContextInputMultiplier:    2,
-		LongContextOutputMultiplier:   2,
+		InputPricePerToken:          2e-6,
+		OutputPricePerToken:         6e-6,
+		CacheReadPricePerToken:      0.5e-6,
+		SupportsCacheBreakdown:      false,
+		LongContextInputThreshold:   xAILongContextInputTokenThreshold,
+		LongContextInputMultiplier:  2,
+		LongContextOutputMultiplier: 2,
 	}
 
-	// xAI Grok 4.3: $1.25 input / $0.20 cached / $2.50 output below 200k.
+	// xAI Grok 4.3：不超过 200K 时输入 $1.25、缓存输入 $0.20、输出 $2.50/MTok；超过后均为 2 倍。
 	s.fallbackPrices["grok-4.3"] = &ModelPricing{
-		InputPricePerToken:            1.25e-6,
-		OutputPricePerToken:           2.5e-6,
-		CacheReadPricePerToken:        0.2e-6,
-		SupportsCacheBreakdown:        false,
-		LongContextInputThreshold:     200000,
-		LongContextThresholdInclusive: true,
-		LongContextInputMultiplier:    2,
-		LongContextOutputMultiplier:   2,
+		InputPricePerToken:          1.25e-6,
+		OutputPricePerToken:         2.5e-6,
+		CacheReadPricePerToken:      0.2e-6,
+		SupportsCacheBreakdown:      false,
+		LongContextInputThreshold:   xAILongContextInputTokenThreshold,
+		LongContextInputMultiplier:  2,
+		LongContextOutputMultiplier: 2,
 	}
-	// xAI Grok Build 0.1 (official docs: $1 input / $0.20 cached input /
-	// $2 output per MTok). Composer is available only through Grok Build and
-	// has no standalone public API rate card, so its aliases use this coding
-	// model rate instead of silently billing at zero.
+	// xAI Grok Build 0.1：输入 $1、缓存输入 $0.20、输出 $2/MTok；超过 200K 后均为 2 倍。
+	// Composer 仅通过 Grok Build 提供且没有独立公开价卡，其别名沿用该编码模型价格。
 	s.fallbackPrices["grok-build-0.1"] = &ModelPricing{
-		InputPricePerToken:            1e-6,
-		OutputPricePerToken:           2e-6,
-		CacheReadPricePerToken:        0.2e-6,
-		SupportsCacheBreakdown:        false,
-		LongContextInputThreshold:     200000,
-		LongContextThresholdInclusive: true,
-		LongContextInputMultiplier:    2,
-		LongContextOutputMultiplier:   2,
+		InputPricePerToken:          1e-6,
+		OutputPricePerToken:         2e-6,
+		CacheReadPricePerToken:      0.2e-6,
+		SupportsCacheBreakdown:      false,
+		LongContextInputThreshold:   xAILongContextInputTokenThreshold,
+		LongContextInputMultiplier:  2,
+		LongContextOutputMultiplier: 2,
 	}
 }
 
@@ -1357,17 +1349,32 @@ func (s *BillingService) applyModelSpecificPricingPolicy(model string, pricing *
 	normalized := normalizeKnownOpenAIPricingModel(model)
 	isGPT56 := isOpenAIGPT56Model(normalized)
 	usesLegacyLongContextPricing := usesOpenAILegacyLongContextPricing(normalized)
-	if !isGPT56 && !usesLegacyLongContextPricing {
-		return pricing
-	}
+	grokFallback := s.knownGrokLongContextFallback(model)
+	needsGrokLongContextPolicy := grokFallback != nil &&
+		(pricing.LongContextInputThreshold <= 0 || pricing.LongContextInputMultiplier <= 0 || pricing.LongContextOutputMultiplier <= 0)
+	needsGrok45CacheCorrection := needsGrokLongContextPolicy && isKnownGrok45Model(model) && pricing.CacheReadPricePerToken == 0.5e-6
 	needsLongContextPolicy := (isGPT56 || usesLegacyLongContextPricing) &&
 		(pricing.LongContextInputThreshold <= 0 || pricing.LongContextInputMultiplier <= 0 || pricing.LongContextOutputMultiplier <= 0)
 	needsCacheCreationPolicy := isGPT56 && !pricing.CacheCreationPriceExplicit && (pricing.CacheCreationPricePerToken <= 0 ||
 		(pricing.InputPricePerTokenPriority > 0 && pricing.CacheCreationPricePerTokenPriority <= 0))
-	if !needsLongContextPolicy && !needsCacheCreationPolicy {
+	if !needsGrokLongContextPolicy && !needsGrok45CacheCorrection && !needsLongContextPolicy && !needsCacheCreationPolicy {
 		return pricing
 	}
 	cloned := *pricing
+	if needsGrok45CacheCorrection {
+		cloned.CacheReadPricePerToken = grokFallback.CacheReadPricePerToken
+	}
+	if needsGrokLongContextPolicy {
+		if cloned.LongContextInputThreshold <= 0 {
+			cloned.LongContextInputThreshold = grokFallback.LongContextInputThreshold
+		}
+		if cloned.LongContextInputMultiplier <= 0 {
+			cloned.LongContextInputMultiplier = grokFallback.LongContextInputMultiplier
+		}
+		if cloned.LongContextOutputMultiplier <= 0 {
+			cloned.LongContextOutputMultiplier = grokFallback.LongContextOutputMultiplier
+		}
+	}
 	if isGPT56 && !cloned.CacheCreationPriceExplicit {
 		if cloned.CacheCreationPricePerToken <= 0 {
 			cloned.CacheCreationPricePerToken = cloned.InputPricePerToken * 1.25
@@ -1388,6 +1395,32 @@ func (s *BillingService) applyModelSpecificPricingPolicy(model string, pricing *
 		}
 	}
 	return &cloned
+}
+
+func (s *BillingService) knownGrokLongContextFallback(model string) *ModelPricing {
+	switch strings.ToLower(strings.TrimSpace(model)) {
+	case "grok", "grok-latest", "grok-4.5", "grok-4.5-latest":
+		return s.fallbackPrices["grok-4.5"]
+	case "grok-4.6", "grok-4.6-latest":
+		return s.fallbackPrices["grok-4.6"]
+	case "grok-4.3", "grok-4.20-0309-reasoning", "grok-4.20-0309-non-reasoning",
+		"grok-4.20-multi-agent-0309", "grok-4.20-reasoning", "grok-4.20-non-reasoning":
+		return s.fallbackPrices["grok-4.3"]
+	case "grok-build", "grok-build-latest", "grok-build-0.1", "grok-composer",
+		"grok-composer-2.5-fast", "composer-2.5":
+		return s.fallbackPrices["grok-build-0.1"]
+	default:
+		return nil
+	}
+}
+
+func isKnownGrok45Model(model string) bool {
+	switch strings.ToLower(strings.TrimSpace(model)) {
+	case "grok", "grok-latest", "grok-4.5", "grok-4.5-latest":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *BillingService) shouldApplySessionLongContextPricing(tokens UsageTokens, pricing *ModelPricing) bool {

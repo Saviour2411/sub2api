@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -196,13 +197,16 @@ type PricingRemoteClient interface {
 // LiteLLMRawEntry 用于解析原始JSON数据
 type LiteLLMRawEntry struct {
 	InputCostPerToken                   *float64 `json:"input_cost_per_token"`
+	InputCostPerTokenAbove200kTokens    *float64 `json:"input_cost_per_token_above_200k_tokens"`
 	InputCostPerTokenPriority           *float64 `json:"input_cost_per_token_priority"`
 	OutputCostPerToken                  *float64 `json:"output_cost_per_token"`
+	OutputCostPerTokenAbove200kTokens   *float64 `json:"output_cost_per_token_above_200k_tokens"`
 	OutputCostPerTokenPriority          *float64 `json:"output_cost_per_token_priority"`
 	CacheCreationInputTokenCost         *float64 `json:"cache_creation_input_token_cost"`
 	CacheCreationInputTokenCostPriority *float64 `json:"cache_creation_input_token_cost_priority"`
 	CacheCreationInputTokenCostAbove1hr *float64 `json:"cache_creation_input_token_cost_above_1hr"`
 	CacheReadInputTokenCost             *float64 `json:"cache_read_input_token_cost"`
+	CacheReadInputTokenCostAbove200k    *float64 `json:"cache_read_input_token_cost_above_200k_tokens"`
 	CacheReadInputTokenCostPriority     *float64 `json:"cache_read_input_token_cost_priority"`
 	LongContextInputTokenThreshold      *int     `json:"long_context_input_token_threshold"`
 	LongContextInputCostMultiplier      *float64 `json:"long_context_input_cost_multiplier"`
@@ -544,6 +548,7 @@ func (s *PricingService) parsePricingData(body []byte) (map[string]*LiteLLMModel
 		if entry.LongContextOutputCostMultiplier != nil {
 			pricing.LongContextOutputCostMultiplier = *entry.LongContextOutputCostMultiplier
 		}
+		normalizeXAILongContextPricing(modelName, &entry, pricing)
 		if entry.OutputCostPerImage != nil {
 			pricing.OutputCostPerImage = *entry.OutputCostPerImage
 		}
@@ -566,6 +571,57 @@ func (s *PricingService) parsePricingData(body []byte) (map[string]*LiteLLMModel
 	}
 
 	return result, nil
+}
+
+const xAILongContextInputTokenThreshold = 200000
+
+// normalizeXAILongContextPricing 将 LiteLLM 的 xAI 绝对阶梯价转换为现有倍率结构。
+// 仅在输入、缓存和输出倍率能够一致表达时转换，显式 long_context_* 字段始终优先。
+func normalizeXAILongContextPricing(modelName string, entry *LiteLLMRawEntry, pricing *LiteLLMModelPricing) {
+	if entry == nil || pricing == nil || !isXAIPricingEntry(modelName, entry.LiteLLMProvider) {
+		return
+	}
+
+	inputMultiplier, inputOK := priceMultiplier(entry.InputCostPerToken, entry.InputCostPerTokenAbove200kTokens)
+	outputMultiplier, outputOK := priceMultiplier(entry.OutputCostPerToken, entry.OutputCostPerTokenAbove200kTokens)
+	if !inputOK || !outputOK || !cacheMultiplierMatchesInput(entry, inputMultiplier) {
+		return
+	}
+
+	if pricing.LongContextInputTokenThreshold <= 0 {
+		pricing.LongContextInputTokenThreshold = xAILongContextInputTokenThreshold
+	}
+	if pricing.LongContextInputCostMultiplier <= 0 {
+		pricing.LongContextInputCostMultiplier = inputMultiplier
+	}
+	if pricing.LongContextOutputCostMultiplier <= 0 {
+		pricing.LongContextOutputCostMultiplier = outputMultiplier
+	}
+}
+
+func isXAIPricingEntry(modelName, provider string) bool {
+	if strings.EqualFold(strings.TrimSpace(provider), "xai") {
+		return true
+	}
+	modelName = strings.ToLower(strings.TrimSpace(modelName))
+	return strings.HasPrefix(modelName, "grok-") || strings.Contains(modelName, "/grok-")
+}
+
+func priceMultiplier(base, above *float64) (float64, bool) {
+	if base == nil || above == nil || *base <= 0 || *above <= *base {
+		return 0, false
+	}
+	return *above / *base, true
+}
+
+func cacheMultiplierMatchesInput(entry *LiteLLMRawEntry, inputMultiplier float64) bool {
+	base := entry.CacheReadInputTokenCost
+	above := entry.CacheReadInputTokenCostAbove200k
+	if base == nil && above == nil {
+		return true
+	}
+	cacheMultiplier, ok := priceMultiplier(base, above)
+	return ok && math.Abs(cacheMultiplier-inputMultiplier) <= 1e-9
 }
 
 // loadPricingData 从本地文件加载价格数据
