@@ -1,6 +1,7 @@
-.PHONY: build build-backend build-frontend test test-backend test-frontend test-frontend-critical
+.PHONY: build build-backend build-frontend build-canvas test test-backend test-frontend test-canvas test-frontend-critical
 
 FRONTEND_CRITICAL_VITEST := \
+	src/__tests__/featureFlags.spec.ts \
 	src/api/__tests__/client.spec.ts \
 	src/api/__tests__/tokenRefresh.spec.ts \
 	src/api/__tests__/channelMonitorV2.spec.ts \
@@ -13,10 +14,12 @@ FRONTEND_CRITICAL_VITEST := \
 	src/views/admin/__tests__/SettingsView.spec.ts \
 	src/features/channel-monitor-v2/__tests__/designSystem.structure.spec.ts \
 	src/features/channel-monitor-v2/__tests__/monitorFormat.spec.ts \
-	src/features/channel-monitor-v2/__tests__/monitorZoom.spec.ts
+	src/features/channel-monitor-v2/__tests__/monitorZoom.spec.ts \
+	src/router/__tests__/feature-access.spec.ts \
+	src/utils/__tests__/canvasBridge.spec.ts
 
 # 一键编译前后端
-build: build-backend build-frontend
+build: build-frontend build-backend
 
 # 编译后端（复用 backend/Makefile）
 build-backend:
@@ -25,6 +28,10 @@ build-backend:
 # 编译前端（需要已安装依赖）
 build-frontend:
 	@pnpm --dir frontend run build
+	@$(MAKE) build-canvas
+
+build-canvas:
+	@pnpm --dir canvas run build
 
 # 运行测试（后端 + 前端）
 test: test-backend test-frontend
@@ -36,6 +43,11 @@ test-frontend:
 	@pnpm --dir frontend run lint:check
 	@pnpm --dir frontend run typecheck
 	@$(MAKE) test-frontend-critical
+	@$(MAKE) test-canvas
+
+test-canvas:
+	@pnpm --dir canvas run typecheck
+	@pnpm --dir canvas run test
 
 test-frontend-critical:
 	@pnpm --dir frontend exec vitest run $(FRONTEND_CRITICAL_VITEST)

@@ -160,6 +160,7 @@ export default {
     dashboard: '仪表盘',
     announcements: '公告',
     apiKeys: 'API 密钥',
+    infiniteCanvas: '无限画布',
     batchImage: '批量生图',
     usage: '使用记录',
     redeem: '兑换',
@@ -207,6 +208,14 @@ export default {
     contentModeration: '内容审核',
     promptAudit: '提示词审计',
     auditLogs: '操作日志',
+  },
+  canvas: {
+    title: '无限画布',
+    loading: '正在加载画布...',
+    loadFailed: '画布加载失败',
+    loadTimeout: '画布加载超时',
+    credentialFailed: '无法获取站内模型凭据',
+    reload: '重新加载'
   },
 
   // Auth

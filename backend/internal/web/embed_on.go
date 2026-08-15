@@ -39,6 +39,7 @@ type FrontendServer struct {
 	distFS      fs.FS
 	fileServer  http.Handler
 	baseHTML    []byte
+	canvasHTML  []byte
 	cache       *HTMLCache
 	settings    PublicSettingsProvider
 	overrideDir string // local file override directory
@@ -62,6 +63,7 @@ func NewFrontendServer(settingsProvider PublicSettingsProvider) (*FrontendServer
 	if err != nil {
 		return nil, err
 	}
+	canvasHTML, _ := fs.ReadFile(distFS, "canvas-app/index.html")
 
 	cache := NewHTMLCache()
 	cache.SetBaseHTML(baseHTML)
@@ -70,6 +72,7 @@ func NewFrontendServer(settingsProvider PublicSettingsProvider) (*FrontendServer
 		distFS:      distFS,
 		fileServer:  http.FileServer(http.FS(distFS)),
 		baseHTML:    baseHTML,
+		canvasHTML:  canvasHTML,
 		cache:       cache,
 		settings:    settingsProvider,
 		overrideDir: filepath.Join("data", "public"),
@@ -99,6 +102,19 @@ func (s *FrontendServer) Middleware() gin.HandlerFunc {
 			cleanPath = "index.html"
 		}
 
+		if isCanvasSPARoute(cleanPath) {
+			s.serveCanvasIndexHTML(c)
+			return
+		}
+
+		if isCanvasAppRoute(cleanPath) && !s.fileExists(cleanPath) {
+			if shouldReturnMissingStatic(c, cleanPath) {
+				return
+			}
+			s.serveCanvasIndexHTML(c)
+			return
+		}
+
 		if cleanPath != "index.html" && !s.fileExists(cleanPath) && shouldReturnMissingStatic(c, cleanPath) {
 			return
 		}
@@ -121,6 +137,28 @@ func (s *FrontendServer) Middleware() gin.HandlerFunc {
 		s.fileServer.ServeHTTP(c.Writer, c.Request)
 		c.Abort()
 	}
+}
+
+func isCanvasAppRoute(cleanPath string) bool {
+	return cleanPath == "canvas-app" || cleanPath == "canvas-app/" || strings.HasPrefix(cleanPath, "canvas-app/")
+}
+
+func isCanvasSPARoute(cleanPath string) bool {
+	trimmed := strings.TrimSuffix(cleanPath, "/")
+	return trimmed == "canvas-app" ||
+		trimmed == "canvas-app/canvas" || strings.HasPrefix(trimmed, "canvas-app/canvas/") ||
+		trimmed == "canvas-app/assets" || trimmed == "canvas-app/prompts"
+}
+
+func (s *FrontendServer) serveCanvasIndexHTML(c *gin.Context) {
+	if len(s.canvasHTML) == 0 {
+		c.String(http.StatusNotFound, "Canvas frontend not found")
+		c.Abort()
+		return
+	}
+	c.Header("Cache-Control", "no-cache")
+	c.Data(http.StatusOK, "text/html; charset=utf-8", s.canvasHTML)
+	c.Abort()
 }
 
 func setStaticCacheHeaders(c *gin.Context, cleanPath string) {
@@ -358,6 +396,11 @@ func ServeEmbeddedFrontend() gin.HandlerFunc {
 			cleanPath = "index.html"
 		}
 
+		if isCanvasSPARoute(cleanPath) {
+			serveCanvasIndexHTML(c, distFS)
+			return
+		}
+
 		if file, err := distFS.Open(cleanPath); err == nil {
 			_ = file.Close()
 			// Try local override first
@@ -370,12 +413,39 @@ func ServeEmbeddedFrontend() gin.HandlerFunc {
 			return
 		}
 
+		if isCanvasAppRoute(cleanPath) {
+			if shouldReturnMissingStatic(c, cleanPath) {
+				return
+			}
+			serveCanvasIndexHTML(c, distFS)
+			return
+		}
+
 		if shouldReturnMissingStatic(c, cleanPath) {
 			return
 		}
 
 		serveIndexHTML(c, distFS)
 	}
+}
+
+func serveCanvasIndexHTML(c *gin.Context, fsys fs.FS) {
+	file, err := fsys.Open("canvas-app/index.html")
+	if err != nil {
+		c.String(http.StatusNotFound, "Canvas frontend not found")
+		c.Abort()
+		return
+	}
+	defer func() { _ = file.Close() }()
+	content, err := io.ReadAll(file)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Failed to read canvas index.html")
+		c.Abort()
+		return
+	}
+	c.Header("Cache-Control", "no-cache")
+	c.Data(http.StatusOK, "text/html; charset=utf-8", content)
+	c.Abort()
 }
 
 // tryServeOverrideFile is a standalone version of tryServeOverride for legacy usage.

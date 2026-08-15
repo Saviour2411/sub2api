@@ -48,10 +48,57 @@ func (s *APIKeyRepoSuite) TestCreate() {
 	err := s.repo.Create(s.ctx, key)
 	s.Require().NoError(err, "Create")
 	s.Require().NotZero(key.ID, "expected ID to be set")
+	s.Require().Equal(service.APIKeyPurposeGeneral, key.Purpose)
 
 	got, err := s.repo.GetByID(s.ctx, key.ID)
 	s.Require().NoError(err, "GetByID")
 	s.Require().Equal("sk-create-test", got.Key)
+	s.Require().Equal(service.APIKeyPurposeGeneral, got.Purpose)
+}
+
+func (s *APIKeyRepoSuite) TestCreateCanvasKeyIsUniquePerUserAndGroup() {
+	user := s.mustCreateUser("canvas-unique@test.com")
+	group := s.mustCreateGroup("g-canvas-unique")
+	first := &service.APIKey{UserID: user.ID, GroupID: &group.ID, Key: "sk-canvas-first", Name: "Canvas", Status: service.StatusActive, Purpose: service.APIKeyPurposeInfiniteCanvas}
+	second := &service.APIKey{UserID: user.ID, GroupID: &group.ID, Key: "sk-canvas-second", Name: "Canvas", Status: service.StatusActive, Purpose: service.APIKeyPurposeInfiniteCanvas}
+
+	s.Require().NoError(s.repo.Create(s.ctx, first))
+	s.Require().ErrorIs(s.repo.Create(s.ctx, second), service.ErrAPIKeyExists)
+}
+
+func (s *APIKeyRepoSuite) TestUpdateGroupIDRetiresCanvasKeyAndMigratesGeneralKeys() {
+	user := s.mustCreateUser("canvas-group-replace@test.com")
+	oldGroup := s.mustCreateGroup("g-canvas-replace-old")
+	newGroup := s.mustCreateGroup("g-canvas-replace-new")
+	general := &service.APIKey{UserID: user.ID, GroupID: &oldGroup.ID, Key: "sk-general-migrate", Name: "General", Status: service.StatusActive}
+	oldCanvas := &service.APIKey{UserID: user.ID, GroupID: &oldGroup.ID, Key: "sk-canvas-retire", Name: "Canvas Old", Status: service.StatusActive, Purpose: service.APIKeyPurposeInfiniteCanvas}
+	newCanvas := &service.APIKey{UserID: user.ID, GroupID: &newGroup.ID, Key: "sk-canvas-keep", Name: "Canvas New", Status: service.StatusActive, Purpose: service.APIKeyPurposeInfiniteCanvas}
+
+	s.Require().NoError(s.repo.Create(s.ctx, general))
+	s.Require().NoError(s.repo.Create(s.ctx, oldCanvas))
+	s.Require().NoError(s.repo.Create(s.ctx, newCanvas))
+
+	migrated, err := s.repo.UpdateGroupIDByUserAndGroup(s.ctx, user.ID, oldGroup.ID, newGroup.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), migrated)
+
+	migratedGeneral, err := s.repo.GetByID(s.ctx, general.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(newGroup.ID, *migratedGeneral.GroupID)
+	_, err = s.repo.GetByID(s.ctx, oldCanvas.ID)
+	s.Require().ErrorIs(err, service.ErrAPIKeyNotFound)
+	keptCanvas, err := s.repo.GetByID(s.ctx, newCanvas.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(newGroup.ID, *keptCanvas.GroupID)
+
+	var tombstone string
+	var deletedAt time.Time
+	rows, err := s.repo.sql.QueryContext(s.ctx, `SELECT key, deleted_at FROM api_keys WHERE id = $1`, oldCanvas.ID)
+	s.Require().NoError(err)
+	s.Require().True(rows.Next())
+	s.Require().NoError(rows.Scan(&tombstone, &deletedAt))
+	s.Require().NoError(rows.Close())
+	s.Require().Contains(tombstone, "__deleted__")
 }
 
 func (s *APIKeyRepoSuite) TestGetByID_NotFound() {

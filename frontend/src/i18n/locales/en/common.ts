@@ -160,6 +160,7 @@ export default {
     dashboard: 'Dashboard',
     announcements: 'Announcements',
     apiKeys: 'API Keys',
+    infiniteCanvas: 'Infinite Canvas',
     batchImage: 'Batch Images',
     usage: 'Usage',
     redeem: 'Redeem',
@@ -207,6 +208,14 @@ export default {
     contentModeration: 'Content Moderation',
     promptAudit: 'Prompt Audit',
     auditLogs: 'Audit Logs',
+  },
+  canvas: {
+    title: 'Infinite Canvas',
+    loading: 'Loading canvas...',
+    loadFailed: 'Failed to load canvas',
+    loadTimeout: 'Canvas loading timed out',
+    credentialFailed: 'Unable to resolve site model credentials',
+    reload: 'Reload'
   },
 
   // Auth

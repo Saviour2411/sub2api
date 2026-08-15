@@ -2,6 +2,7 @@ package routes
 
 import (
 	"github.com/Wei-Shaw/sub2api/internal/handler"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -89,6 +90,20 @@ func RegisterUserRoutes(
 		{
 			groups.GET("/available", h.APIKey.GetAvailableGroups)
 			groups.GET("/rates", h.APIKey.GetUserGroupRates)
+		}
+
+		canvas := authenticated.Group("/canvas")
+		canvas.Use(func(c *gin.Context) {
+			if settingService == nil || !settingService.IsCanvasEnabled(c.Request.Context()) {
+				response.NotFound(c, "无限画布功能未启用")
+				c.Abort()
+				return
+			}
+			c.Next()
+		})
+		{
+			canvas.GET("/bootstrap", h.APIKey.GetCanvasBootstrap)
+			canvas.POST("/credentials/resolve", h.APIKey.ResolveCanvasCredential)
 		}
 
 		// 用户可用渠道（非管理员接口）

@@ -41,6 +41,37 @@
       </div>
 
       <form
+        v-else-if="activeTab === 'canvas'"
+        data-test="canvas-form"
+        class="card overflow-hidden"
+        @submit.prevent="saveCanvas"
+      >
+        <div class="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div>
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.customFeatures.canvas.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.customFeatures.canvas.description') }}
+            </p>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t('admin.customFeatures.enabled') }}
+            </span>
+            <Toggle v-model="canvas.enabled" data-test="canvas-enabled" />
+          </div>
+        </div>
+        <div class="flex justify-end border-t border-gray-100 px-5 py-4 dark:border-dark-700 sm:px-6">
+          <button type="submit" class="btn btn-primary inline-flex items-center gap-2" :disabled="savingCanvas">
+            <span v-if="savingCanvas" class="h-4 w-4 animate-spin rounded-full border-b-2 border-white"></span>
+            <Icon v-else name="check" size="sm" />
+            {{ t('admin.customFeatures.save') }}
+          </button>
+        </div>
+      </form>
+
+      <form
         v-else-if="activeTab === 'model-marketplace'"
         data-test="model-marketplace-form"
         class="card overflow-hidden"
@@ -778,6 +809,7 @@ import groupsAPI from '@/api/admin/groups'
 import customFeaturesAPI, {
   type DailyCheckinPrizeConfig,
   type DailyCheckinSettings,
+  type CanvasSettings,
   type GatewaySettings,
   type ModelMarketplaceSettings
 } from '@/api/admin/customFeatures'
@@ -786,13 +818,14 @@ import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { isValidWildcardPattern } from '@/composables/useModelWhitelist'
 
-type CustomFeatureTab = 'upstream' | 'model-marketplace' | 'gateway' | 'daily-checkin'
+type CustomFeatureTab = 'upstream' | 'canvas' | 'model-marketplace' | 'gateway' | 'daily-checkin'
 
 const { t } = useI18n()
 const appStore = useAppStore()
 
 const tabs: Array<{ key: CustomFeatureTab; labelKey: string; icon: 'server' | 'cube' | 'cog' | 'gift' }> = [
   { key: 'upstream', labelKey: 'admin.customFeatures.tabs.upstream', icon: 'server' },
+  { key: 'canvas', labelKey: 'admin.customFeatures.tabs.canvas', icon: 'cube' },
   { key: 'model-marketplace', labelKey: 'admin.customFeatures.tabs.modelMarketplace', icon: 'cube' },
   { key: 'gateway', labelKey: 'admin.customFeatures.tabs.gateway', icon: 'cog' },
   { key: 'daily-checkin', labelKey: 'admin.customFeatures.tabs.dailyCheckin', icon: 'gift' }
@@ -802,6 +835,7 @@ const activeTab = ref<CustomFeatureTab>('upstream')
 const loading = ref(true)
 const loadFailed = ref(false)
 const savingMarketplace = ref(false)
+const savingCanvas = ref(false)
 const savingGateway = ref(false)
 const savingDailyCheckin = ref(false)
 const resettingImageSuccessRates = ref(false)
@@ -813,6 +847,8 @@ const modelMarketplace = reactive<ModelMarketplaceSettings>({
   intro: '',
   group_ids: []
 })
+
+const canvas = reactive<CanvasSettings>({ enabled: true })
 
 const dailyCheckin = reactive<DailyCheckinSettings>({
   enabled: false,
@@ -929,6 +965,7 @@ async function loadSettings() {
       ...settings.model_marketplace,
       group_ids: [...(settings.model_marketplace.group_ids || [])]
     })
+    Object.assign(canvas, settings.canvas || { enabled: true })
     Object.assign(dailyCheckin, cloneDailyCheckin(settings.daily_checkin))
     assignGateway(settings.gateway)
     activeGroups.value = (groups || []).filter((group) => group.status === 'active')
@@ -1187,6 +1224,18 @@ async function saveModelMarketplace() {
     appStore.showError(extractApiErrorMessage(error, t('admin.customFeatures.saveFailed')))
   } finally {
     savingMarketplace.value = false
+  }
+}
+
+async function saveCanvas() {
+  savingCanvas.value = true
+  try {
+    Object.assign(canvas, await customFeaturesAPI.updateCanvas({ enabled: canvas.enabled }))
+    appStore.showSuccess(t('admin.customFeatures.canvas.saved'))
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.customFeatures.saveFailed')))
+  } finally {
+    savingCanvas.value = false
   }
 }
 

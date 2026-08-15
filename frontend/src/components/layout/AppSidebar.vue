@@ -707,6 +707,7 @@ const flagAffiliate = makeSidebarFlag(FeatureFlags.affiliate)
 const flagDailyCheckin = makeSidebarFlag(FeatureFlags.dailyCheckin)
 const flagRiskControl = makeSidebarFlag(FeatureFlags.riskControl)
 const flagModelMarketplace = makeSidebarFlag(FeatureFlags.modelMarketplace)
+const flagCanvas = makeSidebarFlag(FeatureFlags.canvas)
 const flagOpsMonitoring = () => adminSettingsStore.opsMonitoringEnabled
 const flagAdminPayment = () => adminSettingsStore.paymentEnabled
 const flagBatchImageAccess = () => canUseBatchImage.value
@@ -723,6 +724,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   }
   items.push(
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
+    { path: '/canvas', label: t('nav.infiniteCanvas'), icon: BatchImageIcon, featureFlag: flagCanvas },
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/models', label: t('nav.modelMarketplace'), icon: ModelMarketplaceIcon, featureFlag: flagModelMarketplace },
@@ -845,6 +847,9 @@ const adminNavItems = computed((): NavItem[] => {
   if (authStore.isSimpleMode) {
     const filtered = visible.filter(item => !item.hideInSimpleMode)
     filtered.push({ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon })
+    if (flagCanvas()) {
+      filtered.push({ path: '/canvas', label: t('nav.infiniteCanvas'), icon: BatchImageIcon })
+    }
     filtered.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
     for (const cm of customMenuItemsForAdmin.value) {
       filtered.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })

@@ -34,13 +34,25 @@ RUN --mount=type=cache,id=sub2api-pnpm-store,target=/root/.local/share/pnpm/stor
     if [ -n "${NPM_CONFIG_REGISTRY}" ]; then pnpm config set registry "${NPM_CONFIG_REGISTRY}"; fi && \
     pnpm install --frozen-lockfile --prefer-offline
 
+WORKDIR /app/canvas
+COPY canvas/package.json canvas/pnpm-lock.yaml ./
+RUN --mount=type=cache,id=sub2api-pnpm-store,target=/root/.local/share/pnpm/store \
+    if [ -n "${NPM_CONFIG_REGISTRY}" ]; then pnpm config set registry "${NPM_CONFIG_REGISTRY}"; fi && \
+    pnpm install --frozen-lockfile --prefer-offline
+
 # Copy frontend source and build.
 # LegalDocumentView.vue (admin-compliance gate) build-time imports
 # ../../../../docs/legal/*.md?raw, so docs/legal/ must sit beside frontend/
 # in the image (WORKDIR /app/frontend -> resolves to /app/docs/legal/*.md).
 # Copy only that subtree to keep the build dependency minimal.
+WORKDIR /app/frontend
 COPY frontend/ ./
 COPY docs/legal/ /app/docs/legal/
+RUN pnpm run build
+
+# React 画布必须后构建；Vue 的 emptyOutDir 会先清空统一输出目录。
+WORKDIR /app/canvas
+COPY canvas/ ./
 RUN pnpm run build
 
 # -----------------------------------------------------------------------------

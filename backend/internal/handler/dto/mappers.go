@@ -79,6 +79,10 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 	if k == nil {
 		return nil
 	}
+	purpose := k.Purpose
+	if purpose == "" {
+		purpose = service.APIKeyPurposeGeneral
+	}
 	out := &APIKey{
 		ID:                 k.ID,
 		UserID:             k.UserID,
@@ -86,6 +90,7 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 		Name:               k.Name,
 		GroupID:            k.GroupID,
 		Status:             k.Status,
+		Purpose:            purpose,
 		IPWhitelist:        k.IPWhitelist,
 		IPBlacklist:        k.IPBlacklist,
 		LastUsedAt:         k.LastUsedAt,

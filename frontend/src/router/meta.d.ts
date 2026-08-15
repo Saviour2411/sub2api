@@ -55,6 +55,9 @@ declare module 'vue-router' {
      */
     requiresRiskControl?: boolean
 
+    /** 是否要求无限画布功能开关已启用 */
+    requiresCanvas?: boolean
+
     /**
      * i18n key for the page title
      */

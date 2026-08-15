@@ -323,6 +323,7 @@ export interface PublicSettings {
   /** When true, user monitor hides RPM/TPM so scale cannot be reverse-estimated. */
   channel_monitor_hide_throughput?: boolean
   available_channels_enabled: boolean
+  canvas_enabled?: boolean
   model_plaza_enabled: boolean
   model_plaza_require_auth: boolean
   service_quota_enabled: boolean
@@ -761,6 +762,7 @@ export interface ApiKey {
   name: string
   group_id: number | null
   status: 'active' | 'inactive' | 'quota_exhausted' | 'expired'
+  purpose: 'general' | 'infinite_canvas'
   ip_whitelist: string[]
   ip_blacklist: string[]
   last_used_at: string | null

@@ -54,12 +54,19 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
-          cache-dependency-path: frontend/pnpm-lock.yaml
+          cache-dependency-path: |
+            frontend/pnpm-lock.yaml
+            canvas/pnpm-lock.yaml
       - name: Install frontend dependencies
         working-directory: frontend
         run: pnpm install --frozen-lockfile
+      - name: Install canvas dependencies
+        working-directory: canvas
+        run: pnpm install --frozen-lockfile
       - name: Frontend typecheck and critical vitest
         run: make test-frontend
+      - name: Build Vue and canvas frontends
+        run: make build-frontend
 
   golangci-lint:
     runs-on: ubuntu-latest

@@ -133,6 +133,22 @@ func TestSecurityHeaders(t *testing.T) {
 		assert.Equal(t, 1, countDirectiveValue(csp, "worker-src", TencentCaptchaWorkerSource))
 	})
 
+	t.Run("canvas_app_allows_only_same_origin_framing", func(t *testing.T) {
+		cfg := config.CSPConfig{Enabled: true, Policy: config.DefaultCSPPolicy}
+		security := SecurityHeaders(cfg, nil)
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, "/canvas-app/canvas/project-1", nil)
+
+		security(c)
+
+		assert.Equal(t, "SAMEORIGIN", w.Header().Get("X-Frame-Options"))
+		csp := w.Header().Get("Content-Security-Policy")
+		assert.Contains(t, csp, "frame-ancestors 'self'")
+		assert.NotContains(t, csp, "frame-ancestors 'none'")
+		assert.Contains(t, csp, "media-src 'self' blob: data:")
+	})
+
 	t.Run("api_route_skips_csp_nonce_generation", func(t *testing.T) {
 		cfg := config.CSPConfig{
 			Enabled: true,

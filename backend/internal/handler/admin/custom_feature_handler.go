@@ -51,6 +51,20 @@ func (h *CustomFeatureHandler) UpdateModelMarketplace(c *gin.Context) {
 	response.Success(c, settings)
 }
 
+func (h *CustomFeatureHandler) UpdateCanvas(c *gin.Context) {
+	var req service.CanvasSettings
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "请求格式无效")
+		return
+	}
+	settings, err := h.settingService.UpdateCanvasSettings(c.Request.Context(), req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, settings)
+}
+
 // UpdateDailyCheckin 更新每日签到配置。
 func (h *CustomFeatureHandler) UpdateDailyCheckin(c *gin.Context) {
 	var req service.DailyCheckinSettings

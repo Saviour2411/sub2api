@@ -134,6 +134,11 @@ export const FeatureFlags = {
     mode: 'opt-out',
     label: 'Model Marketplace',
   }),
+  canvas: defineFlag({
+    key: 'canvas_enabled',
+    mode: 'opt-out',
+    label: 'Infinite Canvas',
+  }),
 } as const
 
 export type RegisteredFeatureFlag = keyof typeof FeatureFlags

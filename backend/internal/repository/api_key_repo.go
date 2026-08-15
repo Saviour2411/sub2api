@@ -43,11 +43,16 @@ func (r *apiKeyRepository) activeQuery() *dbent.APIKeyQuery {
 }
 
 func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) error {
+	purpose := key.Purpose
+	if purpose == "" {
+		purpose = service.APIKeyPurposeGeneral
+	}
 	builder := r.client.APIKey.Create().
 		SetUserID(key.UserID).
 		SetKey(key.Key).
 		SetName(key.Name).
 		SetStatus(key.Status).
+		SetPurpose(purpose).
 		SetNillableGroupID(key.GroupID).
 		SetNillableLastUsedAt(key.LastUsedAt).
 		SetQuota(key.Quota).
@@ -67,6 +72,7 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 	created, err := builder.Save(ctx)
 	if err == nil {
 		key.ID = created.ID
+		key.Purpose = created.Purpose
 		key.LastUsedAt = created.LastUsedAt
 		key.CreatedAt = created.CreatedAt
 		key.UpdatedAt = created.UpdatedAt
@@ -711,14 +717,32 @@ func (r *apiKeyRepository) ClearGroupIDByGroupID(ctx context.Context, groupID in
 	return int64(n), err
 }
 
-// UpdateGroupIDByUserAndGroup 将用户下绑定 oldGroupID 的所有 Key 迁移到 newGroupID
+// UpdateGroupIDByUserAndGroup 将用户下绑定 oldGroupID 的普通 Key 迁移到 newGroupID。
+// 画布托管 Key 只服务于当前绑定分组，替换分组时直接撤销，避免与新分组已有的托管 Key 冲突。
 func (r *apiKeyRepository) UpdateGroupIDByUserAndGroup(ctx context.Context, userID, oldGroupID, newGroupID int64) (int64, error) {
 	client := clientFromContext(ctx, r.client)
-	n, err := client.APIKey.Update().
-		Where(apikey.UserIDEQ(userID), apikey.GroupIDEQ(oldGroupID), apikey.DeletedAtIsNil()).
-		SetGroupID(newGroupID).
-		Save(ctx)
-	return int64(n), err
+	result, err := client.ExecContext(ctx, `
+		WITH retired_canvas_keys AS (
+			UPDATE api_keys
+			SET key = '__deleted__' || id::text || '__group_replace',
+				deleted_at = NOW(),
+				updated_at = NOW()
+			WHERE user_id = $1
+				AND group_id = $2
+				AND deleted_at IS NULL
+				AND purpose = $4
+			RETURNING id
+		)
+		UPDATE api_keys
+		SET group_id = $3, updated_at = NOW()
+		WHERE user_id = $1
+			AND group_id = $2
+			AND deleted_at IS NULL
+			AND purpose <> $4`, userID, oldGroupID, newGroupID, service.APIKeyPurposeInfiniteCanvas)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 // CountByGroupID 获取分组的 API Key 数量
@@ -873,6 +897,7 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		Key:           m.Key,
 		Name:          m.Name,
 		Status:        m.Status,
+		Purpose:       m.Purpose,
 		IPWhitelist:   m.IPWhitelist,
 		IPBlacklist:   m.IPBlacklist,
 		LastUsedAt:    m.LastUsedAt,

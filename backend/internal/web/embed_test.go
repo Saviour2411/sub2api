@@ -676,6 +676,27 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		assert.Equal(t, http.StatusOK, assetWriter.Code)
 		assert.Equal(t, staticAssetsCacheControl, assetWriter.Header().Get("Cache-Control"))
 	})
+
+	t.Run("serves_canvas_index_for_canvas_spa_routes", func(t *testing.T) {
+		provider := &mockSettingsProvider{settings: map[string]string{"test": "value"}}
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		router := gin.New()
+		router.Use(server.Middleware())
+		for _, routePath := range []string{"/canvas-app", "/canvas-app/canvas", "/canvas-app/canvas/project-1", "/canvas-app/assets", "/canvas-app/prompts"} {
+			t.Run(routePath, func(t *testing.T) {
+				w := httptest.NewRecorder()
+				req := httptest.NewRequest(http.MethodGet, routePath, nil)
+				router.ServeHTTP(w, req)
+
+				assert.Equal(t, http.StatusOK, w.Code)
+				assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
+				assert.Equal(t, "no-cache", w.Header().Get("Cache-Control"))
+				assert.Contains(t, w.Body.String(), "<title>无限画布</title>")
+			})
+		}
+	})
 }
 
 func TestEmbeddedFrontendBypassesBareVideoAPIRoutes(t *testing.T) {

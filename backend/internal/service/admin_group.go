@@ -1124,6 +1124,9 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 		// nil 表示不修改，直接返回
 		return &AdminUpdateAPIKeyGroupIDResult{APIKey: apiKey}, nil
 	}
+	if apiKey.Purpose == APIKeyPurposeInfiniteCanvas {
+		return nil, ErrManagedAPIKey
+	}
 
 	if *groupID < 0 {
 		return nil, infraerrors.BadRequest("INVALID_GROUP_ID", "group_id must be non-negative")
@@ -1262,6 +1265,16 @@ func (s *adminServiceImpl) ReplaceUserGroup(ctx context.Context, userID, oldGrou
 		return nil, infraerrors.BadRequest("GROUP_IS_SUBSCRIPTION", "subscription groups are not supported for replacement")
 	}
 
+	// 事务提交后，旧分组的画布托管 Key 可能已经被软删除，届时无法再通过常规查询找到。
+	// 因此先保留事务前的完整 Key 列表，确保这些旧凭据的认证缓存也会被失效。
+	var keysBeforeReplacement []string
+	if s.authCacheInvalidator != nil {
+		keysBeforeReplacement, err = s.apiKeyRepo.ListKeysByUserID(ctx, userID)
+		if err != nil {
+			return nil, fmt.Errorf("list api keys before group replacement: %w", err)
+		}
+	}
+
 	// 事务保证原子性
 	if s.entClient == nil {
 		return nil, fmt.Errorf("entClient is nil, cannot perform group replacement")
@@ -1293,13 +1306,19 @@ func (s *adminServiceImpl) ReplaceUserGroup(ctx context.Context, userID, oldGrou
 		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
 
-	// 失效该用户所有 Key 的认证缓存
+	// 同时纳入事务期间可能新增的 Key，并去重失效认证缓存。
 	if s.authCacheInvalidator != nil {
-		keys, keyErr := s.apiKeyRepo.ListKeysByUserID(ctx, userID)
-		if keyErr == nil {
-			for _, k := range keys {
-				s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, k)
+		keysAfterReplacement, _ := s.apiKeyRepo.ListKeysByUserID(ctx, userID)
+		seen := make(map[string]struct{}, len(keysBeforeReplacement)+len(keysAfterReplacement))
+		for _, key := range append(keysBeforeReplacement, keysAfterReplacement...) {
+			if key == "" {
+				continue
 			}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, key)
 		}
 	}
 

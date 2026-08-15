@@ -17,7 +17,7 @@
 - 已完整集成的上游提交：`fbfdcef8184ae4b2e224d5cfc47cf1d0e3742710`
 - 比较范围：`fbfdcef81..a39851432`
 - 基线差异：695 个文件，新增 90677 行、删除 5193 行；本地独有提交 459 个
-- 当前能力族：52 项，分布在 9 个功能域
+- 当前能力族：53 项，分布在 9 个功能域
 
 这组数字只用于确认分析边界，不能直接等同于功能数量。生成代码、测试、文案、上游提交的本地适配和同一能力的连续修复均会放大差异规模。
 
@@ -130,6 +130,7 @@
 | `CUST-PROD-004` | 批量图片任务 | 提供任务提交、队列处理、列表、明细、输出、下载、取消和清理；限制到允许的 Gemini 分组，包含余额预占、失败恢复和有界结算重试。 | `backend/internal/service/batch_image.go`、`backend/internal/service/batch_image_worker.go`、`backend/internal/server/routes/gateway.go` | 生效中 |
 | `CUST-PROD-005` | 兑换码多次使用 | 兑换码支持最大使用次数，并以用户维度记录使用明细，防止同一用户重复使用同一码。 | `backend/internal/repository/redeem_code_repo.go`、`backend/migrations/140_redeem_code_usage_limits.sql` | 生效中 |
 | `CUST-PROD-006` | 支付和充值增强 | 支持余额充值赠送阶梯、手续费/倍率、赠送快照、自定义 EasyPay 支付方式、订阅 USD/CNY 换算预览和管理员删除订单；可配置专属倍率用户不参与余额充值赠送。 | `backend/internal/service/payment_amounts.go`、`backend/internal/payment/provider/easypay.go`、`backend/migrations/149_payment_balance_bonus_rules.sql` | 生效中 |
+| `CUST-PROD-007` | 站内无限画布 | 基于 `basketikun/infinite-canvas@b66936d891b82c2b51c1ed05e1a6eae3e31d4ca3` 的 React 画布裁剪集成，保留项目、素材、提示词、文本/图片/视频节点、连线、缩放平移和受控画布助手；移除上游 Key 配置、WebDAV、本地 Agent/MCP、远程插件与脚本、推广及外链入口。Vue 通过同源沙箱 iframe 嵌入 `/canvas-app/`，默认开启的功能开关、JWT 父页面消息桥和按用户隔离的浏览器存储共同约束访问；运行时按用户可用分组复用普通 Key 或懒创建唯一托管 Key，所有媒体请求继续经过站内余额、订阅、分组计费和并发控制，Gemini 首版不提供视频生成。 | `canvas/`、`frontend/src/views/user/CanvasView.vue`、`backend/internal/service/api_key_service.go`、`backend/migrations/222_infinite_canvas_api_keys.sql`、`canvas/THIRD_PARTY_NOTICES.md` | 生效中 |
 
 ### 风控与内容审核
 
@@ -165,6 +166,8 @@
 
 | 日期 | 版本/提交 | 类型 | 功能编号 | 变更与原因 | 验证 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-08-16 | `0.1.218` / 待提交 | 修复 | `CUST-PROD-007` | 上线前复核修复专属分组替换与画布托管 Key 的两个一致性问题：旧分组托管 Key 在事务内撤销而不迁移，避免目标分组已有托管 Key 时触发唯一索引冲突；事务前后分别采集用户 Key 并去重失效认证缓存，确保已软删除的旧画布凭据不能在缓存 TTL 内继续访问旧分组。用户和管理员均不能修改托管 Key 的分组或用途，仍允许删除后按需重建。补齐站内 OpenAI/Grok、Gemini 图像、视频轮询、Gemini 视频拒绝和运行时 Key 不持久化的请求级回归；本次未连接或部署生产服务器。 | Go 全量 unit 与 integration 标签测试、golangci-lint、嵌入式后端构建；Vue lint/typecheck、16 个关键 Vitest 文件共 182 项、生产构建；React format/typecheck、7 个 Vitest 文件共 13 项、生产构建；迁移 SQL、静态 SPA 回退、CSP/XFO、双前端构建顺序和高危依赖审计检查通过。真实计费媒体调用继续未执行。 |
+| 2026-08-15 | `0.1.218` / 待提交 | 新增 | `CUST-PROD-007` | 集成固定版本 Infinite Canvas 为独立 React 子项目，由 Vue 登录页面通过严格校验来源的 `postMessage` 提供用户初始化信息和临时站内 Key；新增画布功能开关、分组/模型发现、OpenAI/Grok 图片与视频、Gemini/Antigravity 图片、按用户 IndexedDB 命名空间、内置及本地提示词、受白名单与双重确认约束的画布助手。新增 API Key `purpose`、每用户每分组托管 Key 部分唯一索引、普通 Key 优先复用和并发创建恢复；静态服务为 `/canvas-app/*` 提供独立 SPA 回退、缓存和同源 iframe 安全头。构建及 CI 固定 Vue 先构建、React 后构建，保留上游 MIT 许可证并记录裁剪范围；本次未连接或部署生产服务器。 | React 类型检查、13 项 Vitest、Vue 类型检查/定向测试/lint、Go 凭据服务定向测试（含权限、复用、自动创建、跨用户隔离和并发唯一性）、静态服务及 CSP/XFO 测试、双前端生产构建；桌面与移动浏览器验收覆盖 Mock 图片生成、Mock 视频请求适配与任务轮询，未执行真实计费媒体调用。 |
 | 2026-08-15 | `0.1.218` / 待提交 | 修复 | `CUST-BILL-003` | 修复 API Key 认证缓存快照遗漏分组长上下文开关，导致数据库已开启但认证热路径还原为 `false`、Grok 用户扣费未应用 200K 阶梯的问题。快照补齐开关的双向映射并升级到 v20，旧 v19 Redis 快照自动失效回源；无数据库和 HTTP API 变化。 | 缓存开关开启/关闭往返、旧 v19 快照淘汰，以及截图同口径的 Grok 4.6 `1567 input + 272128 cache read + 252 output` 端到端计费回归；Go 定向与全量 unit、golangci-lint、CGO 关闭构建、govulncheck 通过，远端 CI 与生产新请求核验作为发布门禁。 |
 | 2026-08-15 | `0.1.217` / 待提交 | 修复 | `CUST-BILL-002`、`CUST-BILL-003`、`CUST-OPS-004` | 修复 Grok 动态价卡存在但缺少 200K 阶梯时遮蔽正确内置兜底的问题：兼容 xAI/LiteLLM above-200K 绝对价格，仅对 Grok 转换为内部阈值和倍率；对已知残缺 Grok 价卡只补缺失阶梯，并仅在 4.5 命中 `$0.50/MTok` 已知错误签名时修正为官方 `$0.30/MTok`。完整远端价卡继续优先，默认远端 URL、10 分钟哈希检查和自动更新流程不变；内置资源补齐 Grok 价卡，200K 边界按官方“超过”语义处理。首次远端安全扫描同时发现 Go 1.26.5 标准库新公告，构建与 CI 统一升级到已修复的 1.26.6。 | xAI 原生字段/显式字段优先/非 xAI 隔离/异常倍率测试，Grok 4.5/4.6 残缺与完整动态价卡测试，内置资源价卡测试，200K/200001 边界及分组开关测试；外部价表 JSON、生成哈希与二次同步幂等验证；Go 1.26.6 全量 unit、golangci-lint、CGO 关闭构建、govulncheck、内置 JSON、生产 Compose 一致性和 diff 检查通过，远端 CI 与生产部署核验待完成。 |
 | 2026-08-13 | `0.1.215` / `a39851432` | 上游适配 | `CUST-GW-001`、`CUST-GW-003`、`CUST-GW-004`、`CUST-GW-005`、`CUST-GW-006`、`CUST-GW-008`、`CUST-GW-011`、`CUST-PROTO-001`、`CUST-PROTO-006`、`CUST-ACC-001`、`CUST-ACC-002`、`CUST-ACC-004`、`CUST-ACC-005`、`CUST-BILL-001`、`CUST-BILL-002`、`CUST-BILL-003`、`CUST-BILL-005`、`CUST-BILL-006`、`CUST-RISK-001`、`CUST-RISK-002`、`CUST-UI-001`、`CUST-UI-004`、`CUST-OPS-003`、`CUST-OPS-004`、`CUST-OPS-005` | 完整合并上游 `48eb3766d..fbfdcef81` 的 111 个提交，接入 Responses/WS 错误与 TTFT 修复、分卷备份、API Key 校验、Codex 指纹收敛、Grok 订阅档位与 4.6、原生 `x_search`、分组逐模型定价、长上下文开关、渠道缓存刷新、定时备份 leader 锁及相关前端展示。继续保留普通分组严格按用户请求模型计费、响应模型仅观测与 mismatch 诊断、Composite 显式别名价例外、分组定价优先级、真实分组长上下文门禁、Cyber Enabled/Mode/scope 门禁、附加换号与 Pool Mode 自定义状态码、自动托管测试/连续失败依赖、按用户串行扣费和 5 秒 usage task 超时；版本保持本地 `0.1.215`，未新增二开编号。PR #9 首轮安全扫描发现新发布的 `nanoid` 高危公告，使用精确 override 将全部生产依赖链从 `3.3.17` 升级到修复版 `3.3.18`，未新增审计豁免。 | 同步前后本地 Go 全量 unit、golangci-lint、CGO 关闭构建、前端冻结安装/lint/typecheck/全量 Vitest/生产构建通过；Ent 隔离双生成逐文件一致，Wire 重复生成稳定，双生产 Compose 字节一致且本次无 `deploy/` 变更。安全修复后本地审计例外检查和前端全量回归通过；PR #9 对代码提交 `a39851432` 的 push/PR 双触发 CI、Security Scan、Go Unit/Integration、golangci-lint、macOS 部署脚本和 Node 20 前端检查全部通过。未运行 race，未执行生产数据迁移、服务健康检查或部署。 |
@@ -210,8 +213,8 @@
 2. OpenAI Responses、WSv2、namespace、图片工具变化：`CUST-PROTO-001`、`CUST-PROTO-002`、`CUST-PROTO-006`、`CUST-PROTO-007`；
 3. Anthropic 请求转换和账号测试变化：`CUST-PROTO-003`、`CUST-PROTO-004`、`CUST-PROTO-008`、`CUST-ACC-005`；
 4. 计费和 usage schema 变化：`CUST-BILL-001` 至 `CUST-BILL-005`；
-5. account/group/channel/payment schema 变化：`CUST-ACC-001`、`CUST-ACC-006`、`CUST-PROD-005`、`CUST-PROD-006`；
-6. 前端设置、导航和公共配置变化：`CUST-PROD-001`、`CUST-PROD-002`、`CUST-OBS-002`、`CUST-UI-001` 至 `CUST-UI-005`；
+5. account/group/channel/payment schema 变化：`CUST-ACC-001`、`CUST-ACC-006`、`CUST-PROD-005` 至 `CUST-PROD-007`；
+6. 前端设置、导航和公共配置变化：`CUST-PROD-001`、`CUST-PROD-002`、`CUST-PROD-007`、`CUST-OBS-002`、`CUST-UI-001` 至 `CUST-UI-005`；
 7. release、Compose 或镜像变化：`CUST-OPS-001` 至 `CUST-OPS-004`。
 
 ## 已被上游吸收的历史二开

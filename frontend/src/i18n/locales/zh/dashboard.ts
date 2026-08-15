@@ -82,6 +82,8 @@ export default {
     columnSettings: '列设置',
     columnAlwaysVisible: '该列固定显示，不可隐藏',
     createKey: '创建密钥',
+    infiniteCanvasManaged: '画布托管',
+    infiniteCanvasManagedHint: '此密钥由无限画布自动管理，不能修改分组或配置；删除后会在下次使用时重新创建。',
     editKey: '编辑密钥',
     deleteKey: '删除密钥',
     deleteConfirmMessage: "确定要删除 '{name}' 吗？此操作无法撤销。",

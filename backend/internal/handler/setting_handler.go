@@ -110,6 +110,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		ChannelMonitorHideThroughput:         settings.ChannelMonitorHideThroughput,
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
+		CanvasEnabled:            settings.CanvasEnabled,
 		ModelMarketplaceEnabled:  settings.ModelMarketplaceEnabled,
 
 		ModelPlazaEnabled:     settings.ModelPlazaEnabled,

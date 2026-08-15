@@ -72,7 +72,9 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
-          cache-dependency-path: frontend/pnpm-lock.yaml
+          cache-dependency-path: |
+            frontend/pnpm-lock.yaml
+            canvas/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -81,6 +83,14 @@ jobs:
       - name: Build frontend
         run: pnpm run build
         working-directory: frontend
+
+      - name: Install canvas dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: canvas
+
+      - name: Typecheck and build canvas
+        run: pnpm run build
+        working-directory: canvas
 
       - name: Upload frontend artifact
         uses: actions/upload-artifact@v7

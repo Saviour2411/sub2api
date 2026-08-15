@@ -31,4 +31,10 @@ describe('custom feature flag visibility', () => {
     appStore.cachedPublicSettings = { model_marketplace_enabled: false }
     expect(isFeatureFlagEnabled(FeatureFlags.modelMarketplace)).toBe(false)
   })
+
+  it('keeps infinite canvas enabled unless explicitly disabled', () => {
+    expect(isFeatureFlagEnabled(FeatureFlags.canvas)).toBe(true)
+    appStore.cachedPublicSettings = { canvas_enabled: false }
+    expect(isFeatureFlagEnabled(FeatureFlags.canvas)).toBe(false)
+  })
 })

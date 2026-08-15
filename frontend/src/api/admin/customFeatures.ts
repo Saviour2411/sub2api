@@ -30,6 +30,10 @@ export interface ModelMarketplaceSettings {
   group_ids: number[]
 }
 
+export interface CanvasSettings {
+  enabled: boolean
+}
+
 export interface DailyCheckinSettings {
   enabled: boolean
   prizes: DailyCheckinPrizeConfig[]
@@ -61,6 +65,7 @@ export interface ImageGroupSuccessRatesResetResult {
 
 export interface CustomFeatureSettings {
   model_marketplace: ModelMarketplaceSettings
+  canvas: CanvasSettings
   daily_checkin: DailyCheckinSettings
   gateway: GatewaySettings
 }
@@ -77,6 +82,11 @@ export async function updateModelMarketplace(
     '/admin/custom-features/model-marketplace',
     settings
   )
+  return data
+}
+
+export async function updateCanvas(settings: CanvasSettings): Promise<CanvasSettings> {
+  const { data } = await apiClient.put<CanvasSettings>('/admin/custom-features/canvas', settings)
   return data
 }
 
@@ -108,6 +118,7 @@ export async function resetImageGroupSuccessRates(): Promise<ImageGroupSuccessRa
 export default {
   getSettings,
   updateModelMarketplace,
+  updateCanvas,
   updateDailyCheckin,
   updateGateway,
   resetImageGroupSuccessRates

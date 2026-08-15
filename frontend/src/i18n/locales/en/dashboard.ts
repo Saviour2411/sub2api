@@ -82,6 +82,8 @@ export default {
     columnSettings: 'Column Settings',
     columnAlwaysVisible: 'This column is always visible',
     createKey: 'Create API Key',
+    infiniteCanvasManaged: 'Canvas managed',
+    infiniteCanvasManagedHint: 'This key is managed by Infinite Canvas. Delete it to revoke access; it will be recreated on next use.',
     editKey: 'Edit API Key',
     deleteKey: 'Delete API Key',
     deleteConfirmMessage: "Are you sure you want to delete '{name}'? This action cannot be undone.",

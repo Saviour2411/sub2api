@@ -179,9 +179,15 @@ export default {
       saveFailed: '保存二开功能配置失败',
       tabs: {
         upstream: '上游管理',
+        canvas: '无限画布',
         modelMarketplace: '模型广场',
         gateway: '网关配置',
         dailyCheckin: '每日签到',
+      },
+      canvas: {
+        title: '无限画布',
+        description: '控制用户侧无限画布入口以及画布初始化和运行时凭据接口。关闭后已打开的画布也无法继续解析站内凭据。',
+        saved: '无限画布配置已保存',
       },
       upstream: {
         title: '上游管理',

@@ -19,10 +19,14 @@ import (
 
 // userRepoStubForGroupUpdate implements UserRepository for AdminUpdateAPIKeyGroupID tests.
 type userRepoStubForGroupUpdate struct {
-	addGroupErr    error
-	addGroupCalled bool
-	addedUserID    int64
-	addedGroupID   int64
+	addGroupErr       error
+	addGroupCalled    bool
+	addedUserID       int64
+	addedGroupID      int64
+	removeGroupErr    error
+	removeGroupCalled bool
+	removedUserID     int64
+	removedGroupID    int64
 }
 
 func (s *userRepoStubForGroupUpdate) AddGroupToAllowedGroups(_ context.Context, userID int64, groupID int64) error {
@@ -125,16 +129,24 @@ func (s *userRepoStubForGroupUpdate) GetLatestUsedAtByUserID(context.Context, in
 func (s *userRepoStubForGroupUpdate) UpdateUserLastActiveAt(context.Context, int64, time.Time) error {
 	panic("unexpected")
 }
-func (s *userRepoStubForGroupUpdate) RemoveGroupFromUserAllowedGroups(context.Context, int64, int64) error {
-	panic("unexpected")
+func (s *userRepoStubForGroupUpdate) RemoveGroupFromUserAllowedGroups(_ context.Context, userID, groupID int64) error {
+	s.removeGroupCalled = true
+	s.removedUserID = userID
+	s.removedGroupID = groupID
+	return s.removeGroupErr
 }
 
 // apiKeyRepoStubForGroupUpdate implements APIKeyRepository for AdminUpdateAPIKeyGroupID tests.
 type apiKeyRepoStubForGroupUpdate struct {
-	key       *APIKey
-	getErr    error
-	updateErr error
-	updated   *APIKey // captures what was passed to Update
+	key                 *APIKey
+	getErr              error
+	updateErr           error
+	updated             *APIKey // captures what was passed to Update
+	keysByUserIDResults [][]string
+	keysByUserIDErr     error
+	keysByUserIDCalls   int
+	migratedKeys        int64
+	updateGroupErr      error
 }
 
 func (s *apiKeyRepoStubForGroupUpdate) GetByID(_ context.Context, _ int64) (*APIKey, error) {
@@ -193,7 +205,18 @@ func (s *apiKeyRepoStubForGroupUpdate) CountByGroupID(context.Context, int64) (i
 	panic("unexpected")
 }
 func (s *apiKeyRepoStubForGroupUpdate) ListKeysByUserID(context.Context, int64) ([]string, error) {
-	panic("unexpected")
+	if s.keysByUserIDErr != nil {
+		return nil, s.keysByUserIDErr
+	}
+	if len(s.keysByUserIDResults) == 0 {
+		panic("unexpected")
+	}
+	index := s.keysByUserIDCalls
+	if index >= len(s.keysByUserIDResults) {
+		index = len(s.keysByUserIDResults) - 1
+	}
+	s.keysByUserIDCalls++
+	return s.keysByUserIDResults[index], nil
 }
 func (s *apiKeyRepoStubForGroupUpdate) ListKeysByGroupID(context.Context, int64) ([]string, error) {
 	panic("unexpected")
@@ -214,7 +237,7 @@ func (s *apiKeyRepoStubForGroupUpdate) GetRateLimitData(context.Context, int64) 
 	panic("unexpected")
 }
 func (s *apiKeyRepoStubForGroupUpdate) UpdateGroupIDByUserAndGroup(context.Context, int64, int64, int64) (int64, error) {
-	panic("unexpected")
+	return s.migratedKeys, s.updateGroupErr
 }
 
 // groupRepoStubForGroupUpdate implements GroupRepository for AdminUpdateAPIKeyGroupID tests.
@@ -318,6 +341,16 @@ func TestAdminService_AdminUpdateAPIKeyGroupID_NilGroupID_NoOp(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(1), got.APIKey.ID)
 	// Update should NOT have been called (updated stays nil)
+	require.Nil(t, repo.updated)
+}
+
+func TestAdminService_AdminUpdateAPIKeyGroupID_RejectsManagedCanvasKey(t *testing.T) {
+	existing := &APIKey{ID: 1, Key: "sk-canvas", GroupID: int64Ptr(5), Purpose: APIKeyPurposeInfiniteCanvas}
+	repo := &apiKeyRepoStubForGroupUpdate{key: existing}
+	svc := &adminServiceImpl{apiKeyRepo: repo}
+
+	_, err := svc.AdminUpdateAPIKeyGroupID(context.Background(), 1, int64Ptr(6))
+	require.ErrorIs(t, err, ErrManagedAPIKey)
 	require.Nil(t, repo.updated)
 }
 
@@ -441,6 +474,62 @@ func TestAdminService_AdminUpdateAPIKeyGroupID_NilCacheInvalidator(t *testing.T)
 	require.NoError(t, err)
 	require.NotNil(t, got.APIKey.GroupID)
 	require.Equal(t, int64(7), *got.APIKey.GroupID)
+}
+
+func TestAdminService_ReplaceUserGroup_InvalidatesKeysBeforeAndAfterReplacement(t *testing.T) {
+	client := newAdminServiceAuthIdentityBindingTestClient(t)
+	userRepo := &userRepoStubForGroupUpdate{}
+	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{
+		keysByUserIDResults: [][]string{
+			{"sk-old-canvas", "sk-shared", ""},
+			{"sk-shared", "sk-new-normal"},
+		},
+		migratedKeys: 2,
+	}
+	groupRepo := &groupRepoStubForGroupUpdate{group: &Group{
+		ID:               20,
+		Status:           StatusActive,
+		IsExclusive:      true,
+		SubscriptionType: SubscriptionTypeStandard,
+	}}
+	cache := &authCacheInvalidatorStub{}
+	svc := &adminServiceImpl{
+		userRepo:             userRepo,
+		apiKeyRepo:           apiKeyRepo,
+		groupRepo:            groupRepo,
+		authCacheInvalidator: cache,
+		entClient:            client,
+	}
+
+	result, err := svc.ReplaceUserGroup(context.Background(), 42, 10, 20)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), result.MigratedKeys)
+	require.Equal(t, 2, apiKeyRepo.keysByUserIDCalls)
+	require.Equal(t, []string{"sk-old-canvas", "sk-shared", "sk-new-normal"}, cache.keys)
+	require.True(t, userRepo.addGroupCalled)
+	require.Equal(t, int64(42), userRepo.addedUserID)
+	require.Equal(t, int64(20), userRepo.addedGroupID)
+	require.True(t, userRepo.removeGroupCalled)
+	require.Equal(t, int64(42), userRepo.removedUserID)
+	require.Equal(t, int64(10), userRepo.removedGroupID)
+}
+
+func TestAdminService_ReplaceUserGroup_StopsWhenPreloadKeysFails(t *testing.T) {
+	listErr := errors.New("cache key lookup failed")
+	svc := &adminServiceImpl{
+		groupRepo: &groupRepoStubForGroupUpdate{group: &Group{
+			ID:               20,
+			Status:           StatusActive,
+			IsExclusive:      true,
+			SubscriptionType: SubscriptionTypeStandard,
+		}},
+		apiKeyRepo:           &apiKeyRepoStubForGroupUpdate{keysByUserIDErr: listErr},
+		authCacheInvalidator: &authCacheInvalidatorStub{},
+	}
+
+	_, err := svc.ReplaceUserGroup(context.Background(), 42, 10, 20)
+	require.ErrorIs(t, err, listErr)
+	require.Contains(t, err.Error(), "list api keys before group replacement")
 }
 
 // ---------------------------------------------------------------------------

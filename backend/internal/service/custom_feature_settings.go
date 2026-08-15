@@ -58,6 +58,10 @@ type ModelMarketplaceSettings struct {
 	GroupIDs []int64 `json:"group_ids"`
 }
 
+type CanvasSettings struct {
+	Enabled bool `json:"enabled"`
+}
+
 // DailyCheckinSettings 是每日签到的独立管理配置。
 type DailyCheckinSettings struct {
 	Enabled              bool                      `json:"enabled"`
@@ -112,6 +116,7 @@ type cachedGatewaySettings struct {
 // CustomFeatureSettings 聚合二开功能的独立管理配置。
 type CustomFeatureSettings struct {
 	ModelMarketplace ModelMarketplaceSettings `json:"model_marketplace"`
+	Canvas           CanvasSettings           `json:"canvas"`
 	DailyCheckin     DailyCheckinSettings     `json:"daily_checkin"`
 	Gateway          GatewaySettings          `json:"gateway"`
 }
@@ -135,6 +140,7 @@ var gatewaySettingKeys = []string{
 }
 
 var customFeatureSettingKeys = []string{
+	SettingKeyCanvasEnabled,
 	SettingKeyModelMarketplaceEnabled,
 	SettingKeyModelMarketplaceIntro,
 	SettingKeyModelMarketplaceGroupIDs,
@@ -202,9 +208,23 @@ func (s *SettingService) GetCustomFeatureSettings(ctx context.Context) (*CustomF
 
 	return &CustomFeatureSettings{
 		ModelMarketplace: marketplace,
+		Canvas:           CanvasSettings{Enabled: !isFalseSettingValue(values[SettingKeyCanvasEnabled])},
 		DailyCheckin:     daily,
 		Gateway:          gateway,
 	}, nil
+}
+
+func (s *SettingService) IsCanvasEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyCanvasEnabled)
+	return err != nil || value != "false"
+}
+
+func (s *SettingService) UpdateCanvasSettings(ctx context.Context, input CanvasSettings) (*CanvasSettings, error) {
+	if err := s.settingRepo.Set(ctx, SettingKeyCanvasEnabled, strconv.FormatBool(input.Enabled)); err != nil {
+		return nil, fmt.Errorf("update canvas settings: %w", err)
+	}
+	s.notifyCustomFeatureSettingsUpdated()
+	return &input, nil
 }
 
 // DefaultGatewaySettings 返回未持久化配置时使用的默认值。

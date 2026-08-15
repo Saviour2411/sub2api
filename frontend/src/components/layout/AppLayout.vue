@@ -32,7 +32,10 @@
       <AppHeader />
 
       <!-- Main Content -->
-      <main class="relative p-4 md:p-6 lg:p-8">
+      <main
+        class="relative"
+        :class="fullscreen ? 'h-[calc(100dvh-4rem)] overflow-hidden p-0' : 'p-4 md:p-6 lg:p-8'"
+      >
         <slot />
       </main>
     </div>
@@ -49,6 +52,8 @@ import { useOnboardingStore } from '@/stores/onboarding'
 import AppSidebar from './AppSidebar.vue'
 import AppHeader from './AppHeader.vue'
 import BackgroundFX from '@/components/common/BackgroundFX.vue'
+
+withDefaults(defineProps<{ fullscreen?: boolean }>(), { fullscreen: false })
 
 const appStore = useAppStore()
 const authStore = useAuthStore()

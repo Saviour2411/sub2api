@@ -83,6 +83,7 @@ var requiredCSPDirectiveValues = []struct {
 	{"style-src", AirwallexDemoCheckoutDomain},
 	{"frame-src", AirwallexDemoCheckoutDomain},
 	{"worker-src", BlobWorkerSource},
+	{"frame-src", "'self'"},
 }
 
 // GenerateNonce generates a cryptographically secure random nonce.
@@ -128,7 +129,14 @@ func SecurityHeaders(cfg config.CSPConfig, getFrameSrcOrigins func() []string) g
 		}
 
 		c.Header("X-Content-Type-Options", "nosniff")
-		c.Header("X-Frame-Options", "DENY")
+		canvasApp := isCanvasAppPath(c)
+		if canvasApp {
+			c.Header("X-Frame-Options", "SAMEORIGIN")
+			finalPolicy = setCSPDirective(finalPolicy, "frame-ancestors", "'self'")
+			finalPolicy = setCSPDirective(finalPolicy, "media-src", "'self'", "blob:", "data:")
+		} else {
+			c.Header("X-Frame-Options", "DENY")
+		}
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
 		if isAPIRoutePath(c) {
 			c.Next()
@@ -149,6 +157,11 @@ func SecurityHeaders(cfg config.CSPConfig, getFrameSrcOrigins func() []string) g
 		}
 		c.Next()
 	}
+}
+
+func isCanvasAppPath(c *gin.Context) bool {
+	return c != nil && c.Request != nil && c.Request.URL != nil &&
+		(c.Request.URL.Path == "/canvas-app" || strings.HasPrefix(c.Request.URL.Path, "/canvas-app/"))
 }
 
 func isAPIRoutePath(c *gin.Context) bool {
@@ -230,4 +243,21 @@ func addToDirective(policy, directive, value string) string {
 	// Insert value before the semicolon
 	insertPos := idx + endIdx
 	return policy[:insertPos] + " " + value + policy[insertPos:]
+}
+
+func setCSPDirective(policy, directive string, values ...string) string {
+	parts := strings.Split(policy, ";")
+	replacement := directive + " " + strings.Join(values, " ")
+	found := false
+	for i, part := range parts {
+		fields := strings.Fields(strings.TrimSpace(part))
+		if len(fields) > 0 && fields[0] == directive {
+			parts[i] = replacement
+			found = true
+		}
+	}
+	if !found {
+		parts = append(parts, replacement)
+	}
+	return strings.TrimSpace(strings.Join(parts, ";"))
 }

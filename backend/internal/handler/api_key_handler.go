@@ -64,6 +64,10 @@ type UpdateAPIKeyRequest struct {
 	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"` // 重置限速用量
 }
 
+type ResolveCanvasCredentialRequest struct {
+	GroupID int64 `json:"group_id" binding:"required,gt=0"`
+}
+
 func validAPIKeyLimit(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) && v >= 0 }
 
 func validateAPIKeyCreateRequest(req CreateAPIKeyRequest) error {
@@ -337,6 +341,44 @@ func (h *APIKeyHandler) GetAvailableGroups(c *gin.Context) {
 		out = append(out, *dto.GroupFromService(&groups[i]))
 	}
 	response.Success(c, out)
+}
+
+// GetCanvasBootstrap 返回无限画布初始化所需的用户和分组白名单。
+func (h *APIKeyHandler) GetCanvasBootstrap(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	bootstrap, err := h.apiKeyService.GetCanvasBootstrap(c.Request.Context(), subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, bootstrap)
+}
+
+// ResolveCanvasCredential 返回仅供当前 iframe 运行时使用的站内 API Key。
+func (h *APIKeyHandler) ResolveCanvasCredential(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	var req ResolveCanvasCredentialRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "group_id 必须是正整数")
+		return
+	}
+	credential, err := h.apiKeyService.ResolveCanvasCredential(
+		c.Request.Context(), subject.UserID, req.GroupID, middleware2.SecurityClientIP(c),
+	)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, credential)
 }
 
 // GetUserGroupRates 获取当前用户的专属分组倍率配置

@@ -471,6 +471,9 @@ const (
 	// sidebar entry is hidden. Defaults to false (opt-in feature).
 	SettingKeyAvailableChannelsEnabled = "available_channels_enabled"
 
+	// SettingKeyCanvasEnabled 控制登录用户的无限画布入口和凭据接口，默认启用。
+	SettingKeyCanvasEnabled = "canvas_enabled"
+
 	// SettingKeyModelMarketplaceEnabled controls the public model marketplace page.
 	// Defaults to true; the public API still only returns whitelisted fields.
 	SettingKeyModelMarketplaceEnabled  = "model_marketplace_enabled"

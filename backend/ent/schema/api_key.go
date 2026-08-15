@@ -47,6 +47,10 @@ func (APIKey) Fields() []ent.Field {
 		field.String("status").
 			MaxLen(20).
 			Default(domain.StatusActive),
+		field.String("purpose").
+			MaxLen(32).
+			Default("general").
+			Comment("API key purpose: general or infinite_canvas"),
 		field.Time("last_used_at").
 			Optional().
 			Nillable().
@@ -141,6 +145,10 @@ func (APIKey) Indexes() []ent.Index {
 		index.Fields("status"),
 		index.Fields("deleted_at"),
 		index.Fields("last_used_at"),
+		index.Fields("user_id", "group_id").
+			Unique().
+			StorageKey("idx_api_keys_infinite_canvas_user_group").
+			Annotations(entsql.IndexWhere("deleted_at IS NULL AND purpose = 'infinite_canvas'")),
 		// Index for quota queries
 		index.Fields("quota", "quota_used"),
 		index.Fields("expires_at"),

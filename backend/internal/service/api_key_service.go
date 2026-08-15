@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"html"
 	"math"
@@ -32,6 +33,7 @@ var (
 	ErrAPIKeyRateLimited    = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
 	ErrAPIKeyAuthOverloaded = infraerrors.ServiceUnavailable("API_KEY_AUTH_OVERLOADED", "api key authentication is temporarily overloaded")
 	ErrInvalidIPPattern     = infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP or CIDR pattern")
+	ErrManagedAPIKey        = infraerrors.BadRequest("MANAGED_API_KEY", "无限画布托管密钥不允许修改")
 	// ErrAPIKeyExpired        = infraerrors.Forbidden("API_KEY_EXPIRED", "api key has expired")
 	ErrAPIKeyExpired = infraerrors.Forbidden("API_KEY_EXPIRED", "api key 已过期")
 	// ErrAPIKeyQuotaExhausted = infraerrors.TooManyRequests("API_KEY_QUOTA_EXHAUSTED", "api key quota exhausted")
@@ -223,6 +225,8 @@ type CreateAPIKeyRequest struct {
 	RateLimit5h float64 `json:"rate_limit_5h"`
 	RateLimit1d float64 `json:"rate_limit_1d"`
 	RateLimit7d float64 `json:"rate_limit_7d"`
+
+	Purpose string `json:"-"`
 }
 
 // UpdateAPIKeyRequest 更新API Key请求
@@ -316,6 +320,26 @@ type APIKeyAuthLookupMetrics struct {
 	Rejected uint64 `json:"rejected"`
 	InFlight int64  `json:"in_flight"`
 	Capacity int    `json:"capacity"`
+}
+
+type CanvasGroupSummary struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	Platform  string `json:"platform"`
+	APIFormat string `json:"api_format"`
+}
+
+type CanvasBootstrap struct {
+	UserID int64                `json:"user_id"`
+	Groups []CanvasGroupSummary `json:"groups"`
+}
+
+type CanvasCredential struct {
+	GroupID   int64  `json:"group_id"`
+	Platform  string `json:"platform"`
+	APIFormat string `json:"api_format"`
+	BaseURL   string `json:"base_url"`
+	APIKey    string `json:"api_key"`
 }
 
 func (s *APIKeyService) AuthLookupMetrics() APIKeyAuthLookupMetrics {
@@ -530,6 +554,14 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		}
 	}
 
+	purpose := req.Purpose
+	if purpose == "" {
+		purpose = APIKeyPurposeGeneral
+	}
+	if purpose != APIKeyPurposeGeneral && purpose != APIKeyPurposeInfiniteCanvas {
+		return nil, infraerrors.BadRequest("API_KEY_PURPOSE_INVALID", "invalid api key purpose")
+	}
+
 	// 创建API Key记录
 	apiKey := &APIKey{
 		UserID:      userID,
@@ -537,6 +569,7 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		Name:        html.EscapeString(req.Name),
 		GroupID:     req.GroupID,
 		Status:      StatusActive,
+		Purpose:     purpose,
 		IPWhitelist: req.IPWhitelist,
 		IPBlacklist: req.IPBlacklist,
 		Quota:       req.Quota,
@@ -768,6 +801,9 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 	// 验证所有权
 	if apiKey.UserID != userID {
 		return nil, ErrInsufficientPerms
+	}
+	if apiKey.Purpose == APIKeyPurposeInfiniteCanvas {
+		return nil, ErrManagedAPIKey
 	}
 
 	// 验证 IP 白名单格式
@@ -1051,6 +1087,121 @@ func (s *APIKeyService) GetAvailableGroups(ctx context.Context, userID int64) ([
 	}
 
 	return availableGroups, nil
+}
+
+func canvasAPIFormat(platform string) (string, bool) {
+	switch platform {
+	case PlatformOpenAI, PlatformGrok:
+		return "openai", true
+	case PlatformGemini, PlatformAntigravity:
+		return "gemini", true
+	default:
+		return "", false
+	}
+}
+
+// GetCanvasBootstrap 返回当前用户可在无限画布中使用的分组白名单。
+func (s *APIKeyService) GetCanvasBootstrap(ctx context.Context, userID int64) (*CanvasBootstrap, error) {
+	groups, err := s.GetAvailableGroups(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	result := &CanvasBootstrap{UserID: userID, Groups: make([]CanvasGroupSummary, 0, len(groups))}
+	for _, group := range groups {
+		apiFormat, ok := canvasAPIFormat(group.Platform)
+		if !ok {
+			continue
+		}
+		result.Groups = append(result.Groups, CanvasGroupSummary{
+			ID: group.ID, Name: group.Name, Platform: group.Platform, APIFormat: apiFormat,
+		})
+	}
+	return result, nil
+}
+
+// ResolveCanvasCredential 复用同分组的可用普通 Key；没有时并发安全地创建托管 Key。
+func (s *APIKeyService) ResolveCanvasCredential(ctx context.Context, userID, groupID int64, clientIP string) (*CanvasCredential, error) {
+	bootstrap, err := s.GetCanvasBootstrap(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	var selectedGroup *CanvasGroupSummary
+	for i := range bootstrap.Groups {
+		if bootstrap.Groups[i].ID == groupID {
+			selectedGroup = &bootstrap.Groups[i]
+			break
+		}
+	}
+	if selectedGroup == nil {
+		return nil, ErrGroupNotAllowed
+	}
+
+	keys, err := s.listCanvasKeys(ctx, userID, groupID)
+	if err != nil {
+		return nil, err
+	}
+	for _, purpose := range []string{APIKeyPurposeGeneral, APIKeyPurposeInfiniteCanvas} {
+		for i := range keys {
+			if keys[i].Purpose == purpose && canvasKeyUsable(&keys[i], clientIP) {
+				return canvasCredentialForGroup(*selectedGroup, keys[i].Key), nil
+			}
+		}
+	}
+
+	created, err := s.Create(ctx, userID, CreateAPIKeyRequest{
+		Name:    "无限画布自动创建",
+		GroupID: &groupID,
+		Purpose: APIKeyPurposeInfiniteCanvas,
+	})
+	if err == nil {
+		return canvasCredentialForGroup(*selectedGroup, created.Key), nil
+	}
+	if !errors.Is(err, ErrAPIKeyExists) {
+		return nil, err
+	}
+
+	// 并发请求可能已由另一事务创建成功，唯一索引冲突后重新读取。
+	keys, listErr := s.listCanvasKeys(ctx, userID, groupID)
+	if listErr != nil {
+		return nil, listErr
+	}
+	for i := range keys {
+		if keys[i].Purpose == APIKeyPurposeInfiniteCanvas && canvasKeyUsable(&keys[i], clientIP) {
+			return canvasCredentialForGroup(*selectedGroup, keys[i].Key), nil
+		}
+	}
+	return nil, err
+}
+
+func (s *APIKeyService) listCanvasKeys(ctx context.Context, userID, groupID int64) ([]APIKey, error) {
+	repo, ok := s.apiKeyRepo.(apiKeyAllByUserIDLister)
+	if !ok {
+		return nil, fmt.Errorf("api key repository does not support full user listing")
+	}
+	keys, err := repo.ListAllByUserID(ctx, userID, APIKeyListFilters{GroupID: &groupID})
+	if err != nil {
+		return nil, fmt.Errorf("list canvas api keys: %w", err)
+	}
+	return keys, nil
+}
+
+func canvasKeyUsable(key *APIKey, clientIP string) bool {
+	if key == nil || key.GroupID == nil || !key.IsActive() || key.IsExpired() || key.IsQuotaExhausted() {
+		return false
+	}
+	if key.RateLimit5h > 0 && key.EffectiveUsage5h() >= key.RateLimit5h ||
+		key.RateLimit1d > 0 && key.EffectiveUsage1d() >= key.RateLimit1d ||
+		key.RateLimit7d > 0 && key.EffectiveUsage7d() >= key.RateLimit7d {
+		return false
+	}
+	allowed, _ := ip.CheckIPRestriction(clientIP, key.IPWhitelist, key.IPBlacklist)
+	return allowed
+}
+
+func canvasCredentialForGroup(group CanvasGroupSummary, key string) *CanvasCredential {
+	return &CanvasCredential{
+		GroupID: group.ID, Platform: group.Platform, APIFormat: group.APIFormat, BaseURL: "/", APIKey: key,
+	}
 }
 
 // canUserBindGroupInternal 内部方法，检查用户是否可以绑定分组（使用预加载的订阅数据）

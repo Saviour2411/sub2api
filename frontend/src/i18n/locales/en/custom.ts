@@ -179,9 +179,15 @@ export default {
       saveFailed: 'Failed to save custom feature settings',
       tabs: {
         upstream: 'Upstream Management',
+        canvas: 'Infinite Canvas',
         modelMarketplace: 'Model Marketplace',
         gateway: 'Gateway Settings',
         dailyCheckin: 'Daily Check-in',
+      },
+      canvas: {
+        title: 'Infinite Canvas',
+        description: 'Controls the user navigation entry and the canvas bootstrap and runtime credential endpoints.',
+        saved: 'Infinite Canvas settings saved',
       },
       upstream: {
         title: 'Upstream Management',
