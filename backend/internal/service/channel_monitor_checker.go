@@ -207,7 +207,7 @@ var providerAdapters = map[string]providerAdapter{
 		buildHeaders: func(apiKey string) map[string]string {
 			return map[string]string{"x-goog-api-key": apiKey}
 		},
-		textPath: "candidates.0.content.parts.0.text",
+		extractText: extractGeminiMonitorText,
 	},
 }
 
@@ -353,6 +353,30 @@ func extractAnthropicMonitorText(respBytes []byte) string {
 	return strings.Join(parts, "\n")
 }
 
+// extractGeminiMonitorText 聚合 Gemini 首个候选中的可见文本，并跳过思考分段。
+// 新版 Gemini 可能把 thought part 放在最终答案之前，不能只读取 parts[0]。
+func extractGeminiMonitorText(respBytes []byte) string {
+	return strings.Join(extractGeminiMonitorTextParts(gjson.ParseBytes(respBytes)), "")
+}
+
+func extractGeminiMonitorTextParts(payload gjson.Result) []string {
+	var texts []string
+	candidate := payload.Get("candidates.0")
+	if !candidate.Exists() {
+		return texts
+	}
+	candidate.Get("content.parts").ForEach(func(_, part gjson.Result) bool {
+		if part.Get("thought").Bool() {
+			return true
+		}
+		if text := part.Get("text").String(); strings.TrimSpace(text) != "" {
+			texts = append(texts, text)
+		}
+		return true
+	})
+	return texts
+}
+
 func applyMonitorStreamSetting(provider string, body []byte, enabled bool) ([]byte, error) {
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
@@ -436,15 +460,7 @@ func extractStreamingMonitorText(provider, apiMode string, respBytes []byte) str
 				}
 			}
 		case MonitorProviderGemini:
-			gjson.Get(payload, "candidates").ForEach(func(_, candidate gjson.Result) bool {
-				candidate.Get("content.parts").ForEach(func(_, part gjson.Result) bool {
-					if text := part.Get("text").String(); text != "" {
-						texts = append(texts, text)
-					}
-					return true
-				})
-				return true
-			})
+			texts = append(texts, extractGeminiMonitorTextParts(gjson.Parse(payload))...)
 		}
 	}
 	return strings.Join(texts, "")

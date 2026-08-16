@@ -557,6 +557,66 @@ func TestRunCheckForModel_GeminiStreamingRequestUsesStreamEndpoint(t *testing.T)
 	}
 }
 
+func TestExtractGeminiMonitorText_AggregatesVisiblePartsAndSkipsThought(t *testing.T) {
+	response := []byte(`{
+		"candidates": [{
+			"content": {
+				"parts": [
+					{"thought": true, "text": "The answer might be 99."},
+					{"text": "4"},
+					{"text": "2"}
+				]
+			}
+		}, {
+			"content": {"parts": [{"text": "99"}]}
+		}]
+	}`)
+
+	if got := extractGeminiMonitorText(response); got != "42" {
+		t.Fatalf("Gemini 可见文本聚合结果 = %q，期望 %q", got, "42")
+	}
+}
+
+func TestRunCheckForModel_GeminiNonStreamingSkipsThoughtPart(t *testing.T) {
+	swapMonitorHTTPClient(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() { _ = r.Body.Close() }()
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		answer := answerFromGeminiRequest(body)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"candidates": []map[string]any{
+				{
+					"content": map[string]any{
+						"parts": []map[string]any{
+							{"thought": true, "text": "先在内部完成计算。"},
+							{"text": answer},
+						},
+					},
+				},
+				{"content": map[string]any{"parts": []map[string]any{{"text": "错误备选答案 999"}}}},
+			},
+		})
+	}))
+	t.Cleanup(srv.Close)
+
+	res := runCheckForModel(context.Background(), MonitorProviderGemini, srv.URL, "AIza-test", "gemini-test", nil)
+	if res.Status != MonitorStatusOperational {
+		t.Fatalf("Gemini 非流式多分段响应应通过探针，状态 = %s，消息 = %q", res.Status, res.Message)
+	}
+}
+
+func TestChannelMonitorTimeoutsMatchGatewayDefault(t *testing.T) {
+	const expected = 600 * time.Second
+	if monitorRequestTimeout != expected {
+		t.Fatalf("探针总超时 = %s，期望 %s", monitorRequestTimeout, expected)
+	}
+	if monitorResponseHeaderTimeout != expected {
+		t.Fatalf("探针响应头超时 = %s，期望 %s", monitorResponseHeaderTimeout, expected)
+	}
+}
+
 func TestRunCheckForModel_OpenAIResponsesReplaceMissingInstructionsFailsLocally(t *testing.T) {
 	h := &openAICaptureHandler{}
 	endpoint := setupFakeOpenAI(t, h)
