@@ -547,6 +547,7 @@ export default {
             partialFailed: "部分图片生成失败",
             allFailed: "全部图片生成失败",
             retryPromptMissing: "找不到提示词，无法重试",
+            currentGroupModelMissing: "当前分组没有适用于此节点的模型，请切换分组或模型",
             referenceMissing: "参考图片已丢失，无法继续重试",
             emptyTextImage: "文本节点为空，无法生图",
             untitledCanvas: "未命名画布",

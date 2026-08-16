@@ -133,7 +133,9 @@ func SecurityHeaders(cfg config.CSPConfig, getFrameSrcOrigins func() []string) g
 		if canvasApp {
 			c.Header("X-Frame-Options", "SAMEORIGIN")
 			finalPolicy = setCSPDirective(finalPolicy, "frame-ancestors", "'self'")
-			finalPolicy = setCSPDirective(finalPolicy, "media-src", "'self'", "blob:", "data:")
+			finalPolicy = addToDirective(finalPolicy, "connect-src", "data:")
+			finalPolicy = addToDirective(finalPolicy, "connect-src", "blob:")
+			finalPolicy = setCSPDirective(finalPolicy, "media-src", "'self'", "blob:", "data:", "https:")
 		} else {
 			c.Header("X-Frame-Options", "DENY")
 		}

@@ -146,7 +146,9 @@ func TestSecurityHeaders(t *testing.T) {
 		csp := w.Header().Get("Content-Security-Policy")
 		assert.Contains(t, csp, "frame-ancestors 'self'")
 		assert.NotContains(t, csp, "frame-ancestors 'none'")
-		assert.Contains(t, csp, "media-src 'self' blob: data:")
+		assert.Contains(t, csp, "media-src 'self' blob: data: https:")
+		assert.Equal(t, 1, countDirectiveValue(csp, "connect-src", "data:"))
+		assert.Equal(t, 1, countDirectiveValue(csp, "connect-src", "blob:"))
 	})
 
 	t.Run("api_route_skips_csp_nonce_generation", func(t *testing.T) {

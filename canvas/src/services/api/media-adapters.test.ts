@@ -44,13 +44,13 @@ function stationConfig(apiFormat: ApiCallFormat, model: string, capability: Mode
 describe("站内媒体请求适配", () => {
     beforeEach(() => vi.clearAllMocks());
 
-    it("OpenAI 与 Grok 格式使用站内图像生成接口和 Bearer 密钥", async () => {
+    it.each(["gpt-image-2", "grok-imagine-image-pro"])("OpenAI 兼容图像模型 %s 使用站内接口和 Bearer 密钥", async (model) => {
         vi.mocked(axios.post).mockResolvedValueOnce({ data: { data: [{ b64_json: "aGVsbG8=" }] } });
 
-        const images = await requestGeneration(stationConfig("openai", "gpt-image-1", "image"), "画一张图");
+        const images = await requestGeneration(stationConfig("openai", model, "image"), "画一张图");
 
         expect(images[0].dataUrl).toBe("data:image/png;base64,aGVsbG8=");
-        expect(axios.post).toHaveBeenCalledWith("/v1/images/generations", expect.objectContaining({ model: "gpt-image-1", prompt: "画一张图" }), expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer sk-runtime-only" }) }));
+        expect(axios.post).toHaveBeenCalledWith("/v1/images/generations", expect.objectContaining({ model, prompt: "画一张图" }), expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer sk-runtime-only" }) }));
     });
 
     it("Gemini 图像使用 v1beta generateContent 和 x-goog-api-key", async () => {
@@ -76,6 +76,19 @@ describe("站内媒体请求适配", () => {
         expect(state).toEqual({ status: "pending" });
         expect(axios.post).toHaveBeenCalledWith("/v1/videos", expect.any(FormData), expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer sk-runtime-only" }) }));
         expect(axios.get).toHaveBeenCalledWith("/v1/videos/task-1", expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer sk-runtime-only" }) }));
+    });
+
+    it.each(["sora-2", "grok-imagine-video"])("视频模型 %s 完成后从站内内容接口读取 Blob", async (model) => {
+        const config = stationConfig("openai", model, "video");
+        const blob = new Blob(["video"], { type: "video/mp4" });
+        vi.mocked(axios.get)
+            .mockResolvedValueOnce({ data: { id: "task-2", status: "completed", video_url: "https://cdn.example.com/result.mp4" } })
+            .mockResolvedValueOnce({ data: blob });
+
+        const state = await pollVideoGenerationTask(config, { id: "task-2", provider: "openai", model: encodeChannelModel("station", model) });
+
+        expect(state).toEqual({ status: "completed", result: { blob } });
+        expect(axios.get).toHaveBeenNthCalledWith(2, "/v1/videos/task-2/content", expect.objectContaining({ responseType: "blob", headers: expect.objectContaining({ Authorization: "Bearer sk-runtime-only" }) }));
     });
 
     it("Gemini 视频首版明确拒绝且不发送请求", async () => {

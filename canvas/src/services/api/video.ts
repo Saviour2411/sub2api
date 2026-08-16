@@ -2,6 +2,7 @@ import axios from "axios";
 
 import i18n from "@/i18n";
 import { dataUrlToFile } from "@/lib/image-utils";
+import { sourceToBlob } from "@/lib/source-blob";
 import { getMediaBlob, uploadMediaFile, type UploadedFile } from "@/services/file-storage";
 import { imageToDataUrl } from "@/services/image-storage";
 import { boolConfig, buildSeedancePromptText, isSeedanceVideoConfig, normalizeSeedanceDuration, normalizeSeedanceRatio, normalizeSeedanceResolution, seedanceVideoReferenceError, SEEDANCE_REFERENCE_LIMITS } from "@/lib/seedance-video";
@@ -107,12 +108,16 @@ async function pollOpenAIVideoTask(config: AiConfig, task: VideoGenerationTask, 
     try {
         const video = unwrapVideoResponse((await axios.get<ApiVideoResponse>(aiApiUrl(config, `/videos/${task.id}`), { headers: aiHeaders(config), signal: options?.signal })).data);
         const url = videoResultUrl(video);
-        if (url) return { status: "completed", result: await videoResultFromUrl(url, options) };
         if (video.status === "completed") {
-            const content = await axios.get<Blob>(aiApiUrl(config, `/videos/${task.id}/content`), { headers: aiHeaders(config), responseType: "blob", signal: options?.signal });
-            await assertVideoBlob(content.data);
-            return { status: "completed", result: { blob: content.data } };
+            try {
+                const content = await axios.get<Blob>(aiApiUrl(config, `/videos/${task.id}/content`), { headers: aiHeaders(config), responseType: "blob", signal: options?.signal });
+                await assertVideoBlob(content.data);
+                return { status: "completed", result: { blob: content.data } };
+            } catch (error) {
+                if (!url) throw error;
+            }
         }
+        if (url) return { status: "completed", result: await videoResultFromUrl(url, options) };
         if (video.status === "failed" || video.status === "cancelled") return { status: "failed", error: readApiErrorMessage(video.error?.message) || apiText("videoGenerationFailed") };
         return { status: "pending" };
     } catch (error) {
@@ -215,7 +220,7 @@ async function resolveSeedanceVideoUrl(video: ReferenceVideo) {
     if (isPublicMediaUrl(video.url) || video.url.startsWith("asset://")) return video.url;
     let blob: Blob | null = null;
     if (video.storageKey) blob = await getMediaBlob(video.storageKey);
-    if (!blob && video.url?.startsWith("blob:")) blob = await (await fetch(video.url)).blob();
+    if (!blob && video.url?.startsWith("blob:")) blob = await sourceToBlob(video.url);
     if (!blob) throw new Error(apiText("invalidReferenceVideo"));
     return blobToDataUrl(blob);
 }
@@ -224,7 +229,7 @@ async function resolveSeedanceAudioUrl(audio: ReferenceAudio) {
     if (isPublicMediaUrl(audio.url) || audio.url.startsWith("asset://")) return audio.url;
     let blob: Blob | null = null;
     if (audio.storageKey) blob = await getMediaBlob(audio.storageKey);
-    if (!blob && audio.url?.startsWith("blob:")) blob = await (await fetch(audio.url)).blob();
+    if (!blob && audio.url?.startsWith("blob:")) blob = await sourceToBlob(audio.url);
     if (!blob) throw new Error(apiText("invalidReferenceAudio"));
     return blobToDataUrl(blob);
 }
@@ -312,7 +317,7 @@ function readAxiosError(error: unknown, fallback: string) {
     if (axios.isCancel(error)) return apiText("requestCanceled");
     if (axios.isAxiosError<{ error?: { message?: string }; msg?: string; message?: string; code?: number | string }>(error)) {
         const responseData = error.response?.data;
-        return readApiErrorMessage(responseData) || statusMessage(error.response?.status, fallback);
+        return readApiErrorMessage(responseData) || statusMessage(error.response?.status, error.message || fallback);
     }
     if (error instanceof DOMException && error.name === "AbortError") return apiText("requestCanceled");
     return error instanceof Error ? readApiErrorMessage(error.message) || error.message : fallback;

@@ -1,6 +1,7 @@
 import { saveAs } from "file-saver";
 
 import i18n from "@/i18n";
+import { sourceToBlob } from "@/lib/source-blob";
 import { createZip } from "@/lib/zip";
 import { getMediaBlob } from "@/services/file-storage";
 import { getImageBlob } from "@/services/image-storage";
@@ -53,7 +54,7 @@ export async function exportCanvasNodes(nodes: CanvasNodeData[], fileName = i18n
             if (node.type === CanvasNodeType.Text) return void zipFiles.push({ name: uniqueName(title, "txt"), data: node.metadata?.content || node.metadata?.prompt || "" });
             const content = node.metadata?.content;
             if (content && content.startsWith("data:")) {
-                const blob = await (await fetch(content)).blob();
+                const blob = await sourceToBlob(content);
                 return void zipFiles.push({ name: uniqueName(title, fileExtension(blob.type, storageKey)), data: blob });
             }
             zipFiles.push({ name: uniqueName(title, "json"), data: JSON.stringify(node, null, 2) });

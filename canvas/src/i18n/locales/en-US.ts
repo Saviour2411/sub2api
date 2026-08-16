@@ -547,6 +547,7 @@ export default {
             partialFailed: "Some images failed to generate",
             allFailed: "All images failed to generate",
             retryPromptMissing: "No prompt found for retry",
+            currentGroupModelMissing: "The current group has no model for this node. Switch the group or model.",
             referenceMissing: "The reference image is missing, so retry cannot continue",
             emptyTextImage: "The text node is empty, so an image cannot be generated",
             untitledCanvas: "Untitled canvas",
