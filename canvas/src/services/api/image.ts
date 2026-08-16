@@ -72,6 +72,7 @@ type GeminiPart = {
     inlineData?: { mimeType?: string; data?: string };
     inline_data?: { mime_type?: string; mimeType?: string; data?: string };
     fileData?: { mimeType?: string; fileUri?: string };
+    file_data?: { mime_type?: string; mimeType?: string; file_uri?: string; fileUri?: string };
     functionCall?: { id?: string; name?: string; args?: Record<string, unknown> };
     functionResponse?: { id?: string; name?: string; response?: Record<string, unknown> };
     thoughtSignature?: string;
@@ -85,6 +86,7 @@ type GeminiPayload = {
     promptFeedback?: { blockReason?: string };
 };
 type GeminiStreamState = { buffer: string; text: string; toolCalls: ResponseToolCall[]; error?: string };
+type GeminiImageStreamState = { buffer: string; images: string[]; seen: Set<string> };
 type RequestOptions = { signal?: AbortSignal };
 
 const QUALITY_BASE: Record<string, number> = {
@@ -654,29 +656,85 @@ async function requestGeminiImagesOnce(config: AiConfig, prompt: string, referen
     for (const image of references) {
         parts.push(toGeminiImagePart(await imageToDataUrl(image)));
     }
-    const response = await axios.post<GeminiPayload>(
-        geminiApiUrl(config, "generateContent"),
-        {
+    const response = await fetch(`${geminiApiUrl(config, "streamGenerateContent")}?alt=sse`, {
+        method: "POST",
+        headers: { ...geminiHeaders(config), Accept: "text/event-stream" },
+        body: JSON.stringify({
             ...toGeminiBody(config, [{ role: "user", content: prompt }], { generationConfig: { responseModalities: ["TEXT", "IMAGE"], ...resolveGeminiImageConfig(config) } }),
             contents: [{ role: "user", parts }],
-        },
-        { headers: geminiHeaders(config), signal: options?.signal },
-    );
-    return parseGeminiImagePayload(response.data);
+        }),
+        signal: options?.signal,
+    });
+    if (!response.ok) throw new Error(await readFetchError(response, apiText("requestFailed")));
+
+    const contentType = response.headers.get("content-type")?.toLowerCase() || "";
+    if (contentType.includes("application/json") || !response.body) {
+        return parseGeminiImagePayload((await response.json()) as GeminiPayload);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    const state: GeminiImageStreamState = { buffer: "", images: [], seen: new Set() };
+    for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        consumeGeminiImageStreamText(state, decoder.decode(value, { stream: true }));
+    }
+    consumeGeminiImageStreamText(state, decoder.decode(), true);
+    if (!state.images.length) throw new Error(apiText("geminiNoImage"));
+    return state.images.map((dataUrl) => ({ id: nanoid(), dataUrl }));
 }
 
-function parseGeminiImagePayload(payload: GeminiPayload) {
+function consumeGeminiImageStreamText(state: GeminiImageStreamState, text: string, flush = false) {
+    state.buffer += text;
+    for (;;) {
+        const match = state.buffer.match(/\r?\n\r?\n/);
+        if (!match) break;
+        const index = match.index ?? 0;
+        consumeGeminiImageStreamBlock(state.buffer.slice(0, index), state);
+        state.buffer = state.buffer.slice(index + match[0].length);
+    }
+    if (flush && state.buffer.trim()) {
+        consumeGeminiImageStreamBlock(state.buffer, state);
+        state.buffer = "";
+    }
+}
+
+function consumeGeminiImageStreamBlock(block: string, state: GeminiImageStreamState) {
+    const data = block
+        .split(/\r?\n/)
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).replace(/^ /, ""))
+        .join("\n")
+        .trim();
+    if (!data || data === "[DONE]") return;
+    const event = JSON.parse(data) as GeminiPayload & { response?: GeminiPayload };
+    const payload = event.response || event;
     validateGeminiPayload(payload);
-    const images =
+    for (const image of extractGeminiImages(payload)) {
+        if (state.seen.has(image)) continue;
+        state.seen.add(image);
+        state.images.push(image);
+    }
+}
+
+function extractGeminiImages(payload: GeminiPayload) {
+    return (
         payload.candidates
             ?.flatMap((candidate) => candidate.content?.parts || [])
             .map((part) => {
                 const inlineData = part.inlineData || (part.inline_data ? { mimeType: part.inline_data.mimeType || part.inline_data.mime_type, data: part.inline_data.data } : undefined);
                 if (inlineData?.data) return `data:${inlineData.mimeType || "image/png"};base64,${inlineData.data}`;
-                return part.fileData?.fileUri || null;
+                const fileData = part.fileData || (part.file_data ? { fileUri: part.file_data.fileUri || part.file_data.file_uri } : undefined);
+                return fileData?.fileUri || null;
             })
-            .filter((value): value is string => Boolean(value))
-            .map((dataUrl) => ({ id: nanoid(), dataUrl })) || [];
+            .filter((value): value is string => Boolean(value)) || []
+    );
+}
+
+function parseGeminiImagePayload(payload: GeminiPayload) {
+    validateGeminiPayload(payload);
+    const images = extractGeminiImages(payload).map((dataUrl) => ({ id: nanoid(), dataUrl }));
     if (!images.length) throw new Error(apiText("geminiNoImage"));
     return images;
 }
