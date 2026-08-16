@@ -196,8 +196,8 @@ function resolveGeminiImageConfig(config: AiConfig) {
     const ratio = dimensions ? `${dimensions.width}:${dimensions.height}` : value;
     const aspectRatio = value && value.toLowerCase() !== "auto" ? closestGeminiAspectRatio(ratio) : undefined;
     const imageSize = supportsGeminiImageSize(config.model) ? resolveGeminiImageSize(config.quality, dimensions) : undefined;
-    const image = { ...(aspectRatio ? { aspectRatio } : {}), ...(imageSize ? { imageSize } : {}) };
-    return Object.keys(image).length ? { responseFormat: { image } } : {};
+    const imageConfig = { ...(aspectRatio ? { aspectRatio } : {}), ...(imageSize ? { imageSize } : {}) };
+    return Object.keys(imageConfig).length ? { imageConfig } : {};
 }
 
 function closestGeminiAspectRatio(value: string) {
@@ -224,6 +224,18 @@ function resolveGeminiImageSize(quality: string, dimensions: { width: number; he
 function supportsGeminiImageSize(model: string) {
     const value = model.toLowerCase();
     return value.includes("gemini-3") || value.includes("3.1") || value.includes("3-pro");
+}
+
+function normalizeImageCount(config: AiConfig, value: string) {
+    const max = config.apiFormat === "gemini" ? 15 : 10;
+    return Math.max(1, Math.min(max, Math.floor(Math.abs(Number(value)) || 1)));
+}
+
+function imageResponseOptions(config: ReturnType<typeof resolveModelRequestConfig>) {
+    const model = config.model.trim().toLowerCase();
+    if (config.platform === "grok" || model.startsWith("dall-e-") || model.startsWith("dalle-")) return { response_format: "b64_json" };
+    if (model.startsWith("gpt-image-")) return { output_format: IMAGE_OUTPUT_FORMAT };
+    return { response_format: "b64_json", output_format: IMAGE_OUTPUT_FORMAT };
 }
 
 function resolveImageDataUrl(item: Record<string, unknown>) {
@@ -741,7 +753,7 @@ function parseGeminiImagePayload(payload: GeminiPayload) {
 
 export async function requestGeneration(config: AiConfig, prompt: string, options?: RequestOptions) {
     const requestConfig = resolveModelRequestConfig(config, config.model || config.imageModel);
-    const n = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
+    const n = normalizeImageCount(requestConfig, config.count);
     if (requestConfig.apiFormat === "gemini") {
         try {
             return await requestGeminiImages(requestConfig, prompt, [], n, options);
@@ -762,8 +774,7 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
                 ...(quality ? { quality } : {}),
                 ...(requestSize ? { size: requestSize } : {}),
                 ...(background ? { background } : {}),
-                response_format: "b64_json",
-                output_format: IMAGE_OUTPUT_FORMAT,
+                ...imageResponseOptions(requestConfig),
             },
             {
                 headers: aiHeaders(requestConfig, "application/json"),
@@ -779,7 +790,7 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
 
 export async function requestEdit(config: AiConfig, prompt: string, references: ReferenceImage[], mask?: ReferenceImage, options?: RequestOptions) {
     const requestConfig = resolveModelRequestConfig(config, config.model || config.imageModel);
-    const n = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
+    const n = normalizeImageCount(requestConfig, config.count);
     const requestPrompt = buildImageReferencePromptText(prompt, references);
     if (requestConfig.apiFormat === "gemini") {
         if (mask) throw new Error(apiText("geminiMaskUnsupported"));
@@ -803,8 +814,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
                     model: requestConfig.model,
                     prompt: withSystemPrompt(requestConfig, requestPrompt),
                     n,
-                    response_format: "b64_json",
-                    output_format: IMAGE_OUTPUT_FORMAT,
+                    ...imageResponseOptions(requestConfig),
                     image: refs,
                     ...(quality ? { quality } : {}),
                     ...(requestSize ? { size: requestSize } : {}),
@@ -828,8 +838,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     formData.set("model", requestConfig.model);
     formData.set("prompt", withSystemPrompt(requestConfig, requestPrompt));
     formData.set("n", String(n));
-    formData.set("response_format", "b64_json");
-    formData.set("output_format", IMAGE_OUTPUT_FORMAT);
+    Object.entries(imageResponseOptions(requestConfig)).forEach(([key, value]) => formData.set(key, value));
     if (quality) {
         formData.set("quality", quality);
     }

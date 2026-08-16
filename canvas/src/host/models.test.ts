@@ -17,9 +17,19 @@ describe("画布模型分类", () => {
         ]);
     });
 
-    it("识别 Imagen 和 nano-banana，且不向 Gemini 暴露视频模型", () => {
-        expect(classifyCanvasModels([{ name: "models/imagen-4" }, { name: "models/nano-banana-pro" }, { name: "models/veo-3" }], geminiGroup)).toEqual([
-            { name: "imagen-4", capability: "image" },
+    it("只暴露支持 generateContent 的 Gemini 图片模型，并隐藏 predict 与视频模型", () => {
+        expect(
+            classifyCanvasModels(
+                [
+                    { name: "models/imagen-4", supportedGenerationMethods: ["predict"] },
+                    { name: "models/gemini-3.1-flash-image", supportedGenerationMethods: ["generateContent", "streamGenerateContent"] },
+                    { name: "models/nano-banana-pro" },
+                    { name: "models/veo-3", supportedGenerationMethods: ["generateContent"] },
+                ],
+                geminiGroup,
+            ),
+        ).toEqual([
+            { name: "gemini-3.1-flash-image", capability: "image" },
             { name: "nano-banana-pro", capability: "image" },
         ]);
     });

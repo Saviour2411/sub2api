@@ -166,6 +166,8 @@ export default {
         modelReadFailed: "Failed to load models",
         videoTimeout: "{{provider}}video generation timed out. Try again later.",
         videoReferencesUnsupported: "This video API does not support reference video or audio. Switch to Seedance 2.0 / Volcengine Agent Plan, or remove the reference assets.",
+        grokReferenceLimit: "Grok video generation supports at most one first-frame reference image. Remove the extra references.",
+        openAIVideoReferenceLimit: "OpenAI video generation supports at most one first-frame reference image. Remove the extra references.",
         noPlayableVideo: "The video API did not return a playable video",
         noVideoTaskId: "The video API did not return a task ID",
         videoTaskCreateFailed: "Failed to create video task",

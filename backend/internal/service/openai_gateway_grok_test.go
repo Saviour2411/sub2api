@@ -832,6 +832,112 @@ func TestParseGrokMediaVideoRequestResolution(t *testing.T) {
 	require.Equal(t, "720p", info.Resolution)
 }
 
+func TestParseGrokMediaVideoRequestSupportsOpenAIMultipartAliases(t *testing.T) {
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	require.NoError(t, writer.WriteField("model", "grok-imagine-video"))
+	require.NoError(t, writer.WriteField("prompt", "waves"))
+	require.NoError(t, writer.WriteField("seconds", "6"))
+	require.NoError(t, writer.WriteField("resolution_name", "480p"))
+	require.NoError(t, writer.WriteField("size", "1280x720"))
+	partHeader := textproto.MIMEHeader{}
+	partHeader.Set("Content-Disposition", `form-data; name="input_reference[]"; filename="first-frame.png"`)
+	partHeader.Set("Content-Type", "image/png")
+	part, err := writer.CreatePart(partHeader)
+	require.NoError(t, err)
+	_, err = part.Write([]byte{0x89, 0x50, 0x4e, 0x47})
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	info := ParseGrokMediaRequest(writer.FormDataContentType(), buf.Bytes())
+
+	require.Equal(t, "grok-imagine-video", info.Model)
+	require.Equal(t, "waves", info.Prompt)
+	require.Equal(t, 6, info.DurationSeconds)
+	require.Equal(t, "480p", info.Resolution)
+	require.Equal(t, "1280x720", info.Size)
+	require.Len(t, info.Uploads, 1)
+	require.True(t, info.HasInputImage())
+}
+
+func TestPrepareGrokVideoGenerationConvertsOpenAIMultipartToOfficialJSON(t *testing.T) {
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	require.NoError(t, writer.WriteField("model", "grok-imagine-video"))
+	require.NoError(t, writer.WriteField("prompt", "waves"))
+	require.NoError(t, writer.WriteField("seconds", "6"))
+	require.NoError(t, writer.WriteField("resolution_name", "480p"))
+	require.NoError(t, writer.WriteField("size", "1280x720"))
+	require.NoError(t, writer.WriteField("preset", "normal"))
+	partHeader := textproto.MIMEHeader{}
+	partHeader.Set("Content-Disposition", `form-data; name="input_reference[]"; filename="first-frame.png"`)
+	partHeader.Set("Content-Type", "image/png")
+	part, err := writer.CreatePart(partHeader)
+	require.NoError(t, err)
+	_, err = part.Write([]byte{0x89, 0x50, 0x4e, 0x47})
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	out, contentType, err := prepareGrokMediaForwardBody(GrokMediaEndpointVideosGenerations, buf.Bytes(), writer.FormDataContentType())
+
+	require.NoError(t, err)
+	require.Equal(t, "application/json", contentType)
+	require.Equal(t, "grok-imagine-video", gjson.GetBytes(out, "model").String())
+	require.Equal(t, "waves", gjson.GetBytes(out, "prompt").String())
+	require.Equal(t, int64(6), gjson.GetBytes(out, "duration").Int())
+	require.Equal(t, "480p", gjson.GetBytes(out, "resolution").String())
+	require.Equal(t, "16:9", gjson.GetBytes(out, "aspect_ratio").String())
+	require.False(t, gjson.GetBytes(out, "image.type").Exists())
+	require.True(t, strings.HasPrefix(gjson.GetBytes(out, "image.url").String(), "data:image/png;base64,"))
+	require.False(t, gjson.GetBytes(out, "seconds").Exists())
+	require.False(t, gjson.GetBytes(out, "preset").Exists())
+}
+
+func TestPrepareGrokVideoGenerationNormalizesOfficialImageObject(t *testing.T) {
+	body := []byte(`{"model":"grok-imagine-video-1.5","image":{"url":"https://example.com/first-frame.png","type":"image_url"}}`)
+
+	out, contentType, err := prepareGrokMediaForwardBody(GrokMediaEndpointVideosGenerations, body, "application/json")
+
+	require.NoError(t, err)
+	require.Equal(t, "application/json", contentType)
+	require.Equal(t, "https://example.com/first-frame.png", gjson.GetBytes(out, "image.url").String())
+	require.False(t, gjson.GetBytes(out, "image.type").Exists())
+}
+
+func TestPrepareGrokVideoGenerationNormalizesJSONAliases(t *testing.T) {
+	body := []byte(`{
+		"model":"grok-imagine-video",
+		"prompt":"waves",
+		"seconds":"6",
+		"resolution_name":"720p",
+		"size":"720x1280",
+		"preset":"normal",
+		"input_reference":{"image_url":"https://example.com/first-frame.png"}
+	}`)
+
+	out, contentType, err := prepareGrokMediaForwardBody(GrokMediaEndpointVideosGenerations, body, "application/json")
+
+	require.NoError(t, err)
+	require.Equal(t, "application/json", contentType)
+	require.Equal(t, int64(6), gjson.GetBytes(out, "duration").Int())
+	require.Equal(t, "720p", gjson.GetBytes(out, "resolution").String())
+	require.Equal(t, "9:16", gjson.GetBytes(out, "aspect_ratio").String())
+	require.Equal(t, "https://example.com/first-frame.png", gjson.GetBytes(out, "image.url").String())
+	for _, field := range []string{"seconds", "resolution_name", "size", "preset", "input_reference"} {
+		require.False(t, gjson.GetBytes(out, field).Exists())
+	}
+}
+
+func TestPrepareGrokVideoGenerationRejectsMultipleReferenceImages(t *testing.T) {
+	body := []byte(`{"model":"grok-imagine-video","image":["https://example.com/1.png","https://example.com/2.png"]}`)
+
+	out, _, err := prepareGrokMediaForwardBody(GrokMediaEndpointVideosGenerations, body, "application/json")
+
+	require.Error(t, err)
+	require.Nil(t, out)
+	require.Contains(t, err.Error(), "at most one input reference image")
+}
+
 func TestParseGrokMediaRequestAcceptsOfficialImageURLFields(t *testing.T) {
 	body := []byte(`{
 		"model":"grok-imagine-video-1.5",
@@ -918,18 +1024,50 @@ func TestPrepareGrokImageEditNormalizesOfficialImageObjects(t *testing.T) {
 	body := []byte(`{
 		"model":"grok-imagine-image-quality",
 		"image":{"image_url":{"url":"https://example.com/first.png"}},
-		"images":["https://example.com/second.png"],
-		"mask":{"image_url":"https://example.com/mask.png"}
+		"images":["https://example.com/second.png"]
 	}`)
 
 	out, contentType, err := prepareGrokMediaForwardBody(GrokMediaEndpointImagesEdits, body, "application/json")
 	require.NoError(t, err)
 	require.Equal(t, "application/json", contentType)
-	for _, path := range []string{"image", "images.0", "mask"} {
-		require.Equal(t, "image_url", gjson.GetBytes(out, path+".type").String())
-		require.NotEmpty(t, gjson.GetBytes(out, path+".url").String())
-		require.False(t, gjson.GetBytes(out, path+".image_url").Exists())
+	require.False(t, gjson.GetBytes(out, "image").Exists())
+	require.Equal(t, "image_url", gjson.GetBytes(out, "images.0.type").String())
+	require.Equal(t, "https://example.com/second.png", gjson.GetBytes(out, "images.0.url").String())
+	require.False(t, gjson.GetBytes(out, "images.0.image_url").Exists())
+}
+
+func TestPrepareGrokImageEditRejectsMask(t *testing.T) {
+	body := []byte(`{"model":"grok-imagine-image-2.0","image":{"url":"https://example.com/source.png"},"mask":{"url":"https://example.com/mask.png"}}`)
+
+	out, _, err := prepareGrokMediaForwardBody(GrokMediaEndpointImagesEdits, body, "application/json")
+
+	require.Error(t, err)
+	require.Nil(t, out)
+	require.Contains(t, err.Error(), "does not support masks")
+}
+
+func TestPrepareGrokImageEditMultipartUsesOnlyImagesForMultipleSources(t *testing.T) {
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	require.NoError(t, writer.WriteField("model", "grok-imagine-image-2.0"))
+	require.NoError(t, writer.WriteField("prompt", "combine these images"))
+	for index := 0; index < 2; index++ {
+		header := textproto.MIMEHeader{}
+		header.Set("Content-Disposition", fmt.Sprintf(`form-data; name="image"; filename="source-%d.png"`, index))
+		header.Set("Content-Type", "image/png")
+		part, err := writer.CreatePart(header)
+		require.NoError(t, err)
+		_, err = part.Write([]byte{0x89, 0x50, 0x4e, 0x47})
+		require.NoError(t, err)
 	}
+	require.NoError(t, writer.Close())
+
+	out, contentType, err := prepareGrokMediaForwardBody(GrokMediaEndpointImagesEdits, buf.Bytes(), writer.FormDataContentType())
+
+	require.NoError(t, err)
+	require.Equal(t, "application/json", contentType)
+	require.False(t, gjson.GetBytes(out, "image").Exists())
+	require.Len(t, gjson.GetBytes(out, "images").Array(), 2)
 }
 
 func TestPrepareGrokImageEditRejectsMoreThanThreeSources(t *testing.T) {
@@ -1070,7 +1208,7 @@ func TestForwardGrokMediaAppliesAccountModelMappingAfterEndpointNormalization(t 
 			modelMapping:     map[string]any{"grok-imagine-image-quality": "vendor-image-model"},
 			wantRequestModel: "grok-imagine-image-quality",
 			wantUpstream:     "vendor-image-model",
-			wantBody:         `{"model":"vendor-image-model","prompt":"draw"}`,
+			wantBody:         `{"model":"vendor-image-model","prompt":"draw","aspect_ratio":"1:1","resolution":"1k"}`,
 			responseBody:     `{"data":[{"url":"https://images.test/mapped.png"}]}`,
 		},
 		{
@@ -1160,13 +1298,13 @@ func TestForwardGrokMediaImagesGenerationRejectsEmptySuccessfulResponse(t *testi
 	require.Empty(t, recorder.Body.String())
 }
 
-func TestForwardGrokMediaImagesGenerationStripsUnsupportedSize(t *testing.T) {
+func TestForwardGrokMediaImagesGenerationStripsOpenAIOnlyOptions(t *testing.T) {
 	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
 	gin.SetMode(gin.TestMode)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	body := []byte(`{"model":"grok-imagine-image","prompt":"draw a cat","size":"1024x1024"}`)
+	body := []byte(`{"model":"grok-imagine-image","prompt":"draw a cat","size":"1024x1024","quality":"high","background":"transparent","output_format":"png","response_format":"b64_json"}`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 
@@ -1193,7 +1331,7 @@ func TestForwardGrokMediaImagesGenerationStripsUnsupportedSize(t *testing.T) {
 
 	result, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointImagesGenerations, "", body, "application/json")
 	require.NoError(t, err)
-	require.JSONEq(t, `{"model":"grok-imagine-image","prompt":"draw a cat"}`, string(upstream.lastBody))
+	require.JSONEq(t, `{"model":"grok-imagine-image","prompt":"draw a cat","aspect_ratio":"1:1","resolution":"1k","response_format":"b64_json"}`, string(upstream.lastBody))
 	require.Equal(t, ImageBillingSize1K, result.ImageSize)
 	require.Equal(t, "1024x1024", result.ImageInputSize)
 }
@@ -1332,6 +1470,45 @@ func TestForwardGrokMediaVideoGenerationReturnsTaskIDAsResponseID(t *testing.T) 
 	result, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointVideosGenerations, "", body, "application/json")
 	require.NoError(t, err)
 	require.Equal(t, "video-task-123", result.ResponseID)
+}
+
+func TestForwardGrokMediaVideoGenerationConvertsOpenAIMultipart(t *testing.T) {
+	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
+	gin.SetMode(gin.TestMode)
+
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	require.NoError(t, writer.WriteField("model", "grok-imagine-video"))
+	require.NoError(t, writer.WriteField("prompt", "waves"))
+	require.NoError(t, writer.WriteField("seconds", "6"))
+	require.NoError(t, writer.WriteField("resolution_name", "480p"))
+	require.NoError(t, writer.WriteField("size", "1280x720"))
+	require.NoError(t, writer.Close())
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", bytes.NewReader(buf.Bytes()))
+	c.Request.Header.Set("Content-Type", writer.FormDataContentType())
+	account := &Account{
+		ID: 63, Name: "grok", Platform: PlatformGrok, Type: AccountTypeAPIKey, Concurrency: 1,
+		Credentials: map[string]any{"api_key": "api-key", "base_url": "https://xai.test/v1"},
+	}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"request_id":"video-request-multipart"}`)),
+	}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+
+	result, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointVideosGenerations, "", buf.Bytes(), writer.FormDataContentType())
+
+	require.NoError(t, err)
+	require.Equal(t, "https://xai.test/v1/videos/generations", upstream.lastReq.URL.String())
+	require.Equal(t, "application/json", upstream.lastReq.Header.Get("Content-Type"))
+	require.JSONEq(t, `{"model":"grok-imagine-video","prompt":"waves","duration":6,"resolution":"480p","aspect_ratio":"16:9"}`, string(upstream.lastBody))
+	require.Equal(t, "video-request-multipart", result.ResponseID)
+	require.Equal(t, 6, result.VideoDurationSeconds)
+	require.Equal(t, "480p", result.VideoResolution)
 }
 
 func TestExtractGrokMediaVideoRequestIDPreservesExistingPrecedence(t *testing.T) {

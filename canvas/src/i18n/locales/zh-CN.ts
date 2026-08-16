@@ -166,6 +166,8 @@ export default {
         modelReadFailed: "读取模型失败",
         videoTimeout: "{{provider}}视频生成超时，请稍后重试",
         videoReferencesUnsupported: "当前视频接口不支持参考视频或参考音频，请切换到 Seedance 2.0 / 火山 Agent Plan 模型，或移除参考资产",
+        grokReferenceLimit: "Grok 视频生成最多支持 1 张首帧参考图，请移除多余参考图",
+        openAIVideoReferenceLimit: "OpenAI 视频生成最多支持 1 张首帧参考图，请移除多余参考图",
         noPlayableVideo: "视频接口没有返回可播放的视频",
         noVideoTaskId: "视频接口没有返回任务 ID",
         videoTaskCreateFailed: "视频任务创建失败",

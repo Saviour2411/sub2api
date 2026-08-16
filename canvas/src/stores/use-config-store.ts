@@ -7,6 +7,7 @@ import i18n from "@/i18n";
 import { localForageStorage } from "@/lib/localforage-storage";
 
 export type ApiCallFormat = "openai" | "gemini" | "ark";
+export type ApiPlatform = "openai" | "gemini" | "antigravity" | "grok" | "ark";
 export type ModelCapability = "image" | "video" | "text" | "audio";
 export type ReasoningEffort = "auto" | "low" | "medium" | "high" | "xhigh";
 
@@ -21,6 +22,7 @@ export type ModelChannel = {
     baseUrl: string;
     apiKey: string;
     apiFormat: ApiCallFormat;
+    platform?: ApiPlatform;
     models: ChannelModel[];
 };
 
@@ -287,6 +289,7 @@ export function createModelChannel(channel?: Partial<ModelChannel>): ModelChanne
         baseUrl: channel?.baseUrl?.trim() || defaultBaseUrlForApiFormat(apiFormat),
         apiKey: channel?.apiKey || "",
         apiFormat,
+        platform: channel?.platform,
         models: normalizeChannelModels(channel?.models),
     };
 }
@@ -358,6 +361,7 @@ export function resolveModelRequestConfig(config: AiConfig, value: string) {
         baseUrl: channel.baseUrl,
         apiKey: channel.apiKey,
         apiFormat: channel.apiFormat,
+        platform: channel.platform,
     };
 }
 

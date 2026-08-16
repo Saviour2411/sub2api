@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -60,6 +61,7 @@ type GrokMediaRequestInfo struct {
 	Size            string
 	SizeTier        string
 	Resolution      string
+	AspectRatio     string
 	DurationSeconds int
 	InputImageURLs  []string
 	MaskImageURL    string
@@ -127,6 +129,10 @@ func ParseGrokMediaRequest(contentType string, body []byte) GrokMediaRequestInfo
 	info.Prompt = strings.TrimSpace(info.Prompt)
 	info.Size = strings.TrimSpace(info.Size)
 	info.SizeTier = NormalizeImageBillingTierOrDefault(info.Size)
+	info.AspectRatio = strings.TrimSpace(info.AspectRatio)
+	if strings.TrimSpace(info.Resolution) == "" {
+		info.Resolution = grokVideoResolutionFromSize(info.Size)
+	}
 	info.Resolution = NormalizeVideoBillingResolutionOrDefault(info.Resolution)
 	info.DurationSeconds = NormalizeVideoBillingDurationSecondsOrDefault(info.DurationSeconds)
 	if info.N <= 0 {
@@ -142,9 +148,18 @@ func parseGrokMediaJSONRequest(body []byte, info *GrokMediaRequestInfo) {
 	info.Model = strings.TrimSpace(gjson.GetBytes(body, "model").String())
 	info.Prompt = strings.TrimSpace(gjson.GetBytes(body, "prompt").String())
 	info.Size = strings.TrimSpace(gjson.GetBytes(body, "size").String())
-	info.Resolution = strings.TrimSpace(gjson.GetBytes(body, "resolution").String())
-	if duration := gjson.GetBytes(body, "duration"); duration.Exists() && duration.Type == gjson.Number {
-		info.DurationSeconds = int(duration.Int())
+	info.Resolution = strings.TrimSpace(firstNonEmpty(
+		gjson.GetBytes(body, "resolution").String(),
+		gjson.GetBytes(body, "resolution_name").String(),
+	))
+	info.AspectRatio = strings.TrimSpace(gjson.GetBytes(body, "aspect_ratio").String())
+	for _, path := range []string{"duration", "seconds"} {
+		if duration := gjson.GetBytes(body, path); duration.Exists() {
+			if value, ok := parseGrokMediaInteger(duration); ok {
+				info.DurationSeconds = value
+				break
+			}
+		}
 	}
 	if n := gjson.GetBytes(body, "n"); n.Exists() && n.Type == gjson.Number {
 		info.N = int(n.Int())
@@ -169,7 +184,21 @@ func parseGrokMediaJSONRequest(body []byte, info *GrokMediaRequestInfo) {
 	appendJSONImageURLs(gjson.GetBytes(body, "image"))
 	appendJSONImageURLs(gjson.GetBytes(body, "images"))
 	appendJSONImageURLs(gjson.GetBytes(body, "reference_images"))
+	appendJSONImageURLs(gjson.GetBytes(body, "input_reference"))
+	appendJSONImageURLs(gjson.GetBytes(body, "input_reference[]"))
 	info.MaskImageURL = extractGrokMediaImageURL(gjson.GetBytes(body, "mask"))
+}
+
+func parseGrokMediaInteger(value gjson.Result) (int, bool) {
+	switch value.Type {
+	case gjson.Number:
+		return int(value.Int()), true
+	case gjson.String:
+		parsed, err := strconv.Atoi(strings.TrimSpace(value.String()))
+		return parsed, err == nil
+	default:
+		return 0, false
+	}
 }
 
 func extractGrokMediaImageURL(value gjson.Result) string {
@@ -195,6 +224,10 @@ func extractGrokMediaImageURL(value gjson.Result) string {
 
 func grokMediaImageObject(imageURL string) map[string]string {
 	return map[string]string{"url": imageURL, "type": "image_url"}
+}
+
+func grokVideoImageObject(imageURL string) map[string]string {
+	return map[string]string{"url": imageURL}
 }
 
 func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokMediaRequestInfo) {
@@ -241,7 +274,7 @@ func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokM
 				info.MaskUpload = &upload
 				continue
 			}
-			if name == "image" || strings.HasPrefix(name, "image[") {
+			if isGrokMediaImageUploadField(name) {
 				info.Uploads = append(info.Uploads, upload)
 			}
 			continue
@@ -255,9 +288,11 @@ func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokM
 			info.Prompt = value
 		case "size":
 			info.Size = value
-		case "resolution":
+		case "resolution", "resolution_name":
 			info.Resolution = value
-		case "duration":
+		case "aspect_ratio":
+			info.AspectRatio = value
+		case "duration", "seconds":
 			if duration, err := strconv.Atoi(value); err == nil {
 				info.DurationSeconds = duration
 			}
@@ -265,7 +300,7 @@ func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokM
 			if n, err := strconv.Atoi(value); err == nil {
 				info.N = n
 			}
-		case "image", "image_url":
+		case "image", "image_url", "input_reference", "input_reference[]":
 			if value != "" {
 				info.InputImageURLs = append(info.InputImageURLs, value)
 			}
@@ -273,6 +308,13 @@ func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokM
 			info.MaskImageURL = value
 		}
 	}
+}
+
+func isGrokMediaImageUploadField(name string) bool {
+	name = strings.TrimSpace(name)
+	return name == "image" || strings.HasPrefix(name, "image[") ||
+		name == "input_reference" || name == "input_reference[]" ||
+		strings.HasPrefix(name, "reference_images[")
 }
 
 func GrokMediaVideoRequestSessionHash(requestID string, userID, apiKeyID int64) string {
@@ -908,6 +950,9 @@ func isGrokCLIProxyTarget(rawURL string) bool {
 }
 
 func prepareGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, contentType string) ([]byte, string, error) {
+	if endpoint == GrokMediaEndpointVideosGenerations {
+		return prepareGrokVideoGenerationForwardBody(body, contentType)
+	}
 	if endpoint != GrokMediaEndpointImagesEdits {
 		return body, contentType, nil
 	}
@@ -921,6 +966,9 @@ func prepareGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, conten
 	}
 
 	info := ParseGrokMediaRequest(contentType, body)
+	if info.MaskUpload != nil || strings.TrimSpace(info.MaskImageURL) != "" {
+		return nil, "", fmt.Errorf("xAI image editing does not support masks")
+	}
 	payload := make(map[string]any)
 	if info.Model != "" {
 		payload["model"] = info.Model
@@ -951,23 +999,10 @@ func prepareGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, conten
 	if len(images) > grokMediaMaxEditSourceImages {
 		return nil, "", fmt.Errorf("a maximum of %d source images is supported for image edits", grokMediaMaxEditSourceImages)
 	}
-	if len(images) > 0 {
+	if len(images) == 1 {
 		payload["image"] = images[0]
-		if len(images) > 1 {
-			payload["images"] = images
-		}
-	}
-
-	maskImageURL := strings.TrimSpace(info.MaskImageURL)
-	if info.MaskUpload != nil {
-		dataURL, err := openAIImageUploadToDataURL(*info.MaskUpload)
-		if err != nil {
-			return nil, "", err
-		}
-		maskImageURL = dataURL
-	}
-	if maskImageURL != "" {
-		payload["mask"] = grokMediaImageObject(maskImageURL)
+	} else if len(images) > 1 {
+		payload["images"] = images
 	}
 
 	out, err := marshalOpenAIUpstreamJSON(payload)
@@ -977,14 +1012,294 @@ func prepareGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, conten
 	return out, "application/json", nil
 }
 
+// prepareGrokVideoGenerationForwardBody 将 OpenAI /videos 的 multipart 请求
+// 转为 xAI /videos/generations 要求的 JSON，并兼容站内历史字段别名。
+func prepareGrokVideoGenerationForwardBody(body []byte, contentType string) ([]byte, string, error) {
+	if gjson.ValidBytes(body) {
+		out, err := normalizeGrokVideoGenerationJSON(body)
+		return out, "application/json", err
+	}
+	mediaType, _, err := mime.ParseMediaType(strings.TrimSpace(contentType))
+	if err != nil || !strings.EqualFold(mediaType, "multipart/form-data") {
+		return body, contentType, nil
+	}
+
+	info := ParseGrokMediaRequest(contentType, body)
+	payload := make(map[string]any)
+	if info.Model != "" {
+		payload["model"] = info.Model
+	}
+	if info.Prompt != "" {
+		payload["prompt"] = info.Prompt
+	}
+	payload["duration"] = info.DurationSeconds
+	payload["resolution"] = info.Resolution
+	if aspectRatio := firstNonEmpty(info.AspectRatio, grokVideoAspectRatioFromSize(info.Size)); aspectRatio != "" {
+		payload["aspect_ratio"] = aspectRatio
+	}
+
+	images := make([]string, 0, len(info.InputImageURLs)+len(info.Uploads))
+	for _, imageURL := range info.InputImageURLs {
+		if imageURL = strings.TrimSpace(imageURL); imageURL != "" {
+			images = append(images, imageURL)
+		}
+	}
+	for _, upload := range info.Uploads {
+		dataURL, convertErr := openAIImageUploadToDataURL(upload)
+		if convertErr != nil {
+			return nil, "", convertErr
+		}
+		images = append(images, dataURL)
+	}
+	if len(images) > 1 {
+		return nil, "", fmt.Errorf("xAI video generation supports at most one input reference image")
+	}
+	if len(images) == 1 {
+		payload["image"] = grokVideoImageObject(images[0])
+	}
+
+	out, err := marshalOpenAIUpstreamJSON(payload)
+	if err != nil {
+		return nil, "", err
+	}
+	return out, "application/json", nil
+}
+
+func normalizeGrokVideoGenerationJSON(body []byte) ([]byte, error) {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	payload := make(map[string]any)
+	if err := decoder.Decode(&payload); err != nil {
+		return nil, fmt.Errorf("parse grok video request: %w", err)
+	}
+
+	if duration, ok := grokMediaIntegerValue(payload["duration"]); ok {
+		payload["duration"] = duration
+	} else if duration, ok := grokMediaIntegerValue(payload["seconds"]); ok {
+		payload["duration"] = duration
+	}
+	delete(payload, "seconds")
+
+	if strings.TrimSpace(grokMediaStringValue(payload["resolution"])) == "" {
+		resolution := firstNonEmpty(
+			strings.TrimSpace(grokMediaStringValue(payload["resolution_name"])),
+			grokVideoResolutionFromSize(grokMediaStringValue(payload["size"])),
+		)
+		if resolution != "" {
+			payload["resolution"] = resolution
+		}
+	}
+	delete(payload, "resolution_name")
+
+	if strings.TrimSpace(grokMediaStringValue(payload["aspect_ratio"])) == "" {
+		if aspectRatio := grokVideoAspectRatioFromSize(grokMediaStringValue(payload["size"])); aspectRatio != "" {
+			payload["aspect_ratio"] = aspectRatio
+		}
+	}
+	delete(payload, "size")
+	delete(payload, "preset")
+
+	if image, exists := payload["image"]; exists {
+		normalized, ok, normalizeErr := normalizeGrokVideoImageValue(image)
+		if normalizeErr != nil {
+			return nil, normalizeErr
+		}
+		if ok {
+			payload["image"] = normalized
+		}
+	} else {
+		for _, field := range []string{"input_reference", "input_reference[]"} {
+			normalized, ok, normalizeErr := normalizeGrokVideoImageValue(payload[field])
+			if normalizeErr != nil {
+				return nil, normalizeErr
+			}
+			if ok {
+				payload["image"] = normalized
+				break
+			}
+		}
+	}
+	delete(payload, "input_reference")
+	delete(payload, "input_reference[]")
+
+	out, err := marshalOpenAIUpstreamJSON(payload)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func normalizeGrokVideoImageValue(value any) (map[string]string, bool, error) {
+	switch typed := value.(type) {
+	case nil:
+		return nil, false, nil
+	case []any:
+		if len(typed) > 1 {
+			return nil, false, fmt.Errorf("xAI video generation supports at most one input reference image")
+		}
+		if len(typed) == 0 {
+			return nil, false, nil
+		}
+		return normalizeGrokVideoImageValue(typed[0])
+	case string:
+		if imageURL := strings.TrimSpace(typed); imageURL != "" {
+			return grokVideoImageObject(imageURL), true, nil
+		}
+		return nil, false, nil
+	case map[string]any:
+		if fileID := strings.TrimSpace(grokMediaStringValue(typed["file_id"])); fileID != "" {
+			return map[string]string{"file_id": fileID}, true, nil
+		}
+		imageURL := firstNonEmpty(
+			strings.TrimSpace(grokMediaStringValue(typed["url"])),
+			strings.TrimSpace(grokMediaStringValue(typed["image_url"])),
+		)
+		if imageURL != "" {
+			return grokVideoImageObject(imageURL), true, nil
+		}
+		return nil, false, nil
+	default:
+		return nil, false, nil
+	}
+}
+
+func grokMediaIntegerValue(value any) (int, bool) {
+	switch typed := value.(type) {
+	case json.Number:
+		parsed, err := strconv.Atoi(strings.TrimSpace(typed.String()))
+		return parsed, err == nil
+	case float64:
+		return int(typed), typed == float64(int(typed))
+	case string:
+		parsed, err := strconv.Atoi(strings.TrimSpace(typed))
+		return parsed, err == nil
+	default:
+		return 0, false
+	}
+}
+
+func grokMediaStringValue(value any) string {
+	result, _ := value.(string)
+	return result
+}
+
+func grokVideoAspectRatioFromSize(size string) string {
+	size = strings.TrimSpace(strings.ToLower(size))
+	if size == "" || size == "auto" {
+		return ""
+	}
+	separator := "x"
+	if strings.Contains(size, ":") {
+		separator = ":"
+	}
+	parts := strings.Split(size, separator)
+	if len(parts) != 2 {
+		return ""
+	}
+	width, widthErr := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
+	height, heightErr := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+	if widthErr != nil || heightErr != nil || width <= 0 || height <= 0 {
+		return ""
+	}
+	return closestGrokAspectRatio(width/height, []string{"1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"})
+}
+
+func grokImageAspectRatioFromSize(size string) string {
+	size = strings.TrimSpace(strings.ToLower(size))
+	parts := strings.Split(size, "x")
+	if len(parts) != 2 {
+		return ""
+	}
+	width, widthErr := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
+	height, heightErr := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+	if widthErr != nil || heightErr != nil || width <= 0 || height <= 0 {
+		return ""
+	}
+	return closestGrokAspectRatio(width/height, []string{"1:1", "3:4", "4:3", "9:16", "16:9", "2:3", "3:2", "9:19.5", "19.5:9", "9:20", "20:9", "1:2", "2:1"})
+}
+
+func closestGrokAspectRatio(target float64, options []string) string {
+	best := ""
+	bestDistance := math.MaxFloat64
+	for _, option := range options {
+		parts := strings.Split(option, ":")
+		if len(parts) != 2 {
+			continue
+		}
+		width, widthErr := strconv.ParseFloat(parts[0], 64)
+		height, heightErr := strconv.ParseFloat(parts[1], 64)
+		if widthErr != nil || heightErr != nil || width <= 0 || height <= 0 {
+			continue
+		}
+		distance := math.Abs(width/height - target)
+		if distance < bestDistance {
+			best = option
+			bestDistance = distance
+		}
+	}
+	return best
+}
+
+func grokImageResolutionFromSize(size string) string {
+	size = strings.TrimSpace(strings.ToLower(size))
+	if size == "1k" || size == "2k" {
+		return size
+	}
+	parts := strings.Split(size, "x")
+	if len(parts) != 2 {
+		return ""
+	}
+	width, widthErr := strconv.Atoi(strings.TrimSpace(parts[0]))
+	height, heightErr := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if widthErr != nil || heightErr != nil || width <= 0 || height <= 0 {
+		return ""
+	}
+	if max(width, height) >= 1536 {
+		return "2k"
+	}
+	return "1k"
+}
+
+func grokVideoResolutionFromSize(size string) string {
+	size = strings.TrimSpace(strings.ToLower(size))
+	parts := strings.Split(size, "x")
+	if len(parts) != 2 {
+		return ""
+	}
+	width, widthErr := strconv.Atoi(strings.TrimSpace(parts[0]))
+	height, heightErr := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if widthErr != nil || heightErr != nil || width <= 0 || height <= 0 {
+		return ""
+	}
+	shortEdge := min(width, height)
+	switch {
+	case shortEdge >= 1080:
+		return "1080p"
+	case shortEdge >= 720:
+		return "720p"
+	default:
+		return "480p"
+	}
+}
+
 func normalizeGrokMediaJSONImageRefs(body []byte) ([]byte, error) {
-	info := ParseGrokMediaRequest("application/json", body)
+	if gjson.GetBytes(body, "mask").Exists() {
+		return nil, fmt.Errorf("xAI image editing does not support masks")
+	}
+	out := body
+	if images := gjson.GetBytes(out, "images"); images.IsArray() && len(images.Array()) > 0 && gjson.GetBytes(out, "image").Exists() {
+		var err error
+		out, err = sjson.DeleteBytes(out, "image")
+		if err != nil {
+			return nil, fmt.Errorf("remove mutually exclusive grok media image field: %w", err)
+		}
+	}
+	info := ParseGrokMediaRequest("application/json", out)
 	if len(info.InputImageURLs) > grokMediaMaxEditSourceImages {
 		return nil, fmt.Errorf("a maximum of %d source images is supported for image edits", grokMediaMaxEditSourceImages)
 	}
-	out := body
 	var err error
-	for _, field := range []string{"image", "images", "mask"} {
+	for _, field := range []string{"image", "images"} {
 		out, err = rewriteGrokMediaJSONImageField(out, field)
 		if err != nil {
 			return nil, err
@@ -1106,12 +1421,35 @@ func sanitizeGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, conte
 	}
 	switch endpoint {
 	case GrokMediaEndpointImagesGenerations, GrokMediaEndpointImagesEdits:
-		if !gjson.GetBytes(body, "size").Exists() {
-			return body, contentType, nil
+		out := body
+		size := strings.TrimSpace(gjson.GetBytes(out, "size").String())
+		if size != "" && !gjson.GetBytes(out, "aspect_ratio").Exists() {
+			if aspectRatio := grokImageAspectRatioFromSize(size); aspectRatio != "" {
+				var err error
+				out, err = sjson.SetBytes(out, "aspect_ratio", aspectRatio)
+				if err != nil {
+					return nil, "", fmt.Errorf("map grok media size to aspect ratio: %w", err)
+				}
+			}
 		}
-		out, err := sjson.DeleteBytes(body, "size")
-		if err != nil {
-			return nil, "", fmt.Errorf("sanitize grok media size: %w", err)
+		if size != "" && !gjson.GetBytes(out, "resolution").Exists() {
+			if resolution := grokImageResolutionFromSize(size); resolution != "" {
+				var err error
+				out, err = sjson.SetBytes(out, "resolution", resolution)
+				if err != nil {
+					return nil, "", fmt.Errorf("map grok media size to resolution: %w", err)
+				}
+			}
+		}
+		for _, field := range []string{"size", "quality", "background", "output_format"} {
+			if !gjson.GetBytes(out, field).Exists() {
+				continue
+			}
+			var err error
+			out, err = sjson.DeleteBytes(out, field)
+			if err != nil {
+				return nil, "", fmt.Errorf("sanitize grok media %s: %w", field, err)
+			}
 		}
 		return out, contentType, nil
 	default:

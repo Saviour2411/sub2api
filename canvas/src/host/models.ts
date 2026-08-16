@@ -50,6 +50,13 @@ function modelCapability(model: Record<string, unknown>, group: CanvasGroup): Mo
     return guessed;
 }
 
+function supportsGeminiContentGeneration(model: Record<string, unknown>) {
+    const methods = model.supportedGenerationMethods || model.supported_generation_methods;
+    if (!Array.isArray(methods) || methods.length === 0) return true;
+    const normalized = methods.map((method) => String(method).toLowerCase());
+    return normalized.includes("generatecontent") || normalized.includes("streamgeneratecontent");
+}
+
 export function classifyCanvasModels(rawModels: unknown[], group: CanvasGroup): DiscoveredModel[] {
     const seen = new Set<string>();
     return rawModels.flatMap((entry): DiscoveredModel[] => {
@@ -58,6 +65,7 @@ export function classifyCanvasModels(rawModels: unknown[], group: CanvasGroup): 
             .replace(/^models\//, "")
             .trim();
         if (!name || seen.has(name)) return [];
+        if (group.api_format === "gemini" && !supportsGeminiContentGeneration(record)) return [];
         seen.add(name);
         const capability = modelCapability(record, group);
         if (capability === "audio" || (group.api_format === "gemini" && capability === "video")) return [];
@@ -94,6 +102,7 @@ async function loadGroup(groupId: number) {
         baseUrl: credential.base_url || "/",
         apiKey: credential.api_key,
         apiFormat: group.api_format,
+        platform: group.platform,
         models,
     };
     const saved = readSelection();
