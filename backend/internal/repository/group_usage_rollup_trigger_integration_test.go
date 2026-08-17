@@ -56,6 +56,7 @@ func TestGroupUsageRollupTriggerSerializesLateHistoricalInsertWithPublish(t *tes
 
 	schema := createGroupUsageRollupTriggerTestSchema(t, ctx, false)
 	seedTx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
+	require.NoError(t, setGroupUsageRollupTriggerTimezone(ctx, seedTx, "Asia/Shanghai"))
 	_, err := seedTx.ExecContext(ctx, `
 		INSERT INTO groups (id) VALUES (10);
 		INSERT INTO users (id) VALUES (1);
@@ -68,6 +69,7 @@ func TestGroupUsageRollupTriggerSerializesLateHistoricalInsertWithPublish(t *tes
 
 	syncTx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
 	defer func() { _ = syncTx.Rollback() }()
+	require.NoError(t, setGroupUsageRollupTriggerTimezone(ctx, syncTx, "Asia/Shanghai"))
 	var stateID int16
 	require.NoError(t, syncTx.QueryRowContext(ctx, `
 		SELECT id
@@ -123,7 +125,7 @@ func TestGroupUsageRollupTriggerSerializesLateHistoricalInsertWithPublish(t *tes
 	require.Equal(t, "2020-01-02", closedBefore)
 }
 
-func TestGroupUsageRollupTriggerSerializesInsertTransactionAcrossMidnight(t *testing.T) {
+func TestGroupUsageRollupTriggerDoesNotBlockCurrentDayInsertDuringPublish(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -151,8 +153,7 @@ func TestGroupUsageRollupTriggerSerializesInsertTransactionAcrossMidnight(t *tes
 
 	insertTx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
 	defer func() { _ = insertTx.Rollback() }()
-	var insertBackendPID int
-	require.NoError(t, insertTx.QueryRowContext(ctx, "SELECT pg_backend_pid()").Scan(&insertBackendPID))
+	require.NoError(t, setGroupUsageRollupTriggerTimezone(ctx, insertTx, "Asia/Shanghai"))
 
 	insertResult := make(chan error, 1)
 	go func() {
@@ -163,41 +164,87 @@ func TestGroupUsageRollupTriggerSerializesInsertTransactionAcrossMidnight(t *tes
 		insertResult <- insertErr
 	}()
 
-	blocked, err := waitForGroupUsageRollupStateLock(ctx, insertBackendPID, insertResult)
-	if err != nil || !blocked {
-		_ = syncTx.Rollback()
-		_ = insertTx.Rollback()
+	select {
+	case err := <-insertResult:
 		require.NoError(t, err)
-		require.True(t, blocked, "跨越零点的在途写入必须与水位发布串行化")
+	case <-time.After(5 * time.Second):
+		t.Fatal("当前日 usage INSERT 被汇总回填锁阻塞，超过 5 秒 usage task 保护窗口")
 	}
+	require.NoError(t, insertTx.Commit())
+	require.NoError(t, syncTx.Rollback())
 
-	_, err = syncTx.ExecContext(ctx, `
+	var unchanged bool
+	err = integrationDB.QueryRowContext(ctx, fmt.Sprintf(
+		"SELECT closed_before = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai')::date FROM %s.usage_group_rollup_state WHERE id = 1",
+		pq.QuoteIdentifier(schema),
+	)).Scan(&unchanged)
+	require.NoError(t, err)
+	require.True(t, unchanged)
+}
+
+func TestGroupUsageRollupTriggerWaitsForInsertThatCrossedMidnight(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	schema := createGroupUsageRollupTriggerTestSchema(t, ctx, false)
+	seedTx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
+	require.NoError(t, setGroupUsageRollupTriggerTimezone(ctx, seedTx, "Asia/Shanghai"))
+	_, err := seedTx.ExecContext(ctx, `
+		INSERT INTO groups (id) VALUES (10);
+		INSERT INTO users (id) VALUES (1);
 		UPDATE usage_group_rollup_state
-		SET closed_before = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai')::date + 1
-		WHERE id = 1
+		SET closed_before = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai')::date
+		WHERE id = 1;
 	`)
 	require.NoError(t, err)
+	require.NoError(t, seedTx.Commit())
+
+	syncTx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
+	defer func() { _ = syncTx.Rollback() }()
+	require.NoError(t, setGroupUsageRollupTriggerTimezone(ctx, syncTx, "Asia/Shanghai"))
+	var stateID int16
+	require.NoError(t, syncTx.QueryRowContext(ctx, `
+		SELECT id
+		FROM usage_group_rollup_state
+		WHERE id = 1
+		FOR UPDATE
+	`).Scan(&stateID))
+
+	insertTx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
+	defer func() { _ = insertTx.Rollback() }()
+	require.NoError(t, setGroupUsageRollupTriggerTimezone(ctx, insertTx, "Asia/Shanghai"))
+	var insertBackendPID int
+	require.NoError(t, insertTx.QueryRowContext(ctx, "SELECT pg_backend_pid()").Scan(&insertBackendPID))
+
+	insertResult := make(chan error, 1)
+	go func() {
+		_, insertErr := insertTx.ExecContext(ctx, `
+			INSERT INTO usage_logs (id, user_id, group_id, actual_cost, created_at)
+			VALUES (1, 1, 10, 1.25, CURRENT_TIMESTAMP - INTERVAL '1 day')
+		`)
+		insertResult <- insertErr
+	}()
+
+	blocked, err := waitForGroupUsageRollupStateLock(ctx, insertBackendPID, insertResult)
+	require.NoError(t, err)
+	require.True(t, blocked, "跨午夜事务的历史日期写入必须等待汇总水位锁")
 	require.NoError(t, syncTx.Commit())
 
 	select {
 	case err = <-insertResult:
 		require.NoError(t, err)
 	case <-ctx.Done():
-		t.Fatal("等待跨零点写入完成超时")
+		t.Fatal("等待跨午夜历史写入完成超时")
 	}
 	require.NoError(t, insertTx.Commit())
 
-	var currentDate string
-	require.NoError(t, integrationDB.QueryRowContext(ctx, `
-		SELECT (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai')::date::text
-	`).Scan(&currentDate))
-	var closedBefore string
+	var invalidated bool
 	err = integrationDB.QueryRowContext(ctx, fmt.Sprintf(
-		"SELECT closed_before::text FROM %s.usage_group_rollup_state WHERE id = 1",
+		"SELECT closed_before = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai')::date - 1 FROM %s.usage_group_rollup_state WHERE id = 1",
 		pq.QuoteIdentifier(schema),
-	)).Scan(&closedBefore)
+	)).Scan(&invalidated)
 	require.NoError(t, err)
-	require.Equal(t, currentDate, closedBefore)
+	require.True(t, invalidated, "跨午夜历史写入完成后必须回退到受影响日期")
 }
 
 func TestGroupUsageRollupTriggerKeepsWatermarkForTodayInsert(t *testing.T) {
@@ -206,6 +253,7 @@ func TestGroupUsageRollupTriggerKeepsWatermarkForTodayInsert(t *testing.T) {
 
 	tx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
 	defer func() { _ = tx.Rollback() }()
+	require.NoError(t, setGroupUsageRollupTriggerTimezone(ctx, tx, "Asia/Shanghai"))
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO groups (id) VALUES (10);
 		INSERT INTO users (id) VALUES (1);
@@ -449,6 +497,7 @@ func createGroupUsageRollupTriggerTestSchema(t *testing.T, ctx context.Context, 
 	for _, migrationName := range []string{
 		"222_group_usage_daily_rollups.sql",
 		"223_group_usage_rollup_timezone.sql",
+		"226_group_usage_rollup_current_insert_nonblocking.sql",
 	} {
 		migrationSQL, readErr := migrations.FS.ReadFile(migrationName)
 		require.NoError(t, readErr)
@@ -473,6 +522,11 @@ func beginGroupUsageRollupTriggerTestTx(t *testing.T, ctx context.Context, schem
 
 func setGroupUsageRollupTriggerSearchPath(ctx context.Context, tx *sql.Tx, quotedSchema string) error {
 	_, err := tx.ExecContext(ctx, "SET LOCAL search_path TO "+quotedSchema)
+	return err
+}
+
+func setGroupUsageRollupTriggerTimezone(ctx context.Context, tx *sql.Tx, timezoneName string) error {
+	_, err := tx.ExecContext(ctx, "SET LOCAL TIME ZONE '"+timezoneName+"'")
 	return err
 }
 

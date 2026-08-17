@@ -50,3 +50,15 @@ func TestMigration223TracksConfiguredTimezone(t *testing.T) {
 	require.Contains(t, sql, "CREATE OR REPLACE FUNCTION invalidate_group_usage_rollup_state")
 	require.Contains(t, sql, "CREATE OR REPLACE FUNCTION invalidate_group_usage_rollup_state_after_insert")
 }
+
+func TestMigration226MakesCurrentDayInsertNonBlocking(t *testing.T) {
+	content, err := FS.ReadFile("226_group_usage_rollup_current_insert_nonblocking.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "FOR KEY SHARE NOWAIT")
+	require.Contains(t, sql, "WHEN lock_not_available")
+	require.Contains(t, sql, "clock_timestamp()")
+	require.Contains(t, sql, "FOR KEY SHARE;")
+	require.Contains(t, sql, "closed_before = LEAST(closed_before, affected_date)")
+}
