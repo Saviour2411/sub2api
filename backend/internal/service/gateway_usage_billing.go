@@ -793,7 +793,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	}
 
 	// 计算费用。响应模型仅用于诊断，不反向改变本地用户计费来源。
-	cost, err := s.calculateRecordUsageCostStrict(ctx, result, apiKey, billingModel, multiplier, imageMultiplier, opts)
+	cost, err := s.calculateRecordUsageCostStrict(ctx, result, apiKey, billingModel, multiplier, imageMultiplier, pricingAt, opts)
 	if err != nil {
 		if s.cfg == nil || s.cfg.RunMode != config.RunModeSimple {
 			return err
@@ -881,9 +881,10 @@ func (s *GatewayService) calculateRecordUsageCost(
 	billingModel string,
 	multiplier float64,
 	imageMultiplier float64,
+	pricingAt time.Time,
 	opts *recordUsageOpts,
 ) *CostBreakdown {
-	cost, err := s.calculateRecordUsageCostStrict(ctx, result, apiKey, billingModel, multiplier, imageMultiplier, opts)
+	cost, err := s.calculateRecordUsageCostStrict(ctx, result, apiKey, billingModel, multiplier, imageMultiplier, pricingAt, opts)
 	if err != nil {
 		logger.LegacyPrintf("service.gateway", "Calculate cost failed: %v", err)
 		return &CostBreakdown{ActualCost: 0}
@@ -899,12 +900,13 @@ func (s *GatewayService) calculateRecordUsageCostStrict(
 	billingModel string,
 	multiplier float64,
 	imageMultiplier float64,
+	pricingAt time.Time,
 	opts *recordUsageOpts,
 ) (*CostBreakdown, error) {
 	// 图片生成：渠道定价为 token 计费时走 token 路径，否则走图片计费
 	if result.ImageCount > 0 {
 		if resolved := s.resolveChannelPricing(ctx, billingModel, apiKey); resolved != nil && resolved.Mode == BillingModeToken {
-			return s.calculateTokenCostStrict(ctx, result, apiKey, billingModel, multiplier, opts)
+			return s.calculateTokenCostStrict(ctx, result, apiKey, billingModel, multiplier, pricingAt, opts)
 		}
 		return s.calculateImageCost(ctx, result, apiKey, billingModel, imageMultiplier), nil
 	}
@@ -928,7 +930,7 @@ func (s *GatewayService) calculateRecordUsageCostStrict(
 	}
 
 	// Token 计费；SearchCount 为叠加 surcharge（不替代 token）。
-	tokenCost, err := s.calculateTokenCostStrict(ctx, result, apiKey, billingModel, multiplier, opts)
+	tokenCost, err := s.calculateTokenCostStrict(ctx, result, apiKey, billingModel, multiplier, pricingAt, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -1038,6 +1040,7 @@ func (s *GatewayService) calculateTokenCostStrict(
 	apiKey *APIKey,
 	billingModel string,
 	multiplier float64,
+	pricingAt time.Time,
 	opts *recordUsageOpts,
 ) (*CostBreakdown, error) {
 	tokens := UsageTokens{
@@ -1065,6 +1068,7 @@ func (s *GatewayService) calculateTokenCostStrict(
 			Tokens:         tokens,
 			RequestCount:   1,
 			RateMultiplier: multiplier,
+			PricingAt:      pricingAt,
 			Resolver:       s.resolver,
 			Resolved:       resolved,
 		})
@@ -1075,7 +1079,7 @@ func (s *GatewayService) calculateTokenCostStrict(
 		gid := apiKey.Group.ID
 		cost, err = s.billingService.CalculateCostUnified(CostInput{
 			Ctx: ctx, Model: billingModel, GroupID: &gid, Group: apiKey.Group,
-			Tokens: tokens, RequestCount: 1, RateMultiplier: multiplier, Resolver: s.resolver,
+			Tokens: tokens, RequestCount: 1, RateMultiplier: multiplier, PricingAt: pricingAt, Resolver: s.resolver,
 		})
 	} else {
 		cost, err = s.billingService.CalculateCost(billingModel, tokens, multiplier)

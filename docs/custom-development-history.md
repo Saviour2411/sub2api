@@ -11,12 +11,12 @@
 
 ## 当前基线
 
-- 基线日期：2026-08-13
-- 本地版本：`0.1.215`
-- 本地代码基线提交：`a39851432c31141416c0a86c656022199d6215d5`
-- 已完整集成的上游提交：`fbfdcef8184ae4b2e224d5cfc47cf1d0e3742710`
-- 比较范围：`fbfdcef81..a39851432`
-- 基线差异：695 个文件，新增 90677 行、删除 5193 行；本地独有提交 459 个
+- 基线日期：2026-08-18
+- 本地版本：`0.1.222`
+- 本地代码基线提交：`cfa0fd3e2bc8dcbb78b7fce5da00656b41a0d6b3`
+- 已完整集成的上游提交：`5253bb72b08586c619f5b369b2f1dc7547b0e97a`
+- 比较范围：`5253bb72b..cfa0fd3e2`
+- 基线差异：884 个文件，新增 126463 行、删除 5625 行；本地独有提交 478 个
 - 当前能力族：53 项，分布在 9 个功能域
 
 这组数字只用于确认分析边界，不能直接等同于功能数量。生成代码、测试、文案、上游提交的本地适配和同一能力的连续修复均会放大差异规模。
@@ -166,6 +166,7 @@
 
 | 日期 | 版本/提交 | 类型 | 功能编号 | 变更与原因 | 验证 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-08-18 | `0.1.222` / 待提交 | 上游适配 | `CUST-GW-001`、`CUST-GW-003`、`CUST-GW-006`、`CUST-GW-008`、`CUST-GW-010`、`CUST-GW-011`、`CUST-PROTO-001`、`CUST-PROTO-003`、`CUST-PROTO-004`、`CUST-PROTO-005`、`CUST-PROTO-006`、`CUST-PROTO-008`、`CUST-ACC-001`、`CUST-ACC-003`、`CUST-ACC-005`、`CUST-ACC-006`、`CUST-BILL-001`、`CUST-BILL-002`、`CUST-BILL-003`、`CUST-BILL-005`、`CUST-BILL-006`、`CUST-OBS-002`、`CUST-RISK-001`、`CUST-RISK-002`、`CUST-UI-001`、`CUST-UI-004`、`CUST-PROD-007`、`CUST-OPS-001`、`CUST-OPS-003`、`CUST-OPS-004`、`CUST-OPS-005` | 完整合并上游 `fbfdcef81..5253bb72b` 并保留本地二开边界：Responses native v2 与 legacy compact 分流、首输出后请求体释放、部分 usage、成功审计、客户端断连排水和 WS 每轮真实开始时刻继续生效；普通文本严格按用户请求模型计费，响应模型仅作诊断，Composite 只有显式渠道价才按别名计费；CN 供应商的 `claude-*` 候选无显式分组/渠道价时不套 Claude 内置价，成功请求保留零费用 usage/幂等审计并返回 `ErrModelPricingUnavailable`。分组日汇总新增前向迁移，使当前开放日 INSERT 遇回填锁快速放行，历史及跨午夜写入仍串行回退水位。未新增二开编号。 | 受影响 Go 定向单元、WS relay/adapter 生命周期与计时回归、全包仅编译、迁移静态断言；真实 PostgreSQL 迁移重复执行、当前日 5 秒窗口非阻塞、历史/跨午夜串行失效测试通过。 |
 | 2026-08-17 | `0.1.222` / 待提交 | 修复 | `CUST-PROD-007` | 修复画布 Grok 视频沿用 OpenAI multipart 请求导致 xAI `/v1/videos/generations` 返回 415、创建响应 `request_id` 无法识别，以及完成响应 `done + video.url` 无法落盘的问题。画布按分组平台选择协议：Grok 直接发送官方 JSON `model/prompt/duration/resolution/aspect_ratio/image`，并把清晰度和比例映射到 xAI 合法枚举；OpenAI 保持 `/v1/videos` multipart、单数 `input_reference`、官方尺寸及 `4/8/12` 秒枚举；后端同时把旧客户端的 `seconds/resolution_name/size/input_reference` 转为 xAI JSON，兼容字符串时长、data URL、任务 ID 别名和失败终态，审核与计费继续读取转换前语义。同步按官方 schema 复核其他生成接口：GPT Image 不再发送不支持的 `response_format`，OpenAI/Grok 单次图片数限制为 10；Grok 图片移除 OpenAI 专属选项并把尺寸映射为 `aspect_ratio/resolution`，多图编辑保证 `image/images` 互斥且明确拒绝官方不支持的 mask；Gemini 使用 `generationConfig.imageConfig` 并过滤仅支持 `predict` 的 Imagen 模型，SSE `inlineData` 解析保持不变。 | OpenAI 官方 Videos/Images API、xAI Images/Videos REST schema 与 Gemini `streamGenerateContent` schema 逐字段核对；Grok 媒体 Go 定向回归及重复运行通过，画布 8 个 Vitest 文件共 34 项、TypeScript、Prettier、生产构建和差异检查通过。Go `internal/service` 全包除既有 `TestGrokQuotaServiceQueryQuotaCustomPaidMonthlyLimitSkipsActiveProbe` 过期账期夹具导致额外主动探针外均执行，该失败与本次媒体文件无依赖；未调用真实计费媒体接口，未连接或部署生产服务器。 |
 | 2026-08-16 | `0.1.221` / 待提交 | 修复 | `CUST-OBS-001` | 将渠道探针的请求总超时和响应头超时由 45/30 秒统一提高到与真实网关默认值一致的 600 秒，避免慢响应模型在真实用户请求成功前被探针提前判红；Gemini 流式与非流式解析统一遍历首个 candidate 的全部 part，并跳过 `thought=true` 的思考分段，避免最终答案不在首个 part 时产生 challenge mismatch 假红。 | 探针超时常量及 Gemini 多分段/思考分段定向回归、渠道监控 service 单元测试。 |
 | 2026-08-16 | `0.1.220` / 待提交 | 修复 | `CUST-PROD-007` | 修复画布 Gemini/Antigravity 图片及图片编辑使用非流式 `generateContent` 时，特定上游链路长时间不返回完整响应并被前置代理断开的问题：统一改为 `streamGenerateContent?alt=sse`，按 SSE 事件增量解析 `inlineData`、`inline_data` 和文件 URI，兼容事件跨网络分片、前置文本、累计事件去重、响应包装及非 SSE JSON 回退；流内和 HTTP 错误优先显示上游真实原因，仅在流结束仍无图时报告无图片。生产只读核验确认同一账号的两次非流式画布请求分别耗时 141.043 秒和 137.659 秒后取消，而流式账号图片测试 10.728 秒完成，问题在协议链路而非模型实际生成耗时。同步审查其他画布生成链路：Gemini 文本/助手已使用 SSE，视频均创建任务后轮询，Gemini 视频/音频请求前拒绝；OpenAI/Grok 图片和普通音频没有可通用替换的同协议流式返回格式，维持现有站内接口。 | React 8 个 Vitest 文件共 27 项、类型检查、Prettier 和生产构建通过；SSE 回归覆盖跨分片、前置文本、多图去重、图片编辑参考图、字段命名兼容、JSON 回退、真实错误及无图终态；差异检查通过。未执行新的真实计费媒体请求，生产服务器仅进行日志和配置只读核验。 |
