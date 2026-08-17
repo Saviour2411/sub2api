@@ -22,11 +22,3 @@ func WithOpenAIForwardModel(ctx context.Context, forwardModel string, useCompact
 		useCompactModelMapping: useCompactModelMapping,
 	})
 }
-
-func openAIForwardModelFromContext(ctx context.Context) (openAIForwardModel, bool) {
-	if ctx == nil {
-		return openAIForwardModel{}, false
-	}
-	forwardModel, ok := ctx.Value(openAIForwardModelContextKey{}).(openAIForwardModel)
-	return forwardModel, ok
-}

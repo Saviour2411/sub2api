@@ -85,8 +85,8 @@ type OpenAIAccountScheduleRequest struct {
 	RequiredImageSizeTier   string
 	// RequireCompact 仅用于 legacy /responses/compact 的能力过滤和模型映射；
 	// native remote compaction v2 必须保持 false。
-	RequireCompact          bool
-	ExcludedIDs             map[int64]struct{}
+	RequireCompact bool
+	ExcludedIDs    map[int64]struct{}
 }
 
 type OpenAIAccountScheduleDecision struct {
