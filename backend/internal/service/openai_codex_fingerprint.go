@@ -149,6 +149,8 @@ type codexFingerprintIDs struct {
 	threadID       string
 	turnID         string
 	windowID       string
+	// turnStartedAtUnixMs 在解析 IDs 时只生成一次，供头部和请求体共享。
+	turnStartedAtUnixMs int64
 }
 
 // resolveCodexFingerprintIDs 按收敛模式计算出站 ID 集合。
@@ -167,6 +169,9 @@ func resolveCodexFingerprintIDs(account *Account, clientSessionID string, mode c
 	if ids.installationID == "" {
 		return nil
 	}
+	// 头部和请求体中的 turn-metadata 必须描述同一开始时间；若在各自
+	// 改写函数中调用 time.Now，跨毫秒边界时会产生不一致。
+	ids.turnStartedAtUnixMs = time.Now().UnixMilli()
 
 	switch mode {
 	case codexFingerprintDevice:
@@ -252,7 +257,7 @@ func applyCodexFingerprintHeaders(h http.Header, ids *codexFingerprintIDs) {
 		"thread_id":               ids.threadID,
 		"turn_id":                 ids.turnID,
 		"window_id":               ids.windowID,
-		"turn_started_at_unix_ms": time.Now().UnixMilli(),
+		"turn_started_at_unix_ms": ids.turnStartedAtUnixMs,
 	})
 }
 
@@ -330,7 +335,7 @@ func applyCodexFingerprintToClientMetadataMap(existing map[string]any, ids *code
 		"thread_id":               ids.threadID,
 		"turn_id":                 ids.turnID,
 		"window_id":               ids.windowID,
-		"turn_started_at_unix_ms": time.Now().UnixMilli(),
+		"turn_started_at_unix_ms": ids.turnStartedAtUnixMs,
 	})
 	return true
 }
