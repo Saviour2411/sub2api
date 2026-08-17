@@ -1187,3 +1187,92 @@
 - 未使用真实 OpenAI、Anthropic、Grok、S3、SMTP 或安全审计服务凭据；相关路径由单元、组件和契约测试覆盖。
 - PR #9 已在 Node 20 / Go 1.26.5 环境通过 CI；本地验证环境为 Node 24.15.0 / Go 1.26.3。
 - 已推送同步分支并创建 PR #9；未执行部署、远程服务器访问、容器重启或生产数据操作。
+
+## 2026-08-18 同步至 5253bb72b
+
+- 执行时间：2026-08-18T04:18:00+08:00
+- 执行状态：同步分支完整合并固定上游范围；完成二开兼容提交、验证修复和当前环境可执行的后端、前端、Canvas、迁移及部署静态验证；本记录提交后按 `--ff-only` 更新本地 `main`
+- 本地目标分支：`main`
+- `LOCAL_PRE_SYNC_SHA`：`832e20ed7fb12b4b70b41f8ad827749fb9b4e5ff`
+- 上游代码合并提交：`18268da8bdbc0ce96d1e4d1786a5a961ced9ff01`
+- 最后一个代码/测试提交：`cfa0fd3e2bc8dcbb78b7fce5da00656b41a0d6b3`
+- 上游仓库：`https://github.com/Wei-Shaw/sub2api.git`
+- 上游分支：`main`
+- `UPSTREAM_OLD_SHA`：`fbfdcef8184ae4b2e224d5cfc47cf1d0e3742710`
+- `UPSTREAM_NEW_SHA`：`5253bb72b08586c619f5b369b2f1dc7547b0e97a`
+- merge-base：`fbfdcef8184ae4b2e224d5cfc47cf1d0e3742710`
+- `LAST_FULLY_INTEGRATED_UPSTREAM_SHA`：`5253bb72b08586c619f5b369b2f1dc7547b0e97a`
+- 集成策略：在隔离同步分支创建备份分支后，使用 `git merge --no-ff --no-commit` 完整合并固定上游 SHA；逐文件解决 21 个文本冲突、39 个冲突块，复核自动合并路径的二开语义，随后以独立提交补齐迁移兼容、回归测试和同步后静态检查修复；Ent/Wire 在隔离 worktree 中按顺序重复生成并确认零差异，保留上游祖先关系
+- 备份分支：`backup/pre-upstream-sync-20260818-022958-832e20ed7`
+- 同步分支：`sync/upstream-20260818-5253bb72b`
+
+### 上游提交处置
+
+本次固定范围共 28 个提交，其中 9 个 merge commit、19 个 non-merge commit。28 个提交均通过完整 merge 保留祖先关系；4 个记为 `Applied`，23 个因本地兼容边界记为 `Applied + Overridden`，1 个因 patch-id 等价内容已存在记为 `Already Applied`。无 `Skipped`、`Deferred` 或未解决 `Conflict`。下表集合互不重叠并覆盖固定范围内全部 SHA。
+
+| 上游提交集合 | 数量 | 状态 | 内容与处置 |
+| --- | ---: | --- | --- |
+| `11e1e2288`、`51016bb03` | 2 | Applied | 接入 Go builder 镜像版本与 Docker 构建链更新，完整保留上游实现；本地部署文件未被本次同步改写。 |
+| `22fc0cdbf`、`396a9d113` | 2 | Applied | 接入 OpenAI Fast/Flex 策略文案与对应前端合并，完整保留上游行为。 |
+| `baeac1f3d` | 1 | Already Applied | 版本同步提交的内容在本地 `0.1.222` 已等价存在；完整 merge 仅保留祖先关系，不重复改变版本。 |
+| `9662cff2e`、`a8b9ea22b`、`1d3b9665c` | 3 | Applied + Overridden | 接入远程 compaction v2 端点及 native/legacy 分流；最终保留本地端点规范化、legacy `/responses/compact` 兼容和请求体生命周期边界。 |
+| `cb7b03795`、`89d826be2`、`45dcce0e4`、`c204d33b0` | 4 | Applied + Overridden | 接入分组日用量汇总及测试修复；新增 226 前向迁移，使当前开放日 INSERT 遇回填锁快速放行，历史日期和跨午夜事务仍等待水位锁并回退水位。 |
+| `8219dcfc8`、`8ae6d8f67`、`fce41e318`、`4d9fedee2`、`073e92d17` | 5 | Applied + Overridden | 接入 Codex turn-state、session beta 能力、指纹 opt-in 及测试；继续保留本地首输出守卫、请求体释放、WS 逐轮真实开始时刻、结算和断连排水。 |
+| `901a0439f`、`4b667ccd4`、`e72854538`、`e330c243a`、`7cdca9e49`、`10c8b7020`、`c38c5beef`、`ab28a2d10`、`6bf335965` | 9 | Applied + Overridden | 接入 Kimi/Zhipu/DeepSeek 一等支持、分组入口、缺陷修复、文案及合并语义；继续严格按用户请求模型计费，CN `claude-*` 无显式价格时不套内置价，成功请求保留零费用 usage/幂等审计并返回 `ErrModelPricingUnavailable`。 |
+| `9f24a5530`、`5253bb72b` | 2 | Applied + Overridden | 接入渠道模型分时倍率定价；保留 Composite 仅在显式渠道价存在时按公开别名计费，以及普通分组严格请求模型计费和严格缺价边界。 |
+
+### 本地提交与文件
+
+- 上游固定范围整体映射到 merge commit `18268da8bdbc0ce96d1e4d1786a5a961ced9ff01`；双亲分别为同步前本地 SHA `832e20ed7fb12b4b70b41f8ad827749fb9b4e5ff` 与固定上游 SHA `5253bb72b08586c619f5b369b2f1dc7547b0e97a`。
+- 在写入本次两份台账前，相对 `LOCAL_PRE_SYNC_SHA` 共修改 181 个跟踪文件：新增 45 个、修改 136 个、删除 0 个，共增加 13532 行、删除 707 行；`deploy/` 下生产 Compose 未产生受控差异。
+- 本地提交映射：`f07e6769d5`（迁移兼容、回归测试与二开台账适配）、`cfa0fd3e2`（同步后静态检查修复）；本记录提交自身的 SHA 在最终总结中报告。
+- `backend/cmd/server/VERSION` 保持本地 `0.1.222`。
+- Ent/Wire 直接在活动目录生成时受 Windows user-mapped section 锁定；恢复由生成器留下的半成品后，在同一 merge HEAD 的隔离 worktree 中串行生成 Ent 和 Wire，生成后及第二次复核均为零差异，未把临时文件带回活动树。
+- `deploy/docker-compose.yml` 与 `deploy/docker-compose.sub2api.yml` 字节完全一致，SHA-256 均为 `2865001838D1C9E8FEDC798E77742481BA7B6AC09774E417E889945BBB49A05A`。
+
+### 冲突与最终解决方案
+
+21 个文本冲突共 39 个冲突块均已逐块处理，无整文件采用 `ours` 或 `theirs`，最终索引无未解决路径。冲突集中在版本/Ent/Wire、分组用量与迁移、计费和定价、OpenAI Responses/compact、HTTP/WS 转发、CN Provider 以及管理端账号和渠道组件。
+
+最终兼容决策：
+
+- native compaction v2 与 legacy `/responses/compact` 保持独立路由；请求模型、端点规范化、首输出后释放请求体、成功审计、部分 usage 和客户端断连排水继续按本地边界执行。
+- 普通文本严格按用户请求模型计费；上游响应模型只作日志和诊断。Composite 仅在显式渠道价存在时按公开别名计费，其他场景不改变具体模型计费来源。
+- CN Provider 的 `claude-*` 在没有显式分组/渠道价时不套 Claude 内置价；成功请求仍写零费用 usage 与幂等记录，再返回 `ErrModelPricingUnavailable`。
+- WS 保留逐轮并发释放、真实 `StartedAt` 计价、terminal payload、断连排水和每轮结算；turn-state 出站守卫只在客户端成功写入后登记。
+- 分组日汇总的 226 迁移不修改已发布的 222/223，当前开放日锁竞争快速放行，历史和跨午夜写入继续串行化，避免回填水位丢失。
+- 版本、生产 bind mount、仅回环暴露、HTTP upstream 业务开关和实例资源参数约束均未被本次同步放宽或删除。
+
+### 刻意保留的二次开发功能
+
+- 首 Token/可见输出归因、增强 failover、连续失败停调度、大请求体及时释放、客户端断连排水和成功审计。
+- 普通分组请求模型计费、Composite 显式别名价例外、严格缺价、媒体实际模型计费、按用户串行扣费和 5 秒 usage task 超时。
+- Claude/Codex 本地协议清洗、API Key 请求头覆写、Codex 图片工具策略、非流式 HTTP 不走 WS、WS 逐轮结算与审计。
+- 专属分组访问、CN Provider 账号/配额能力、本地模型市场、内容审核/Cyber、渠道监控与上游站点同步。
+- 生产 bind mount、仅回环暴露、HTTP upstream 业务开关、双生产 Compose 一致性和 4 vCPU/8 GiB 资源保护参数。
+
+### 验证记录
+
+| 阶段 | 命令或检查 | 退出码 | 结果 |
+| --- | --- | ---: | --- |
+| 同步前 | 后端 `go test -tags=unit ./...`、`golangci-lint run --timeout=30m ./...`、CGO 关闭构建；前端 lint/typecheck、1681 项 Vitest、build；Canvas typecheck、34 项 Vitest、build | 0 | 同步前基线验证通过，作为本次比较基准 |
+| 生成 | 隔离 worktree 中 `go generate ./ent`、`go generate ./cmd/server`，各重复生成并比较工作树 | 0 | Ent/Wire 生成稳定，第二轮及与 merge HEAD 比对均零差异 |
+| 兼容回归 | `go test -tags=unit ./migrations ./internal/repository -run GroupUsageRollup -count=1` | 0 | 迁移静态断言和 repository 定向测试通过 |
+| 兼容回归 | 临时 PostgreSQL 上的 `TestGroupUsageRollupTrigger...` 及完整迁移重复执行验证 | 0 | 当前日 5 秒窗口非阻塞，历史/跨午夜写入等待并正确失效水位；测试容器和临时数据已清理 |
+| 同步后后端 | `go test -tags=unit ./...` | 0 | 全包通过，耗时 198.380 秒 |
+| 同步后后端 | `golangci-lint run --timeout=30m ./...` | 1 → 0 | 首轮发现 gofmt 和未使用 helper；删除无调用函数并格式化后复跑为 `0 issues` |
+| 同步后后端 | `CGO_ENABLED=0 go build ./...`；`go test -tags=unit ./internal/service -count=1` | 0 | 构建和修复后的 service 定向回归通过 |
+| 同步后前端 | `corepack pnpm@9.15.9 install --frozen-lockfile`、`lint:check`、`typecheck`、`test:run`、`build` | 1 → 0 | 首轮未使用函数和旧 Grok 源码断言导致失败；修复后 245 个测试文件、1713 项通过，lint/typecheck/build 全部通过 |
+| 同步后 Canvas | `corepack pnpm@9.15.9 install --frozen-lockfile`、`typecheck`、`test`、`format:check`、`build` | 0 | 8 个测试文件、34 项通过，类型、格式和生产构建通过 |
+| 部署静态 | `bash -n` 五个部署脚本；Compose security/resources、Caddy cache、GitHub token 隔离测试 | 0 | 使用 Git Bash 临时 fixture，未启动 Docker、未访问网络或生产配置；全部通过 |
+| Apple fixture | `deploy/tests/apple-container-test.sh` | 1 | Windows Git Bash 的 `stat -f '%Lp'` 不兼容 macOS 权限参数；未据此判断 macOS 生命周期实现失败 |
+| Compose 一致性 | 两份生产 Compose SHA-256 与字节比较 | 0 | 两份文件字节一致，哈希均为 `286500...49A05A` |
+| 最终静态复核 | `git diff --check`、索引冲突项、冲突标记、意外删除、敏感路径、固定上游祖先关系和工作树检查 | 0 | 无空白错误、未解决冲突、意外删除或敏感文件；固定上游 SHA 已成为同步分支祖先 |
+
+### 未验证项与残余风险
+
+- 未运行完整 `go test -tags=integration ./...`：本机没有可用 Docker/Testcontainers 环境；真实 Redis、全量 PostgreSQL schema、外部 TLS 探针和本地服务健康检查仍需隔离 CI 复核。本次仅在临时 PostgreSQL 上验证了分组汇总迁移和触发器。
+- 未运行 `-race`，本机缺少 GCC；未运行 `govulncheck`，本记录不覆盖数据竞争或最新依赖漏洞可达性。
+- Apple container 生命周期未在 macOS 原生环境执行；Windows fixture 失败仅反映 `stat` 命令兼容性。
+- 未读取 `.env`，未使用真实 OpenAI、Anthropic、Grok、支付、S3、SMTP 或安全审计凭据，未执行真实计费、消息发送、push、PR、部署、远程服务器访问、容器重启或生产数据操作。
+- 本机 Go 为 1.26.3、Node 为 24.15.0；仓库 CI 基线分别为 Go 1.26.6 与 Node 20，版本差异仍需 CI 复核。
