@@ -174,6 +174,44 @@ func TestRunUpstreamToClient_ErrorAndDropPaths(t *testing.T) {
 		require.Equal(t, "write_client", sig.stage)
 	})
 
+	t.Run("terminal write failed does not complete turn", func(t *testing.T) {
+		t.Parallel()
+
+		exitCh := make(chan relayExitSignal, 1)
+		drop := &atomic.Bool{}
+		completed := &atomic.Int32{}
+		state := newRelayState("gpt-5")
+		state.setPendingTurnStartedAt(time.Now())
+		runUpstreamToClient(
+			context.Background(),
+			newPassthroughTestFrameConn([]passthroughTestFrame{
+				{
+					msgType: coderws.MessageText,
+					payload: []byte(`{"type":"response.completed","response":{"id":"resp_write_failed","usage":{"input_tokens":1,"output_tokens":1}}}`),
+				},
+			}, true),
+			func(_ coderws.MessageType, _ []byte) error { return errors.New("write failed") },
+			time.Now(),
+			time.Now,
+			state,
+			nil,
+			func(RelayTurnResult) { completed.Add(1) },
+			nil,
+			nil,
+			nil,
+			nil,
+			drop,
+			nil,
+			nil,
+			func() {},
+			nil,
+			exitCh,
+		)
+		sig := <-exitCh
+		require.Equal(t, "write_client", sig.stage)
+		require.Zero(t, completed.Load())
+	})
+
 	t.Run("drop downstream and stop on terminal", func(t *testing.T) {
 		t.Parallel()
 

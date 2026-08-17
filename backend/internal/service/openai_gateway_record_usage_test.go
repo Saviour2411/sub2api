@@ -378,6 +378,70 @@ func TestOpenAIGatewayServiceRecordUsage_MissingPricingRejectsWithoutBillingOrUs
 	require.Nil(t, billingRepo.lastCmd)
 }
 
+func TestOpenAIGatewayServiceRecordUsage_CNClaudeWithoutExplicitPricingRecordsZeroCostAndReturnsPricingError(t *testing.T) {
+	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek} {
+		t.Run(platform, func(t *testing.T) {
+			usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+			billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+			userRepo := &openAIRecordUsageUserRepoStub{}
+			subRepo := &openAIRecordUsageSubRepoStub{}
+			quotaSvc := &openAIRecordUsageAPIKeyQuotaStub{}
+			svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, userRepo, subRepo, nil)
+			group := &Group{ID: 6100, Platform: platform, RateMultiplier: 1}
+
+			err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+				Result: &OpenAIForwardResult{
+					RequestID:             "resp_cn_claude_without_explicit_pricing_" + platform,
+					Model:                 "gpt-5.4",
+					BillingModel:          "gpt-5.1",
+					UpstreamModel:         "gpt-5.4",
+					UpstreamResponseModel: "gpt-5.1",
+					Usage:                 OpenAIUsage{InputTokens: 1200, OutputTokens: 300},
+					Duration:              time.Second,
+				},
+				APIKey: &APIKey{
+					ID:      6200,
+					Quota:   100,
+					GroupID: i64p(group.ID),
+					Group:   group,
+				},
+				User:          &User{ID: 6300},
+				Account:       &Account{ID: 6400, Platform: platform, Type: AccountTypeAPIKey},
+				APIKeyService: quotaSvc,
+				ChannelUsageFields: ChannelUsageFields{
+					OriginalModel:      "claude-sonnet-4-5",
+					ChannelMappedModel: "gpt-5.4",
+					BillingModelSource: BillingModelSourceUpstream,
+				},
+			})
+
+			require.ErrorIs(t, err, ErrModelPricingUnavailable)
+			require.Equal(t, 1, usageRepo.calls, "成功请求即使缺少显式价格也必须保留 usage 审计")
+			require.Equal(t, 1, billingRepo.calls, "零费用也必须写入计费幂等记录")
+			require.Zero(t, userRepo.deductCalls)
+			require.Zero(t, subRepo.incrementCalls)
+			require.Zero(t, quotaSvc.quotaCalls)
+			require.Zero(t, quotaSvc.rateLimitCalls)
+
+			require.NotNil(t, usageRepo.lastLog)
+			require.Equal(t, "claude-sonnet-4-5", usageRepo.lastLog.RequestedModel)
+			require.Zero(t, usageRepo.lastLog.TotalCost)
+			require.Zero(t, usageRepo.lastLog.ActualCost)
+			require.NotNil(t, usageRepo.lastLog.UpstreamModel)
+			require.Equal(t, "gpt-5.4", *usageRepo.lastLog.UpstreamModel)
+			require.NotNil(t, usageRepo.lastLog.UpstreamResponseModel)
+			require.Equal(t, "gpt-5.1", *usageRepo.lastLog.UpstreamResponseModel)
+
+			require.NotNil(t, billingRepo.lastCmd)
+			require.Zero(t, billingRepo.lastCmd.BalanceCost)
+			require.Zero(t, billingRepo.lastCmd.SubscriptionCost)
+			require.Zero(t, billingRepo.lastCmd.APIKeyQuotaCost)
+			require.Zero(t, billingRepo.lastCmd.APIKeyRateLimitCost)
+			require.Zero(t, billingRepo.lastCmd.AccountQuotaCost)
+		})
+	}
+}
+
 func TestOpenAIGatewayServiceRecordUsage_UsesUserSpecificGroupRate(t *testing.T) {
 	groupID := int64(11)
 	groupRate := 1.4
@@ -488,6 +552,71 @@ func TestOpenAIGatewayServiceRecordUsage_PeakRateAffectsTokenModeImageOutputToke
 	require.InDelta(t, expectedActual, userRepo.lastAmount, 1e-12)
 }
 
+func TestOpenAIGatewayServiceRecordUsage_TimePricingUsesPricingAt(t *testing.T) {
+	groupID := int64(16)
+	requestStart := time.Date(2024, time.January, 2, 2, 0, 0, 0, time.UTC) // 上海 10:00
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{}, nil)
+	svc.resolver = newOpenAITokenImageChannelPricingResolverWithTimeForTest(t, groupID, "gpt-5.1", &ChannelTimePricing{
+		Timezone: "Asia/Shanghai",
+		Periods:  []ChannelTimePricingPeriod{{StartTime: "09:00", EndTime: "12:00", Multiplier: 2}},
+	})
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "openai_time_pricing_request_start",
+			Model:     "gpt-5.1",
+			Usage:     OpenAIUsage{InputTokens: 1000, OutputTokens: 500},
+		},
+		APIKey: &APIKey{ID: 1006, GroupID: i64p(groupID), Group: &Group{
+			ID: groupID, RateMultiplier: 0.8, SubscriptionType: SubscriptionTypeSubscription,
+		}},
+		User:      &User{ID: 2006},
+		Account:   &Account{ID: 3006},
+		PricingAt: requestStart,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	baseCost := 1000*3e-6 + 500*15e-6
+	require.InDelta(t, baseCost*2, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, baseCost*2*0.8, usageRepo.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, 0.8, usageRepo.lastLog.RateMultiplier, 1e-12)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_TimePricingUsesExplicitPricingAt(t *testing.T) {
+	groupID := int64(17)
+	pricingAt := time.Date(2024, time.January, 2, 0, 0, 0, 0, time.UTC) // 上海 08:00
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{}, nil)
+	svc.resolver = newOpenAITokenImageChannelPricingResolverWithTimeForTest(t, groupID, "gpt-5.1", &ChannelTimePricing{
+		Timezone: "Asia/Shanghai",
+		Periods:  []ChannelTimePricingPeriod{{StartTime: "09:00", EndTime: "12:00", Multiplier: 2}},
+	})
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "openai_time_pricing_explicit",
+			Model:     "gpt-5.1",
+			Usage:     OpenAIUsage{InputTokens: 1000, OutputTokens: 500},
+		},
+		APIKey: &APIKey{ID: 1007, GroupID: i64p(groupID), Group: &Group{
+			ID: groupID, RateMultiplier: 0.8, SubscriptionType: SubscriptionTypeSubscription,
+		}},
+		User:      &User{ID: 2007},
+		Account:   &Account{ID: 3007},
+		PricingAt: pricingAt,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	baseCost := 1000*3e-6 + 500*15e-6
+	require.InDelta(t, baseCost, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, baseCost*0.8, usageRepo.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, 0.8, usageRepo.lastLog.RateMultiplier, 1e-12)
+}
 func TestOpenAIGatewayServiceRecordUsage_IncludesEndpointMetadata(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}
@@ -2706,6 +2835,20 @@ func newOpenAITokenImageChannelPricingResolverForTest(t *testing.T, groupID int6
 	return NewModelPricingResolver(cs, NewBillingService(&config.Config{}, nil))
 }
 
+func newOpenAITokenImageChannelPricingResolverWithTimeForTest(
+	t *testing.T,
+	groupID int64,
+	model string,
+	timePricing *ChannelTimePricing,
+) *ModelPricingResolver {
+	t.Helper()
+	resolver := newOpenAITokenImageChannelPricingResolverForTest(t, groupID, model)
+	cached, ok := resolver.channelService.cache.Load().(*channelCache)
+	require.True(t, ok)
+	cached.pricingByGroupModel[channelModelKey{groupID: groupID, model: model}].TimePricing = timePricing
+	return resolver
+}
+
 type openAIMediaPriceGroupRepoStub struct {
 	GroupRepository
 	group *Group
@@ -2734,6 +2877,7 @@ func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingUsesImageCoun
 		"gemini-image",
 		0.15,
 		1.0,
+		time.Time{},
 		nil,
 	)
 
@@ -2764,7 +2908,7 @@ func TestGatewayServiceCalculateRecordUsageCost_EmptyChannelImagePricingFallsBac
 	result := &ForwardResult{Model: model, ImageCount: 2, ImageSize: ImageBillingSize1K}
 
 	cost, err := svc.calculateRecordUsageCostStrict(
-		context.Background(), result, apiKey, model, 1, 1, nil,
+		context.Background(), result, apiKey, model, 1, 1, time.Time{}, nil,
 	)
 
 	require.NoError(t, err)
@@ -2787,7 +2931,7 @@ func TestGatewayServiceCalculateRecordUsageCost_ExplicitZeroChannelImagePricingS
 		context.Background(),
 		&ForwardResult{Model: model, ImageCount: 1, ImageSize: ImageBillingSize1K},
 		&APIKey{GroupID: i64p(groupID), Group: &Group{ID: groupID}},
-		model, 1, 1, nil,
+		model, 1, 1, time.Time{}, nil,
 	)
 
 	require.NoError(t, err)
@@ -2825,6 +2969,7 @@ func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingUsesSizeTier(
 		"gemini-image",
 		1.0,
 		1.0,
+		time.Time{},
 		nil,
 	)
 
@@ -2857,6 +3002,7 @@ func TestGatewayServiceCalculateRecordUsageCost_GroupImagePriceOverridesChannelI
 		"gemini-image",
 		1.0,
 		1.0,
+		time.Time{},
 		nil,
 	)
 
@@ -2920,6 +3066,7 @@ func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingNormalizesMis
 		"gemini-image",
 		1.0,
 		1.0,
+		time.Time{},
 		nil,
 	)
 
