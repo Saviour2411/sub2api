@@ -1296,7 +1296,7 @@
 
 ### 上游提交处置
 
-固定范围共 171 个提交，其中 62 个 merge commit、109 个 non-merge commit。171 个提交均通过完整 merge 保留祖先关系并记为 `Applied`，其中 19 个同时按本地二次开发边界记为 `Applied + Overridden`；`Already Applied`、`Skipped`、`Deferred` 和未解决 `Conflict` 均为 0。
+固定范围共 171 个提交，其中 62 个 merge commit、109 个 non-merge commit。171 个提交均通过完整 merge 保留祖先关系并记为 `Applied`，其中 15 个非 merge 实现提交同时按本地二次开发边界记为 `Applied + Overridden`；`Already Applied`、`Skipped`、`Deferred` 和未解决 `Conflict` 均为 0。
 
 | 上游提交 | 状态 | 上游主题 |
 | --- | --- | --- |
@@ -1322,7 +1322,7 @@
 | `d677d67dd` | Applied + Overridden | feat: OpenAI Team 联动熔断 |
 | `c3063e01a` | Applied + Overridden | fix(openai): recover message-only capacity failures |
 | `539064798` | Applied + Overridden | fix(openai): complete request-scoped capacity recovery |
-| `a600dd1c0` | Applied + Overridden | Merge remote-tracking branch 'origin/main' into agent/openai-capacity-failover |
+| `a600dd1c0` | Applied | Merge remote-tracking branch 'origin/main' into agent/openai-capacity-failover |
 | `e8ff2017c` | Applied | fix(admin): show category labels in ops error distribution legend |
 | `cb7841d85` | Applied | fix(i18n): add missing expired key to account status block used by proxy list |
 | `5f1943310` | Applied | fix(ops): avoid single-insert fallback after batch failure |
@@ -1338,7 +1338,7 @@
 | `612436a5a` | Applied | fix(openai-compat): Responses→Chat 桥接按 reasoning item id 缓存回注 reasoning_content |
 | `971544570` | Applied | test(antigravity): check tool config assertions |
 | `401dd43b4` | Applied | fix(apicompat): 链式工具调用回放本轮 reasoning_content |
-| `6793d5ac8` | Applied | fix(openai): make Codex convergence identity consistent |
+| `6793d5ac8` | Applied + Overridden | fix(openai): make Codex convergence identity consistent |
 | `c46d07ca0` | Applied | fix: normalize Grok response model audit aliases |
 | `7e45634df` | Applied | chore: remove leftover Sora references after platform removal |
 | `b2d1c3859` | Applied | Merge pull request #5738 from okbexx/fix/codex-identity-snapshot |
@@ -1352,12 +1352,12 @@
 | `41344c20f` | Applied + Overridden | feat(monitor): wire quota fetcher & expose check_mode in handlers |
 | `7ab6d3db6` | Applied | test(channel-monitor): quota mode unit/integration/migration coverage |
 | `c51fd7d0b` | Applied | test(channel-monitor): adapt checker body test to 3-arg normalizeMonitorPrimaryModel |
-| `bb6c3b4f6` | Applied | fix: unify Codex OAuth outbound identity onto the inference resolver |
+| `bb6c3b4f6` | Applied + Overridden | fix: unify Codex OAuth outbound identity onto the inference resolver |
 | `16e4f7ecc` | Applied | 修复 Codex 额度探针模型兼容性 |
 | `a20e1c00c` | Applied | feat(monitor-ui): 配额模式表单、用量快照视图与 8 平台支持 |
 | `302a10b88` | Applied | test(monitor-ui): 配额视图渲染与开关门控用例 |
-| `a7a321232` | Applied + Overridden | Merge pull request #5567 from wucm667/fix/issue-5563-anthropic-sse-overload |
-| `cddb03c0f` | Applied + Overridden | Merge pull request #5609 from wucm667/fix/issue-5607-auth-pricing-snapshot |
+| `a7a321232` | Applied | Merge pull request #5567 from wucm667/fix/issue-5563-anthropic-sse-overload |
+| `cddb03c0f` | Applied | Merge pull request #5609 from wucm667/fix/issue-5607-auth-pricing-snapshot |
 | `853234474` | Applied | Merge pull request #5715 from wucm667/fix/issue-3917-current-main |
 | `1a3ecd2b9` | Applied | Merge pull request #5004 from wucm667/fix/issue-4990-deferred-tool-cache-control |
 | `3d9a0a71b` | Applied | Merge pull request #4057 from feitianbubu/fix/ops-sla-zero-window |
@@ -1383,7 +1383,7 @@
 | `fd42d3722` | Applied | fix: hide Grok prepaid and used/limit when they are empty |
 | `9617775f9` | Applied | fix(repo): tolerate ErrTxStarted for tx-bound clients and harden test stubs |
 | `1ba92449c` | Applied | fix(gemini): wire includeServerSideToolInvocations into the typed transform path |
-| `a34123959` | Applied | fix(fingerprint): align credential-face identity with the real client and de-drift models version |
+| `a34123959` | Applied + Overridden | fix(fingerprint): align credential-face identity with the real client and de-drift models version |
 | `37732dcd3` | Applied | Merge pull request #5725 from tamseno/fix/gemini-include-server-side-tool-invocations |
 | `f211a630c` | Applied | Merge pull request #5720 from tamseno/fix/invitation-code-toctou-race |
 | `1ed3b6aef` | Applied | Merge pull request #5760 from spongehah/feature/unify-codex-outbound-identity |
@@ -1398,7 +1398,7 @@
 | `5cbd0c96a` | Applied | fix(monitor-ui): 关联账号选择器改服务端搜索+回填，OpenAI 配额模式加消耗提示 |
 | `dd04503e1` | Applied | Merge pull request #5773 from Wei-Shaw/fix/channel-pricing-cn-platforms |
 | `e0c48a19e` | Applied | Merge pull request #5761 from Randark-JMT/feat/channel-monitor-quota-mode |
-| `49504adc9` | Applied + Overridden | chore: sync VERSION to 0.1.178 [skip ci] |
+| `49504adc9` | Applied | chore: sync VERSION to 0.1.178 [skip ci] |
 | `3d21d6160` | Applied | chore: retrigger CI（上游 flaky 测试 TestApplyCodexFingerprintClientMetadataRaw_MatchesMapVariant 毫秒边界误报，与本 PR 无关） |
 | `1128df259` | Applied | fix(monitor): align quota-fetcher credential/balance semantics with scheduler |
 | `c41ae19e5` | Applied | fix(monitor): reject unusable quota data sources and invalid mode combos at write time |
@@ -1409,8 +1409,8 @@
 | `85cb732cd` | Applied | docs: fix broken star history chart in README |
 | `214210e1b` | Applied | Merge pull request #5782 from UnlastingR/fix/cn-provider-account-test-routing |
 | `359fd12b2` | Applied | Merge pull request #5749 from Randark-JMT/chore/remove-sora-leftovers |
-| `b228b93e9` | Applied | fix(openai): 修复 Chat 非流式缓冲读取错误未触发故障转移 |
-| `c6f4fbde4` | Applied + Overridden | Merge pull request #5676 from Perfecto23/agent/openai-capacity-failover |
+| `b228b93e9` | Applied + Overridden | fix(openai): 修复 Chat 非流式缓冲读取错误未触发故障转移 |
+| `c6f4fbde4` | Applied | Merge pull request #5676 from Perfecto23/agent/openai-capacity-failover |
 | `e61595fb3` | Applied | Merge pull request #5780 from Randark-JMT/fix/channel-monitor-p2 |
 | `82f7dd14f` | Applied | Merge pull request #5794 from Dessalines39394/fix/star-history-chart |
 | `bfac49fef` | Applied | fix(codex): handle responses input token preflight |
@@ -1436,7 +1436,7 @@
 | `994fbfedd` | Applied | fix(frontend): prevent CN quota labels overlapping bars |
 | `63839f193` | Applied | fix(frontend): align admin role selector styling |
 | `99a8b8470` | Applied | 修复 Grok 内联图片与 view_image 冲突 |
-| `82cbe6aff` | Applied | fix(openai): resume later websocket turns after 429 |
+| `82cbe6aff` | Applied + Overridden | fix(openai): resume later websocket turns after 429 |
 | `1b30a2d74` | Applied | feat(accounts): support header overrides for CN providers |
 | `b0cdea303` | Applied | 补全 Grok 多入口内联图片工具适配 |
 | `68666e1f8` | Applied | Merge pull request #5845 from vincenthcui/fix/openai-ws-later-turn-429-failover |
@@ -1451,14 +1451,14 @@
 | `fce90ecf8` | Applied | 渠道定价：持久化服务层级与区间倍率 |
 | `5b2a386ed` | Applied + Overridden | 计费：应用渠道倍率与上下文区间价格 |
 | `7dae055f2` | Applied | 计费：识别并记录 Anthropic Fast 请求 |
-| `26be82cc8` | Applied + Overridden | 前端：配置渠道倍率并精简长上下文开关 |
-| `d536795e9` | Applied + Overridden | 测试：同步长上下文计费断言 |
-| `d4d2c746c` | Applied + Overridden | 前端：修正账号长上下文开关门控 |
+| `26be82cc8` | Applied | 前端：配置渠道倍率并精简长上下文开关 |
+| `d536795e9` | Applied | 测试：同步长上下文计费断言 |
+| `d4d2c746c` | Applied | 前端：修正账号长上下文开关门控 |
 | `5b2089c5a` | Applied | fix(grok): lower Codex tool-search discovery outputs |
 | `1f2a87adb` | Applied | fix(admin): 补全平台筛选选项 |
 | `2d03e40fd` | Applied | Merge pull request #5868 from X-T-E-R/codex/fix-grok-tool-search-output |
 | `394b12afd` | Applied | Merge pull request #5875 from hansnow/fix/admin-platform-filter-options |
-| `1b5dc676a` | Applied + Overridden | Merge pull request #5851 from IanShaw027/feat/channel-pricing-tier-multipliers |
+| `1b5dc676a` | Applied | Merge pull request #5851 from IanShaw027/feat/channel-pricing-tier-multipliers |
 | `6b0ec50f2` | Applied | fix(ops): exclude model configuration errors from SLA |
 | `85051616f` | Applied | feat(accounts): add adaptive API protocol routing |
 | `9ede0f716` | Applied | fix(grok): promote tool-search discoveries into callable tools |
@@ -1474,14 +1474,17 @@
 
 `Applied + Overridden` 的覆盖边界如下：
 
-- `76a13a5a8`、`a7a321232`：接入 Anthropic SSE overload 识别；在首个语义输出前先丢弃暂存头和前导帧，再把未输出的 `overloaded_error` 映射为 529 并进入本地重试/换号流程，已输出后不切号。
-- `674570ca1`、`cddb03c0f`：接入分组定价认证快照，并将本地 API Key 缓存快照升至 v21，继续完整携带长上下文门禁、服务层级、时段和 token 区间定价字段。
+- `76a13a5a8`：接入 Anthropic SSE overload 识别；在首个语义输出前先丢弃暂存头和前导帧，再把未输出的 `overloaded_error` 映射为 529 并进入本地重试/换号流程，已输出后不切号。
+- `674570ca1`：接入分组定价认证快照，并将本地 API Key 缓存快照升至 v21，继续完整携带长上下文门禁、服务层级、时段和 token 区间定价字段。
 - `d677d67dd`：接入 OpenAI Team 联动熔断和去重；联动处理先执行，再进入本地 strict failure scheduling、连续失败停调度和自动测活。
-- `c3063e01a`、`539064798`、`a600dd1c0`、`c6f4fbde4`：接入请求级容量错误恢复；继续以首个语义输出为边界，metadata/preamble/keepalive 不视为已输出，只有上下文可完整重建时才允许 WS 后续轮次换号。
+- `c3063e01a`、`539064798`：接入请求级容量错误恢复；继续以首个语义输出为边界，metadata/preamble/keepalive 不视为已输出。
+- `b228b93e9`：接入 Chat 非流式缓冲读取错误故障转移；非流式 HTTP 继续保持 HTTP，并沿用本地暂存与换号边界。
+- `82cbe6aff`：接入 WS 后续轮次 429 恢复；只有当前轮次上下文可完整重建时才允许换号，已输出后的轮次不回退重放。
+- `6793d5ac8`、`bb6c3b4f6`、`a34123959`：接入 Codex 统一出站身份与 credential-face 一致性；指纹字段取双方并集，HTTP/WS 头与 body 共用时间戳，并从账号随机种子稳定派生。
 - `c44711ac9`、`41344c20f`：接入 quota fetch/dispatch/repository 与 handler；继续保留本地流式探针、600 秒超时、Responses 结构化 `input` 和 quota 展示 opt-in 白名单边界。
-- `5b2a386ed`、`26be82cc8`、`d536795e9`、`d4d2c746c`、`1b5dc676a`：接入渠道服务层级、时段和 token 区间定价；OpenAI 长上下文继续受账号与真实分组双门禁，Grok 只服从分组开关，只有真实上下文命中配置区间时才抑制内置阶梯，未命中区间仍回退基础价。
+- `5b2a386ed`：接入渠道服务层级、时段和 token 区间定价；OpenAI 长上下文继续受账号与真实分组双门禁，Grok 只服从分组开关，只有真实上下文命中配置区间时才抑制内置阶梯，未命中区间仍回退基础价。
 - `b3092145d`：接入 Adaptive 协议兼容加固；国产供应商账号测试继续覆盖本地自定义提示词、采样参数过滤、语义错误和实际协议路由。
-- `49504adc9`、`2bc139ab5`：保留上游版本提交及祖先关系，最终版本不回退到 `0.1.178`/`0.1.179`，继续使用本地 `0.1.223`。
+- `2bc139ab5`：保留上游最终版本提交及祖先关系，但不回退到 `0.1.179`，继续使用本地 `0.1.223`；中间版本 `49504adc9` 已被上游自身后续版本自然替换，记为普通 `Applied`。
 
 ### 本地提交与文件
 
