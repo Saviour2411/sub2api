@@ -1296,7 +1296,7 @@
 
 ### 上游提交处置
 
-固定范围共 171 个提交，其中 62 个 merge commit、109 个 non-merge commit。171 个提交均通过完整 merge 保留祖先关系并记为 `Applied`，其中 16 个同时按本地二次开发边界记为 `Applied + Overridden`；`Already Applied`、`Skipped`、`Deferred` 和未解决 `Conflict` 均为 0。
+固定范围共 171 个提交，其中 62 个 merge commit、109 个 non-merge commit。171 个提交均通过完整 merge 保留祖先关系并记为 `Applied`，其中 19 个同时按本地二次开发边界记为 `Applied + Overridden`；`Already Applied`、`Skipped`、`Deferred` 和未解决 `Conflict` 均为 0。
 
 | 上游提交 | 状态 | 上游主题 |
 | --- | --- | --- |
@@ -1347,9 +1347,9 @@
 | `8869775ed` | Applied | Merge pull request #5636 from feitianbubu/fix/proxy-status-expired-i18n-key |
 | `ab0fcd1a0` | Applied | fix(gemini): Skipped 错误策略对齐 OpenAI，上游 4xx 不再硬改 500 |
 | `615e6901e` | Applied | feat(channel-monitor): add quota mode schema (migration 226 + ent) |
-| `c44711ac9` | Applied | feat(channel-monitor): quota mode service layer (fetcher + dispatch + repo) |
+| `c44711ac9` | Applied + Overridden | feat(channel-monitor): quota mode service layer (fetcher + dispatch + repo) |
 | `6a6fd304f` | Applied | feat(settings): channel_monitor_show_quota public setting (default off) |
-| `41344c20f` | Applied | feat(monitor): wire quota fetcher & expose check_mode in handlers |
+| `41344c20f` | Applied + Overridden | feat(monitor): wire quota fetcher & expose check_mode in handlers |
 | `7ab6d3db6` | Applied | test(channel-monitor): quota mode unit/integration/migration coverage |
 | `c51fd7d0b` | Applied | test(channel-monitor): adapt checker body test to 3-arg normalizeMonitorPrimaryModel |
 | `bb6c3b4f6` | Applied | fix: unify Codex OAuth outbound identity onto the inference resolver |
@@ -1465,7 +1465,7 @@
 | `06fc0055c` | Applied | Merge remote-tracking branch 'origin/main' into codex/promote-grok-tool-search-discoveries |
 | `cb7fef14c` | Applied | Merge pull request #5838 from xuhaihan/fix/admin-user-role-select-styling |
 | `fb94fd352` | Applied | Merge pull request #5834 from xuhaihan/feat/configurable-proxy-probe-targets |
-| `b3092145d` | Applied | fix(accounts): harden adaptive protocol compatibility |
+| `b3092145d` | Applied + Overridden | fix(accounts): harden adaptive protocol compatibility |
 | `752b3d857` | Applied | Merge pull request #5881 from X-T-E-R/codex/promote-grok-tool-search-discoveries |
 | `740f58080` | Applied | Merge pull request #5842 from SavitarC/feat/adaptive-api-protocol |
 | `75f88be5f` | Applied | Merge pull request #5876 from wucm667/fix/issue-5872-exclude-model-not-found-sla |
@@ -1478,7 +1478,9 @@
 - `674570ca1`、`cddb03c0f`：接入分组定价认证快照，并将本地 API Key 缓存快照升至 v21，继续完整携带长上下文门禁、服务层级、时段和 token 区间定价字段。
 - `d677d67dd`：接入 OpenAI Team 联动熔断和去重；联动处理先执行，再进入本地 strict failure scheduling、连续失败停调度和自动测活。
 - `c3063e01a`、`539064798`、`a600dd1c0`、`c6f4fbde4`：接入请求级容量错误恢复；继续以首个语义输出为边界，metadata/preamble/keepalive 不视为已输出，只有上下文可完整重建时才允许 WS 后续轮次换号。
+- `c44711ac9`、`41344c20f`：接入 quota fetch/dispatch/repository 与 handler；继续保留本地流式探针、600 秒超时、Responses 结构化 `input` 和 quota 展示 opt-in 白名单边界。
 - `5b2a386ed`、`26be82cc8`、`d536795e9`、`d4d2c746c`、`1b5dc676a`：接入渠道服务层级、时段和 token 区间定价；OpenAI 长上下文继续受账号与真实分组双门禁，Grok 只服从分组开关，只有真实上下文命中配置区间时才抑制内置阶梯，未命中区间仍回退基础价。
+- `b3092145d`：接入 Adaptive 协议兼容加固；国产供应商账号测试继续覆盖本地自定义提示词、采样参数过滤、语义错误和实际协议路由。
 - `49504adc9`、`2bc139ab5`：保留上游版本提交及祖先关系，最终版本不回退到 `0.1.178`/`0.1.179`，继续使用本地 `0.1.223`。
 
 ### 本地提交与文件
