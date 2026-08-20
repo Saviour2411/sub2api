@@ -16,6 +16,9 @@ import (
 
 func profitAuthTestAPIKey() *APIKey {
 	groupID := int64(50)
+	inputPrice := 1.25e-6
+	fastMultiplier := 2.5
+	intervalMax := 200000
 	return &APIKey{
 		ID:      82,
 		UserID:  40,
@@ -29,17 +32,29 @@ func profitAuthTestAPIKey() *APIKey {
 			Concurrency: 5,
 		},
 		Group: &Group{
-			ID:                   groupID,
-			Name:                 "VIP-roundtrip",
-			Platform:             PlatformOpenAI,
-			Status:               StatusActive,
-			Hydrated:             true,
-			RateMultiplier:       0.06,
-			SubscriptionType:     SubscriptionTypeStandard,
-			PeakRateEnabled:      false,
-			ProfitControlEnabled: true,
-			ProfitMinMargin:      0.2,
-			ProfitSafetyBuffer:   0.05,
+			ID:                        groupID,
+			Name:                      "VIP-roundtrip",
+			Platform:                  PlatformOpenAI,
+			Status:                    StatusActive,
+			Hydrated:                  true,
+			RateMultiplier:            0.06,
+			SubscriptionType:          SubscriptionTypeStandard,
+			PeakRateEnabled:           false,
+			ProfitControlEnabled:      true,
+			ProfitMinMargin:           0.2,
+			ProfitSafetyBuffer:        0.05,
+			LongContextPricingEnabled: true,
+			ModelPricing: []ChannelModelPricing{{
+				Platform:       PlatformOpenAI,
+				Models:         []string{"gpt-cache-roundtrip"},
+				BillingMode:    BillingModeToken,
+				InputPrice:     &inputPrice,
+				FastMultiplier: &fastMultiplier,
+				Intervals: []PricingInterval{{
+					MinTokens: 0,
+					MaxTokens: &intervalMax,
+				}},
+			}},
 		},
 	}
 }
@@ -53,6 +68,7 @@ func TestAPIKeyAuthSnapshotProfitControlRoundtrip(t *testing.T) {
 	snapshot := svc.snapshotFromAPIKey(context.Background(), apiKey)
 	require.NotNil(t, snapshot)
 	require.Equal(t, apiKeyAuthSnapshotVersion, snapshot.Version)
+	require.Equal(t, 21, snapshot.Version, "v21 起认证快照同时携带分组长上下文开关与模型定价")
 
 	// 模拟 L2 缓存的完整 JSON 往返（与 apiKeyCache.SetAuthCache/GetAuthCache 同构）。
 	payload, err := json.Marshal(&APIKeyAuthCacheEntry{Snapshot: snapshot})
@@ -69,6 +85,12 @@ func TestAPIKeyAuthSnapshotProfitControlRoundtrip(t *testing.T) {
 	require.InDelta(t, 0.2, materialized.Group.ProfitMinMargin, 1e-12)
 	require.InDelta(t, 0.05, materialized.Group.ProfitSafetyBuffer, 1e-12)
 	require.InDelta(t, 0.06, materialized.Group.RateMultiplier, 1e-12)
+	require.True(t, materialized.Group.LongContextPricingEnabled)
+	require.Len(t, materialized.Group.ModelPricing, 1)
+	require.Equal(t, []string{"gpt-cache-roundtrip"}, materialized.Group.ModelPricing[0].Models)
+	require.InDelta(t, 1.25e-6, *materialized.Group.ModelPricing[0].InputPrice, 1e-12)
+	require.InDelta(t, 2.5, *materialized.Group.ModelPricing[0].FastMultiplier, 1e-12)
+	require.Equal(t, 200000, *materialized.Group.ModelPricing[0].Intervals[0].MaxTokens)
 
 	// 中间件语义：materialized.Group 进请求 ctx → 门必须按快照配置装上。
 	ctx := context.WithValue(context.Background(), ctxkey.Group, materialized.Group)
@@ -78,12 +100,12 @@ func TestAPIKeyAuthSnapshotProfitControlRoundtrip(t *testing.T) {
 	require.InDelta(t, 0.06*(1-0.25), gate.threshold, 1e-12)
 }
 
-// 旧版本快照（v16 及更早，无利润字段保真保证）必须被淘汰回源，不得复用。
+// 旧 v20 快照可能分别缺少长上下文开关或模型定价，必须被淘汰回源，不得复用。
 func TestAPIKeyAuthSnapshotOldVersionEvicted(t *testing.T) {
 	svc := &APIKeyService{}
 	snapshot := svc.snapshotFromAPIKey(context.Background(), profitAuthTestAPIKey())
 	require.NotNil(t, snapshot)
-	snapshot.Version = 16
+	snapshot.Version = 20
 
 	materialized, used, err := svc.applyAuthCacheEntry("sk-old", &APIKeyAuthCacheEntry{Snapshot: snapshot})
 	require.NoError(t, err)

@@ -146,14 +146,8 @@ func (r *ModelPricingResolver) Resolve(ctx context.Context, input PricingInput) 
 	if chPricing != nil {
 		resolved.channelPricing = chPricing
 		r.applyTokenOverrides(chPricing, resolved)
-		if !longContextPricingEnabled {
-			r.applyFirstTokenTier(resolved, chPricing)
-		}
 	} else if input.GroupID != nil && r.channelService != nil {
 		r.applyChannelOverrides(ctx, *input.GroupID, input.Model, resolved)
-		if resolved.Source == PricingSourceChannel && !longContextPricingEnabled {
-			r.applyFirstTokenTier(resolved, resolved.channelPricing)
-		}
 	}
 
 	return resolved
@@ -196,20 +190,6 @@ func matchGroupModelPricing(group *Group, model string) *ChannelModelPricing {
 		}
 	}
 	return wildcard
-}
-
-func (r *ModelPricingResolver) applyFirstTokenTier(resolved *ResolvedPricing, config *ChannelModelPricing) {
-	if resolved == nil || len(resolved.Intervals) == 0 {
-		return
-	}
-	first := resolved.Intervals[0]
-	for _, interval := range resolved.Intervals[1:] {
-		if interval.MinTokens < first.MinTokens {
-			first = interval
-		}
-	}
-	resolved.BasePricing = intervalToModelPricing(&first, resolved.SupportsCacheBreakdown, config)
-	resolved.Intervals = nil
 }
 
 // resolveBasePricing 从 LiteLLM 或 Fallback 获取基础定价
@@ -258,84 +238,62 @@ func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricin
 	validIntervals := filterValidTokenIntervals(chPricing.Intervals)
 	hasFlatTokenPricing := chPricing.InputPrice != nil || chPricing.OutputPrice != nil ||
 		chPricing.CacheWritePrice != nil || chPricing.CacheReadPrice != nil
-	hasAnyOverride := hasFlatTokenPricing || chPricing.ImageOutputPrice != nil
+	hasExplicitIntervalPricing := false
+	for i := range validIntervals {
+		iv := &validIntervals[i]
+		if iv.InputPrice != nil || iv.OutputPrice != nil ||
+			iv.CacheWritePrice != nil || iv.CacheReadPrice != nil {
+			hasExplicitIntervalPricing = true
+			break
+		}
+	}
+	hasMetadataOverride := chPricing.FastMultiplier != nil || chPricing.FlexMultiplier != nil ||
+		chPricing.ImageInputPrice != nil || chPricing.ImageOutputPrice != nil ||
+		chPricing.TimePricing != nil
+	hasAnyOverride := hasFlatTokenPricing || len(validIntervals) > 0 || hasMetadataOverride
 
 	// 空渠道条目不应把未知模型伪装成一个全零价格模型。已有全局价格时也无需覆盖。
-	if len(validIntervals) == 0 && !hasAnyOverride {
+	if !hasAnyOverride {
 		return
 	}
 
-	// 如果有有效的区间定价，使用区间
-	if len(validIntervals) > 0 {
-		if !isGroupPricing {
-			resolved.Source = PricingSourceChannel
-			resolved.ChannelPricingConfigured = true
-		}
-		resolved.TokenPricingConfigured = true
-		resolved.Intervals = validIntervals
-		// 区间不匹配时回退到 BasePricing，也需要覆盖图片价格
-		if resolved.BasePricing != nil {
-			// 防止修改 fallbackPrices 中的共享指针
-			cloned := *resolved.BasePricing
-			resolved.BasePricing = &cloned
-			if chPricing.ImageOutputPrice != nil {
-				resolved.BasePricing.ImageOutputPricePerToken = *chPricing.ImageOutputPrice
-			} else {
-				resolved.BasePricing.ImageOutputPricePerToken = 0
-			}
-			resolved.BasePricing.ImageOutputPriceExplicit = true
-		}
-		applyChannelImageInputPrice(chPricing, resolved.BasePricing)
-		return
-	}
-	// 仅配置图片输出 token 价格不能让原本未知的文本模型变成可计费模型。
-	if resolved.BasePricing == nil && !hasFlatTokenPricing {
+	// 倍率、Fast/Flex、图片价或分时倍率都必须建立在已知基础价上；
+	// 只有显式 token 价才能为未知模型建立可计费定价。
+	if resolved.BasePricing == nil && !hasFlatTokenPricing && !hasExplicitIntervalPricing {
 		return
 	}
 	if !isGroupPricing {
 		resolved.Source = PricingSourceChannel
 		resolved.ChannelPricingConfigured = true
 	}
-	if hasFlatTokenPricing {
+	if resolved.BasePricing != nil || hasFlatTokenPricing || hasExplicitIntervalPricing {
 		resolved.TokenPricingConfigured = true
 	}
 
-	// 否则用 flat 字段覆盖 BasePricing
-	if resolved.BasePricing == nil {
+	if resolved.BasePricing == nil && hasFlatTokenPricing {
 		resolved.BasePricing = &ModelPricing{}
-	} else {
+	} else if resolved.BasePricing != nil {
 		// 防止修改 fallbackPrices 中的共享指针
 		cloned := *resolved.BasePricing
 		resolved.BasePricing = &cloned
 	}
 
-	if chPricing.InputPrice != nil {
-		resolved.BasePricing.InputPricePerToken = *chPricing.InputPrice
-		resolved.BasePricing.InputPricePerTokenPriority = *chPricing.InputPrice
+	if resolved.BasePricing != nil {
+		// flat 价是区间未命中时的渠道基价；区间倍率也以它为基数。
+		applyChannelTokenPriceOverrides(resolved.BasePricing, chPricing)
+		resolved.BasePricing.FastMultiplier = chPricing.FastMultiplier
+		resolved.BasePricing.FlexMultiplier = chPricing.FlexMultiplier
+		// 渠道定价存在时，图片输出价显式覆盖；未配置即按 0 处理。
+		if chPricing.ImageOutputPrice != nil {
+			resolved.BasePricing.ImageOutputPricePerToken = *chPricing.ImageOutputPrice
+		} else {
+			resolved.BasePricing.ImageOutputPricePerToken = 0
+		}
+		resolved.BasePricing.ImageOutputPriceExplicit = true
+		applyChannelImageInputPrice(chPricing, resolved.BasePricing)
 	}
-	if chPricing.OutputPrice != nil {
-		resolved.BasePricing.OutputPricePerToken = *chPricing.OutputPrice
-		resolved.BasePricing.OutputPricePerTokenPriority = *chPricing.OutputPrice
-	}
-	if chPricing.CacheWritePrice != nil {
-		resolved.BasePricing.CacheCreationPricePerToken = *chPricing.CacheWritePrice
-		resolved.BasePricing.CacheCreationPricePerTokenPriority = *chPricing.CacheWritePrice
-		resolved.BasePricing.CacheCreationPriceExplicit = true
-		resolved.BasePricing.CacheCreation5mPrice = *chPricing.CacheWritePrice
-		resolved.BasePricing.CacheCreation1hPrice = *chPricing.CacheWritePrice
-	}
-	if chPricing.CacheReadPrice != nil {
-		resolved.BasePricing.CacheReadPricePerToken = *chPricing.CacheReadPrice
-		resolved.BasePricing.CacheReadPricePerTokenPriority = *chPricing.CacheReadPrice
-	}
-	// 渠道定价覆盖一切：显式配置则用配置值，未配置则归零（不回退到 LiteLLM）
-	if chPricing.ImageOutputPrice != nil {
-		resolved.BasePricing.ImageOutputPricePerToken = *chPricing.ImageOutputPrice
-	} else {
-		resolved.BasePricing.ImageOutputPricePerToken = 0
-	}
-	resolved.BasePricing.ImageOutputPriceExplicit = true
-	applyChannelImageInputPrice(chPricing, resolved.BasePricing)
+
+	resolved.Intervals = validIntervals
 }
 
 // applyChannelImageInputPrice 应用渠道图片输入价：显式配置则用配置值；
@@ -371,7 +329,9 @@ func filterValidTokenIntervals(intervals []PricingInterval) []PricingInterval {
 	var valid []PricingInterval
 	for _, iv := range intervals {
 		if iv.InputPrice != nil || iv.OutputPrice != nil ||
-			iv.CacheWritePrice != nil || iv.CacheReadPrice != nil {
+			iv.CacheWritePrice != nil || iv.CacheReadPrice != nil ||
+			iv.InputMultiplier != nil || iv.OutputMultiplier != nil ||
+			iv.CacheWriteMultiplier != nil || iv.CacheReadMultiplier != nil {
 			valid = append(valid, iv)
 		}
 	}
@@ -400,36 +360,63 @@ func (r *ModelPricingResolver) GetIntervalPricing(resolved *ResolvedPricing, tot
 		return resolved.BasePricing
 	}
 
-	return intervalToModelPricing(iv, resolved.SupportsCacheBreakdown, resolved.channelPricing)
+	pricing := intervalToModelPricing(iv, resolved.BasePricing, resolved.channelPricing)
+	// BasePricing 为 nil（仅配置区间）时拷贝不到该标志，从 resolved 回填，
+	// 保证 computeCacheCreationCost 的 5m/1h 分档判断不被区间路径吞掉。
+	pricing.SupportsCacheBreakdown = resolved.SupportsCacheBreakdown
+	return pricing
 }
 
 // intervalToModelPricing 将区间定价转换为 ModelPricing
-func intervalToModelPricing(iv *PricingInterval, supportsCacheBreakdown bool, chPricing *ChannelModelPricing) *ModelPricing {
-	pricing := &ModelPricing{
-		SupportsCacheBreakdown: supportsCacheBreakdown,
+func intervalToModelPricing(iv *PricingInterval, base *ModelPricing, chPricing *ChannelModelPricing) *ModelPricing {
+	pricing := &ModelPricing{}
+	if base != nil {
+		*pricing = *base
+	}
+	applyMultiplier := func(value float64, multiplier *float64) float64 {
+		if multiplier == nil {
+			return value
+		}
+		return value * *multiplier
 	}
 	if iv.InputPrice != nil {
+		pricing.InputPricePerTokenPriority = channelTierOverridePrice(pricing.InputPricePerToken, pricing.InputPricePerTokenPriority, *iv.InputPrice)
 		pricing.InputPricePerToken = *iv.InputPrice
-		pricing.InputPricePerTokenPriority = *iv.InputPrice
+	} else if iv.InputMultiplier != nil {
+		pricing.InputPricePerToken = applyMultiplier(pricing.InputPricePerToken, iv.InputMultiplier)
+		pricing.InputPricePerTokenPriority = applyMultiplier(pricing.InputPricePerTokenPriority, iv.InputMultiplier)
 	}
 	if iv.OutputPrice != nil {
+		pricing.OutputPricePerTokenPriority = channelTierOverridePrice(pricing.OutputPricePerToken, pricing.OutputPricePerTokenPriority, *iv.OutputPrice)
 		pricing.OutputPricePerToken = *iv.OutputPrice
-		pricing.OutputPricePerTokenPriority = *iv.OutputPrice
+	} else if iv.OutputMultiplier != nil {
+		pricing.OutputPricePerToken = applyMultiplier(pricing.OutputPricePerToken, iv.OutputMultiplier)
+		pricing.OutputPricePerTokenPriority = applyMultiplier(pricing.OutputPricePerTokenPriority, iv.OutputMultiplier)
 	}
 	if iv.CacheWritePrice != nil {
+		pricing.CacheCreationPricePerTokenPriority = channelTierOverridePrice(pricing.CacheCreationPricePerToken, pricing.CacheCreationPricePerTokenPriority, *iv.CacheWritePrice)
 		pricing.CacheCreationPricePerToken = *iv.CacheWritePrice
-		pricing.CacheCreationPricePerTokenPriority = *iv.CacheWritePrice
 		pricing.CacheCreationPriceExplicit = true
 		pricing.CacheCreation5mPrice = *iv.CacheWritePrice
 		pricing.CacheCreation1hPrice = *iv.CacheWritePrice
+	} else if iv.CacheWriteMultiplier != nil {
+		pricing.CacheCreationPricePerToken = applyMultiplier(pricing.CacheCreationPricePerToken, iv.CacheWriteMultiplier)
+		pricing.CacheCreationPricePerTokenPriority = applyMultiplier(pricing.CacheCreationPricePerTokenPriority, iv.CacheWriteMultiplier)
+		pricing.CacheCreation5mPrice = applyMultiplier(pricing.CacheCreation5mPrice, iv.CacheWriteMultiplier)
+		pricing.CacheCreation1hPrice = applyMultiplier(pricing.CacheCreation1hPrice, iv.CacheWriteMultiplier)
 	}
 	if iv.CacheReadPrice != nil {
+		pricing.CacheReadPricePerTokenPriority = channelTierOverridePrice(pricing.CacheReadPricePerToken, pricing.CacheReadPricePerTokenPriority, *iv.CacheReadPrice)
 		pricing.CacheReadPricePerToken = *iv.CacheReadPrice
-		pricing.CacheReadPricePerTokenPriority = *iv.CacheReadPrice
+	} else if iv.CacheReadMultiplier != nil {
+		pricing.CacheReadPricePerToken = applyMultiplier(pricing.CacheReadPricePerToken, iv.CacheReadMultiplier)
+		pricing.CacheReadPricePerTokenPriority = applyMultiplier(pricing.CacheReadPricePerTokenPriority, iv.CacheReadMultiplier)
 	}
 	// 渠道定价存在时，ImageOutputPrice 显式覆盖；图片输入价用渠道级配置
 	// （区间不携带图片输入价，与 image_output 一致）。
 	if chPricing != nil {
+		pricing.FastMultiplier = chPricing.FastMultiplier
+		pricing.FlexMultiplier = chPricing.FlexMultiplier
 		pricing.ImageOutputPriceExplicit = true
 		if chPricing.ImageOutputPrice != nil {
 			pricing.ImageOutputPricePerToken = *chPricing.ImageOutputPrice

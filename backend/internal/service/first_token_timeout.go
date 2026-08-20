@@ -479,7 +479,8 @@ func (a *firstTokenAttempt) finish(streamErr error) error {
 	}
 	if state == firstTokenAttemptDecidedWithoutToken {
 		var failoverErr *UpstreamFailoverError
-		if errors.As(streamErr, &failoverErr) {
+		var sseErr *sseStreamErrorEventError
+		if errors.As(streamErr, &failoverErr) || errors.As(streamErr, &sseErr) {
 			a.discardAndRestoreWriter()
 			return streamErr
 		}

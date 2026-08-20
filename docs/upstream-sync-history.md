@@ -1276,3 +1276,274 @@
 - Apple container 生命周期未在 macOS 原生环境执行；Windows fixture 失败仅反映 `stat` 命令兼容性。
 - 未读取 `.env`，未使用真实 OpenAI、Anthropic、Grok、支付、S3、SMTP 或安全审计凭据，未执行真实计费、消息发送、push、PR、部署、远程服务器访问、容器重启或生产数据操作。
 - 本机 Go 为 1.26.3、Node 为 24.15.0；仓库 CI 基线分别为 Go 1.26.6 与 Node 20，版本差异仍需 CI 复核。
+
+## 2026-08-21 同步至 2bc139ab5
+
+- 执行时间：2026-08-21T03:24:47+08:00
+- 执行状态：同步分支完整合并固定上游范围并通过可执行的本地验证；本记录提交后使用 `--ff-only` 更新本地 `main`
+- 本地目标分支：`main`
+- `LOCAL_PRE_SYNC_SHA`：`3bf1f2ee3fb0af82110ae539a2e1382e1ac44fe6`
+- 上游代码合并/最后一个代码提交：`e7b2c6db05751accafdc0894baac1faa21d209be`
+- 上游仓库：`https://github.com/Wei-Shaw/sub2api.git`
+- 上游分支：`main`
+- `UPSTREAM_OLD_SHA`：`5253bb72b08586c619f5b369b2f1dc7547b0e97a`
+- `UPSTREAM_NEW_SHA`：`2bc139ab527b4a687546d145dc7bb9063cf14510`
+- merge-base：`5253bb72b08586c619f5b369b2f1dc7547b0e97a`
+- `LAST_FULLY_INTEGRATED_UPSTREAM_SHA`：`2bc139ab527b4a687546d145dc7bb9063cf14510`
+- 集成策略：在隔离同步分支执行 `git merge --no-ff --no-commit 2bc139ab527b4a687546d145dc7bb9063cf14510`，逐文件解决 30 个文本冲突，复核自动合并路径的二开语义，重生成 Ent/Wire，并将兼容调整和二开台账纳入明确的 merge commit
+- 备份分支：`backup/pre-upstream-sync-20260821-020901-3bf1f2ee3`
+- 同步分支：`sync/upstream-20260821-2bc139ab5`
+
+### 上游提交处置
+
+固定范围共 171 个提交，其中 62 个 merge commit、109 个 non-merge commit。171 个提交均通过完整 merge 保留祖先关系并记为 `Applied`，其中 15 个非 merge 实现提交同时按本地二次开发边界记为 `Applied + Overridden`；`Already Applied`、`Skipped`、`Deferred` 和未解决 `Conflict` 均为 0。
+
+| 上游提交 | 状态 | 上游主题 |
+| --- | --- | --- |
+| `5e72deb7d` | Applied | feat: ops 错误详情弹窗支持自定义时间区间 |
+| `3bff4b64b` | Applied | fix(ui): localize user role label in app header |
+| `7d796f111` | Applied | fix(ui): adapt native form controls to dark mode via color-scheme |
+| `a6d868f27` | Applied | fix(dashboard): include cache tokens in token card breakdown |
+| `35e8ba2a3` | Applied | fix(announcements): use proper empty-state copy instead of error message |
+| `0d5e3ca9b` | Applied | fix(ops): show neutral SLA card when window has no requests |
+| `9c36b75a7` | Applied | fix(claude): strip cache control from deferred tools |
+| `0b35370a7` | Applied | fix(claude): support top-level deferred tools |
+| `2321c0e77` | Applied | chore: retry CI checks |
+| `1afb8264e` | Applied | fix(lint): use require.NotNil for staticcheck SA5011 |
+| `5ea03c178` | Applied | fix(lint): resolve remaining nil dereference warnings |
+| `145b0ac35` | Applied | fix(lint): make remaining pointer assertions explicit |
+| `e087f1b73` | Applied | fix(lint): use fatal pointer assertions in usage tests |
+| `c3fc4331c` | Applied | fix(lint): make compatibility test assertions fatal |
+| `c91fbeb0c` | Applied | chore: remove unrelated test refactors |
+| `76a13a5a8` | Applied + Overridden | fix(gateway): handle Anthropic SSE overload errors |
+| `a288bab73` | Applied | fix(gateway): align passthrough model discovery |
+| `674570ca1` | Applied + Overridden | fix: preserve group pricing in auth snapshots |
+| `44ef88f65` | Applied | fix(openai): restore API-key custom tools |
+| `d677d67dd` | Applied + Overridden | feat: OpenAI Team 联动熔断 |
+| `c3063e01a` | Applied + Overridden | fix(openai): recover message-only capacity failures |
+| `539064798` | Applied + Overridden | fix(openai): complete request-scoped capacity recovery |
+| `a600dd1c0` | Applied | Merge remote-tracking branch 'origin/main' into agent/openai-capacity-failover |
+| `e8ff2017c` | Applied | fix(admin): show category labels in ops error distribution legend |
+| `cb7841d85` | Applied | fix(i18n): add missing expired key to account status block used by proxy list |
+| `5f1943310` | Applied | fix(ops): avoid single-insert fallback after batch failure |
+| `79c2eb502` | Applied | fix: skip expiry reminders without SMTP config |
+| `1977810cf` | Applied | fix(frontend): isolate account helper data loading |
+| `9aac3b73f` | Applied | add Ollama usage query action |
+| `cb5e03a72` | Applied | fix(antigravity): preserve mixed Gemini tool config |
+| `8a0a76aeb` | Applied | Merge pull request #1 from xiaobo121388/codex/add-ollama-usage-query |
+| `76b70b168` | Applied | fix(openai): validate bulk account settings |
+| `b8642ef67` | Applied | fix(auth): make invitation code consumption atomic with user creation |
+| `8d82bb069` | Applied | fix(openai): expose bulk account settings |
+| `3c3bb2fa1` | Applied | fix(gemini): support includeServerSideToolInvocations in GeminiToolConfig |
+| `612436a5a` | Applied | fix(openai-compat): Responses→Chat 桥接按 reasoning item id 缓存回注 reasoning_content |
+| `971544570` | Applied | test(antigravity): check tool config assertions |
+| `401dd43b4` | Applied | fix(apicompat): 链式工具调用回放本轮 reasoning_content |
+| `6793d5ac8` | Applied + Overridden | fix(openai): make Codex convergence identity consistent |
+| `c46d07ca0` | Applied | fix: normalize Grok response model audit aliases |
+| `7e45634df` | Applied | chore: remove leftover Sora references after platform removal |
+| `b2d1c3859` | Applied | Merge pull request #5738 from okbexx/fix/codex-identity-snapshot |
+| `7d633f5fc` | Applied | Merge pull request #5742 from heathermhuang/codex/fix-grok-response-model-audit |
+| `f66a42c40` | Applied | Merge pull request #5697 from feitianbubu/fix/ops-error-distribution-legend-labels |
+| `8869775ed` | Applied | Merge pull request #5636 from feitianbubu/fix/proxy-status-expired-i18n-key |
+| `ab0fcd1a0` | Applied | fix(gemini): Skipped 错误策略对齐 OpenAI，上游 4xx 不再硬改 500 |
+| `615e6901e` | Applied | feat(channel-monitor): add quota mode schema (migration 226 + ent) |
+| `c44711ac9` | Applied + Overridden | feat(channel-monitor): quota mode service layer (fetcher + dispatch + repo) |
+| `6a6fd304f` | Applied | feat(settings): channel_monitor_show_quota public setting (default off) |
+| `41344c20f` | Applied + Overridden | feat(monitor): wire quota fetcher & expose check_mode in handlers |
+| `7ab6d3db6` | Applied | test(channel-monitor): quota mode unit/integration/migration coverage |
+| `c51fd7d0b` | Applied | test(channel-monitor): adapt checker body test to 3-arg normalizeMonitorPrimaryModel |
+| `bb6c3b4f6` | Applied + Overridden | fix: unify Codex OAuth outbound identity onto the inference resolver |
+| `16e4f7ecc` | Applied | 修复 Codex 额度探针模型兼容性 |
+| `a20e1c00c` | Applied | feat(monitor-ui): 配额模式表单、用量快照视图与 8 平台支持 |
+| `302a10b88` | Applied | test(monitor-ui): 配额视图渲染与开关门控用例 |
+| `a7a321232` | Applied | Merge pull request #5567 from wucm667/fix/issue-5563-anthropic-sse-overload |
+| `cddb03c0f` | Applied | Merge pull request #5609 from wucm667/fix/issue-5607-auth-pricing-snapshot |
+| `853234474` | Applied | Merge pull request #5715 from wucm667/fix/issue-3917-current-main |
+| `1a3ecd2b9` | Applied | Merge pull request #5004 from wucm667/fix/issue-4990-deferred-tool-cache-control |
+| `3d9a0a71b` | Applied | Merge pull request #4057 from feitianbubu/fix/ops-sla-zero-window |
+| `632b4f4fa` | Applied | Merge pull request #4053 from feitianbubu/fix/announcements-empty-state-copy |
+| `5dfac8bff` | Applied | Merge pull request #4049 from feitianbubu/fix/dashboard-token-cache-breakdown |
+| `f6d6613ec` | Applied | Merge pull request #4006 from feitianbubu/fix/native-controls-dark-mode |
+| `5c1296028` | Applied | Merge pull request #4005 from feitianbubu/fix/header-role-i18n |
+| `c76ff5599` | Applied | Merge pull request #2148 from feitianbubu/pr/ops-error-detail-support-custom-time |
+| `c0325d24f` | Applied | Merge pull request #5759 from o2e/codex/fix-codex-usage-probe-model-clean |
+| `baaf59d41` | Applied | Merge pull request #5755 from feeeei/feat/gemini |
+| `6259940ef` | Applied | Merge pull request #5669 from feeeei/main |
+| `ed2da8239` | Applied | Merge pull request #5711 from wucm667/fix/issue-5709-antigravity-tool-config |
+| `1ea4150bf` | Applied | Merge pull request #5581 from wucm667/fix/issue-5574-passthrough-model-discovery |
+| `7376f4a48` | Applied | fix(lint): gofmt 对齐 + 移除未使用的 isSupportedProvider |
+| `c792b44bb` | Applied | Merge pull request #5712 from xiaobo121388/main |
+| `4d1983618` | Applied | Merge pull request #5716 from wucm667/fix/issue-2695-current-main |
+| `938f1868a` | Applied | Merge pull request #5714 from wucm667/fix/issue-2733-current-main |
+| `a9514a68d` | Applied | perf(usage): aggregate stats in one scan |
+| `ebcae03af` | Applied | fix(lint): 补齐 setting_public.go 与配额 fetcher 测试的 gofmt 对齐 |
+| `7e579cb28` | Applied | fix(openai): adapt client tools in WS HTTP bridge |
+| `269fbcac0` | Applied | feat: Grok 用量条补齐本站 24h/7d/30d 聚合 |
+| `1870b58c1` | Applied | Merge pull request #5721 from lyy0709/codex/bulk-openai-settings |
+| `fd42d3722` | Applied | fix: hide Grok prepaid and used/limit when they are empty |
+| `9617775f9` | Applied | fix(repo): tolerate ErrTxStarted for tx-bound clients and harden test stubs |
+| `1ba92449c` | Applied | fix(gemini): wire includeServerSideToolInvocations into the typed transform path |
+| `a34123959` | Applied + Overridden | fix(fingerprint): align credential-face identity with the real client and de-drift models version |
+| `37732dcd3` | Applied | Merge pull request #5725 from tamseno/fix/gemini-include-server-side-tool-invocations |
+| `f211a630c` | Applied | Merge pull request #5720 from tamseno/fix/invitation-code-toctou-race |
+| `1ed3b6aef` | Applied | Merge pull request #5760 from spongehah/feature/unify-codex-outbound-identity |
+| `685455985` | Applied | Merge pull request #5765 from IanShaw027/feat/grok-from-personal-main |
+| `58ea46e89` | Applied | Merge pull request #5661 from wucm667/fix/issue-5659-openai-custom-tools |
+| `26cb59df0` | Applied | Merge pull request #5764 from hansnow/fix/ws-http-bridge-custom-tools |
+| `c253bd2c7` | Applied | fix(openai): restore client tools in terminal events |
+| `58ccea4ea` | Applied | Merge pull request #5767 from hansnow/fix/ws-http-bridge-custom-tools |
+| `8f6f45983` | Applied | fix(channels): support kimi/zhipu/deepseek platforms in channel pricing |
+| `22df600d0` | Applied | fix(channel-monitor): 配额快照识别值通道失败并加 60s 负缓存与 singleflight |
+| `03c3f3b6f` | Applied | feat(ui): Select 组件支持可选远程搜索（remote/loading props + search 事件） |
+| `5cbd0c96a` | Applied | fix(monitor-ui): 关联账号选择器改服务端搜索+回填，OpenAI 配额模式加消耗提示 |
+| `dd04503e1` | Applied | Merge pull request #5773 from Wei-Shaw/fix/channel-pricing-cn-platforms |
+| `e0c48a19e` | Applied | Merge pull request #5761 from Randark-JMT/feat/channel-monitor-quota-mode |
+| `49504adc9` | Applied | chore: sync VERSION to 0.1.178 [skip ci] |
+| `3d21d6160` | Applied | chore: retrigger CI（上游 flaky 测试 TestApplyCodexFingerprintClientMetadataRaw_MatchesMapVariant 毫秒边界误报，与本 PR 无关） |
+| `1128df259` | Applied | fix(monitor): align quota-fetcher credential/balance semantics with scheduler |
+| `c41ae19e5` | Applied | fix(monitor): reject unusable quota data sources and invalid mode combos at write time |
+| `e2dfb3b8c` | Applied | refactor(monitor): pass loaded account through quota sources (single load per fetch) |
+| `c9effc456` | Applied | fix(frontend): monitor form check-mode restore, account unbinding and mode badge |
+| `2c250bfd7` | Applied | fix(monitor-ui): localize the "quota" placeholder model across monitor views |
+| `ac6208de1` | Applied | fix(accounts): route CN provider chat tests correctly |
+| `85cb732cd` | Applied | docs: fix broken star history chart in README |
+| `214210e1b` | Applied | Merge pull request #5782 from UnlastingR/fix/cn-provider-account-test-routing |
+| `359fd12b2` | Applied | Merge pull request #5749 from Randark-JMT/chore/remove-sora-leftovers |
+| `b228b93e9` | Applied + Overridden | fix(openai): 修复 Chat 非流式缓冲读取错误未触发故障转移 |
+| `c6f4fbde4` | Applied | Merge pull request #5676 from Perfecto23/agent/openai-capacity-failover |
+| `e61595fb3` | Applied | Merge pull request #5780 from Randark-JMT/fix/channel-monitor-p2 |
+| `82f7dd14f` | Applied | Merge pull request #5794 from Dessalines39394/fix/star-history-chart |
+| `bfac49fef` | Applied | fix(codex): handle responses input token preflight |
+| `892787723` | Applied | fix(grok): preserve xhigh effort for grok-4.6 |
+| `58e147fba` | Applied | feat(composite): support Codex endpoints |
+| `b171bb0e4` | Applied | fix(composite): support CN providers |
+| `e943f817b` | Applied | Merge pull request #5729 from lbyxiaolizi/fix/responses-chat-reasoning-content-passback |
+| `4d3b300a2` | Applied | test(scheduler): update CN platform expectations |
+| `2a5ae2b2d` | Applied | Merge pull request #5816 from kingsleydon/fix/composite-codex-support |
+| `7d9c95848` | Applied | Merge pull request #5810 from Pluviobyte/codex/fix-responses-input-tokens |
+| `bd1ccd973` | Applied | Merge remote-tracking branch 'origin/main' into fix/issue-5796-composite-new-platforms |
+| `aa673062e` | Applied | fix(composite): keep CN rollout on fully supported paths |
+| `b94e484e2` | Applied | fix(openai): preserve client tools across WS bridge turns |
+| `499a8ee42` | Applied | fix(composite): exempt resolved grok/CN targets from messages dispatch gate |
+| `e4896c41d` | Applied | test(apicompat): satisfy client tool type assertions |
+| `fefd0d514` | Applied | test(apicompat): avoid unchecked tool history assertions |
+| `6a945b3ca` | Applied | Merge pull request #5817 from wucm667/fix/issue-5796-composite-new-platforms |
+| `e8b53c919` | Applied | Merge pull request #5801 from MokoYee/fix/openai-chat-buffered-stream-failover |
+| `89d28037f` | Applied | Merge pull request #5822 from hansnow/fix/ws-http-bridge-followup-client-tools |
+| `ae62854ab` | Applied | Merge pull request #5815 from 771373073/fix/grok46-xhigh |
+| `f917d19d3` | Applied | test(frontend): align Grok API key placeholder assertion |
+| `b0464a986` | Applied | feat(proxy): allow configurable probe targets |
+| `994fbfedd` | Applied | fix(frontend): prevent CN quota labels overlapping bars |
+| `63839f193` | Applied | fix(frontend): align admin role selector styling |
+| `99a8b8470` | Applied | 修复 Grok 内联图片与 view_image 冲突 |
+| `82cbe6aff` | Applied + Overridden | fix(openai): resume later websocket turns after 429 |
+| `1b30a2d74` | Applied | feat(accounts): support header overrides for CN providers |
+| `b0cdea303` | Applied | 补全 Grok 多入口内联图片工具适配 |
+| `68666e1f8` | Applied | Merge pull request #5845 from vincenthcui/fix/openai-ws-later-turn-429-failover |
+| `23dc9377b` | Applied | Merge pull request #5844 from lyen1688/fix/grok-inline-image-view-image |
+| `d5484866f` | Applied | fix(config): register proxy probe URLs default |
+| `b7fe8ebaa` | Applied | Merge pull request #5762 from jaxxjj/codex/perf-usage-stats-grouping-sets |
+| `38a5f266e` | Applied | Merge pull request #5839 from xuhaihan/test/fix-grok-api-key-placeholder |
+| `32ecd5cc6` | Applied | Merge pull request #5847 from wucm667/feat/issue-5826-cn-header-overrides |
+| `32a0d9ba2` | Applied | Merge pull request #5837 from xuhaihan/fix/cn-provider-quota-cell-layout |
+| `ec5a34593` | Applied | fix(proxy): validate configurable probe targets |
+| `1ab325678` | Applied | fix(proxy): format validated probe targets |
+| `fce90ecf8` | Applied | 渠道定价：持久化服务层级与区间倍率 |
+| `5b2a386ed` | Applied + Overridden | 计费：应用渠道倍率与上下文区间价格 |
+| `7dae055f2` | Applied | 计费：识别并记录 Anthropic Fast 请求 |
+| `26be82cc8` | Applied | 前端：配置渠道倍率并精简长上下文开关 |
+| `d536795e9` | Applied | 测试：同步长上下文计费断言 |
+| `d4d2c746c` | Applied | 前端：修正账号长上下文开关门控 |
+| `5b2089c5a` | Applied | fix(grok): lower Codex tool-search discovery outputs |
+| `1f2a87adb` | Applied | fix(admin): 补全平台筛选选项 |
+| `2d03e40fd` | Applied | Merge pull request #5868 from X-T-E-R/codex/fix-grok-tool-search-output |
+| `394b12afd` | Applied | Merge pull request #5875 from hansnow/fix/admin-platform-filter-options |
+| `1b5dc676a` | Applied | Merge pull request #5851 from IanShaw027/feat/channel-pricing-tier-multipliers |
+| `6b0ec50f2` | Applied | fix(ops): exclude model configuration errors from SLA |
+| `85051616f` | Applied | feat(accounts): add adaptive API protocol routing |
+| `9ede0f716` | Applied | fix(grok): promote tool-search discoveries into callable tools |
+| `06fc0055c` | Applied | Merge remote-tracking branch 'origin/main' into codex/promote-grok-tool-search-discoveries |
+| `cb7fef14c` | Applied | Merge pull request #5838 from xuhaihan/fix/admin-user-role-select-styling |
+| `fb94fd352` | Applied | Merge pull request #5834 from xuhaihan/feat/configurable-proxy-probe-targets |
+| `b3092145d` | Applied + Overridden | fix(accounts): harden adaptive protocol compatibility |
+| `752b3d857` | Applied | Merge pull request #5881 from X-T-E-R/codex/promote-grok-tool-search-discoveries |
+| `740f58080` | Applied | Merge pull request #5842 from SavitarC/feat/adaptive-api-protocol |
+| `75f88be5f` | Applied | Merge pull request #5876 from wucm667/fix/issue-5872-exclude-model-not-found-sla |
+| `c0e073a79` | Applied | chore: update sponsors |
+| `2bc139ab5` | Applied + Overridden | chore: sync VERSION to 0.1.179 [skip ci] |
+
+`Applied + Overridden` 的覆盖边界如下：
+
+- `76a13a5a8`：接入 Anthropic SSE overload 识别；在首个语义输出前先丢弃暂存头和前导帧，再把未输出的 `overloaded_error` 映射为 529 并进入本地重试/换号流程，已输出后不切号。
+- `674570ca1`：接入分组定价认证快照，并将本地 API Key 缓存快照升至 v21，继续完整携带长上下文门禁、服务层级、时段和 token 区间定价字段。
+- `d677d67dd`：接入 OpenAI Team 联动熔断和去重；联动处理先执行，再进入本地 strict failure scheduling、连续失败停调度和自动测活。
+- `c3063e01a`、`539064798`：接入请求级容量错误恢复；继续以首个语义输出为边界，metadata/preamble/keepalive 不视为已输出。
+- `b228b93e9`：接入 Chat 非流式缓冲读取错误故障转移；非流式 HTTP 继续保持 HTTP，并沿用本地暂存与换号边界。
+- `82cbe6aff`：接入 WS 后续轮次 429 恢复；只有当前轮次上下文可完整重建时才允许换号，已输出后的轮次不回退重放。
+- `6793d5ac8`、`bb6c3b4f6`、`a34123959`：接入 Codex 统一出站身份与 credential-face 一致性；指纹字段取双方并集，HTTP/WS 头与 body 共用时间戳，并从账号随机种子稳定派生。
+- `c44711ac9`、`41344c20f`：接入 quota fetch/dispatch/repository 与 handler；继续保留本地流式探针、600 秒超时、Responses 结构化 `input` 和 quota 展示 opt-in 白名单边界。
+- `5b2a386ed`：接入渠道服务层级、时段和 token 区间定价；OpenAI 长上下文继续受账号与真实分组双门禁，Grok 只服从分组开关，只有真实上下文命中配置区间时才抑制内置阶梯，未命中区间仍回退基础价。
+- `b3092145d`：接入 Adaptive 协议兼容加固；国产供应商账号测试继续覆盖本地自定义提示词、采样参数过滤、语义错误和实际协议路由。
+- `2bc139ab5`：保留上游最终版本提交及祖先关系，但不回退到 `0.1.179`，继续使用本地 `0.1.223`；中间版本 `49504adc9` 已被上游自身后续版本自然替换，记为普通 `Applied`。
+
+### 本地提交与文件
+
+- 上游固定范围整体映射到 merge commit `e7b2c6db05751accafdc0894baac1faa21d209be`；双亲为同步前本地 SHA `3bf1f2ee3fb0af82110ae539a2e1382e1ac44fe6` 和固定上游 SHA `2bc139ab527b4a687546d145dc7bb9063cf14510`。
+- 写入本记录前，相对 `LOCAL_PRE_SYNC_SHA` 共变更 359 个文件：新增 57 个、修改 300 个、删除 2 个，增加 20528 行、删除 2080 行。上游范围涉及 357 个路径；额外路径为本地首语义输出兼容、定价兼容测试和二开台账。
+- 主要新增：渠道监控 `quota`/`quota_probe` 与额度展示、渠道服务层级/时段/token 区间定价、CN 自适应协议、`/responses/input_tokens`、OpenAI WS 后续轮次容量恢复、Codex 指纹随机种子、OpenAI Team 联动熔断，以及迁移 225 至 228。
+- 主要修复：Anthropic SSE overload 的 529/failover 处理、非流式 Chat 缓冲读取错误、Responses 客户端工具跨 WS bridge 轮次恢复、Gemini/Antigravity 工具配置、Composite Codex/CN 路由、邀请代码原子消费、用量统计聚合和前端监控/账号交互。
+- 删除的 `assets/partners/logos/claudeapi.jpg` 与 `assets/partners/logos/code0.jpg` 均为上游 sponsor 更新已删除且不再引用的资源；未删除本地业务资源。
+- `backend/cmd/server/VERSION` 最终保持 `0.1.223`。上游该路径与本地最终内容一致，因此相对同步前无文件差异；`backend/ent/group.go` 的上游结果也已由本地现状等价覆盖。
+- Ent/Wire 从合并后的 schema/provider 隔离重生成并验证可复现；前端与 Canvas 构建未留下锁文件或其他未提交受控差异。
+
+### 冲突与最终解决方案
+
+- 用户批准集中审批报告中列明的完整 merge、30 个文本冲突解决方案和本地验证范围；执行中未出现需要新增业务选择的计划外高风险冲突。
+- 30 个文本冲突均逐文件解决，未整文件采用 `ours`、`theirs` 或上游版本；最终索引无未解决路径。
+- 普通分组继续严格按用户请求模型计费，缺价返回错误；上游响应模型只用于诊断。Composite 仅在显式渠道价存在时按公开别名计费，媒体路径继续使用实际模型。
+- OpenAI 长上下文使用账号与真实分组双门禁；Grok 只服从分组开关。只有真实上下文命中配置区间时才抑制模型内置阶梯，避免部分区间未命中时错误选择最低档。
+- 首个语义输出前统一暂存账号相关响应头和前导帧，Responses metadata、preamble 与 keepalive 均不解除守卫；SSE error 先丢弃缓冲帧再判断换号，避免 529 被已提交状态误判。
+- 流式 HTTP 请求可按批准边界转 WSv2，非流式 HTTP 保持 HTTP；客户端工具状态跨轮次保留，但只有上下文可完整重建时才恢复当前轮次换号。
+- Codex 指纹字段取双方并集，HTTP/WS 头与 body 共用时间戳，并从系统管理的账号随机种子稳定派生；Team 联动熔断先于本地 failure scheduling 执行。
+- 渠道监控保留本地流式请求、600 秒超时和 Responses 结构化 `input`，接入 `quota`/`quota_probe`、关联账号及额度视图；`quota` 不构造 LLM 请求。
+- 公共设置继续保留 Canvas、每日签到和本地模型市场默认语义；渠道 quota 展示为 opt-in，缺失或 false 时服务端剥离。
+- CN Adaptive 账号测试覆盖自定义提示词、实际协议路由、采样参数过滤和语义错误；GPT-5.5/Pro 使用官方价格，不被旧 GPT-5.4 映射遮蔽。
+- Ent 与 Wire 以合并后的最终 schema/provider 重生成，生成结果与工作树逐文件一致；两份生产 Compose 继续保持字节完全一致。
+
+### 刻意保留的二次开发功能
+
+- `CUST-GW-001`、`CUST-GW-003`、`CUST-GW-004`、`CUST-GW-006`、`CUST-GW-008`、`CUST-GW-010`：首语义输出、非语义心跳扣除、529/failover、连续失败停调度、部分输出边界和请求体释放。
+- `CUST-PROTO-001`、`CUST-PROTO-004`、`CUST-PROTO-005`、`CUST-PROTO-006`、`CUST-PROTO-007`、`CUST-ACC-005`：Codex 指纹、Claude 工具缓存、请求头覆写、Responses/WS 路由、结构化监控请求和增强账号测试。
+- `CUST-BILL-001`、`CUST-BILL-002`、`CUST-BILL-003`、`CUST-BILL-005`：严格请求模型计费、多层定价、长上下文双门禁和服务层级费用展示。
+- `CUST-OBS-001`、`CUST-OBS-002`、`CUST-PROD-001`、`CUST-PROD-002`、`CUST-PROD-007`、`CUST-RISK-002`、`CUST-UI-002`：流式渠道监控、独立上游同步、每日签到、本地模型市场、Canvas、cyber 用量边界和公共设置白名单。
+- 生产 bind mount、仅回环暴露、HTTP upstream 业务开关、双生产 Compose 一致性、4 vCPU/8 GiB 性能参数、按用户串行扣费和 5 秒 usage task 超时均未被放宽。
+
+### 验证记录
+
+本机使用 Go 1.26.6、Node 24.15.0、pnpm 9.15.9 和 golangci-lint 2.9.0；CI Node 基线为 20。
+
+| 阶段 | 命令或检查 | 退出码 | 结果 |
+| --- | --- | ---: | --- |
+| 同步前 | `go test -tags=unit ./... -count=1`、`golangci-lint run --timeout=30m ./...`、`CGO_ENABLED=0 go build -trimpath ./...` | 0 | Go 全量 unit、lint 与 CGO 关闭构建通过，作为同步后比较基准 |
+| 同步前 | frontend `lint:check`、`typecheck`、`test:run`、`build`；Canvas `format:check`、`typecheck`、`test`、`build` | 0 | Vue 与 Canvas 基线检查、测试和生产构建通过 |
+| 兼容回归 | 计费区间/长上下文双门禁、Spark Shadow 父账号门禁、首语义输出、Anthropic SSE overload、WS 后续轮次、CN Adaptive、Codex 指纹和渠道监控定向 Go 测试 | 0 | 相关定向回归通过；测试夹具独立验证分组与父账号开关，已输出场景先发送真实文本增量 |
+| 迁移 | `go test ./migrations` 的 225 至 228 静态用例；`go test -tags=unit ./internal/repository` 的非事务迁移执行器用例 | 0 | JSONB/约束/索引 SQL 静态契约及 `CREATE INDEX CONCURRENTLY` 非事务执行路径通过 |
+| 同步后后端 | `go test -tags=unit ./... -count=1` | 0 | Go 全量 unit 通过 |
+| 同步后后端 | `golangci-lint run --timeout=30m ./...` | 0 | `0 issues` |
+| 同步后后端 | `CGO_ENABLED=0 go build -trimpath ./...` | 0 | 全包构建通过 |
+| 同步后前端 | `corepack pnpm --dir frontend run lint:check`、`typecheck`、`test:run`、`build` | 0 | lint/typecheck 通过；257 个测试文件、1802 项测试通过；生产构建通过，仅有既存动态导入和 chunk 体积警告 |
+| 同步后 Canvas | `corepack pnpm --dir canvas run format:check`、`typecheck`、`test`、`build` | 0 | 格式、类型检查、34 项测试和生产构建通过 |
+| 生成一致性 | 在隔离目录重生成 Ent/Wire，并与 merge tree 逐文件比较 | 0 | 两类生成结果均可复现，重生成后无差异 |
+| 部署静态 | Git Bash `bash -n`/`sh -n`；Compose security/resources、Caddy cache 和假 GitHub Token 隔离测试 | 0 | 脚本语法、安全配置、资源参数、Caddy 缓存和假 Token 隔离均通过；未读取真实 Token 或 `.env`，未联网部署 |
+| Compose 一致性 | `fc /b deploy\docker-compose.yml deploy\docker-compose.sub2api.yml` | 0 | 两份生产 Compose 字节完全一致 |
+| 最终静态复核 | `git diff --cached --check`、索引冲突项、冲突标记、意外删除、凭据类路径、祖先关系和工作树检查 | 0 | 无空白错误、未解决冲突、异常删除或凭据文件；固定上游 SHA 已成为同步分支祖先 |
+
+### 未验证项与残余风险
+
+- 本机无 Docker CLI，未运行 Docker/Testcontainers、完整 `go test -tags=integration ./...` 或依赖 PostgreSQL/Redis 的本地完整服务；`/health` 未验证。
+- 未在真实 PostgreSQL 上执行 225 至 228 完整迁移；新增 JSONB、约束、backfill 与 `CREATE INDEX CONCURRENTLY` 仍需隔离 CI/临时数据库验证。
+- 未运行 `-race`，本机无 GCC；未安装/运行 `govulncheck`，本记录不覆盖数据竞争或最新漏洞可达性。
+- 本机 Node 24.15.0 与 CI Node 20 存在版本差异，需以后续 CI 复核 Node 20 结果。
+- 未使用外部真实 OpenAI、Anthropic、Grok、CN Provider、SMTP 或其他业务凭据；真实额度、媒体、流式故障转移和消息发送未验证。
+- 未读取 `.env`、`D:\project\github_token.sh` 或任何私钥；未执行 push、PR、部署、远程服务器访问、容器重启、生产挂载核验或生产数据操作。
+- 生产服务器状态、bind mount 实际挂载、实例性能参数和健康检查均未验证；本次只验证仓库内静态 Compose 约束。

@@ -10,6 +10,12 @@ func optionalTrimmedStringPtr(raw string) *string {
 	return &trimmed
 }
 
+func optionalStringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value)
+}
 func optionalInt64Ptr(v int64) *int64 {
 	if v == 0 {
 		return nil
