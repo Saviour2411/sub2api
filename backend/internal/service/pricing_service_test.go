@@ -632,17 +632,43 @@ func TestGetModelPricing_Gpt54UsesStaticFallbackWhenRemoteMissing(t *testing.T) 
 	require.InDelta(t, 1.5, got.LongContextOutputCostMultiplier, 1e-12)
 }
 
-func TestGetModelPricing_OpenAICompactAliasUsesStaticFallback(t *testing.T) {
+func TestGetModelPricing_OpenAICompactAliasUsesOfficialGPT55Fallback(t *testing.T) {
 	svc := &PricingService{
 		pricingData: map[string]*LiteLLMModelPricing{
 			"gpt-5.1-codex": {InputCostPerToken: 1.25e-6},
 		},
 	}
 
-	got := svc.GetModelPricing("openai/gpt5.5")
-	require.NotNil(t, got)
-	require.InDelta(t, 2.5e-6, got.InputCostPerToken, 1e-12)
-	require.InDelta(t, 1.5e-5, got.OutputCostPerToken, 1e-12)
+	tests := []struct {
+		model      string
+		input      float64
+		output     float64
+		cacheWrite float64
+		cacheRead  float64
+		fastInput  float64
+	}{
+		{model: "openai/gpt5.5", input: 5e-6, output: 30e-6, cacheWrite: 5e-6, cacheRead: 0.5e-6, fastInput: 12.5e-6},
+		{model: "openai/gpt5.5-pro", input: 30e-6, output: 180e-6, cacheWrite: 30e-6, cacheRead: 30e-6},
+	}
+	billingSvc := NewBillingService(&config.Config{}, svc)
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			got := svc.GetModelPricing(tt.model)
+			require.NotNil(t, got)
+			require.InDelta(t, tt.input, got.InputCostPerToken, 1e-12)
+			require.InDelta(t, tt.output, got.OutputCostPerToken, 1e-12)
+			require.InDelta(t, tt.cacheWrite, got.CacheCreationInputTokenCost, 1e-12)
+			require.InDelta(t, tt.cacheRead, got.CacheReadInputTokenCost, 1e-12)
+			require.InDelta(t, tt.fastInput, got.InputCostPerTokenPriority, 1e-12)
+
+			billingPricing, err := billingSvc.GetModelPricing(tt.model)
+			require.NoError(t, err)
+			require.InDelta(t, tt.input, billingPricing.InputPricePerToken, 1e-12)
+			require.InDelta(t, tt.output, billingPricing.OutputPricePerToken, 1e-12)
+			require.InDelta(t, tt.cacheWrite, billingPricing.CacheCreationPricePerToken, 1e-12)
+			require.InDelta(t, tt.cacheRead, billingPricing.CacheReadPricePerToken, 1e-12)
+		})
+	}
 }
 
 func TestPricingService_Gemini36FlashThinkingTiersUseBasePricing(t *testing.T) {
