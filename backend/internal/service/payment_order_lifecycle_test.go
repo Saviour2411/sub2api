@@ -5,7 +5,12 @@ package service
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,6 +24,8 @@ import (
 	entsql "entgo.io/ent/dialect/sql"
 	_ "modernc.org/sqlite"
 )
+
+const paymentOrderLifecycleEasyPayEncryptionKey = "0123456789abcdef0123456789abcdef"
 
 type paymentOrderLifecycleQueryProvider struct {
 	key               string
@@ -37,6 +44,18 @@ type paymentOrderLifecycleRedeemRepo struct {
 		id     int64
 		userID int64
 	}
+}
+
+type paymentOrderLifecycleOrderOptions struct {
+	outTradeNo       string
+	paymentType      string
+	providerKey      string
+	providerInstance string
+	status           string
+	createdAt        time.Time
+	expiresAt        time.Time
+	initialized      bool
+	amount           float64
 }
 
 func (p *paymentOrderLifecycleQueryProvider) Name() string {
@@ -643,6 +662,207 @@ func TestReconcilePendingWxpayOrdersBackfillsPaidOrder(t *testing.T) {
 	requirePaymentOrderLifecycleRedeemUsed(t, ctx, client, order.RechargeCode, user.ID)
 }
 
+func TestReconcilePendingEasyPayOrdersBackfillsPaidOrder(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentOrderLifecycleTestClient(t)
+
+	var queryCalls atomic.Int32
+	providerServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/api.php", r.URL.Path)
+		require.NoError(t, r.ParseForm())
+		require.Equal(t, "order", r.Form.Get("act"))
+		require.Equal(t, "sub2_easypay_reconcile", r.Form.Get("out_trade_no"))
+		queryCalls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":1,"money":"50.00","trade_no":"easypay-upstream-trade-123"}`))
+	}))
+	t.Cleanup(providerServer.Close)
+	instance := createPaymentOrderLifecycleEasyPayInstance(t, ctx, client, providerServer.URL)
+
+	user, err := client.User.Create().
+		SetEmail("easypay-reconcile@example.com").
+		SetPasswordHash("hash").
+		SetUsername("easypay-reconcile-user").
+		Save(ctx)
+	require.NoError(t, err)
+	order := createPaymentOrderLifecycleOrder(t, ctx, client, user, paymentOrderLifecycleOrderOptions{
+		outTradeNo:       "sub2_easypay_reconcile",
+		paymentType:      payment.TypeAlipay,
+		providerKey:      payment.TypeEasyPay,
+		providerInstance: strconv.FormatInt(instance.ID, 10),
+		status:           OrderStatusPending,
+		createdAt:        time.Now().Add(-time.Minute),
+		expiresAt:        time.Now().Add(time.Hour),
+		initialized:      true,
+		amount:           50,
+	})
+
+	userRepo := &mockUserRepo{
+		getByIDUser: &User{
+			ID:       user.ID,
+			Email:    user.Email,
+			Username: user.Username,
+			Balance:  0,
+		},
+	}
+	userRepo.updateBalanceFn = func(ctx context.Context, id int64, amount float64) error {
+		require.Equal(t, user.ID, id)
+		userRepo.getByIDUser.Balance += amount
+		return nil
+	}
+	redeemRepo := createPaymentOrderLifecycleRedeemRepo(t, ctx, client, order.RechargeCode, order.Amount)
+	redeemService := NewRedeemService(redeemRepo, userRepo, nil, nil, nil, client, nil, nil)
+	svc := newPaymentOrderLifecycleEasyPayService(client, userRepo, redeemService)
+
+	recovered, err := svc.ReconcilePendingEasyPayOrders(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, recovered)
+	require.Equal(t, int32(1), queryCalls.Load())
+
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusCompleted, reloaded.Status)
+	require.Equal(t, "easypay-upstream-trade-123", reloaded.PaymentTradeNo)
+	require.Equal(t, 50.0, userRepo.getByIDUser.Balance)
+	requirePaymentOrderLifecycleRedeemUsed(t, ctx, client, order.RechargeCode, user.ID)
+
+	logs, err := svc.GetOrderAuditLogs(ctx, order.ID)
+	require.NoError(t, err)
+	var reconciliationDetail map[string]any
+	for _, log := range logs {
+		if log.Action != "PAYMENT_RECONCILED" {
+			continue
+		}
+		require.Equal(t, "system", log.Operator)
+		require.NoError(t, json.Unmarshal([]byte(log.Detail), &reconciliationDetail))
+	}
+	require.Equal(t, "pending_easypay_sweep", reconciliationDetail["source"])
+	require.Equal(t, payment.TypeEasyPay, reconciliationDetail["provider"])
+	require.Equal(t, order.OutTradeNo, reconciliationDetail["queryRef"])
+	require.Equal(t, "easypay-upstream-trade-123", reconciliationDetail["paymentTradeNo"])
+
+	recovered, err = svc.ReconcilePendingEasyPayOrders(ctx)
+	require.NoError(t, err)
+	require.Zero(t, recovered)
+	require.Equal(t, int32(1), queryCalls.Load())
+	require.Equal(t, 50.0, userRepo.getByIDUser.Balance)
+}
+
+func TestReconcilePendingEasyPayOrdersFiltersCandidatesAndKeepsUnpaidPending(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentOrderLifecycleTestClient(t)
+
+	var queryCalls atomic.Int32
+	var queriedOutTradeNo atomic.Value
+	queriedOutTradeNo.Store("")
+	providerServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseForm())
+		queryCalls.Add(1)
+		queriedOutTradeNo.Store(r.Form.Get("out_trade_no"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":0,"money":"0"}`))
+	}))
+	t.Cleanup(providerServer.Close)
+	instance := createPaymentOrderLifecycleEasyPayInstance(t, ctx, client, providerServer.URL)
+	instanceID := strconv.FormatInt(instance.ID, 10)
+
+	user, err := client.User.Create().
+		SetEmail("easypay-filter@example.com").
+		SetPasswordHash("hash").
+		SetUsername("easypay-filter-user").
+		Save(ctx)
+	require.NoError(t, err)
+	now := time.Now()
+	eligible := createPaymentOrderLifecycleOrder(t, ctx, client, user, paymentOrderLifecycleOrderOptions{
+		outTradeNo: "sub2_easypay_eligible", paymentType: payment.TypeAlipay, providerKey: payment.TypeEasyPay,
+		providerInstance: instanceID, status: OrderStatusPending, createdAt: now.Add(-time.Minute),
+		expiresAt: now.Add(time.Hour), initialized: true, amount: 20,
+	})
+	createPaymentOrderLifecycleOrder(t, ctx, client, user, paymentOrderLifecycleOrderOptions{
+		outTradeNo: "sub2_easypay_too_new", paymentType: payment.TypeAlipay, providerKey: payment.TypeEasyPay,
+		providerInstance: instanceID, status: OrderStatusPending, createdAt: now,
+		expiresAt: now.Add(time.Hour), initialized: true, amount: 20,
+	})
+	createPaymentOrderLifecycleOrder(t, ctx, client, user, paymentOrderLifecycleOrderOptions{
+		outTradeNo: "sub2_easypay_expired", paymentType: payment.TypeAlipay, providerKey: payment.TypeEasyPay,
+		providerInstance: instanceID, status: OrderStatusPending, createdAt: now.Add(-time.Minute),
+		expiresAt: now.Add(-time.Second), initialized: true, amount: 20,
+	})
+	createPaymentOrderLifecycleOrder(t, ctx, client, user, paymentOrderLifecycleOrderOptions{
+		outTradeNo: "sub2_easypay_uninitialized", paymentType: payment.TypeAlipay, providerKey: payment.TypeEasyPay,
+		providerInstance: instanceID, status: OrderStatusPending, createdAt: now.Add(-time.Minute),
+		expiresAt: now.Add(time.Hour), amount: 20,
+	})
+	easyPayWxpay := createPaymentOrderLifecycleOrder(t, ctx, client, user, paymentOrderLifecycleOrderOptions{
+		outTradeNo: "sub2_easypay_wxpay", paymentType: payment.TypeWxpay, providerKey: payment.TypeEasyPay,
+		providerInstance: instanceID, status: OrderStatusPending, createdAt: now.Add(-time.Minute),
+		expiresAt: now.Add(time.Hour), initialized: true, amount: 20,
+	})
+	createPaymentOrderLifecycleOrder(t, ctx, client, user, paymentOrderLifecycleOrderOptions{
+		outTradeNo: "sub2_official_alipay", paymentType: payment.TypeAlipay, providerKey: payment.TypeAlipay,
+		status: OrderStatusPending, createdAt: now.Add(-time.Minute), expiresAt: now.Add(time.Hour),
+		initialized: true, amount: 20,
+	})
+	createPaymentOrderLifecycleOrder(t, ctx, client, user, paymentOrderLifecycleOrderOptions{
+		outTradeNo: "sub2_easypay_completed", paymentType: payment.TypeAlipay, providerKey: payment.TypeEasyPay,
+		providerInstance: instanceID, status: OrderStatusCompleted, createdAt: now.Add(-time.Minute),
+		expiresAt: now.Add(time.Hour), initialized: true, amount: 20,
+	})
+
+	svc := newPaymentOrderLifecycleEasyPayService(client, nil, nil)
+	recovered, err := svc.ReconcilePendingEasyPayOrders(ctx)
+	require.NoError(t, err)
+	require.Zero(t, recovered)
+	require.Equal(t, int32(1), queryCalls.Load())
+	require.Equal(t, eligible.OutTradeNo, queriedOutTradeNo.Load())
+
+	reloaded, err := client.PaymentOrder.Get(ctx, eligible.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusPending, reloaded.Status)
+
+	recovered, err = svc.ReconcilePendingWxpayOrders(ctx)
+	require.NoError(t, err)
+	require.Zero(t, recovered)
+	require.Equal(t, int32(2), queryCalls.Load())
+	require.Equal(t, easyPayWxpay.OutTradeNo, queriedOutTradeNo.Load())
+}
+
+func TestReconcilePendingEasyPayOrdersLimitsBatch(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentOrderLifecycleTestClient(t)
+
+	var queryCalls atomic.Int32
+	providerServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		queryCalls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":0,"money":"0"}`))
+	}))
+	t.Cleanup(providerServer.Close)
+	instance := createPaymentOrderLifecycleEasyPayInstance(t, ctx, client, providerServer.URL)
+	instanceID := strconv.FormatInt(instance.ID, 10)
+
+	user, err := client.User.Create().
+		SetEmail("easypay-limit@example.com").
+		SetPasswordHash("hash").
+		SetUsername("easypay-limit-user").
+		Save(ctx)
+	require.NoError(t, err)
+	for i := 0; i < pendingEasyPayReconcileLimit+1; i++ {
+		createPaymentOrderLifecycleOrder(t, ctx, client, user, paymentOrderLifecycleOrderOptions{
+			outTradeNo: "sub2_easypay_limit_" + strconv.Itoa(i), paymentType: payment.TypeAlipay,
+			providerKey: payment.TypeEasyPay, providerInstance: instanceID, status: OrderStatusPending,
+			createdAt: time.Now().Add(-time.Minute), expiresAt: time.Now().Add(time.Hour),
+			initialized: true, amount: 20,
+		})
+	}
+
+	svc := newPaymentOrderLifecycleEasyPayService(client, nil, nil)
+	recovered, err := svc.ReconcilePendingEasyPayOrders(ctx)
+	require.NoError(t, err)
+	require.Zero(t, recovered)
+	require.Equal(t, int32(pendingEasyPayReconcileLimit), queryCalls.Load())
+}
+
 func TestVerifyOrderByOutTradeNoUsesOutTradeNoWhenPaymentTradeNoAlreadyExistsForAlipay(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentOrderLifecycleTestClient(t)
@@ -758,6 +978,102 @@ func TestPaymentOrderQueryReferenceUsesOutTradeNoForOfficialProviders(t *testing
 	require.Equal(t, "sub2_out_trade_no", paymentOrderQueryReference(order, paymentFulfillmentTestProvider{
 		key: payment.TypeWxpay,
 	}))
+}
+
+func createPaymentOrderLifecycleEasyPayInstance(t *testing.T, ctx context.Context, client *dbent.Client, apiBase string) *dbent.PaymentProviderInstance {
+	t.Helper()
+
+	configJSON, err := json.Marshal(map[string]string{
+		"pid":       "test-pid",
+		"pkey":      "test-pkey",
+		"apiBase":   apiBase,
+		"notifyUrl": "https://api.example.com/api/v1/payment/webhook/easypay",
+		"returnUrl": "https://app.example.com/payment/result",
+	})
+	require.NoError(t, err)
+	encryptedConfig, err := payment.Encrypt(string(configJSON), []byte(paymentOrderLifecycleEasyPayEncryptionKey))
+	require.NoError(t, err)
+
+	instance, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeEasyPay).
+		SetName("EasyPay test instance").
+		SetConfig(encryptedConfig).
+		SetSupportedTypes("alipay,wxpay").
+		SetPaymentMode("popup").
+		SetEnabled(true).
+		Save(ctx)
+	require.NoError(t, err)
+	return instance
+}
+
+func newPaymentOrderLifecycleEasyPayService(client *dbent.Client, userRepo UserRepository, redeemService *RedeemService) *PaymentService {
+	return &PaymentService{
+		entClient:       client,
+		registry:        payment.NewRegistry(),
+		loadBalancer:    payment.NewDefaultLoadBalancer(client, []byte(paymentOrderLifecycleEasyPayEncryptionKey)),
+		redeemService:   redeemService,
+		userRepo:        userRepo,
+		providersLoaded: true,
+	}
+}
+
+func createPaymentOrderLifecycleOrder(t *testing.T, ctx context.Context, client *dbent.Client, user *dbent.User, opts paymentOrderLifecycleOrderOptions) *dbent.PaymentOrder {
+	t.Helper()
+
+	amount := opts.amount
+	if amount <= 0 {
+		amount = 20
+	}
+	status := opts.status
+	if status == "" {
+		status = OrderStatusPending
+	}
+	createdAt := opts.createdAt
+	if createdAt.IsZero() {
+		createdAt = time.Now().Add(-time.Minute)
+	}
+	expiresAt := opts.expiresAt
+	if expiresAt.IsZero() {
+		expiresAt = time.Now().Add(time.Hour)
+	}
+
+	builder := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(amount).
+		SetPayAmount(amount).
+		SetFeeRate(0).
+		SetRechargeCode("PAY-" + opts.outTradeNo).
+		SetOutTradeNo(opts.outTradeNo).
+		SetPaymentType(opts.paymentType).
+		SetPaymentTradeNo("").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(status).
+		SetExpiresAt(expiresAt).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		SetCreatedAt(createdAt)
+	if opts.providerKey != "" {
+		builder.SetProviderKey(opts.providerKey)
+	}
+	if opts.providerInstance != "" {
+		builder.SetProviderInstanceID(opts.providerInstance)
+		builder.SetProviderSnapshot(map[string]any{
+			"schema_version":       2,
+			"provider_instance_id": opts.providerInstance,
+			"provider_key":         opts.providerKey,
+			"merchant_id":          "test-pid",
+			"currency":             payment.DefaultPaymentCurrency,
+		})
+	}
+	if opts.initialized {
+		builder.SetPayURL("https://pay.example.com/" + opts.outTradeNo)
+	}
+
+	order, err := builder.Save(ctx)
+	require.NoError(t, err)
+	return order
 }
 
 func newPaymentOrderLifecycleTestClient(t *testing.T) *dbent.Client {
