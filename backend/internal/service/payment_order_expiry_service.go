@@ -10,14 +10,17 @@ import (
 	"github.com/google/uuid"
 )
 
-const expiryCheckTimeout = 30 * time.Second
+const (
+	expiryCheckTimeout      = 30 * time.Second
+	easypayReconcileTimeout = 10 * time.Second
+)
 
 const (
 	// paymentOrderExpiryLeaderLockKey gates the periodic reconcile + expiry sweep so
 	// that only one instance issues the upstream payment-provider calls per cycle.
 	paymentOrderExpiryLeaderLockKey = "payment:order:expiry:leader"
-	// paymentOrderExpiryLeaderLockTTL must exceed the combined reconcile + expiry
-	// timeouts (2 * expiryCheckTimeout) so the lock never expires mid-run.
+	// paymentOrderExpiryLeaderLockTTL 必须超过补查和过期扫描的总超时，
+	// 避免任务执行中途丢失 leader 锁。
 	paymentOrderExpiryLeaderLockTTL = 3 * time.Minute
 )
 
@@ -97,9 +100,18 @@ func (s *PaymentOrderExpiryService) runOnce() {
 	}
 	defer release()
 
-	reconcileCtx, cancel := context.WithTimeout(context.Background(), expiryCheckTimeout)
-	recovered, err := s.paymentSvc.ReconcilePendingWxpayOrders(reconcileCtx)
-	cancel()
+	reconcileCtx, reconcileCancel := context.WithTimeout(context.Background(), expiryCheckTimeout)
+	easypayCtx, easypayCancel := context.WithTimeout(reconcileCtx, easypayReconcileTimeout)
+	recovered, err := s.paymentSvc.ReconcilePendingEasyPayOrders(easypayCtx)
+	easypayCancel()
+	if err != nil {
+		slog.Warn("[PaymentOrderExpiry] failed to reconcile pending easypay orders", "error", err)
+	} else if recovered > 0 {
+		slog.Info("[PaymentOrderExpiry] reconciled paid easypay orders", "count", recovered)
+	}
+
+	recovered, err = s.paymentSvc.ReconcilePendingWxpayOrders(reconcileCtx)
+	reconcileCancel()
 	if err != nil {
 		slog.Warn("[PaymentOrderExpiry] failed to reconcile pending wxpay orders", "error", err)
 	} else if recovered > 0 {

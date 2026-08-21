@@ -28,7 +28,9 @@ const (
 	checkPaidResultAlreadyPaid = "already_paid"
 	checkPaidResultCancelled   = "cancelled"
 
-	pendingWxpayReconcileLimit = 20
+	pendingWxpayReconcileLimit        = 20
+	pendingEasyPayReconcileLimit      = 10
+	pendingEasyPayReconcileMinimumAge = 30 * time.Second
 )
 
 var adminOrderDeleteSafeStatuses = map[string]struct{}{
@@ -397,6 +399,52 @@ func (s *PaymentService) ReconcilePendingWxpayOrders(ctx context.Context) (int, 
 		if s.reconcilePaid(ctx, order) == checkPaidResultAlreadyPaid {
 			recovered++
 		}
+	}
+	return recovered, nil
+}
+
+// ReconcilePendingEasyPayOrders 主动补查近期 EasyPay 待支付订单，避免支付通知
+// 丢失时已付款订单只能等到过期扫描才入账。
+func (s *PaymentService) ReconcilePendingEasyPayOrders(ctx context.Context) (int, error) {
+	now := time.Now()
+	orders, err := s.entClient.PaymentOrder.Query().
+		Where(
+			paymentorder.StatusEQ(OrderStatusPending),
+			paymentorder.ExpiresAtGT(now),
+			paymentorder.CreatedAtLTE(now.Add(-pendingEasyPayReconcileMinimumAge)),
+			paymentorder.ProviderKeyEQ(payment.TypeEasyPay),
+			paymentorder.Not(paymentorder.Or(
+				paymentorder.PaymentTypeEQ(payment.TypeWxpay),
+				paymentorder.PaymentTypeHasPrefix(payment.TypeWxpay+"_"),
+			)),
+			paymentorder.Or(
+				paymentorder.PaymentTradeNoNEQ(""),
+				paymentorder.PayURLNotNil(),
+				paymentorder.QrCodeNotNil(),
+			),
+		).
+		Order(dbent.Desc(paymentorder.FieldCreatedAt)).
+		Limit(pendingEasyPayReconcileLimit).
+		All(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("query pending easypay orders: %w", err)
+	}
+
+	recovered := 0
+	for _, order := range orders {
+		if err := ctx.Err(); err != nil {
+			return recovered, err
+		}
+		if s.reconcilePaid(ctx, order) != checkPaidResultAlreadyPaid {
+			continue
+		}
+		recovered++
+		s.writeAuditLog(ctx, order.ID, "PAYMENT_RECONCILED", "system", map[string]any{
+			"source":         "pending_easypay_sweep",
+			"provider":       payment.TypeEasyPay,
+			"queryRef":       paymentOrderQueryReference(order, nil),
+			"paymentTradeNo": order.PaymentTradeNo,
+		})
 	}
 	return recovered, nil
 }
