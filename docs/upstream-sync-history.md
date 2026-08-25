@@ -1846,14 +1846,22 @@
 | repository integration 仅编译 | `go test -tags=integration ./internal/repository -run '^$' -count=1` | 0 | integration 标签下 repository 包编译通过，未执行测试用例 |
 | Compose 一致性 | 字节比较及 SHA-256 | 0 | `docker-compose.yml` 与 `docker-compose.sub2api.yml` 字节一致，SHA-256 均为 `817B0DB0801F240F991331F4B3AB0F21C0F32844CCAD6EB35678CED69FAB66B0` |
 | 最终静态复核 | `git diff --check`、冲突标记、意外删除、凭据类路径和祖先关系 | 0 | 适配提交后无空白错误或未解决 Git 冲突；固定上游目标为同步分支祖先，版本、Compose 和受控文件范围符合批准方案 |
+| 远端同步分支与 PR | GitHub Actions `CI` #329/#330、`Security Scan` #185/#186 | 0 | push 与 pull_request 两套 shell、Go unit/integration、Node 20 前端/Canvas、golangci-lint 2.13、govulncheck 和依赖审计全部通过；CLA 两项按仓库条件 skipped |
+| 远端 `main` | GitHub Actions `CI` #331、`Security Scan` #187 | 0 | merge commit `742b90442d315ec3dd61d2d9965d9738e6d2c3c0` 的 shell、Go unit/integration、Node 20 前端/Canvas、lint、安全与依赖审计全部通过 |
+
+### 远端交付补记
+
+- 经用户后续明确授权，同步分支 `sync/upstream-20260825-aa2c4e8d1` 已推送，并通过 [PR #15](https://github.com/Saviour2411/sub2api/pull/15) 合入远端 `main`。
+- PR head 为 `aabd4f02a3aed47ed6c95c52e4c3218d8140f9b3`，base 为 `5b452d2289f9c73bccc01ad38dce6cb65af21cd3`；全部 push/PR 检查成功后使用 merge 方法合入，远端 merge commit 为 `742b90442d315ec3dd61d2d9965d9738e6d2c3c0`。
+- 主线 merge commit 触发的 [CI #331](https://github.com/Saviour2411/sub2api/actions/runs/32872480461) 与 [Security Scan #187](https://github.com/Saviour2411/sub2api/actions/runs/32872480398) 再次全部通过；未通过跳过检查、取消任务或绕过保护规则完成合入。
 
 ### 未验证项与残余风险
 
-- Docker/Testcontainers、完整 integration、真实 PostgreSQL/Redis 和迁移 229、230 未验证；repository integration 仅完成编译检查，未执行依赖数据库的测试用例。
+- 本机未运行 Docker/Testcontainers 或完整 integration；GitHub Actions 的 Docker integration 已在同步分支、PR 和主线三次通过。真实生产数据上的 PostgreSQL/Redis 和迁移 229、230 执行仍未验证。
 - 自动用卡快照已在首次出站前持久化；若幂等成功结果由另一实例回放，或原 owner 在清理本地运行时阻断前退出，其他实例不能清除原实例内存中的阻断，只能等待其自然过期。这是保守的短暂可用性延迟，不会误清新的限流或非额度故障代次。
-- 未运行 `-race` 和 `govulncheck`；golangci-lint 2.13.0 已按 CI 对应版本运行并通过。
-- 本机 Node 24.15.0 与 CI Node 20 不同，需以后续 CI 复核 Node 20 结果。
+- 未运行 `-race`；`govulncheck` 已在三次 GitHub Security Scan 中通过，golangci-lint 2.13.0 已在本地和三次 GitHub CI 中通过。
+- 本机 Node 24.15.0 与 CI Node 20 不同；Node 20 的前端和 Canvas 检查已在同步分支、PR 和主线三次通过。
 - 未使用真实 OpenAI、Anthropic、Grok、CN Provider 凭据或真实 OAuth 插件包；真实额度消费、媒体、流式故障转移和插件进程端到端未验证。
 - 未执行依赖 PostgreSQL/Redis 的本地完整服务和 `/health` 检查。
-- 未读取 `.env`、`D:\project\github_token.sh`、SSH 私钥或其他秘密；未执行 push、PR、部署、远程服务器访问、容器重启、生产挂载核验或生产数据操作。
+- 未读取 `.env`、SSH 私钥或其他业务秘密；指定 GitHub Token 仅在子进程中从 `D:\project\github_token.sh` 加载，用于 GitHub API 认证，未输出、写入 Git 配置或提交。经后续授权仅执行同步分支 push、PR #15 和主线 merge，未执行部署、远程服务器访问、容器重启、生产挂载核验或生产数据操作。
 - 生产服务器状态、bind mount 实际挂载、实例性能参数和健康检查均未验证；本次只验证仓库内静态 Compose 约束。
