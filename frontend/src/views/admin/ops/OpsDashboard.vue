@@ -120,6 +120,7 @@
           :platform="platform"
           :group-id="groupId"
           :error-type="errorDetailsType"
+          :resume-state="resumeListState"
           @update:show="showErrorDetails = $event"
           @openErrorDetail="openError"
         />
@@ -128,7 +129,9 @@
           :show="showErrorModal"
           :error-id="selectedErrorId"
           :error-type="errorDetailsType"
+          :back-to-list="detailReturnTarget !== null"
           @update:show="handleErrorModalVisibility"
+          @back="handleBackToList"
         />
 
         <OpsRequestDetailsModal
@@ -138,6 +141,7 @@
           :preset="requestDetailsPreset"
           :platform="platform"
           :group-id="groupId"
+          :resume-state="resumeListState"
           @openErrorDetail="openError"
         />
       </template>
@@ -373,7 +377,6 @@ const loadingErrorDistribution = ref(false)
 
 const selectedErrorId = ref<number | null>(null)
 const showErrorModal = ref(false)
-const errorDetailOrigin = ref<'error-details' | 'request-details' | null>(null)
 
 const showErrorDetails = ref(false)
 const errorDetailsType = ref<'request' | 'upstream'>('request')
@@ -384,6 +387,13 @@ const requestDetailsPreset = ref<OpsRequestDetailsPreset>({
   kind: 'all',
   sort: 'created_at_desc'
 })
+
+// 记录单条错误详情来自哪个列表，便于"返回列表"时重新打开对应弹窗并保留状态。
+type DetailReturnTarget = 'errorList' | 'requestList' | null
+const detailReturnTarget = ref<DetailReturnTarget>(null)
+
+// 从详情返回时，列表弹窗应保留上一次的筛选/分页状态而非重置。
+const resumeListState = ref(false)
 
 const showSettingsDialog = ref(false)
 const showAlertRulesCard = ref(false)
@@ -515,30 +525,44 @@ function onQueryModeChange(v: string | number | boolean | null) {
 }
 
 function openError(id: number) {
-  errorDetailOrigin.value = showRequestDetails.value
-    ? 'request-details'
-    : showErrorDetails.value
-      ? 'error-details'
-      : null
+  detailReturnTarget.value = showRequestDetails.value ? 'requestList' : showErrorDetails.value ? 'errorList' : null
   selectedErrorId.value = id
+  // 来源列表继续挂载在详情层下方，避免销毁筛选、分页和滚动状态。
   showErrorModal.value = true
 }
 
 function handleErrorModalVisibility(show: boolean) {
-  showErrorModal.value = show
-  if (show) return
+  if (show) {
+    showErrorModal.value = true
+    return
+  }
+  handleBackToList()
+}
 
-  const restoresParentDialog = errorDetailOrigin.value !== null
-  if (errorDetailOrigin.value === 'error-details') {
-    showErrorDetails.value = true
-  } else if (errorDetailOrigin.value === 'request-details') {
-    showRequestDetails.value = true
-  }
+// 关闭或显式返回单条详情时恢复来源列表，并保留筛选和分页状态。
+function handleBackToList() {
+  const target = detailReturnTarget.value
+  showErrorModal.value = false
   selectedErrorId.value = null
-  errorDetailOrigin.value = null
-  if (restoresParentDialog) {
-    void nextTick(() => document.body.classList.add('modal-open'))
+  detailReturnTarget.value = null
+
+  if (target === null) return
+
+  resumeListState.value = true
+  if (target === 'requestList') {
+    showErrorDetails.value = false
+    showRequestDetails.value = true
+  } else {
+    showRequestDetails.value = false
+    showErrorDetails.value = true
   }
+
+  // 详情弹窗关闭时会移除 body 标记，来源列表仍打开时需要在 DOM 更新后恢复。
+  void nextTick(() => document.body.classList.add('modal-open'))
+  // 子组件 watch 在本次 show 变化中消费 resumeState 后复位，保证下次手动打开仍会重置筛选。
+  window.setTimeout(() => {
+    resumeListState.value = false
+  }, 0)
 }
 
 function buildApiParams() {

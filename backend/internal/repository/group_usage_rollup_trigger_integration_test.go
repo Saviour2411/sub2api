@@ -56,7 +56,7 @@ func TestGroupUsageRollupTriggerSerializesLateHistoricalInsertWithPublish(t *tes
 
 	schema := createGroupUsageRollupTriggerTestSchema(t, ctx, false)
 	seedTx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
-	require.NoError(t, setGroupUsageRollupTriggerTimezone(ctx, seedTx, "Asia/Shanghai"))
+	require.NoError(t, setGroupUsageRollupTriggerTimeZone(ctx, seedTx, "Asia/Shanghai"))
 	_, err := seedTx.ExecContext(ctx, `
 		INSERT INTO groups (id) VALUES (10);
 		INSERT INTO users (id) VALUES (1);
@@ -69,7 +69,7 @@ func TestGroupUsageRollupTriggerSerializesLateHistoricalInsertWithPublish(t *tes
 
 	syncTx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
 	defer func() { _ = syncTx.Rollback() }()
-	require.NoError(t, setGroupUsageRollupTriggerTimezone(ctx, syncTx, "Asia/Shanghai"))
+	require.NoError(t, setGroupUsageRollupTriggerTimeZone(ctx, syncTx, "Asia/Shanghai"))
 	var stateID int16
 	require.NoError(t, syncTx.QueryRowContext(ctx, `
 		SELECT id
@@ -153,7 +153,7 @@ func TestGroupUsageRollupTriggerDoesNotBlockCurrentDayInsertDuringPublish(t *tes
 
 	insertTx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
 	defer func() { _ = insertTx.Rollback() }()
-	require.NoError(t, setGroupUsageRollupTriggerTimezone(ctx, insertTx, "Asia/Shanghai"))
+	require.NoError(t, setGroupUsageRollupTriggerTimeZone(ctx, insertTx, "Asia/Shanghai"))
 
 	insertResult := make(chan error, 1)
 	go func() {
@@ -188,7 +188,7 @@ func TestGroupUsageRollupTriggerWaitsForInsertThatCrossedMidnight(t *testing.T) 
 
 	schema := createGroupUsageRollupTriggerTestSchema(t, ctx, false)
 	seedTx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
-	require.NoError(t, setGroupUsageRollupTriggerTimezone(ctx, seedTx, "Asia/Shanghai"))
+	require.NoError(t, setGroupUsageRollupTriggerTimeZone(ctx, seedTx, "Asia/Shanghai"))
 	_, err := seedTx.ExecContext(ctx, `
 		INSERT INTO groups (id) VALUES (10);
 		INSERT INTO users (id) VALUES (1);
@@ -201,7 +201,7 @@ func TestGroupUsageRollupTriggerWaitsForInsertThatCrossedMidnight(t *testing.T) 
 
 	syncTx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
 	defer func() { _ = syncTx.Rollback() }()
-	require.NoError(t, setGroupUsageRollupTriggerTimezone(ctx, syncTx, "Asia/Shanghai"))
+	require.NoError(t, setGroupUsageRollupTriggerTimeZone(ctx, syncTx, "Asia/Shanghai"))
 	var stateID int16
 	require.NoError(t, syncTx.QueryRowContext(ctx, `
 		SELECT id
@@ -212,7 +212,7 @@ func TestGroupUsageRollupTriggerWaitsForInsertThatCrossedMidnight(t *testing.T) 
 
 	insertTx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
 	defer func() { _ = insertTx.Rollback() }()
-	require.NoError(t, setGroupUsageRollupTriggerTimezone(ctx, insertTx, "Asia/Shanghai"))
+	require.NoError(t, setGroupUsageRollupTriggerTimeZone(ctx, insertTx, "Asia/Shanghai"))
 	var insertBackendPID int
 	require.NoError(t, insertTx.QueryRowContext(ctx, "SELECT pg_backend_pid()").Scan(&insertBackendPID))
 
@@ -253,7 +253,7 @@ func TestGroupUsageRollupTriggerKeepsWatermarkForTodayInsert(t *testing.T) {
 
 	tx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
 	defer func() { _ = tx.Rollback() }()
-	require.NoError(t, setGroupUsageRollupTriggerTimezone(ctx, tx, "Asia/Shanghai"))
+	require.NoError(t, setGroupUsageRollupTriggerTimeZone(ctx, tx, "Asia/Shanghai"))
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO groups (id) VALUES (10);
 		INSERT INTO users (id) VALUES (1);
@@ -525,8 +525,8 @@ func setGroupUsageRollupTriggerSearchPath(ctx context.Context, tx *sql.Tx, quote
 	return err
 }
 
-func setGroupUsageRollupTriggerTimezone(ctx context.Context, tx *sql.Tx, timezoneName string) error {
-	_, err := tx.ExecContext(ctx, "SET LOCAL TIME ZONE '"+timezoneName+"'")
+func setGroupUsageRollupTriggerTimeZone(ctx context.Context, tx *sql.Tx, name string) error {
+	_, err := tx.ExecContext(ctx, "SET LOCAL TIME ZONE "+pq.QuoteLiteral(name))
 	return err
 }
 

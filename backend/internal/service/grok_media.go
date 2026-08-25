@@ -60,8 +60,9 @@ type GrokMediaRequestInfo struct {
 	N               int
 	Size            string
 	SizeTier        string
-	Resolution      string
 	AspectRatio     string
+	ImageResolution string
+	Resolution      string
 	DurationSeconds int
 	InputImageURLs  []string
 	MaskImageURL    string
@@ -130,6 +131,7 @@ func ParseGrokMediaRequest(contentType string, body []byte) GrokMediaRequestInfo
 	info.Size = strings.TrimSpace(info.Size)
 	info.SizeTier = NormalizeImageBillingTierOrDefault(info.Size)
 	info.AspectRatio = strings.TrimSpace(info.AspectRatio)
+	info.ImageResolution = grokImagineImageResolution(info.ImageResolution)
 	if strings.TrimSpace(info.Resolution) == "" {
 		info.Resolution = grokVideoResolutionFromSize(info.Size)
 	}
@@ -148,10 +150,10 @@ func parseGrokMediaJSONRequest(body []byte, info *GrokMediaRequestInfo) {
 	info.Model = strings.TrimSpace(gjson.GetBytes(body, "model").String())
 	info.Prompt = strings.TrimSpace(gjson.GetBytes(body, "prompt").String())
 	info.Size = strings.TrimSpace(gjson.GetBytes(body, "size").String())
-	info.Resolution = strings.TrimSpace(firstNonEmpty(
+	assignGrokMediaResolution(strings.TrimSpace(firstNonEmpty(
 		gjson.GetBytes(body, "resolution").String(),
 		gjson.GetBytes(body, "resolution_name").String(),
-	))
+	)), info)
 	info.AspectRatio = strings.TrimSpace(gjson.GetBytes(body, "aspect_ratio").String())
 	for _, path := range []string{"duration", "seconds"} {
 		if duration := gjson.GetBytes(body, path); duration.Exists() {
@@ -288,7 +290,9 @@ func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokM
 			info.Prompt = value
 		case "size":
 			info.Size = value
-		case "resolution", "resolution_name":
+		case "resolution":
+			assignGrokMediaResolution(value, info)
+		case "resolution_name":
 			info.Resolution = value
 		case "aspect_ratio":
 			info.AspectRatio = value
@@ -982,6 +986,12 @@ func prepareGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, conten
 	if info.Size != "" {
 		payload["size"] = info.Size
 	}
+	if info.ImageResolution != "" {
+		payload["resolution"] = info.ImageResolution
+	}
+	if info.AspectRatio != "" {
+		payload["aspect_ratio"] = info.AspectRatio
+	}
 
 	images := make([]map[string]string, 0, len(info.InputImageURLs)+len(info.Uploads))
 	for _, imageURL := range info.InputImageURLs {
@@ -1421,27 +1431,11 @@ func sanitizeGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, conte
 	}
 	switch endpoint {
 	case GrokMediaEndpointImagesGenerations, GrokMediaEndpointImagesEdits:
-		out := body
-		size := strings.TrimSpace(gjson.GetBytes(out, "size").String())
-		if size != "" && !gjson.GetBytes(out, "aspect_ratio").Exists() {
-			if aspectRatio := grokImageAspectRatioFromSize(size); aspectRatio != "" {
-				var err error
-				out, err = sjson.SetBytes(out, "aspect_ratio", aspectRatio)
-				if err != nil {
-					return nil, "", fmt.Errorf("map grok media size to aspect ratio: %w", err)
-				}
-			}
+		out, err := applyGrokImagineImageGeometry(body)
+		if err != nil {
+			return nil, "", fmt.Errorf("sanitize grok media size: %w", err)
 		}
-		if size != "" && !gjson.GetBytes(out, "resolution").Exists() {
-			if resolution := grokImageResolutionFromSize(size); resolution != "" {
-				var err error
-				out, err = sjson.SetBytes(out, "resolution", resolution)
-				if err != nil {
-					return nil, "", fmt.Errorf("map grok media size to resolution: %w", err)
-				}
-			}
-		}
-		for _, field := range []string{"size", "quality", "background", "output_format"} {
+		for _, field := range []string{"quality", "background", "output_format", "response_format"} {
 			if !gjson.GetBytes(out, field).Exists() {
 				continue
 			}
@@ -1628,11 +1622,16 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 		Detail:             upstreamDetail,
 	})
 	if kind == "failover" {
+		retryable, retryDelay, retryDeadline, retryMax := grokSameAccountRetryMetadata(account, resp.StatusCode, body)
 		return nil, &UpstreamFailoverError{
-			StatusCode:             resp.StatusCode,
-			ResponseBody:           body,
-			ResponseHeaders:        resp.Header.Clone(),
-			RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+			StatusCode:               resp.StatusCode,
+			ResponseBody:             body,
+			ResponseHeaders:          resp.Header.Clone(),
+			RetryableOnSameAccount:   retryable,
+			RequestScopedTransient:   retryable && resp.StatusCode == http.StatusTooManyRequests,
+			SameAccountRetryDelay:    retryDelay,
+			SameAccountRetryDeadline: retryDeadline,
+			SameAccountRetryMax:      retryMax,
 		}
 	}
 
