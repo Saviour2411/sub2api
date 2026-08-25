@@ -51,6 +51,11 @@ type AccountRuntimeBlocker interface {
 	ClearAccountSchedulingBlock(accountID int64)
 }
 
+type accountRuntimeBlockGenerationController interface {
+	CaptureAccountSchedulingBlock(accountID int64) (instanceID string, generation uint64, quotaBlock bool)
+	ClearAccountSchedulingBlockIfGeneration(accountID int64, instanceID string, generation uint64) bool
+}
+
 // SuccessfulTestRecoveryResult 表示测试成功后恢复了哪些运行时状态。
 type SuccessfulTestRecoveryResult struct {
 	ClearedError     bool
@@ -59,7 +64,18 @@ type SuccessfulTestRecoveryResult struct {
 
 // AccountRecoveryOptions 控制账号恢复时的附加行为。
 type AccountRecoveryOptions struct {
-	InvalidateToken bool
+	InvalidateToken          bool
+	OpenAIQuotaResetSnapshot *OpenAIQuotaResetRecoverySnapshot
+}
+
+// OpenAIQuotaResetRecoverySnapshot 标识自动用卡前观察到的额度阻断代次。
+// 持久层时间戳和进程内 generation 都必须匹配，恢复才可清除对应状态。
+type OpenAIQuotaResetRecoverySnapshot struct {
+	RateLimitedAt          *time.Time `json:"rate_limited_at,omitempty"`
+	RateLimitResetAt       *time.Time `json:"rate_limit_reset_at,omitempty"`
+	RuntimeBlockInstanceID string     `json:"runtime_block_instance_id,omitempty"`
+	RuntimeBlockGeneration uint64     `json:"runtime_block_generation,omitempty"`
+	RuntimeQuotaBlock      bool       `json:"runtime_quota_block,omitempty"`
 }
 
 type geminiUsageCacheEntry struct {
@@ -1135,13 +1151,13 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 	if account.Platform == PlatformOpenAI {
 		persistOpenAI429PlanType(ctx, s.accountRepo, account, responseBody)
 		s.persistOpenAICodexSnapshot(ctx, account, headers)
-		notifyOpenAIAutoReset(account.ID)
 		if resetAt := s.calculateOpenAI429ResetTime(headers); resetAt != nil {
 			s.notifyAccountSchedulingBlocked(account, *resetAt, "429")
 			if err := s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt); err != nil {
 				slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
 				return
 			}
+			notifyOpenAIAutoReset(account.ID)
 			slog.Info("openai_account_rate_limited", "account_id", account.ID, "reset_at", *resetAt)
 			return
 		}
@@ -1184,6 +1200,7 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 					slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
 					return
 				}
+				notifyOpenAIAutoReset(account.ID)
 				slog.Info("account_rate_limited", "account_id", account.ID, "platform", account.Platform, "reset_at", resetTime, "reset_in", time.Until(resetTime).Truncate(time.Second))
 				return
 			}
@@ -1235,6 +1252,9 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 		slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
 		return
 	}
+	if account.Platform == PlatformOpenAI {
+		notifyOpenAIAutoReset(account.ID)
+	}
 
 	// 根据重置时间反推5h窗口
 	windowEnd := resetAt
@@ -1258,6 +1278,10 @@ func (s *RateLimitService) apply429FallbackRateLimit(ctx context.Context, accoun
 	s.notifyAccountSchedulingBlocked(account, resetAt, "429_fallback")
 	if err := s.accountRepo.SetRateLimited(ctx, account.ID, resetAt); err != nil {
 		slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
+		return
+	}
+	if account.Platform == PlatformOpenAI {
+		notifyOpenAIAutoReset(account.ID)
 	}
 }
 
@@ -1653,7 +1677,6 @@ func (s *RateLimitService) persistOpenAICodexSnapshot(ctx context.Context, accou
 		slog.Warn("openai_codex_snapshot_persist_failed", "account_id", account.ID, "error", err)
 		return
 	}
-	notifyOpenAIAutoReset(account.ID)
 }
 
 // parseOpenAIRateLimitResetTime 解析 OpenAI 兼容格式的 429 响应，返回重置时间的 Unix 时间戳
@@ -2036,6 +2059,9 @@ func (s *RateLimitService) RecoverAccountState(ctx context.Context, accountID in
 	if err != nil {
 		return nil, err
 	}
+	if options.OpenAIQuotaResetSnapshot != nil {
+		return s.recoverObservedOpenAIQuotaBlock(ctx, account, *options.OpenAIQuotaResetSnapshot)
+	}
 
 	result := &SuccessfulTestRecoveryResult{}
 	if account.Status == StatusError {
@@ -2066,6 +2092,59 @@ func (s *RateLimitService) RecoverAccountState(ctx context.Context, accountID in
 		}
 	}
 
+	return result, nil
+}
+
+type openAIQuotaRateLimitRecoveryRepository interface {
+	ClearOpenAIRateLimitIfObserved(ctx context.Context, id int64, observedLimitedAt, observedResetAt time.Time) (bool, error)
+}
+
+// CaptureOpenAIQuotaResetRecoverySnapshot 在发出自动用卡请求前捕获额度阻断。
+// 运行时阻断只有明确由 429 创建时才纳入快照，避免清除其他故障的阻断。
+func (s *RateLimitService) CaptureOpenAIQuotaResetRecoverySnapshot(account *Account) OpenAIQuotaResetRecoverySnapshot {
+	snapshot := OpenAIQuotaResetRecoverySnapshot{}
+	if account == nil {
+		return snapshot
+	}
+	snapshot.RateLimitedAt = cloneTimePtr(account.RateLimitedAt)
+	snapshot.RateLimitResetAt = cloneTimePtr(account.RateLimitResetAt)
+	controller, ok := s.runtimeBlocker.(accountRuntimeBlockGenerationController)
+	if !ok {
+		return snapshot
+	}
+	snapshot.RuntimeBlockInstanceID, snapshot.RuntimeBlockGeneration, snapshot.RuntimeQuotaBlock = controller.CaptureAccountSchedulingBlock(account.ID)
+	return snapshot
+}
+
+func (s *RateLimitService) recoverObservedOpenAIQuotaBlock(
+	ctx context.Context,
+	account *Account,
+	snapshot OpenAIQuotaResetRecoverySnapshot,
+) (*SuccessfulTestRecoveryResult, error) {
+	result := &SuccessfulTestRecoveryResult{}
+	if s == nil || s.accountRepo == nil || account == nil || !isOpenAIOAuthAccount(account) ||
+		snapshot.RateLimitedAt == nil || snapshot.RateLimitResetAt == nil {
+		return result, nil
+	}
+	repo, ok := s.accountRepo.(openAIQuotaRateLimitRecoveryRepository)
+	if !ok {
+		return result, nil
+	}
+	cleared, err := repo.ClearOpenAIRateLimitIfObserved(
+		ctx,
+		account.ID,
+		*snapshot.RateLimitedAt,
+		*snapshot.RateLimitResetAt,
+	)
+	if err != nil || !cleared {
+		return result, err
+	}
+	result.ClearedRateLimit = true
+	if snapshot.RuntimeQuotaBlock {
+		if controller, ok := s.runtimeBlocker.(accountRuntimeBlockGenerationController); ok {
+			controller.ClearAccountSchedulingBlockIfGeneration(account.ID, snapshot.RuntimeBlockInstanceID, snapshot.RuntimeBlockGeneration)
+		}
+	}
 	return result, nil
 }
 

@@ -198,6 +198,32 @@ type openAI429SnapshotRepo struct {
 	bulkUpdatedPayload AccountBulkUpdate
 }
 
+type openAI429OrderingRepo struct {
+	*openAI429SnapshotRepo
+	setEntered chan struct{}
+	releaseSet chan struct{}
+}
+
+func (r *openAI429OrderingRepo) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
+	close(r.setEntered)
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-r.releaseSet:
+	}
+	return r.openAI429SnapshotRepo.SetRateLimited(ctx, id, resetAt)
+}
+
+type openAI429OrderingBlocker struct {
+	blocked chan struct{}
+}
+
+func (b *openAI429OrderingBlocker) BlockAccountScheduling(*Account, time.Time, string) {
+	close(b.blocked)
+}
+
+func (*openAI429OrderingBlocker) ClearAccountSchedulingBlock(int64) {}
+
 func (r *openAI429SnapshotRepo) SetRateLimited(_ context.Context, id int64, _ time.Time) error {
 	r.rateLimitedID = id
 	return nil
@@ -240,6 +266,54 @@ func TestHandle429_OpenAIPersistsCodexSnapshotImmediately(t *testing.T) {
 	}
 	if got := repo.updatedExtra["codex_7d_used_percent"]; got != 100.0 {
 		t.Fatalf("codex_7d_used_percent = %v, want 100", got)
+	}
+}
+
+func TestHandle429_OpenAINotifiesAfterRuntimeAndPersistentBlock(t *testing.T) {
+	repo := &openAI429OrderingRepo{
+		openAI429SnapshotRepo: &openAI429SnapshotRepo{},
+		setEntered:            make(chan struct{}),
+		releaseSet:            make(chan struct{}),
+	}
+	blocker := &openAI429OrderingBlocker{blocked: make(chan struct{})}
+	svc := NewRateLimitService(repo, nil, nil, nil, nil)
+	svc.SetAccountRuntimeBlocker(blocker)
+	notifier := NewOpenAIQuotaAutoResetService(nil, nil, nil, nil, nil, nil, nil)
+	setOpenAIAutoResetNotifier(notifier)
+	defer clearOpenAIAutoResetNotifier(notifier)
+	account := &Account{ID: 125, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	headers := http.Header{
+		"x-codex-primary-used-percent":          []string{"100"},
+		"x-codex-primary-reset-after-seconds":   []string{"3600"},
+		"x-codex-primary-window-minutes":        []string{"300"},
+		"x-codex-secondary-used-percent":        []string{"20"},
+		"x-codex-secondary-reset-after-seconds": []string{"7200"},
+		"x-codex-secondary-window-minutes":      []string{"10080"},
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		svc.handle429(context.Background(), account, headers, nil)
+	}()
+
+	<-repo.setEntered
+	select {
+	case <-blocker.blocked:
+	default:
+		t.Fatal("写持久层前必须先安装运行时 429 阻断")
+	}
+	select {
+	case <-notifier.queue:
+		t.Fatal("持久层限流尚未完成时不得投递自动用卡信号")
+	default:
+	}
+	close(repo.releaseSet)
+	<-done
+	select {
+	case notifiedID := <-notifier.queue:
+		require.Equal(t, account.ID, notifiedID)
+	default:
+		t.Fatal("运行时和持久层限流完成后必须投递自动用卡信号")
 	}
 }
 

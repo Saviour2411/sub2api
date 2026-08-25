@@ -7,7 +7,19 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
+
+func (s *OpenAIGatewayService) openAIAccountRuntimeBlockInstanceIDValue() string {
+	if s == nil {
+		return ""
+	}
+	s.openaiAccountRuntimeBlockInstance.Do(func() {
+		s.openaiAccountRuntimeBlockInstanceID = uuid.NewString()
+	})
+	return s.openaiAccountRuntimeBlockInstanceID
+}
 
 const (
 	openAIAccountStateUpdateTimeout       = 5 * time.Second
@@ -19,7 +31,24 @@ const (
 	openAIStopSchedulingBridgeCooldown    = 2 * time.Minute
 	openAIOAuth429StormWindow             = 10 * time.Second
 	openAIOAuth429StormMaxAccountSwitches = 1
+	openAIRuntimeBlockMixedNonQuotaReason = "mixed_non_quota"
 )
+
+func isOpenAIQuotaRuntimeBlockReason(reason string) bool {
+	return strings.HasPrefix(strings.TrimSpace(reason), "429")
+}
+
+func mergeOpenAIAccountRuntimeBlockReason(existing string, existingPresent bool, incoming string) string {
+	incoming = strings.TrimSpace(incoming)
+	if !existingPresent {
+		return incoming
+	}
+	existing = strings.TrimSpace(existing)
+	if !isOpenAIQuotaRuntimeBlockReason(existing) || !isOpenAIQuotaRuntimeBlockReason(incoming) {
+		return openAIRuntimeBlockMixedNonQuotaReason
+	}
+	return incoming
+}
 
 // OpenAIOAuth429FailoverState tracks the request-local follow-up budget after
 // the first Grok OAuth 429. Once that 429 occurs, exactly one different account
@@ -273,7 +302,7 @@ func (s *OpenAIGatewayService) openAIAccountRuntimeBlockLock(accountID int64) *s
 	return mu
 }
 
-func (s *OpenAIGatewayService) blockAccountSchedulingLocked(account *Account, until time.Time, _ string) (uint64, bool) {
+func (s *OpenAIGatewayService) blockAccountSchedulingLocked(account *Account, until time.Time, reason string) (uint64, bool) {
 	generation := s.openaiAccountRuntimeBlockSequence.Add(1)
 	s.openaiAccountRuntimeBlockGeneration.Store(account.ID, generation)
 	now := time.Now()
@@ -287,22 +316,30 @@ func (s *OpenAIGatewayService) blockAccountSchedulingLocked(account *Account, un
 		if !loaded {
 			actual, stored := s.openaiAccountRuntimeBlockUntil.LoadOrStore(account.ID, blockUntil)
 			if !stored {
+				s.openaiAccountRuntimeBlockReason.Store(account.ID, mergeOpenAIAccountRuntimeBlockReason("", false, reason))
 				return generation, true
 			}
 			current = actual
 		}
 
 		currentUntil, ok := current.(time.Time)
-		if !ok || currentUntil.IsZero() {
+		currentActive := ok && !currentUntil.IsZero() && now.Before(currentUntil)
+		if !currentActive {
 			if s.openaiAccountRuntimeBlockUntil.CompareAndSwap(account.ID, current, blockUntil) {
+				s.openaiAccountRuntimeBlockReason.Store(account.ID, mergeOpenAIAccountRuntimeBlockReason("", false, reason))
 				return generation, true
 			}
 			continue
 		}
+		existingReasonValue, _ := s.openaiAccountRuntimeBlockReason.Load(account.ID)
+		existingReason, _ := existingReasonValue.(string)
+		mergedReason := mergeOpenAIAccountRuntimeBlockReason(existingReason, true, reason)
 		if !blockUntil.After(currentUntil) {
+			s.openaiAccountRuntimeBlockReason.Store(account.ID, mergedReason)
 			return generation, false
 		}
 		if s.openaiAccountRuntimeBlockUntil.CompareAndSwap(account.ID, current, blockUntil) {
+			s.openaiAccountRuntimeBlockReason.Store(account.ID, mergedReason)
 			return generation, true
 		}
 	}
@@ -316,8 +353,52 @@ func (s *OpenAIGatewayService) ClearAccountSchedulingBlock(accountID int64) {
 	mu.Lock()
 	defer mu.Unlock()
 	s.openaiAccountRuntimeBlockUntil.Delete(accountID)
+	s.openaiAccountRuntimeBlockReason.Delete(accountID)
 	s.openaiOAuth429RetryStartedAt.Delete(accountID)
 	s.openaiAccountRuntimeBlockGeneration.Store(accountID, s.openaiAccountRuntimeBlockSequence.Add(1))
+}
+
+// CaptureAccountSchedulingBlock 返回当前运行时阻断的代次，并仅把 429 阻断标记为额度阻断。
+func (s *OpenAIGatewayService) CaptureAccountSchedulingBlock(accountID int64) (string, uint64, bool) {
+	if s == nil || accountID <= 0 {
+		return "", 0, false
+	}
+	mu := s.openAIAccountRuntimeBlockLock(accountID)
+	mu.Lock()
+	defer mu.Unlock()
+	value, ok := s.openaiAccountRuntimeBlockUntil.Load(accountID)
+	until, valid := value.(time.Time)
+	if !ok || !valid || until.IsZero() || !time.Now().Before(until) {
+		return "", 0, false
+	}
+	generationValue, ok := s.openaiAccountRuntimeBlockGeneration.Load(accountID)
+	generation, valid := generationValue.(uint64)
+	if !ok || !valid {
+		return "", 0, false
+	}
+	reason, _ := s.openaiAccountRuntimeBlockReason.Load(accountID)
+	reasonText, _ := reason.(string)
+	return s.openAIAccountRuntimeBlockInstanceIDValue(), generation, isOpenAIQuotaRuntimeBlockReason(reasonText)
+}
+
+// ClearAccountSchedulingBlockIfGeneration 只清除捕获后未发生变化的运行时阻断。
+func (s *OpenAIGatewayService) ClearAccountSchedulingBlockIfGeneration(accountID int64, instanceID string, observed uint64) bool {
+	if s == nil || accountID <= 0 || instanceID == "" || observed == 0 || instanceID != s.openAIAccountRuntimeBlockInstanceIDValue() {
+		return false
+	}
+	mu := s.openAIAccountRuntimeBlockLock(accountID)
+	mu.Lock()
+	defer mu.Unlock()
+	generationValue, ok := s.openaiAccountRuntimeBlockGeneration.Load(accountID)
+	generation, valid := generationValue.(uint64)
+	if !ok || !valid || generation != observed {
+		return false
+	}
+	s.openaiAccountRuntimeBlockUntil.Delete(accountID)
+	s.openaiAccountRuntimeBlockReason.Delete(accountID)
+	s.openaiOAuth429RetryStartedAt.Delete(accountID)
+	s.openaiAccountRuntimeBlockGeneration.Store(accountID, s.openaiAccountRuntimeBlockSequence.Add(1))
+	return true
 }
 
 func (s *OpenAIGatewayService) isOpenAIAccountRuntimeBlocked(account *Account) bool {
@@ -334,6 +415,7 @@ func (s *OpenAIGatewayService) isOpenAIAccountRuntimeBlocked(account *Account) b
 	cooldownUntil, ok := value.(time.Time)
 	if !ok || cooldownUntil.IsZero() {
 		s.openaiAccountRuntimeBlockUntil.Delete(account.ID)
+		s.openaiAccountRuntimeBlockReason.Delete(account.ID)
 		s.openaiAccountRuntimeBlockGeneration.Store(account.ID, s.openaiAccountRuntimeBlockSequence.Add(1))
 		return false
 	}
@@ -341,6 +423,7 @@ func (s *OpenAIGatewayService) isOpenAIAccountRuntimeBlocked(account *Account) b
 		return true
 	}
 	s.openaiAccountRuntimeBlockUntil.Delete(account.ID)
+	s.openaiAccountRuntimeBlockReason.Delete(account.ID)
 	s.openaiAccountRuntimeBlockGeneration.Store(account.ID, s.openaiAccountRuntimeBlockSequence.Add(1))
 	return false
 }

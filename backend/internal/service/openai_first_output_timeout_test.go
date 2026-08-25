@@ -26,6 +26,8 @@ type blockingOpenAIResponseHeaderUpstream struct {
 	once     sync.Once
 }
 
+type blockingOpenAIPluginHeaderUpstream struct{}
+
 type firstOutputCloseTrackingBody struct {
 	io.ReadCloser
 	closed chan struct{}
@@ -48,6 +50,15 @@ func (u *blockingOpenAIResponseHeaderUpstream) Do(req *http.Request, _ string, _
 }
 
 func (u *blockingOpenAIResponseHeaderUpstream) DoWithTLS(req *http.Request, _ string, _ int64, _ int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	return u.Do(req, "", 0, 0)
+}
+
+func (u *blockingOpenAIPluginHeaderUpstream) Do(req *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+	<-req.Context().Done()
+	return nil, normalizePluginRPCError(req.Context(), "接收插件响应头", req.Context().Err(), true)
+}
+
+func (u *blockingOpenAIPluginHeaderUpstream) DoWithTLS(req *http.Request, _ string, _ int64, _ int, _ *tlsfingerprint.Profile) (*http.Response, error) {
 	return u.Do(req, "", 0, 0)
 }
 
@@ -87,6 +98,36 @@ func TestOpenAIForwardFirstOutputTimeoutIncludesResponseHeaderWait(t *testing.T)
 	default:
 		t.Fatal("response-header timeout did not cancel the upstream request context")
 	}
+}
+
+func TestOpenAIForwardRequestSentPluginErrorWinsOverResponseHeaderTimeout(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{Gateway: config.GatewayConfig{
+			OpenAIFirstOutputTimeoutSeconds: 1,
+			MaxLineSize:                     defaultMaxLineSize,
+		}},
+		httpUpstream: &blockingOpenAIPluginHeaderUpstream{},
+	}
+	body := []byte(`{"model":"gpt-5.5","stream":true,"reasoning":{"effort":"low"},"input":"hello"}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	account := &Account{
+		ID: 2, Name: "oauth-plugin-test", Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+		Status: StatusActive, Schedulable: true, Concurrency: 1,
+		Credentials: map[string]any{"access_token": "test-token", "chatgpt_account_id": "test-account"},
+	}
+
+	_, err := svc.Forward(context.Background(), c, account, body)
+
+	require.ErrorIs(t, err, context.Canceled)
+	var transportErr *PluginTransportError
+	require.ErrorAs(t, err, &transportErr)
+	require.True(t, transportErr.RequestSent)
+	var failoverErr *UpstreamFailoverError
+	require.NotErrorAs(t, err, &failoverErr)
+	require.Empty(t, rec.Body.String())
 }
 
 func TestOpenAINativeFirstOutputTimeoutDisabledPreservesSynchronousStream(t *testing.T) {

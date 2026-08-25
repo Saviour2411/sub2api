@@ -1792,8 +1792,11 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 	}
 	if resp.StatusCode >= 400 {
-		respBody := s.readUpstreamErrorBody(resp)
+		respBody, readErr := s.readUpstreamErrorBodyWithError(resp)
 		_ = resp.Body.Close()
+		if isOpenAIRequestSentPluginError(readErr) {
+			return nil, readErr
+		}
 		respBody = s.redactAgentIdentitySensitiveBody(upstreamCtx, account, respBody)
 		if !agentIdentityTaskRecoveryWasTried(ctx) && s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, respBody) {
 			expectedTaskID := account.GetCredential("task_id")
@@ -1943,6 +1946,9 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthResponseError(
 	err error,
 ) error {
 	responseWritten := c != nil && c.Writer != nil && OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c) != writerSizeBeforeResponse
+	if isOpenAIRequestSentPluginError(err) {
+		return err
+	}
 	if code, message, ok := OpenAIUpstreamStreamReadErrorDetails(err); ok {
 		// A body transport failure after a successful HTTP status is retryable only
 		// until real image output has reached the client. Keep the upstream headers

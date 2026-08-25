@@ -218,6 +218,53 @@ func (autoResetTestRecoverer) RecoverAccountState(context.Context, int64, Accoun
 	return &SuccessfulTestRecoveryResult{ClearedRateLimit: true}, nil
 }
 
+type autoResetSnapshotRecordingRecoverer struct {
+	captureCalls int
+	options      []AccountRecoveryOptions
+}
+
+type autoResetReplaySnapshotRecoverer struct {
+	captureCalls int
+	recoverCalls int
+	options      []AccountRecoveryOptions
+}
+
+func (r *autoResetReplaySnapshotRecoverer) CaptureOpenAIQuotaResetRecoverySnapshot(account *Account) OpenAIQuotaResetRecoverySnapshot {
+	r.captureCalls++
+	return OpenAIQuotaResetRecoverySnapshot{
+		RateLimitedAt:          cloneTimePtr(account.RateLimitedAt),
+		RateLimitResetAt:       cloneTimePtr(account.RateLimitResetAt),
+		RuntimeBlockInstanceID: "instance-original",
+		RuntimeBlockGeneration: 73,
+		RuntimeQuotaBlock:      true,
+	}
+}
+
+func (r *autoResetReplaySnapshotRecoverer) RecoverAccountState(_ context.Context, _ int64, options AccountRecoveryOptions) (*SuccessfulTestRecoveryResult, error) {
+	r.recoverCalls++
+	r.options = append(r.options, options)
+	if r.recoverCalls == 1 {
+		return nil, context.DeadlineExceeded
+	}
+	return &SuccessfulTestRecoveryResult{ClearedRateLimit: true}, nil
+}
+
+func (r *autoResetSnapshotRecordingRecoverer) CaptureOpenAIQuotaResetRecoverySnapshot(account *Account) OpenAIQuotaResetRecoverySnapshot {
+	r.captureCalls++
+	return OpenAIQuotaResetRecoverySnapshot{
+		RateLimitedAt:          cloneTimePtr(account.RateLimitedAt),
+		RateLimitResetAt:       cloneTimePtr(account.RateLimitResetAt),
+		RuntimeBlockInstanceID: "instance-test",
+		RuntimeBlockGeneration: 41,
+		RuntimeQuotaBlock:      true,
+	}
+}
+
+func (r *autoResetSnapshotRecordingRecoverer) RecoverAccountState(_ context.Context, _ int64, options AccountRecoveryOptions) (*SuccessfulTestRecoveryResult, error) {
+	r.options = append(r.options, options)
+	return &SuccessfulTestRecoveryResult{ClearedRateLimit: true}, nil
+}
+
 func TestOpenAIQuotaAutoResetService_ConcurrentInstancesConsumeOnce(t *testing.T) {
 	now := time.Now().UTC()
 	account := &Account{
@@ -283,9 +330,12 @@ func TestOpenAIQuotaAutoResetService_ConcurrentInstancesConsumeOnce(t *testing.T
 
 func TestOpenAIQuotaAutoResetService_TimeoutRetryReusesRequestBody(t *testing.T) {
 	now := time.Now().UTC()
+	limitedAt := now.Add(-time.Minute)
+	resetAt := now.Add(time.Hour)
 	account := &Account{
 		ID: 100, Platform: PlatformOpenAI, Type: AccountTypeOAuth,
 		Status: StatusActive, Schedulable: true,
+		RateLimitedAt: &limitedAt, RateLimitResetAt: &resetAt,
 		Extra: map[string]any{
 			OpenAIAutoResetCreditEnabledExtraKey:     true,
 			OpenAIAutoResetCredit5hThresholdExtraKey: 1.0,
@@ -314,19 +364,165 @@ func TestOpenAIQuotaAutoResetService_TimeoutRetryReusesRequestBody(t *testing.T)
 	idempotencyConfig := DefaultIdempotencyConfig()
 	idempotencyConfig.ObserveOnly = false
 	idempotencyConfig.FailedRetryBackoff = 0
+	recoverer := &autoResetSnapshotRecordingRecoverer{}
 	service := NewOpenAIQuotaAutoResetService(
 		repo,
 		quota,
-		autoResetTestRecoverer{},
+		recoverer,
 		NewIdempotencyCoordinator(newInMemoryIdempotencyRepo(), idempotencyConfig),
 		nil, nil, nil,
 	)
 
 	require.Error(t, service.evaluateAccount(context.Background(), account.ID))
+	repo.mu.Lock()
+	failedState := openAIAutoResetStateFromExtra(repo.account.Extra)
+	repo.mu.Unlock()
+	require.NotNil(t, failedState)
+	require.True(t, failedState.AttemptRecoverySnapshotCaptured)
+	require.NotNil(t, failedState.AttemptRecoverySnapshot)
+	require.Equal(t, limitedAt, *failedState.AttemptRecoverySnapshot.RateLimitedAt)
+	require.Equal(t, resetAt, *failedState.AttemptRecoverySnapshot.RateLimitResetAt)
+
+	newLimitedAt := now.Add(time.Minute)
+	newResetAt := now.Add(2 * time.Hour)
+	repo.mu.Lock()
+	repo.account.RateLimitedAt = &newLimitedAt
+	repo.account.RateLimitResetAt = &newResetAt
+	repo.mu.Unlock()
 	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
 	quota.mu.Lock()
 	args := append([][2]string(nil), quota.resetArgs...)
 	quota.mu.Unlock()
 	require.Len(t, args, 2)
 	require.Equal(t, args[0], args[1], "超时重试必须复用相同 credit_id 与 redeem_request_id")
+	require.Equal(t, 1, recoverer.captureCalls, "同一幂等尝试的超时重试不得捕获新 429 代次")
+	require.Len(t, recoverer.options, 1)
+	snapshot := recoverer.options[0].OpenAIQuotaResetSnapshot
+	require.NotNil(t, snapshot)
+	require.Equal(t, limitedAt, *snapshot.RateLimitedAt)
+	require.Equal(t, resetAt, *snapshot.RateLimitResetAt)
+	require.Equal(t, "instance-test", snapshot.RuntimeBlockInstanceID)
+	require.Equal(t, uint64(41), snapshot.RuntimeBlockGeneration)
+	require.True(t, snapshot.RuntimeQuotaBlock)
+	require.False(t, recoverer.options[0].InvalidateToken)
+}
+
+func TestOpenAIQuotaAutoResetService_LegacyFailedAttemptDoesNotCaptureCurrentRateLimit(t *testing.T) {
+	now := time.Now().UTC()
+	limitedAt := now.Add(-time.Minute)
+	resetAt := now.Add(time.Hour)
+	expiresAt := now.Add(48 * time.Hour).Format(time.RFC3339)
+	usage := &OpenAIQuotaUsage{
+		FetchedAt: now.Unix(),
+		RateLimit: &OpenAIRateLimit{PrimaryWindow: &OpenAIRateLimitWindow{
+			UsedPercent: 100, LimitWindowSeconds: 5 * 60 * 60, ResetAfterSeconds: 3600, ResetAt: now.Add(time.Hour).Unix(),
+		}},
+		RateLimitResetCredits: &OpenAIRateLimitResetCredits{
+			AvailableCount: 1,
+			Credits:        []OpenAIRateLimitResetCreditDetail{{ExpiresAt: expiresAt}},
+		},
+		autoResetCandidates: []openAIAutoResetCreditCandidate{{ID: "legacy-credit", ExpiresAt: expiresAt}},
+	}
+	cycleHash := shortOpenAIAutoResetHash(openAIAutoResetCycleSeed(usage))
+	creditHash := shortOpenAIAutoResetHash("legacy-credit")
+	account := &Account{
+		ID: 102, Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+		Status: StatusActive, Schedulable: true,
+		RateLimitedAt: &limitedAt, RateLimitResetAt: &resetAt,
+		Extra: map[string]any{
+			OpenAIAutoResetCreditEnabledExtraKey:     true,
+			OpenAIAutoResetCredit5hThresholdExtraKey: 1.0,
+			OpenAIAutoResetCredit7dThresholdExtraKey: 1.0,
+			"codex_5h_used_percent":                  100.0,
+			"codex_usage_updated_at":                 now.Format(time.RFC3339),
+			"codex_5h_reset_at":                      now.Add(time.Hour).Format(time.RFC3339),
+			OpenAIAutoResetCreditStateExtraKey: OpenAIAutoResetCreditState{
+				Status:            OpenAIAutoResetStatusFailed,
+				AttemptCycleHash:  cycleHash,
+				AttemptCreditHash: creditHash,
+			},
+		},
+	}
+	repo := &autoResetTestAccountRepo{account: account}
+	recoverer := &autoResetSnapshotRecordingRecoverer{}
+	idempotencyConfig := DefaultIdempotencyConfig()
+	idempotencyConfig.ObserveOnly = false
+	service := NewOpenAIQuotaAutoResetService(
+		repo,
+		&autoResetTestQuota{usage: usage},
+		recoverer,
+		NewIdempotencyCoordinator(newInMemoryIdempotencyRepo(), idempotencyConfig),
+		nil, nil, nil,
+	)
+
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+	require.Zero(t, recoverer.captureCalls, "旧失败态无法证明上游未执行，不得捕获当前限流代次")
+	require.Len(t, recoverer.options, 1)
+	snapshot := recoverer.options[0].OpenAIQuotaResetSnapshot
+	require.NotNil(t, snapshot)
+	require.Nil(t, snapshot.RateLimitedAt)
+	require.Nil(t, snapshot.RateLimitResetAt)
+	require.Empty(t, snapshot.RuntimeBlockInstanceID)
+	require.Zero(t, snapshot.RuntimeBlockGeneration)
+}
+
+func TestOpenAIQuotaAutoResetService_ReplayUsesOriginalRecoverySnapshot(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	originalLimitedAt := now.Add(-time.Minute)
+	originalResetAt := now.Add(time.Hour)
+	account := &Account{
+		ID: 101, Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+		Status: StatusActive, Schedulable: true,
+		RateLimitedAt: &originalLimitedAt, RateLimitResetAt: &originalResetAt,
+		Extra: map[string]any{
+			OpenAIAutoResetCreditEnabledExtraKey:     true,
+			OpenAIAutoResetCredit5hThresholdExtraKey: 1.0,
+			OpenAIAutoResetCredit7dThresholdExtraKey: 1.0,
+			"codex_5h_used_percent":                  100.0,
+			"codex_usage_updated_at":                 now.Format(time.RFC3339),
+			"codex_5h_reset_at":                      now.Add(time.Hour).Format(time.RFC3339),
+		},
+	}
+	repo := &autoResetTestAccountRepo{account: account}
+	expiresAt := now.Add(48 * time.Hour).Format(time.RFC3339)
+	quota := &autoResetTestQuota{usage: &OpenAIQuotaUsage{
+		FetchedAt: now.Unix(),
+		RateLimit: &OpenAIRateLimit{PrimaryWindow: &OpenAIRateLimitWindow{
+			UsedPercent: 100, LimitWindowSeconds: 5 * 60 * 60, ResetAfterSeconds: 3600, ResetAt: now.Add(time.Hour).Unix(),
+		}},
+		RateLimitResetCredits: &OpenAIRateLimitResetCredits{
+			AvailableCount: 1,
+			Credits:        []OpenAIRateLimitResetCreditDetail{{ExpiresAt: expiresAt}},
+		},
+		autoResetCandidates: []openAIAutoResetCreditCandidate{{ID: "replay-credit", ExpiresAt: expiresAt}},
+	}}
+	idempotencyConfig := DefaultIdempotencyConfig()
+	idempotencyConfig.ObserveOnly = false
+	recoverer := &autoResetReplaySnapshotRecoverer{}
+	service := NewOpenAIQuotaAutoResetService(
+		repo, quota, recoverer,
+		NewIdempotencyCoordinator(newInMemoryIdempotencyRepo(), idempotencyConfig),
+		nil, nil, nil,
+	)
+
+	require.Error(t, service.evaluateAccount(context.Background(), account.ID), "上游成功后的首次本地恢复失败必须保留可回放状态")
+	newLimitedAt := now.Add(time.Minute)
+	newResetAt := now.Add(2 * time.Hour)
+	repo.mu.Lock()
+	repo.account.RateLimitedAt = &newLimitedAt
+	repo.account.RateLimitResetAt = &newResetAt
+	repo.mu.Unlock()
+
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+	require.Equal(t, int32(1), quota.resetCalls.Load(), "幂等回放不得再次消费重置卡")
+	require.Equal(t, 1, recoverer.captureCalls, "回放不得捕获新 429 代次")
+	require.Len(t, recoverer.options, 2)
+	for _, options := range recoverer.options {
+		snapshot := options.OpenAIQuotaResetSnapshot
+		require.NotNil(t, snapshot)
+		require.Equal(t, originalLimitedAt, *snapshot.RateLimitedAt)
+		require.Equal(t, originalResetAt, *snapshot.RateLimitResetAt)
+		require.Equal(t, "instance-original", snapshot.RuntimeBlockInstanceID)
+		require.Equal(t, uint64(73), snapshot.RuntimeBlockGeneration)
+	}
 }

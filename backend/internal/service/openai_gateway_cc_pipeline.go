@@ -66,14 +66,14 @@ func (s *OpenAIGatewayService) newStreamHeaderWriter(c *gin.Context, upstream ht
 // readOpenAIUpstreamError 读取上游错误体并把 resp.Body 回卷为可重读的副本
 // （下游 handleXxxErrorResponse 需要再次读取），返回原始错误体与脱敏后的
 // 上游错误消息。
-func (s *OpenAIGatewayService) readOpenAIUpstreamError(resp *http.Response) ([]byte, string) {
-	respBody := s.readUpstreamErrorBody(resp)
+func (s *OpenAIGatewayService) readOpenAIUpstreamError(resp *http.Response) ([]byte, string, error) {
+	respBody, readErr := s.readUpstreamErrorBodyWithError(resp)
 	_ = resp.Body.Close()
 	resp.Body = io.NopCloser(bytes.NewReader(respBody))
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
-	return respBody, upstreamMsg
+	return respBody, upstreamMsg, readErr
 }
 
 // failoverOpenAIUpstreamHTTPError 对 >=400 的上游响应做 failover 判定：命中时
@@ -228,7 +228,7 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 	}
 	resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 	if err != nil {
-		attemptErr := firstTokenAttempt.finishRequestError(err)
+		attemptErr := finishOpenAIUpstreamAttemptError(firstTokenAttempt, err)
 		if isFirstTokenTimeoutFailover(attemptErr) {
 			return nil, nil, attemptErr
 		}

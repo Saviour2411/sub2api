@@ -39,6 +39,7 @@ func RunOpenAIQuotaResetPostProcess(
 	accountID int64,
 	quota openAIQuotaResetWorkflowQuota,
 	recoverer openAIQuotaResetWorkflowRecoverer,
+	recoveryOptions AccountRecoveryOptions,
 	loadAccount func(context.Context, int64) (*Account, error),
 ) OpenAIQuotaResetPostProcessResult {
 	result := OpenAIQuotaResetPostProcessResult{}
@@ -46,7 +47,7 @@ func RunOpenAIQuotaResetPostProcess(
 		result.WarningCode = OpenAIQuotaResetWarningAccountRecoveryFailed
 		return result
 	}
-	if _, err := recoverer.RecoverAccountState(ctx, accountID, AccountRecoveryOptions{InvalidateToken: true}); err != nil {
+	if _, err := recoverer.RecoverAccountState(ctx, accountID, recoveryOptions); err != nil {
 		slog.Warn("openai_quota_reset_account_recovery_failed", "account_id", accountID, "error_code", infraerrors.Reason(err))
 		result.WarningCode = OpenAIQuotaResetWarningAccountRecoveryFailed
 		return result

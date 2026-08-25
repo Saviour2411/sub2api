@@ -367,7 +367,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	imageCount := 0
 	clientDisconnect := false
 	var imageOutputSizes []string
-	serviceTier := extractOpenAIServiceTierFromBody(body)
+	var serviceTier *string
 	releasePassthroughRequestBody := sync.OnceFunc(func() {
 		body = nil
 		canonicalImageIntentBody = nil
@@ -405,7 +405,10 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		resp, err = s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		if err != nil {
-			attemptErr := firstTokenAttempt.finishRequestError(err)
+			attemptErr := finishOpenAIUpstreamAttemptError(firstTokenAttempt, err)
+			if isOpenAIRequestSentPluginError(attemptErr) {
+				return nil, attemptErr
+			}
 			var timeoutErr *UpstreamFailoverError
 			if errors.As(attemptErr, &timeoutErr) && timeoutErr.FirstTokenTimeout {
 				return nil, attemptErr
@@ -419,8 +422,11 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 
 			// Peek only to identify an invalid task. Restore the body so the existing
 			// passthrough error handling sees the same response after recovery fails.
-			probeBody := s.readUpstreamErrorBody(resp)
+			probeBody, readErr := s.readUpstreamErrorBodyWithError(resp)
 			_ = resp.Body.Close()
+			if isOpenAIRequestSentPluginError(readErr) {
+				return nil, readErr
+			}
 			resp.Body = io.NopCloser(bytes.NewReader(probeBody))
 			if retryBody, reason, changed, retryErr := normalizeOpenAIResponsesRejectedFieldRetryBody(resp.StatusCode, body, probeBody); retryErr != nil {
 				return nil, fmt.Errorf("normalize passthrough rejected Responses field retry body: %w", retryErr)
@@ -485,7 +491,11 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			result, handleErr := s.handleStreamingResponsePassthroughOnAccepted(
 				ctx, resp, c, account, startTime, reqModel, upstreamPassthroughModel, releasePassthroughRequestBody,
 			)
-			attemptErr := firstTokenAttempt.finish(handleErr)
+			attemptErr := finishOpenAIUpstreamAttemptError(firstTokenAttempt, handleErr)
+			if isOpenAIRequestSentPluginError(attemptErr) {
+				_ = resp.Body.Close()
+				return nil, attemptErr
+			}
 			if attemptErr != nil {
 				if retryBody, fallbackModel, retry := s.applyOpenAIPassthroughCompactFallbackFromSignal(
 					c, account, requestedModel, body, attemptErr, compactModelFallbackRetried, resp,
@@ -515,7 +525,11 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		} else {
 			firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolOpenAICompact)
 			result, handleErr := s.handleNonStreamingResponsePassthrough(ctx, resp, c, account, reqModel, upstreamPassthroughModel)
-			attemptErr := firstTokenAttempt.finish(handleErr)
+			attemptErr := finishOpenAIUpstreamAttemptError(firstTokenAttempt, handleErr)
+			if isOpenAIRequestSentPluginError(attemptErr) {
+				_ = resp.Body.Close()
+				return nil, attemptErr
+			}
 			if attemptErr != nil {
 				if retryBody, fallbackModel, retry := s.applyOpenAIPassthroughCompactFallbackFromSignal(
 					c, account, requestedModel, body, attemptErr, compactModelFallbackRetried, resp,
@@ -2227,6 +2241,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthroughOnAccepted(
 				failedPayload,
 				fmt.Errorf("upstream response failed: %s", failedMessage),
 			)
+		}
+		if isOpenAIRequestSentPluginError(err) {
+			return resultWithUsage(), err
 		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", err)

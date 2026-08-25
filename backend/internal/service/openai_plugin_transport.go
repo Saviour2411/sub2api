@@ -1,6 +1,27 @@
 package service
 
-import "net/http"
+import (
+	"errors"
+	"net/http"
+)
+
+func isOpenAIRequestSentPluginError(err error) bool {
+	var pluginErr *PluginTransportError
+	return errors.As(err, &pluginErr) && pluginErr.RequestSent
+}
+
+// finishOpenAIUpstreamAttemptError 让“插件已发出请求”的不确定结果优先于
+// 同时到达的首 Token 超时，避免把不可重放错误改写成可换号错误。
+func finishOpenAIUpstreamAttemptError(attempt *firstTokenAttempt, err error) error {
+	if attempt == nil {
+		return err
+	}
+	attemptErr := attempt.finishRequestError(err)
+	if isOpenAIRequestSentPluginError(err) {
+		return err
+	}
+	return attemptErr
+}
 
 func (s *OpenAIGatewayService) SetPluginManager(manager *PluginManager) {
 	s.pluginManager = manager

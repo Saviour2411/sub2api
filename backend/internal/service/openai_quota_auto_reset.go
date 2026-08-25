@@ -38,17 +38,20 @@ const (
 	OpenAIAutoResetStatusFailed    = "failed"
 )
 
-// OpenAIAutoResetCreditState 是可返回管理端的脱敏运行态。Attempt* 仅保存不可逆
-// 指纹，用于重启后拒绝切换到另一张卡；不会保存卡 ID 或兑换 ID。
+// OpenAIAutoResetCreditState 是可返回管理端的脱敏运行态。Attempt* 保存不可逆
+// 指纹和首次调用前的恢复锚点，用于重启后拒绝换卡或误清新的限流代次；
+// 不会保存卡 ID、兑换 ID 或 Token。
 type OpenAIAutoResetCreditState struct {
-	Status            string `json:"status"`
-	TriggerWindow     string `json:"trigger_window,omitempty"`
-	AvailableCount    int    `json:"available_count"`
-	CheckedAt         string `json:"checked_at,omitempty"`
-	LastResultAt      string `json:"last_result_at,omitempty"`
-	ErrorCode         string `json:"error_code,omitempty"`
-	AttemptCycleHash  string `json:"attempt_cycle_hash,omitempty"`
-	AttemptCreditHash string `json:"attempt_credit_hash,omitempty"`
+	Status                          string                            `json:"status"`
+	TriggerWindow                   string                            `json:"trigger_window,omitempty"`
+	AvailableCount                  int                               `json:"available_count"`
+	CheckedAt                       string                            `json:"checked_at,omitempty"`
+	LastResultAt                    string                            `json:"last_result_at,omitempty"`
+	ErrorCode                       string                            `json:"error_code,omitempty"`
+	AttemptCycleHash                string                            `json:"attempt_cycle_hash,omitempty"`
+	AttemptCreditHash               string                            `json:"attempt_credit_hash,omitempty"`
+	AttemptRecoverySnapshotCaptured bool                              `json:"attempt_recovery_snapshot_captured,omitempty"`
+	AttemptRecoverySnapshot         *OpenAIQuotaResetRecoverySnapshot `json:"attempt_recovery_snapshot,omitempty"`
 }
 
 type openAIAutoResetQuota interface {
@@ -76,6 +79,32 @@ func isOpenAIAutoResetContext(ctx context.Context) bool {
 
 type openAIAutoResetRecovery interface {
 	RecoverAccountState(ctx context.Context, accountID int64, options AccountRecoveryOptions) (*SuccessfulTestRecoveryResult, error)
+}
+
+type openAIAutoResetRecoverySnapshotter interface {
+	CaptureOpenAIQuotaResetRecoverySnapshot(account *Account) OpenAIQuotaResetRecoverySnapshot
+}
+
+func openAIAutoResetRecoveryOptions(recoverer openAIAutoResetRecovery, account *Account) AccountRecoveryOptions {
+	snapshot := OpenAIQuotaResetRecoverySnapshot{}
+	if account != nil {
+		snapshot.RateLimitedAt = cloneTimePtr(account.RateLimitedAt)
+		snapshot.RateLimitResetAt = cloneTimePtr(account.RateLimitResetAt)
+	}
+	if snapshotter, ok := recoverer.(openAIAutoResetRecoverySnapshotter); ok {
+		snapshot = snapshotter.CaptureOpenAIQuotaResetRecoverySnapshot(account)
+	}
+	return AccountRecoveryOptions{OpenAIQuotaResetSnapshot: &snapshot}
+}
+
+func cloneOpenAIAutoResetRecoverySnapshot(snapshot *OpenAIQuotaResetRecoverySnapshot) *OpenAIQuotaResetRecoverySnapshot {
+	if snapshot == nil {
+		return nil
+	}
+	cloned := *snapshot
+	cloned.RateLimitedAt = cloneTimePtr(snapshot.RateLimitedAt)
+	cloned.RateLimitResetAt = cloneTimePtr(snapshot.RateLimitResetAt)
+	return &cloned
 }
 
 // OpenAIQuotaAutoResetService 通过小型去重队列承接实时信号，并用分钟扫描补偿
@@ -383,8 +412,11 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 		AttemptCycleHash:  cycleHash,
 		AttemptCreditHash: creditHash,
 	}
-	if err := s.persistState(ctx, accountID, resetting); err != nil {
-		return err
+	if checking.AttemptCycleHash == cycleHash && checking.AttemptCreditHash == creditHash {
+		// 相同卡和额度周期意味着上一次调用的结果可能不确定。即使升级前状态
+		// 没有快照，也只能使用空锚点安全降级，不能捕获当前的新 429。
+		resetting.AttemptRecoverySnapshotCaptured = true
+		resetting.AttemptRecoverySnapshot = cloneOpenAIAutoResetRecoverySnapshot(checking.AttemptRecoverySnapshot)
 	}
 
 	account, err = s.accountRepo.GetByID(ctx, accountID)
@@ -405,6 +437,25 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 		TTL:        openAIAutoResetAttemptTTL,
 		RequireKey: true,
 	}, func(execCtx context.Context) (any, error) {
+		if !resetting.AttemptRecoverySnapshotCaptured {
+			attemptAccount, loadErr := s.accountRepo.GetByID(execCtx, accountID)
+			if loadErr != nil {
+				return nil, loadErr
+			}
+			if attemptAccount == nil {
+				return nil, infraerrors.NotFound("OPENAI_AUTO_RESET_ACCOUNT_NOT_FOUND", "account not found")
+			}
+			recoveryOptions := openAIAutoResetRecoveryOptions(s.recoverer, attemptAccount)
+			resetting.AttemptRecoverySnapshot = cloneOpenAIAutoResetRecoverySnapshot(recoveryOptions.OpenAIQuotaResetSnapshot)
+			resetting.AttemptRecoverySnapshotCaptured = true
+		}
+		if resetting.AttemptRecoverySnapshot == nil {
+			resetting.AttemptRecoverySnapshot = &OpenAIQuotaResetRecoverySnapshot{}
+		}
+		// 仅幂等 owner 在发出请求前持久化快照，防止非 owner 覆盖首次观察值。
+		if persistErr := s.persistState(execCtx, accountID, resetting); persistErr != nil {
+			return nil, persistErr
+		}
 		resetResult, resetErr := s.quota.ResetCreditTargeted(execCtx, accountID, candidate.ID, redeemRequestID)
 		if resetErr != nil {
 			return nil, resetErr
@@ -413,7 +464,11 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 			return nil, infraerrors.InternalServer("OPENAI_AUTO_RESET_EMPTY_RESULT", "automatic reset returned an empty result")
 		}
 		// 幂等表只保存脱敏结果，避免上游返回的卡 ID 被持久化到响应体列。
-		return openAIAutoResetConsumeResult{Code: resetResult.Code, WindowsReset: resetResult.WindowsReset}, nil
+		return openAIAutoResetConsumeResult{
+			Code:             resetResult.Code,
+			WindowsReset:     resetResult.WindowsReset,
+			RecoverySnapshot: cloneOpenAIAutoResetRecoverySnapshot(resetting.AttemptRecoverySnapshot),
+		}, nil
 	})
 	if err != nil {
 		// 另一个实例已持有同一周期的兑换时保持 resetting，等待下一轮读取同一
@@ -442,8 +497,15 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 		s.recordAudit(accountID, assessment, available, "no_credit", 0, noCredit.ErrorCode)
 		return s.persistState(ctx, accountID, noCredit)
 	}
+	recoverySnapshot := consumeResult.RecoverySnapshot
+	if recoverySnapshot == nil {
+		// 兼容升级前已成功的幂等记录：缺少原始观察值时只能刷新额度，禁止广义恢复。
+		recoverySnapshot = &OpenAIQuotaResetRecoverySnapshot{}
+	}
 	postCtx, cancelPost := context.WithTimeout(context.WithoutCancel(ctx), 8*time.Second)
-	post := RunOpenAIQuotaResetPostProcess(postCtx, accountID, s.quota, s.recoverer, s.accountRepo.GetByID)
+	post := RunOpenAIQuotaResetPostProcess(postCtx, accountID, s.quota, s.recoverer, AccountRecoveryOptions{
+		OpenAIQuotaResetSnapshot: recoverySnapshot,
+	}, s.accountRepo.GetByID)
 	cancelPost()
 	if !post.AccountStateRecovered || post.WarningCode != "" {
 		code := post.WarningCode
@@ -484,8 +546,9 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 }
 
 type openAIAutoResetConsumeResult struct {
-	Code         string `json:"code"`
-	WindowsReset int    `json:"windows_reset"`
+	Code             string                            `json:"code"`
+	WindowsReset     int                               `json:"windows_reset"`
+	RecoverySnapshot *OpenAIQuotaResetRecoverySnapshot `json:"recovery_snapshot,omitempty"`
 }
 
 func decodeOpenAIAutoResetConsumeResult(value any) openAIAutoResetConsumeResult {
@@ -710,6 +773,8 @@ func copyOpenAIAutoResetAttempt(target, source *OpenAIAutoResetCreditState) {
 	}
 	target.AttemptCycleHash = source.AttemptCycleHash
 	target.AttemptCreditHash = source.AttemptCreditHash
+	target.AttemptRecoverySnapshotCaptured = source.AttemptRecoverySnapshotCaptured
+	target.AttemptRecoverySnapshot = cloneOpenAIAutoResetRecoverySnapshot(source.AttemptRecoverySnapshot)
 }
 
 func (s *OpenAIQuotaAutoResetService) persistState(ctx context.Context, accountID int64, state *OpenAIAutoResetCreditState) error {

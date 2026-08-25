@@ -632,8 +632,11 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 	}
 	if resp.StatusCode >= 400 {
-		respBody := s.readUpstreamErrorBody(resp)
+		respBody, readErr := s.readUpstreamErrorBodyWithError(resp)
 		_ = resp.Body.Close()
+		if isOpenAIRequestSentPluginError(readErr) {
+			return nil, readErr
+		}
 		respBody = s.redactAgentIdentitySensitiveBody(upstreamCtx, account, respBody)
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))

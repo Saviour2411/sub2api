@@ -557,3 +557,96 @@ func TestShouldStopOpenAIOAuth429Failover_TracksOneGrokFollowupAttempt(t *testin
 	require.False(t, svc.ShouldStopOpenAIOAuth429Failover(account, http.StatusTooManyRequests, 0, &state))
 	require.False(t, svc.ShouldStopOpenAIOAuth429Failover(apiKeyAccount, http.StatusTooManyRequests, 2, &state))
 }
+
+func TestOpenAIQuotaRuntimeBlockClearUsesObservedGeneration(t *testing.T) {
+	account := &Account{ID: 501, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	svc := &OpenAIGatewayService{}
+	svc.BlockAccountScheduling(account, time.Now().Add(time.Hour), "429")
+	observedInstance, observedGeneration, quotaBlock := svc.CaptureAccountSchedulingBlock(account.ID)
+	require.True(t, quotaBlock)
+	require.NotEmpty(t, observedInstance)
+	require.NotZero(t, observedGeneration)
+
+	// 捕获后形成的新故障代次必须阻止旧自动用卡结果清理运行时阻断。
+	svc.BlockAccountScheduling(account, time.Now().Add(2*time.Hour), "oauth_401")
+	require.False(t, svc.ClearAccountSchedulingBlockIfGeneration(account.ID, observedInstance, observedGeneration))
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	_, _, quotaBlock = svc.CaptureAccountSchedulingBlock(account.ID)
+	require.False(t, quotaBlock)
+
+	matching := &OpenAIGatewayService{}
+	matching.BlockAccountScheduling(account, time.Now().Add(time.Hour), "429_fallback")
+	matchingInstance, matchingGeneration, quotaBlock := matching.CaptureAccountSchedulingBlock(account.ID)
+	require.True(t, quotaBlock)
+	require.False(t, matching.ClearAccountSchedulingBlockIfGeneration(account.ID, observedInstance, matchingGeneration), "其他实例的代次不得清理本实例阻断")
+	require.True(t, matching.ClearAccountSchedulingBlockIfGeneration(account.ID, matchingInstance, matchingGeneration))
+	require.False(t, matching.isOpenAIAccountRuntimeBlocked(account))
+}
+
+func TestOpenAIQuotaRuntimeBlock_Long429ThenShortNonQuotaStaysNonQuota(t *testing.T) {
+	account := &Account{ID: 502, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	svc := &OpenAIGatewayService{}
+	longUntil := time.Now().Add(time.Hour)
+
+	svc.BlockAccountScheduling(account, longUntil, "429")
+	svc.BlockAccountScheduling(account, time.Now().Add(time.Minute), "oauth_401")
+
+	value, ok := svc.openaiAccountRuntimeBlockUntil.Load(account.ID)
+	require.True(t, ok)
+	actualUntil, ok := value.(time.Time)
+	require.True(t, ok)
+	require.WithinDuration(t, longUntil, actualUntil, time.Second)
+	_, _, quotaBlock := svc.CaptureAccountSchedulingBlock(account.ID)
+	require.False(t, quotaBlock)
+}
+
+func TestOpenAIQuotaRuntimeBlock_ShortNonQuotaThenLong429StaysNonQuota(t *testing.T) {
+	account := &Account{ID: 503, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	svc := &OpenAIGatewayService{}
+	longUntil := time.Now().Add(time.Hour)
+
+	svc.BlockAccountScheduling(account, time.Now().Add(time.Minute), "oauth_401")
+	svc.BlockAccountScheduling(account, longUntil, "429")
+
+	value, ok := svc.openaiAccountRuntimeBlockUntil.Load(account.ID)
+	require.True(t, ok)
+	actualUntil, ok := value.(time.Time)
+	require.True(t, ok)
+	require.WithinDuration(t, longUntil, actualUntil, time.Second)
+	_, _, quotaBlock := svc.CaptureAccountSchedulingBlock(account.ID)
+	require.False(t, quotaBlock)
+}
+
+func TestOpenAIQuotaRuntimeBlock_Pure429RemainsQuota(t *testing.T) {
+	account := &Account{ID: 504, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	svc := &OpenAIGatewayService{}
+
+	svc.BlockAccountScheduling(account, time.Now().Add(time.Minute), "429_fallback")
+	svc.BlockAccountScheduling(account, time.Now().Add(time.Hour), "429")
+
+	_, _, quotaBlock := svc.CaptureAccountSchedulingBlock(account.ID)
+	require.True(t, quotaBlock)
+}
+
+func TestOpenAIQuotaRuntimeBlock_ExpiredNonQuotaDoesNotPolluteNew429(t *testing.T) {
+	account := &Account{ID: 505, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	svc := &OpenAIGatewayService{}
+	svc.openaiAccountRuntimeBlockUntil.Store(account.ID, time.Now().Add(-time.Minute))
+	svc.openaiAccountRuntimeBlockReason.Store(account.ID, "oauth_401")
+
+	svc.BlockAccountScheduling(account, time.Now().Add(time.Hour), "429")
+
+	_, _, quotaBlock := svc.CaptureAccountSchedulingBlock(account.ID)
+	require.True(t, quotaBlock)
+}
+
+func TestOpenAIQuotaRuntimeBlock_MissingActiveReasonIsNonQuota(t *testing.T) {
+	account := &Account{ID: 506, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	svc := &OpenAIGatewayService{}
+	svc.openaiAccountRuntimeBlockUntil.Store(account.ID, time.Now().Add(time.Minute))
+
+	svc.BlockAccountScheduling(account, time.Now().Add(time.Hour), "429")
+
+	_, _, quotaBlock := svc.CaptureAccountSchedulingBlock(account.ID)
+	require.False(t, quotaBlock)
+}

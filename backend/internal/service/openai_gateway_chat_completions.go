@@ -331,7 +331,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	}
 	resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 	if err != nil {
-		attemptErr := firstTokenAttempt.finishRequestError(err)
+		attemptErr := finishOpenAIUpstreamAttemptError(firstTokenAttempt, err)
 		if isFirstTokenTimeoutFailover(attemptErr) {
 			return nil, attemptErr
 		}
@@ -342,7 +342,10 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	// 8. Handle error response with failover
 	if resp.StatusCode >= 400 {
 		firstTokenAttempt.stopBeforeStreaming(resp)
-		respBody, upstreamMsg := s.readOpenAIUpstreamError(resp)
+		respBody, upstreamMsg, readErr := s.readOpenAIUpstreamError(resp)
+		if isOpenAIRequestSentPluginError(readErr) {
+			return nil, readErr
+		}
 		if !agentIdentityTaskRecoveryWasTried(ctx) && s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, respBody) {
 			expectedTaskID := account.GetCredential("task_id")
 			if err := s.recoverAgentIdentityTask(ctx, account, expectedTaskID); err != nil {
@@ -384,7 +387,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	if clientStream {
 		firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolSSE)
 		result, handleErr = s.handleChatStreamingResponse(resp, c, account, originalModel, billingModel, upstreamModel, startTime, len(body))
-		handleErr = firstTokenAttempt.finish(handleErr)
+		handleErr = finishOpenAIUpstreamAttemptError(firstTokenAttempt, handleErr)
 	} else {
 		result, handleErr = s.handleChatBufferedStreamingResponse(resp, c, account, originalModel, billingModel, upstreamModel, startTime)
 	}
@@ -615,6 +618,9 @@ func (s *OpenAIGatewayService) newOpenAICompatBufferedReadFailoverError(
 ) error {
 	var readErr *openAICompatBufferedReadError
 	if !errors.As(err, &readErr) || readErr == nil || errors.Is(readErr.cause, bufio.ErrTooLong) {
+		return err
+	}
+	if isOpenAIRequestSentPluginError(readErr.cause) {
 		return err
 	}
 	var requestContext context.Context

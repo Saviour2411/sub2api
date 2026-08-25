@@ -1214,20 +1214,6 @@ func grokVideoAspectRatioFromSize(size string) string {
 	return closestGrokAspectRatio(width/height, []string{"1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"})
 }
 
-func grokImageAspectRatioFromSize(size string) string {
-	size = strings.TrimSpace(strings.ToLower(size))
-	parts := strings.Split(size, "x")
-	if len(parts) != 2 {
-		return ""
-	}
-	width, widthErr := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
-	height, heightErr := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
-	if widthErr != nil || heightErr != nil || width <= 0 || height <= 0 {
-		return ""
-	}
-	return closestGrokAspectRatio(width/height, []string{"1:1", "3:4", "4:3", "9:16", "16:9", "2:3", "3:2", "9:19.5", "19.5:9", "9:20", "20:9", "1:2", "2:1"})
-}
-
 func closestGrokAspectRatio(target float64, options []string) string {
 	best := ""
 	bestDistance := math.MaxFloat64
@@ -1248,26 +1234,6 @@ func closestGrokAspectRatio(target float64, options []string) string {
 		}
 	}
 	return best
-}
-
-func grokImageResolutionFromSize(size string) string {
-	size = strings.TrimSpace(strings.ToLower(size))
-	if size == "1k" || size == "2k" {
-		return size
-	}
-	parts := strings.Split(size, "x")
-	if len(parts) != 2 {
-		return ""
-	}
-	width, widthErr := strconv.Atoi(strings.TrimSpace(parts[0]))
-	height, heightErr := strconv.Atoi(strings.TrimSpace(parts[1]))
-	if widthErr != nil || heightErr != nil || width <= 0 || height <= 0 {
-		return ""
-	}
-	if max(width, height) >= 1536 {
-		return "2k"
-	}
-	return "1k"
 }
 
 func grokVideoResolutionFromSize(size string) string {

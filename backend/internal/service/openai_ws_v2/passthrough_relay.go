@@ -1226,10 +1226,6 @@ func maxDurationZero(duration time.Duration) time.Duration {
 	return duration
 }
 
-func openAIWSRelayDiscardActiveTurnTiming(state *relayState) {
-	_, _ = openAIWSRelayDeleteActiveTurnTiming(state)
-}
-
 func openAIWSRelayActiveTurnID(state *relayState) string {
 	if state == nil || state.activeTurn == nil {
 		return ""

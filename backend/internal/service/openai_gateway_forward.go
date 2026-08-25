@@ -839,7 +839,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				&agentTaskRecoveryTried,
 				releaseWSRequestBody,
 			)
-			wsErr = firstTokenAttempt.finish(wsErr)
+			wsErr = finishOpenAIUpstreamAttemptError(firstTokenAttempt, wsErr)
 			var firstTokenFailoverErr *UpstreamFailoverError
 			if errors.As(wsErr, &firstTokenFailoverErr) {
 				wsResult = nil
@@ -849,6 +849,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				break
 			}
 			if c != nil && c.Writer != nil && c.Writer.Written() {
+				break
+			}
+			if isOpenAIRequestSentPluginError(wsErr) {
 				break
 			}
 			var taskRecoveredErr *agentIdentityTaskRecoveredError
@@ -1019,6 +1022,16 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		upstreamStart := time.Now()
 		resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
+		if isOpenAIRequestSentPluginError(err) {
+			attemptErr := finishOpenAIUpstreamAttemptError(firstTokenAttempt, err)
+			if resp != nil && resp.Body != nil {
+				_ = resp.Body.Close()
+			}
+			if headerGuard != nil {
+				headerGuard.close()
+			}
+			return nil, attemptErr
+		}
 		if headerGuard != nil && headerGuard.stopHeaderWait() {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
@@ -1030,7 +1043,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			)
 		}
 		if err != nil {
-			attemptErr := firstTokenAttempt.finishRequestError(err)
+			attemptErr := finishOpenAIUpstreamAttemptError(firstTokenAttempt, err)
 			var timeoutErr *UpstreamFailoverError
 			if errors.As(attemptErr, &timeoutErr) && timeoutErr.FirstTokenTimeout {
 				if headerGuard != nil {
@@ -1056,8 +1069,11 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		// Handle error response
 		if resp.StatusCode >= 400 {
 			firstTokenAttempt.stopBeforeStreaming(resp)
-			respBody := s.readUpstreamErrorBody(resp)
+			respBody, readErr := s.readUpstreamErrorBodyWithError(resp)
 			_ = resp.Body.Close()
+			if isOpenAIRequestSentPluginError(readErr) {
+				return nil, readErr
+			}
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
 
 			upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
@@ -1195,7 +1211,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		if upstreamStream {
 			firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolSSE)
 			streamResult, streamErr := s.handleStreamingResponseWithReasoningOnAccepted(ctx, resp, c, account, startTime, originalModel, upstreamModel, reasoningEffortValue, releaseHTTPRequestBody)
-			err := firstTokenAttempt.finish(streamErr)
+			err := finishOpenAIUpstreamAttemptError(firstTokenAttempt, streamErr)
+			if isOpenAIRequestSentPluginError(err) {
+				return nil, err
+			}
 			if err != nil {
 				if signal, ok := asOpenAICompactFallbackSignal(err); ok {
 					if retryBody, fallbackModel, retry := s.prepareOpenAICompactFallbackRetry(
@@ -1243,7 +1262,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		} else {
 			firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolOpenAICompact)
 			nonStreamResult, responseErr := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel)
-			err := firstTokenAttempt.finish(responseErr)
+			err := finishOpenAIUpstreamAttemptError(firstTokenAttempt, responseErr)
+			if isOpenAIRequestSentPluginError(err) {
+				return nil, err
+			}
 			if err != nil {
 				if signal, ok := asOpenAICompactFallbackSignal(err); ok {
 					if retryBody, fallbackModel, retry := s.prepareOpenAICompactFallbackRetry(

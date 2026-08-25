@@ -99,8 +99,11 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
-		respBody := s.readUpstreamErrorBody(resp)
+		respBody, readErr := s.readUpstreamErrorBodyWithError(resp)
 		_ = resp.Body.Close()
+		if isOpenAIRequestSentPluginError(readErr) {
+			return nil, readErr
+		}
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 
 		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))

@@ -457,7 +457,10 @@ type OpenAIGatewayService struct {
 	openaiProxyStreamFailOpenLogAt atomic.Int64
 
 	openaiWSFallbackUntil               sync.Map // key: int64(accountID), value: time.Time
+	openaiAccountRuntimeBlockInstanceID string
+	openaiAccountRuntimeBlockInstance   sync.Once
 	openaiAccountRuntimeBlockUntil      sync.Map // key: int64(accountID), value: time.Time
+	openaiAccountRuntimeBlockReason     sync.Map // key: int64(accountID), value: string
 	openaiAccountRuntimeBlockLocks      sync.Map // key: int64(accountID), value: *sync.Mutex
 	openaiAccountRuntimeBlockGeneration sync.Map // key: int64(accountID), value: uint64
 	openaiAccountRuntimeBlockSequence   atomic.Uint64
@@ -702,6 +705,9 @@ func (s *OpenAIGatewayService) getOpenAIWSProtocolResolver() OpenAIWSProtocolRes
 
 func classifyOpenAIWSReconnectReason(err error) (string, bool) {
 	if err == nil {
+		return "", false
+	}
+	if isOpenAIRequestSentPluginError(err) {
 		return "", false
 	}
 	var fallbackErr *openAIWSFallbackError

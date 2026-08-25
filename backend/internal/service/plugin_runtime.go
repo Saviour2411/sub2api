@@ -309,7 +309,14 @@ func (e *PluginTransportError) Error() string {
 
 func normalizePluginRPCError(ctx context.Context, operation string, err error, requestMayHaveBeenSent bool) error {
 	if ctx != nil && ctx.Err() != nil {
-		return ctx.Err()
+		if !requestMayHaveBeenSent {
+			return ctx.Err()
+		}
+		return errors.Join(ctx.Err(), &PluginTransportError{
+			Code:        "PLUGIN_RPC_ERROR",
+			Message:     fmt.Sprintf("%s: %v", operation, err),
+			RequestSent: true,
+		})
 	}
 	return &PluginTransportError{
 		Code:        "PLUGIN_RPC_ERROR",

@@ -482,6 +482,9 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoningOnAccepted(
 			result, err := finalizeStream()
 			return result, err, true
 		}
+		if isOpenAIRequestSentPluginError(scanErr) {
+			return resultWithUsage(), scanErr, true
+		}
 		// 客户端断开/取消请求时，上游读取往往会返回 context canceled。
 		// /v1/responses 的 SSE 事件必须符合 OpenAI 协议；这里不注入自定义 error event，避免下游 SDK 解析失败。
 		if errors.Is(scanErr, context.Canceled) || errors.Is(scanErr, context.DeadlineExceeded) {
@@ -664,7 +667,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoningOnAccepted(
 			}
 			if semanticDetector != nil && semanticDetector.Enabled() && !openAIStreamClientOutputStarted(c, clientOutputStarted) {
 				released := semanticDetector.Observe(data)
-				if !released && sawTerminalEvent && eventType != "response.failed" && !(codexFailureTerminal && eventType == "error") {
+				if !released && sawTerminalEvent && eventType != "response.failed" && (!codexFailureTerminal || eventType != "error") {
 					s.parseSSEUsageBytes(dataBytes, usage)
 					if match := semanticDetector.MatchIfComplete(); match != nil {
 						recordSemanticErrorOps(c, account, match, dataBytes, upstreamRequestID)

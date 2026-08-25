@@ -194,6 +194,70 @@ func TestPluginRequestSentErrorDoesNotFailOver(t *testing.T) {
 	require.False(t, errors.As(result, &failover))
 }
 
+func TestPluginRequestSentErrorWinsOverFirstTokenTimeout(t *testing.T) {
+	transportErr := &PluginTransportError{Code: "UPSTREAM_EOF", Message: "eof", RequestSent: true}
+	attempt := &firstTokenAttempt{timeoutSeconds: 1}
+	attempt.state.Store(int32(firstTokenAttemptTimedOut))
+
+	result := finishOpenAIUpstreamAttemptError(attempt, transportErr)
+
+	require.ErrorIs(t, result, transportErr)
+	var failover *UpstreamFailoverError
+	require.False(t, errors.As(result, &failover))
+}
+
+func TestPluginRequestSentBodyCancellationWinsOverFirstTokenTimeout(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	bodyErr := normalizePluginRPCError(ctx, "接收插件响应体", context.Canceled, true)
+	attempt := &firstTokenAttempt{timeoutSeconds: 1}
+	attempt.state.Store(int32(firstTokenAttemptTimedOut))
+
+	result := finishOpenAIUpstreamAttemptError(attempt, bodyErr)
+
+	require.ErrorIs(t, result, context.Canceled)
+	var transportErr *PluginTransportError
+	require.ErrorAs(t, result, &transportErr)
+	require.True(t, transportErr.RequestSent)
+	var failover *UpstreamFailoverError
+	require.False(t, errors.As(result, &failover))
+}
+
+func TestPluginRequestSentErrorDisablesWSReconnect(t *testing.T) {
+	transportErr := &PluginTransportError{Code: "UPSTREAM_EOF", Message: "eof", RequestSent: true}
+	reason, retryable := classifyOpenAIWSReconnectReason(wrapOpenAIWSFallback("read_event", transportErr))
+
+	require.Empty(t, reason)
+	require.False(t, retryable)
+}
+
+func TestPluginRequestSentBodyErrorDoesNotFailOverHTTPOrImages(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	transportErr := &PluginTransportError{Code: "UPSTREAM_EOF", Message: "eof", RequestSent: true}
+	svc := &OpenAIGatewayService{}
+	resp := &http.Response{
+		StatusCode: http.StatusBadGateway,
+		Header:     make(http.Header),
+		Body:       errReadCloser{err: transportErr},
+	}
+
+	_, _, readErr := svc.readOpenAIUpstreamError(resp)
+	require.ErrorIs(t, readErr, transportErr)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+	account := &Account{ID: 8, Name: "oauth", Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	imageErr := svc.handleOpenAIImagesOAuthResponseError(
+		context.Background(), c, account, "gpt-image-1", "https://example.invalid", resp, 0,
+		newOpenAIUpstreamStreamReadError(transportErr),
+	)
+
+	require.ErrorIs(t, imageErr, transportErr)
+	var failover *UpstreamFailoverError
+	require.False(t, errors.As(imageErr, &failover))
+}
+
 func TestPluginRPCAmbiguityPreventsReplayAfterMetadataDelivery(t *testing.T) {
 	err := normalizePluginRPCError(context.Background(), "接收插件响应头", errors.New("连接已断开"), true)
 	var transportErr *PluginTransportError
@@ -229,6 +293,9 @@ func TestNormalizePluginRPCErrorPreservesCallerCancellation(t *testing.T) {
 
 	err := normalizePluginRPCError(ctx, "接收响应", errors.New("rpc error: code = Canceled"), true)
 	require.ErrorIs(t, err, context.Canceled)
+	var transportErr *PluginTransportError
+	require.ErrorAs(t, err, &transportErr)
+	require.True(t, transportErr.RequestSent)
 }
 
 func TestPluginStartingStateUsesBoundedCrashRecoveryWindow(t *testing.T) {

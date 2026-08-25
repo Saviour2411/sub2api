@@ -387,7 +387,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		resp, err = s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 		StopPreResponseKeepaliveBeforeResponseFromContext(ctx)
 		if err != nil {
-			attemptErr := firstTokenAttempt.finishRequestError(err)
+			attemptErr := finishOpenAIUpstreamAttemptError(firstTokenAttempt, err)
 			if isFirstTokenTimeoutFailover(attemptErr) {
 				return nil, attemptErr
 			}
@@ -430,7 +430,10 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	// 8. Handle error response with failover
 	if resp.StatusCode >= 400 {
 		firstTokenAttempt.stopBeforeStreaming(resp)
-		respBody, upstreamMsg := s.readOpenAIUpstreamError(resp)
+		respBody, upstreamMsg, readErr := s.readOpenAIUpstreamError(resp)
+		if isOpenAIRequestSentPluginError(readErr) {
+			return nil, readErr
+		}
 		if !agentIdentityTaskRecoveryWasTried(ctx) && s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, respBody) {
 			expectedTaskID := account.GetCredential("task_id")
 			if err := s.recoverAgentIdentityTask(ctx, account, expectedTaskID); err != nil {
@@ -499,7 +502,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	if clientStream {
 		firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolSSE)
 		result, handleErr = s.handleAnthropicStreamingResponse(resp, c, account, originalModel, billingModel, upstreamModel, startTime)
-		handleErr = firstTokenAttempt.finish(handleErr)
+		handleErr = finishOpenAIUpstreamAttemptError(firstTokenAttempt, handleErr)
 	} else {
 		// Client wants JSON: buffer the streaming response and assemble a JSON reply.
 		result, handleErr = s.handleAnthropicBufferedStreamingResponse(resp, c, account, originalModel, billingModel, upstreamModel, startTime)

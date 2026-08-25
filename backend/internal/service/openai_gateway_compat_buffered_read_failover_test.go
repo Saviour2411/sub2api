@@ -94,6 +94,36 @@ func TestChatCompletionsBufferedResponsesReadErrorDoesNotFailoverAfterClientCanc
 	require.Empty(t, rec.Body.String())
 }
 
+func TestChatCompletionsBufferedPluginBodyErrorDoesNotReplayAfterRequestSent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	transportErr := &PluginTransportError{Code: "UPSTREAM_EOF", Message: "eof", RequestSent: true}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       &openAICompatBufferedReadErrorCloser{err: transportErr},
+	}
+
+	result, err := (&OpenAIGatewayService{}).handleChatBufferedStreamingResponse(
+		resp,
+		c,
+		&Account{ID: 40, Name: "openai-oauth", Platform: PlatformOpenAI},
+		"gpt-5.6-sol",
+		"gpt-5.6-sol",
+		"gpt-5.6-sol",
+		time.Now(),
+	)
+
+	require.Nil(t, result)
+	require.ErrorIs(t, err, transportErr)
+	var failoverErr *UpstreamFailoverError
+	require.NotErrorAs(t, err, &failoverErr)
+	require.False(t, c.Writer.Written())
+}
+
 func TestChatCompletionsBufferedResponsesOversizedLineDoesNotFailover(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

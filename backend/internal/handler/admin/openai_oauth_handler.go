@@ -601,6 +601,7 @@ func (h *OpenAIOAuthHandler) ResetQuota(c *gin.Context) {
 		accountID,
 		h.quotaService,
 		h.rateLimitService,
+		service.AccountRecoveryOptions{InvalidateToken: true},
 		h.adminService.GetAccount,
 	)
 	resetResponse.Quota = postResult.Quota
