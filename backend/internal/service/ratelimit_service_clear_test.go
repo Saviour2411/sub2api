@@ -33,6 +33,9 @@ type rateLimitClearRepoStub struct {
 	getByIDCtxErr             error
 	updateExtraCtxErr         error
 	setSchedulableCtxErr      error
+	clearOpenAIObservedCalls  [][2]time.Time
+	clearOpenAIObservedResult bool
+	clearOpenAIObservedErr    error
 }
 
 type strictFailureStateRepoStub struct {
@@ -79,6 +82,11 @@ func (r *rateLimitClearRepoStub) ClearError(ctx context.Context, id int64) error
 func (r *rateLimitClearRepoStub) ClearRateLimit(ctx context.Context, id int64) error {
 	r.clearRateLimitCalls++
 	return r.clearRateLimitErr
+}
+
+func (r *rateLimitClearRepoStub) ClearOpenAIRateLimitIfObserved(_ context.Context, _ int64, limitedAt, resetAt time.Time) (bool, error) {
+	r.clearOpenAIObservedCalls = append(r.clearOpenAIObservedCalls, [2]time.Time{limitedAt, resetAt})
+	return r.clearOpenAIObservedResult, r.clearOpenAIObservedErr
 }
 
 func (r *rateLimitClearRepoStub) ClearAntigravityQuotaScopes(ctx context.Context, id int64) error {
@@ -548,4 +556,105 @@ func TestRateLimitService_RecoverAccountState_InvalidatesOAuthTokenOnErrorRecove
 	require.Equal(t, 1, repo.clearErrorCalls)
 	require.Len(t, invalidator.accounts, 1)
 	require.Equal(t, int64(21), invalidator.accounts[0].ID)
+}
+
+type quotaResetRuntimeBlockRecorder struct {
+	runtimeBlockRecorder
+	instanceID       string
+	generation       uint64
+	quotaBlock       bool
+	instanceCalls    []string
+	conditionalCalls []uint64
+	conditionalClear bool
+}
+
+func (r *quotaResetRuntimeBlockRecorder) CaptureAccountSchedulingBlock(int64) (string, uint64, bool) {
+	return r.instanceID, r.generation, r.quotaBlock
+}
+
+func (r *quotaResetRuntimeBlockRecorder) ClearAccountSchedulingBlockIfGeneration(_ int64, instanceID string, generation uint64) bool {
+	r.instanceCalls = append(r.instanceCalls, instanceID)
+	r.conditionalCalls = append(r.conditionalCalls, generation)
+	return r.conditionalClear
+}
+
+func TestRateLimitService_AutoQuotaResetClearsOnlyObservedQuotaBlock(t *testing.T) {
+	limitedAt := time.Now().UTC().Add(-time.Minute)
+	resetAt := limitedAt.Add(5 * time.Hour)
+	overloadUntil := limitedAt.Add(time.Hour)
+	tempUntil := limitedAt.Add(2 * time.Hour)
+	repo := &rateLimitClearRepoStub{
+		getByIDAccount: &Account{
+			ID:                     61,
+			Platform:               PlatformOpenAI,
+			Type:                   AccountTypeOAuth,
+			Status:                 StatusError,
+			Schedulable:            false,
+			RateLimitedAt:          &limitedAt,
+			RateLimitResetAt:       &resetAt,
+			OverloadUntil:          &overloadUntil,
+			TempUnschedulableUntil: &tempUntil,
+			Extra: map[string]any{
+				accountFailureStrategyUnscheduledKey: map[string]any{
+					accountFailureStrategyUnscheduledIncidentIDKey: "incident-current",
+				},
+				"model_rate_limits":        map[string]any{"gpt-5": map[string]any{"until": resetAt}},
+				"antigravity_quota_scopes": map[string]any{"default": true},
+			},
+		},
+		clearOpenAIObservedResult: true,
+	}
+	cache := &tempUnschedCacheRecorder{}
+	invalidator := &recoverTokenInvalidatorStub{}
+	blocker := &quotaResetRuntimeBlockRecorder{instanceID: "instance-a", generation: 23, quotaBlock: true, conditionalClear: true}
+	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, cache)
+	svc.SetTokenCacheInvalidator(invalidator)
+	svc.SetAccountRuntimeBlocker(blocker)
+
+	snapshot := svc.CaptureOpenAIQuotaResetRecoverySnapshot(repo.getByIDAccount)
+	result, err := svc.RecoverAccountState(context.Background(), 61, AccountRecoveryOptions{
+		InvalidateToken:          true,
+		OpenAIQuotaResetSnapshot: &snapshot,
+	})
+
+	require.NoError(t, err)
+	require.True(t, result.ClearedRateLimit)
+	require.Equal(t, [][2]time.Time{{limitedAt, resetAt}}, repo.clearOpenAIObservedCalls)
+	require.Equal(t, []uint64{23}, blocker.conditionalCalls)
+	require.Equal(t, []string{"instance-a"}, blocker.instanceCalls)
+	require.Empty(t, blocker.clearedIDs)
+	require.Equal(t, 0, repo.clearErrorCalls)
+	require.Equal(t, 0, repo.clearRateLimitCalls)
+	require.Equal(t, 0, repo.clearAntigravityCalls)
+	require.Equal(t, 0, repo.clearModelRateLimitCalls)
+	require.Equal(t, 0, repo.clearTempUnschedCalls)
+	require.Empty(t, repo.setSchedulableCalls)
+	require.Empty(t, repo.updateExtraCalls)
+	require.Empty(t, cache.deletedIDs)
+	require.Empty(t, invalidator.accounts)
+}
+
+func TestRateLimitService_AutoQuotaResetCASMissPreservesRuntimeBlock(t *testing.T) {
+	limitedAt := time.Now().UTC().Add(-time.Minute)
+	resetAt := limitedAt.Add(5 * time.Hour)
+	repo := &rateLimitClearRepoStub{
+		getByIDAccount: &Account{
+			ID: 62, Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+			Status: StatusActive, Schedulable: true,
+			RateLimitedAt: &limitedAt, RateLimitResetAt: &resetAt,
+		},
+		clearOpenAIObservedResult: false,
+	}
+	blocker := &quotaResetRuntimeBlockRecorder{instanceID: "instance-b", generation: 29, quotaBlock: true}
+	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	svc.SetAccountRuntimeBlocker(blocker)
+	snapshot := svc.CaptureOpenAIQuotaResetRecoverySnapshot(repo.getByIDAccount)
+
+	result, err := svc.RecoverAccountState(context.Background(), 62, AccountRecoveryOptions{OpenAIQuotaResetSnapshot: &snapshot})
+
+	require.NoError(t, err)
+	require.False(t, result.ClearedRateLimit)
+	require.Len(t, repo.clearOpenAIObservedCalls, 1)
+	require.Empty(t, blocker.conditionalCalls)
+	require.Empty(t, blocker.clearedIDs)
 }

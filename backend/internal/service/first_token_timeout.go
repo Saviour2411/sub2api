@@ -480,7 +480,8 @@ func (a *firstTokenAttempt) finish(streamErr error) error {
 	if state == firstTokenAttemptDecidedWithoutToken {
 		var failoverErr *UpstreamFailoverError
 		var sseErr *sseStreamErrorEventError
-		if errors.As(streamErr, &failoverErr) || errors.As(streamErr, &sseErr) {
+		_, compactFallback := asOpenAICompactFallbackSignal(streamErr)
+		if errors.As(streamErr, &failoverErr) || errors.As(streamErr, &sseErr) || compactFallback {
 			a.discardAndRestoreWriter()
 			return streamErr
 		}

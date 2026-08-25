@@ -5,13 +5,16 @@ package service
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -82,6 +85,182 @@ func TestForwardAsChatCompletions_ResponseFailed_PassthroughRule(t *testing.T) {
 	errMsg := gjson.Get(respBody, "error.message").String()
 	require.NotEmpty(t, errMsg, "passthrough should preserve error message")
 	require.Contains(t, errMsg, "context window")
+}
+
+func TestResponsesStreamAccessStateFailoverPrecedesPassthroughRule(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	stream := "event: response.failed\n" +
+		`data: {"type":"response.failed","response":{"status":"failed","error":{"code":"account_disabled","message":"Your account is disabled"}}}` + "\n\n"
+	tests := []struct {
+		name string
+		run  func(*OpenAIGatewayService, *gin.Context, *http.Response, *Account) error
+	}{
+		{
+			name: "native",
+			run: func(svc *OpenAIGatewayService, c *gin.Context, resp *http.Response, account *Account) error {
+				_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, account, time.Now(), "gpt-5", "gpt-5")
+				return err
+			},
+		},
+		{
+			name: "passthrough",
+			run: func(svc *OpenAIGatewayService, c *gin.Context, resp *http.Response, account *Account) error {
+				_, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, account, time.Now(), "gpt-5", "gpt-5")
+				return err
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+			bindPassthroughRule(c, PlatformOpenAI, []string{"account is disabled"}, http.StatusTeapot)
+			resp := &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body:       io.NopCloser(strings.NewReader(stream)),
+			}
+			svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}}
+			err := tt.run(svc, c, resp, &Account{ID: 11, Platform: PlatformOpenAI, Type: AccountTypeOAuth})
+
+			var failoverErr *UpstreamFailoverError
+			require.ErrorAs(t, err, &failoverErr)
+			require.True(t, failoverErr.IsCredentialFailure())
+			require.Equal(t, OpenAIUpstreamAccessStateReason, failoverErr.Reason)
+			require.False(t, failoverErr.RetryableOnSameAccount)
+			require.Equal(t, http.StatusBadGateway, failoverErr.ClientStatusCode)
+			require.False(t, c.Writer.Written(), "passthrough rule must not commit a response before account failover")
+		})
+	}
+}
+
+func TestResponsesStreamCyberPolicyPrecedesPassthroughRule(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	stream := "event: error\n" +
+		`data: {"type":"error","error":{"code":"cyber_policy","message":"blocked by cyber policy"}}` + "\n\n"
+	tests := []struct {
+		name string
+		run  func(*OpenAIGatewayService, *gin.Context, *http.Response, *Account) error
+	}{
+		{
+			name: "native",
+			run: func(svc *OpenAIGatewayService, c *gin.Context, resp *http.Response, account *Account) error {
+				_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, account, time.Now(), "gpt-5", "gpt-5")
+				return err
+			},
+		},
+		{
+			name: "passthrough",
+			run: func(svc *OpenAIGatewayService, c *gin.Context, resp *http.Response, account *Account) error {
+				_, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, account, time.Now(), "gpt-5", "gpt-5")
+				return err
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+			bindPassthroughRule(c, PlatformOpenAI, []string{"cyber policy"}, http.StatusTeapot)
+			resp := &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body:       io.NopCloser(strings.NewReader(stream)),
+			}
+			svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}}
+			err := tt.run(svc, c, resp, &Account{ID: 12, Platform: PlatformOpenAI, Type: AccountTypeOAuth})
+
+			require.Error(t, err)
+			var failoverErr *UpstreamFailoverError
+			require.False(t, errors.As(err, &failoverErr))
+			require.NotNil(t, GetOpsCyberPolicy(c))
+			require.NotEqual(t, http.StatusTeapot, rec.Code)
+			require.Contains(t, rec.Body.String(), "cyber_policy")
+		})
+	}
+}
+
+func TestResponsesStreamBareCyberErrorDefersMarkUntilAuthoritativeTerminal(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name string
+		run  func(*OpenAIGatewayService, *gin.Context, *http.Response, *Account) (*OpenAIUsage, error)
+	}{
+		{
+			name: "native",
+			run: func(svc *OpenAIGatewayService, c *gin.Context, resp *http.Response, account *Account) (*OpenAIUsage, error) {
+				result, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, account, time.Now(), "gpt-5", "gpt-5")
+				if result == nil {
+					return nil, err
+				}
+				return result.usage, err
+			},
+		},
+		{
+			name: "passthrough",
+			run: func(svc *OpenAIGatewayService, c *gin.Context, resp *http.Response, account *Account) (*OpenAIUsage, error) {
+				result, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, account, time.Now(), "gpt-5", "gpt-5")
+				if result == nil {
+					return nil, err
+				}
+				return result.usage, err
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name+"_failed_uses_authoritative_usage", func(t *testing.T) {
+			stream := strings.Join([]string{
+				"event: error",
+				`data: {"type":"error","error":{"code":"cyber_policy","message":"blocked"}}`,
+				"",
+				"event: response.failed",
+				`data: {"type":"response.failed","response":{"id":"resp_1","usage":{"input_tokens":17,"output_tokens":3},"error":{"code":"server_error","message":"blocked"}}}`,
+				"",
+			}, "\n")
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+			resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(stream))}
+			svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}}
+
+			usage, err := tt.run(svc, c, resp, &Account{ID: 13, Platform: PlatformOpenAI, Type: AccountTypeOAuth})
+
+			require.Error(t, err)
+			require.NotNil(t, usage)
+			mark := GetOpsCyberPolicy(c)
+			require.NotNil(t, mark)
+			require.Equal(t, 17, mark.UpstreamInTok)
+			require.Equal(t, 3, mark.UpstreamOutTok)
+		})
+
+		t.Run(tt.name+"_completed_clears_pending_error", func(t *testing.T) {
+			stream := strings.Join([]string{
+				"event: error",
+				`data: {"type":"error","error":{"code":"cyber_policy","message":"transient"}}`,
+				"",
+				"event: response.completed",
+				`data: {"type":"response.completed","response":{"id":"resp_ok","status":"completed","output":[{"type":"message"}],"usage":{"input_tokens":11,"output_tokens":2}}}`,
+				"",
+			}, "\n")
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+			resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(stream))}
+			svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}}
+
+			usage, err := tt.run(svc, c, resp, &Account{ID: 14, Platform: PlatformOpenAI, Type: AccountTypeOAuth})
+
+			require.NoError(t, err)
+			require.NotNil(t, usage)
+			require.Equal(t, 11, usage.InputTokens)
+			require.Equal(t, 2, usage.OutputTokens)
+			require.Nil(t, GetOpsCyberPolicy(c))
+			require.Contains(t, rec.Body.String(), "response.completed")
+			require.NotContains(t, rec.Body.String(), "response.failed")
+		})
+	}
 }
 
 func TestForwardAsAnthropic_ResponseFailed_PassthroughRule(t *testing.T) {

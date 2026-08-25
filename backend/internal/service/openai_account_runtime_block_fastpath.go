@@ -7,16 +7,48 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
+
+func (s *OpenAIGatewayService) openAIAccountRuntimeBlockInstanceIDValue() string {
+	if s == nil {
+		return ""
+	}
+	s.openaiAccountRuntimeBlockInstance.Do(func() {
+		s.openaiAccountRuntimeBlockInstanceID = uuid.NewString()
+	})
+	return s.openaiAccountRuntimeBlockInstanceID
+}
 
 const (
 	openAIAccountStateUpdateTimeout       = 5 * time.Second
 	openAIOAuth429FallbackCooldown        = 5 * time.Second
+	openAIOAuth429RetryWindow             = 2 * time.Minute
+	openAIOAuth429RetryDelay              = 500 * time.Millisecond
+	openAIOAuth429MaxRetryDelay           = 8 * time.Second
+	openAIOAuth429MaxAccountAttempts      = 3
 	openAIStopSchedulingBridgeCooldown    = 2 * time.Minute
 	openAIOAuth429StormWindow             = 10 * time.Second
-	openAIOAuth429StormThreshold          = 20
 	openAIOAuth429StormMaxAccountSwitches = 1
+	openAIRuntimeBlockMixedNonQuotaReason = "mixed_non_quota"
 )
+
+func isOpenAIQuotaRuntimeBlockReason(reason string) bool {
+	return strings.HasPrefix(strings.TrimSpace(reason), "429")
+}
+
+func mergeOpenAIAccountRuntimeBlockReason(existing string, existingPresent bool, incoming string) string {
+	incoming = strings.TrimSpace(incoming)
+	if !existingPresent {
+		return incoming
+	}
+	existing = strings.TrimSpace(existing)
+	if !isOpenAIQuotaRuntimeBlockReason(existing) || !isOpenAIQuotaRuntimeBlockReason(incoming) {
+		return openAIRuntimeBlockMixedNonQuotaReason
+	}
+	return incoming
+}
 
 // OpenAIOAuth429FailoverState tracks the request-local follow-up budget after
 // the first Grok OAuth 429. Once that 429 occurs, exactly one different account
@@ -34,7 +66,7 @@ func openAIAccountStateContext(ctx context.Context) (context.Context, context.Ca
 }
 
 func isOpenAIOAuthAccount(account *Account) bool {
-	return account != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth
+	return account != nil && account.IsOpenAIOAuthLike()
 }
 
 func isGrokOAuthAccount(account *Account) bool {
@@ -62,6 +94,19 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	}
 	stateCtx, cancel := openAIAccountStateContext(ctx)
 	defer cancel()
+	if account != nil && account.Platform == PlatformOpenAI && isOpenAIHTTPUpstreamAccessStateError(statusCode, "", responseBody) {
+		message := "OpenAI upstream account or workspace is unavailable"
+		if upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(responseBody)); upstreamMsg != "" {
+			message = upstreamMsg
+		}
+		if s != nil && s.rateLimitService != nil {
+			s.rateLimitService.handleAuthError(stateCtx, account, message)
+		}
+		if s != nil {
+			s.BlockAccountScheduling(account, time.Time{}, "openai_access_state")
+		}
+		return true
+	}
 
 	if account != nil && account.Platform == PlatformOpenAI && isOpenAIContextWindowError("", responseBody) {
 		return false
@@ -149,6 +194,9 @@ func (s *OpenAIGatewayService) markOpenAIOAuth429RateLimited(ctx context.Context
 		return
 	}
 	s.recordOpenAIOAuth429()
+	if s.openAIOAuth429RetryWindowActive(account) {
+		return
+	}
 
 	cooldownUntil := time.Now().Add(openAIOAuth429FallbackCooldown)
 	if s.rateLimitService != nil {
@@ -163,6 +211,75 @@ func (s *OpenAIGatewayService) markOpenAIOAuth429RateLimited(ctx context.Context
 		}
 	}
 	s.BlockAccountScheduling(account, cooldownUntil, "429")
+	s.openaiOAuth429RetryStartedAt.Delete(account.ID)
+}
+
+func (s *OpenAIGatewayService) shouldRetryOpenAIOAuth429OnSameAccount(account *Account, statusCode int, shouldDisable bool) bool {
+	if shouldDisable || statusCode != http.StatusTooManyRequests || !isOpenAIOAuthAccount(account) || account.IsShadow() {
+		return false
+	}
+	// markOpenAIOAuth429RateLimited parks the account once the window expires.
+	// Do not accidentally create a fresh window after that transition.
+	if s.isOpenAIAccountRuntimeBlocked(account) {
+		return false
+	}
+	return s.openAIOAuth429RetryWindowActive(account)
+}
+
+// ShouldRetryOpenAIOAuth429 lets RateLimitService defer persistent account
+// cooldown until the gateway's same-account retry window is exhausted.
+func (s *OpenAIGatewayService) ShouldRetryOpenAIOAuth429(account *Account, _ http.Header, _ []byte) bool {
+	if s == nil || !isOpenAIOAuthAccount(account) || account.IsShadow() || s.isOpenAIAccountRuntimeBlocked(account) {
+		return false
+	}
+	return s.openAIOAuth429RetryWindowActive(account)
+}
+
+func (s *OpenAIGatewayService) openAIOAuth429RetryWindowActive(account *Account) bool {
+	if s == nil || !isOpenAIOAuthAccount(account) || account.IsShadow() {
+		return false
+	}
+	now := time.Now()
+	value, _ := s.openaiOAuth429RetryStartedAt.LoadOrStore(account.ID, now)
+	startedAt, ok := value.(time.Time)
+	if !ok {
+		s.openaiOAuth429RetryStartedAt.Store(account.ID, now)
+		startedAt = now
+	}
+	return now.Before(startedAt.Add(openAIOAuth429RetryWindow))
+}
+
+func (s *OpenAIGatewayService) openAIOAuth429RetryDeadline(account *Account) time.Time {
+	if s == nil || !isOpenAIOAuthAccount(account) || account.IsShadow() {
+		return time.Time{}
+	}
+	value, ok := s.openaiOAuth429RetryStartedAt.Load(account.ID)
+	if !ok {
+		return time.Time{}
+	}
+	startedAt, ok := value.(time.Time)
+	if !ok {
+		return time.Time{}
+	}
+	return startedAt.Add(openAIOAuth429RetryWindow)
+}
+
+func openAIOAuth429SameAccountRetryDelay(headers http.Header, deadline time.Time) time.Duration {
+	delay := openAIOAuth429RetryDelay
+	now := time.Now()
+	if resetAt := parseRetryAfterResetTime(headers, now); resetAt != nil && resetAt.After(now) {
+		delay = resetAt.Sub(now)
+	}
+	if delay > openAIOAuth429MaxRetryDelay {
+		delay = openAIOAuth429MaxRetryDelay
+	}
+	if remaining := time.Until(deadline); !deadline.IsZero() && delay > remaining {
+		delay = remaining
+	}
+	if delay < 0 {
+		return 0
+	}
+	return delay
 }
 
 func (s *OpenAIGatewayService) BlockAccountScheduling(account *Account, until time.Time, reason string) {
@@ -185,7 +302,7 @@ func (s *OpenAIGatewayService) openAIAccountRuntimeBlockLock(accountID int64) *s
 	return mu
 }
 
-func (s *OpenAIGatewayService) blockAccountSchedulingLocked(account *Account, until time.Time, _ string) (uint64, bool) {
+func (s *OpenAIGatewayService) blockAccountSchedulingLocked(account *Account, until time.Time, reason string) (uint64, bool) {
 	generation := s.openaiAccountRuntimeBlockSequence.Add(1)
 	s.openaiAccountRuntimeBlockGeneration.Store(account.ID, generation)
 	now := time.Now()
@@ -199,22 +316,30 @@ func (s *OpenAIGatewayService) blockAccountSchedulingLocked(account *Account, un
 		if !loaded {
 			actual, stored := s.openaiAccountRuntimeBlockUntil.LoadOrStore(account.ID, blockUntil)
 			if !stored {
+				s.openaiAccountRuntimeBlockReason.Store(account.ID, mergeOpenAIAccountRuntimeBlockReason("", false, reason))
 				return generation, true
 			}
 			current = actual
 		}
 
 		currentUntil, ok := current.(time.Time)
-		if !ok || currentUntil.IsZero() {
+		currentActive := ok && !currentUntil.IsZero() && now.Before(currentUntil)
+		if !currentActive {
 			if s.openaiAccountRuntimeBlockUntil.CompareAndSwap(account.ID, current, blockUntil) {
+				s.openaiAccountRuntimeBlockReason.Store(account.ID, mergeOpenAIAccountRuntimeBlockReason("", false, reason))
 				return generation, true
 			}
 			continue
 		}
+		existingReasonValue, _ := s.openaiAccountRuntimeBlockReason.Load(account.ID)
+		existingReason, _ := existingReasonValue.(string)
+		mergedReason := mergeOpenAIAccountRuntimeBlockReason(existingReason, true, reason)
 		if !blockUntil.After(currentUntil) {
+			s.openaiAccountRuntimeBlockReason.Store(account.ID, mergedReason)
 			return generation, false
 		}
 		if s.openaiAccountRuntimeBlockUntil.CompareAndSwap(account.ID, current, blockUntil) {
+			s.openaiAccountRuntimeBlockReason.Store(account.ID, mergedReason)
 			return generation, true
 		}
 	}
@@ -228,7 +353,52 @@ func (s *OpenAIGatewayService) ClearAccountSchedulingBlock(accountID int64) {
 	mu.Lock()
 	defer mu.Unlock()
 	s.openaiAccountRuntimeBlockUntil.Delete(accountID)
+	s.openaiAccountRuntimeBlockReason.Delete(accountID)
+	s.openaiOAuth429RetryStartedAt.Delete(accountID)
 	s.openaiAccountRuntimeBlockGeneration.Store(accountID, s.openaiAccountRuntimeBlockSequence.Add(1))
+}
+
+// CaptureAccountSchedulingBlock 返回当前运行时阻断的代次，并仅把 429 阻断标记为额度阻断。
+func (s *OpenAIGatewayService) CaptureAccountSchedulingBlock(accountID int64) (string, uint64, bool) {
+	if s == nil || accountID <= 0 {
+		return "", 0, false
+	}
+	mu := s.openAIAccountRuntimeBlockLock(accountID)
+	mu.Lock()
+	defer mu.Unlock()
+	value, ok := s.openaiAccountRuntimeBlockUntil.Load(accountID)
+	until, valid := value.(time.Time)
+	if !ok || !valid || until.IsZero() || !time.Now().Before(until) {
+		return "", 0, false
+	}
+	generationValue, ok := s.openaiAccountRuntimeBlockGeneration.Load(accountID)
+	generation, valid := generationValue.(uint64)
+	if !ok || !valid {
+		return "", 0, false
+	}
+	reason, _ := s.openaiAccountRuntimeBlockReason.Load(accountID)
+	reasonText, _ := reason.(string)
+	return s.openAIAccountRuntimeBlockInstanceIDValue(), generation, isOpenAIQuotaRuntimeBlockReason(reasonText)
+}
+
+// ClearAccountSchedulingBlockIfGeneration 只清除捕获后未发生变化的运行时阻断。
+func (s *OpenAIGatewayService) ClearAccountSchedulingBlockIfGeneration(accountID int64, instanceID string, observed uint64) bool {
+	if s == nil || accountID <= 0 || instanceID == "" || observed == 0 || instanceID != s.openAIAccountRuntimeBlockInstanceIDValue() {
+		return false
+	}
+	mu := s.openAIAccountRuntimeBlockLock(accountID)
+	mu.Lock()
+	defer mu.Unlock()
+	generationValue, ok := s.openaiAccountRuntimeBlockGeneration.Load(accountID)
+	generation, valid := generationValue.(uint64)
+	if !ok || !valid || generation != observed {
+		return false
+	}
+	s.openaiAccountRuntimeBlockUntil.Delete(accountID)
+	s.openaiAccountRuntimeBlockReason.Delete(accountID)
+	s.openaiOAuth429RetryStartedAt.Delete(accountID)
+	s.openaiAccountRuntimeBlockGeneration.Store(accountID, s.openaiAccountRuntimeBlockSequence.Add(1))
+	return true
 }
 
 func (s *OpenAIGatewayService) isOpenAIAccountRuntimeBlocked(account *Account) bool {
@@ -245,6 +415,7 @@ func (s *OpenAIGatewayService) isOpenAIAccountRuntimeBlocked(account *Account) b
 	cooldownUntil, ok := value.(time.Time)
 	if !ok || cooldownUntil.IsZero() {
 		s.openaiAccountRuntimeBlockUntil.Delete(account.ID)
+		s.openaiAccountRuntimeBlockReason.Delete(account.ID)
 		s.openaiAccountRuntimeBlockGeneration.Store(account.ID, s.openaiAccountRuntimeBlockSequence.Add(1))
 		return false
 	}
@@ -252,6 +423,7 @@ func (s *OpenAIGatewayService) isOpenAIAccountRuntimeBlocked(account *Account) b
 		return true
 	}
 	s.openaiAccountRuntimeBlockUntil.Delete(account.ID)
+	s.openaiAccountRuntimeBlockReason.Delete(account.ID)
 	s.openaiAccountRuntimeBlockGeneration.Store(account.ID, s.openaiAccountRuntimeBlockSequence.Add(1))
 	return false
 }
@@ -272,6 +444,9 @@ func canonicalOpenAIAccountSchedulingModel(account *Account, requestedModel stri
 	model := strings.TrimSpace(requestedModel)
 	if account == nil || model == "" {
 		return model
+	}
+	if account.IsOpenAI() {
+		return resolveOpenAIAccountUpstreamModelForRequest(account, model, false)
 	}
 	if mapped := strings.TrimSpace(account.GetMappedModel(model)); mapped != "" {
 		return mapped
@@ -333,17 +508,6 @@ func (s *OpenAIGatewayService) recordOpenAIOAuth429() {
 	s.openaiOAuth429WindowCount.Add(1)
 }
 
-func (s *OpenAIGatewayService) isOpenAIOAuth429Storm() bool {
-	if s == nil {
-		return false
-	}
-	windowStart := s.openaiOAuth429WindowStartUnixNano.Load()
-	if windowStart == 0 || time.Since(time.Unix(0, windowStart)) >= openAIOAuth429StormWindow {
-		return false
-	}
-	return s.openaiOAuth429WindowCount.Load() >= openAIOAuth429StormThreshold
-}
-
 func (s *OpenAIGatewayService) ShouldStopOpenAIOAuth429Failover(account *Account, statusCode int, failedSwitches int, state *OpenAIOAuth429FailoverState) bool {
 	if failedSwitches < openAIOAuth429StormMaxAccountSwitches {
 		return false
@@ -368,5 +532,8 @@ func (s *OpenAIGatewayService) ShouldStopOpenAIOAuth429Failover(account *Account
 	if statusCode != http.StatusTooManyRequests || !isOpenAIOAuthAccount(account) {
 		return false
 	}
-	return s.isOpenAIOAuth429Storm()
+	// Each OpenAI OAuth candidate has already consumed its full same-account
+	// retry window before reaching this switch point. A global storm is useful
+	// telemetry, but must not prevent trying the bounded next-account budget.
+	return failedSwitches >= openAIOAuth429MaxAccountAttempts
 }

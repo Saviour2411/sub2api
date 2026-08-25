@@ -221,6 +221,11 @@ func TestLiveCreateFailoverUsesExistingOpenAIPolicy(t *testing.T) {
 		StatusCode: http.StatusBadGateway,
 	}))
 	require.True(t, service.shouldFailoverLiveCreateError(errors.New("transport failed")))
+	require.False(t, service.shouldFailoverLiveCreateError(&PluginTransportError{
+		Code:        "UPSTREAM_EOF",
+		Message:     "eof",
+		RequestSent: true,
+	}))
 }
 
 func TestLiveCallIDFromLocation(t *testing.T) {

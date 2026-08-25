@@ -123,3 +123,59 @@ func TestStreamingPassthroughReleasesBodyWithoutFirstTokenAttempt(t *testing.T) 
 	require.NotNil(t, result)
 	require.Equal(t, 1, released)
 }
+
+func TestStreamingResponseTerminalWinsOverRequestSentPluginCloseError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	transportErr := &PluginTransportError{Code: "UPSTREAM_EOF", Message: "eof", RequestSent: true}
+	body := strings.Join([]string{
+		"event: response.completed",
+		`data: {"type":"response.completed","response":{"id":"resp_1","status":"completed","output":[],"usage":{"input_tokens":5,"output_tokens":3,"total_tokens":8}}}`,
+		"",
+	}, "\n")
+
+	t.Run("Responses 转换链", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+		resp := &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body: &openAIStreamReadThenErrorCloser{
+				reader: strings.NewReader(body),
+				err:    transportErr,
+			},
+		}
+
+		result, err := (&OpenAIGatewayService{}).handleStreamingResponseWithReasoningOnAccepted(
+			context.Background(), resp, c, &Account{ID: 1}, time.Now(), "gpt-5", "gpt-5", "", nil,
+		)
+
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.Equal(t, 5, result.usage.InputTokens)
+		require.Equal(t, 3, result.usage.OutputTokens)
+	})
+
+	t.Run("透传链", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+		resp := &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body: &openAIStreamReadThenErrorCloser{
+				reader: strings.NewReader(body),
+				err:    transportErr,
+			},
+		}
+
+		result, err := (&OpenAIGatewayService{}).handleStreamingResponsePassthroughOnAccepted(
+			context.Background(), resp, c, &Account{ID: 1}, time.Now(), "gpt-5", "gpt-5", nil,
+		)
+
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.Equal(t, 5, result.usage.InputTokens)
+		require.Equal(t, 3, result.usage.OutputTokens)
+	})
+}
