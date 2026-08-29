@@ -44,17 +44,33 @@ type openAICompactSSEKeepalive struct {
 // 响应构造都会先在心跳互斥锁下停拍，未被显式拦截的写回路径（如 Forward
 // 内部的本地拒绝）也不会与心跳 goroutine 产生数据竞争或字节交错。
 func StartOpenAICompactSSEKeepalive(c *gin.Context, interval time.Duration) func() {
-	return startOpenAICompactSSEKeepalive(c, interval, false)
+	if !openAICompactClientWantsStream(c) {
+		return func() {}
+	}
+	return startOpenAISSEKeepaliveWithPause(c, interval, false)
 }
 
 // StartOpenAICompactSSEKeepalivePaused 以暂停态创建 compact 心跳。首 Token
 // watchdog 尚未决定是否启用前，暂停态不会提交响应头；watchdog 关闭时由转发层恢复。
 func StartOpenAICompactSSEKeepalivePaused(c *gin.Context, interval time.Duration) func() {
-	return startOpenAICompactSSEKeepalive(c, interval, true)
+	if !openAICompactClientWantsStream(c) {
+		return func() {}
+	}
+	return startOpenAISSEKeepaliveWithPause(c, interval, true)
 }
 
-func startOpenAICompactSSEKeepalive(c *gin.Context, interval time.Duration, paused bool) func() {
-	if c == nil || c.Writer == nil || interval <= 0 || !openAICompactClientWantsStream(c) {
+// startOpenAISSEKeepalive 是不检查 compact 标记的内部入口，供【已经确定处于
+// SSE 流式上下文】的调用方使用（例如 /v1/responses 透传：进入流式循环时上游
+// 已返回 text/event-stream，SSE 响应头也已设好）。
+//
+// 心跳字节由 OpenAICompactKeepaliveAdjustedWrittenSize 统一排除，因此不会污染
+// "是否已向客户端写出语义响应"的 failover 判定（见 #3887）。
+func startOpenAISSEKeepalive(c *gin.Context, interval time.Duration) func() {
+	return startOpenAISSEKeepaliveWithPause(c, interval, false)
+}
+
+func startOpenAISSEKeepaliveWithPause(c *gin.Context, interval time.Duration, paused bool) func() {
+	if c == nil || c.Writer == nil || interval <= 0 {
 		return func() {}
 	}
 	originalWriter := c.Writer
