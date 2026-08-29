@@ -1865,3 +1865,238 @@
 - 未执行依赖 PostgreSQL/Redis 的本地完整服务和 `/health` 检查。
 - 未读取 `.env`、SSH 私钥或其他业务秘密；指定 GitHub Token 仅在子进程中从 `D:\project\github_token.sh` 加载，用于 GitHub API 认证，未输出、写入 Git 配置或提交。经后续授权仅执行同步分支 push、PR #15 和主线 merge，未执行部署、远程服务器访问、容器重启、生产挂载核验或生产数据操作。
 - 生产服务器状态、bind mount 实际挂载、实例性能参数和健康检查均未验证；本次只验证仓库内静态 Compose 约束。
+
+## 2026-08-30 同步至 b5827cfd5
+
+- 执行时间：2026-08-29T23:18:44+08:00 至 2026-08-30T01:23:48+08:00
+- 执行状态：同步分支已完整合并固定上游范围、完成二次开发适配并通过本地验证；本记录提交后使用 `--ff-only` 更新本地 `main`
+- 本地目标分支：`main`
+- `LOCAL_PRE_SYNC_SHA`：`8e4a0b6456a67b9b08a3670d88190cf3da379a6b`
+- 上游代码合并提交：`1095fc9428f6ebd1dd8f0bbc5d2b4c60353555eb`
+- 最后一个代码提交：`ffc464dffe86915758d86fc1d3d1da907492c5a4`
+- 上游仓库：`https://github.com/Wei-Shaw/sub2api.git`
+- 上游分支：`main`
+- `UPSTREAM_OLD_SHA`：`aa2c4e8d136b13553ac7bae3d76c25715333a554`
+- `UPSTREAM_NEW_SHA`：`b5827cfd54d58c248a9480b800444d0b40f0c6ea`
+- merge-base：`aa2c4e8d136b13553ac7bae3d76c25715333a554`
+- `LAST_FULLY_INTEGRATED_UPSTREAM_SHA`：`b5827cfd54d58c248a9480b800444d0b40f0c6ea`
+- 集成策略：在隔离同步分支执行 `git merge --no-ff --no-commit b5827cfd54d58c248a9480b800444d0b40f0c6ea`，逐文件解决 20 个文本冲突并复核自动合并路径；merge commit 保留完整上游祖先关系，二次开发兼容调整与两份历史台账使用后续独立提交
+- 备份分支：`backup/pre-upstream-sync-20260829-231844-8e4a0b645`
+- 同步分支：`sync/upstream-20260829-b5827cfd5`
+
+### 上游提交处置
+
+固定范围共 136 个提交，其中 63 个 merge commit、73 个 non-merge commit。审批分类为 23 个 `Conflict`、47 个 `Review`、3 个 `Low Risk` 和 63 个依赖合并；最终互斥处置结果为 113 个 `Applied`、23 个 `Applied + Overridden`，`Already Applied`、`Skipped`、`Deferred` 和未解决 `Conflict` 均为 0。完整 merge 已保留全部 136 个提交的祖先关系，下表覆盖固定范围内全部 SHA。
+
+| 上游提交 | 集成状态 | 审批分类 | 内容与处置 |
+| --- | --- | --- | --- |
+| `901a77cfb` | Applied | Review | Anthropic→Chat 桥回传工具调用的 thinking，修复 DeepSeek 多轮兼容 |
+| `3c5553e25` | Applied | Review | 为网关合成的 Responses 对象补齐 created_at |
+| `b1737cc84` | Applied | Review | 保留 Antigravity 混合内置 Chat 工具 |
+| `22e1b8144` | Applied | Review | 新增按实际分组路由生成的 Codex 模型目录 |
+| `e471be730` | Applied | Review | 补齐路由 Codex 模型目录字段与能力 |
+| `3e98a5a1a` | Applied | Review | Composite 精确路由账号模型别名 |
+| `b16ed03ca` | Applied | Review | 使 Codex 目录与实际路由结果一致 |
+| `5a2f542ab` | Applied | Review | 目录生成优先采用管理员配置模型 |
+| `e39fce270` | Applied + Overridden | Conflict | 同步路由账号能力元数据，并与本地创建预览及模型市场边界合并 |
+| `e0e5e45cd` | Applied | Review | 恢复工具调用项时保持类型化 ID |
+| `fc589bce1` | Applied | Review | 修复路由 Codex 目录审查问题 |
+| `b7ec3cdad` | Applied + Overridden | Conflict | 识别 raw Chat Completions 缺少终态的截断流，并保留本地首 Token/断开计费边界 |
+| `e55727d4c` | Applied | Review | 容量换号时保留 sticky 绑定 |
+| `3f1581b2d` | Applied + Overridden | Conflict | 避免上游倍率探测导致账号列表整页刷新，并保留本地账号预览契约 |
+| `4ca86c52e` | Applied | Review | 为邮箱换绑增加别名与并发守卫 |
+| `1a9898a6a` | Applied | Review | 限制 Antigravity 兼容路径的 Token 上限 |
+| `11ada80d5` | Applied + Overridden | Conflict | 记录并展示策略映射前的请求推理强度，保留双值审计 |
+| `5705f4a4a` | Applied + Overridden | Conflict | 用户端隐藏映射后推理强度，管理员继续可见 |
+| `a8cfe746b` | Applied + Overridden | Conflict | 覆盖用户端与管理端推理强度展示边界 |
+| `b20f29d11` | Applied | Review | 修复 Channel Monitor V2 的 Composite 聚合 SQL |
+| `32064d39e` | Applied | Review | 规范跨供应商 reasoning 回放 |
+| `8e60d5747` | Applied | Review | 使用 Codex 会话 ID 请求头参与粘性路由 |
+| `3802268e2` | Applied | Review | 保持 Kimi 并发 403 可恢复 |
+| `db01fb98f` | Applied | Review | 账号临时不可调度时仍保持 Codex 目录能力稳定 |
+| `5934981e2` | Applied | Review | 覆盖不可调度账号参与目录能力交集的回归 |
+| `f1aadd48d` | Applied + Overridden | Conflict | 额度耗尽 429 时暂停 OpenAI OAuth 账号，并合并本地失败调度语义 |
+| `77b6c5bb0` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `832cf4df6` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `4ff136cfd` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `804042871` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `fa0685a4a` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `4952b919a` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `49ad7021d` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `7a7bd3729` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `e8cb019fa` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `d8694f03b` | Applied | Review | 覆盖 WSv2 清理过期原生工具 ID 的回归 |
+| `7634e3c23` | Applied + Overridden | Conflict | 保留版本提交祖先关系，最终继续使用本地 0.1.226 |
+| `d522aed65` | Applied | Review | OAuth 注册继续保留优惠码 |
+| `4795650d2` | Applied + Overridden | Conflict | 错误路径记录实际上游端点，并与本地端点归因统一 |
+| `66d664ff0` | Applied | Low Risk | 更新赞助商说明与静态资源 |
+| `195b21970` | Applied | Review | 隔离 API Key Codex 目录缓存并补充 DeepSeek 默认值 |
+| `6ca1e15b0` | Applied | Low Risk | 更新赞助商说明 |
+| `2abce6503` | Applied + Overridden | Conflict | 加固路由目录能力同步，并保留本地账号创建预览数据流 |
+| `1bf76d26d` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `b9083fc7a` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `50ba14629` | Applied | Review | 保留多模态客户端工具输出 |
+| `8ba81615e` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `efb46db0a` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `d881bfc0d` | Applied | Review | 避免 Pool 两跳重复计算 system 提示词 |
+| `44003d7f6` | Applied + Overridden | Conflict | 将 Anthropic/Bedrock 传输错误统一转为 failover，同时保留插件已发出请求不可重放 |
+| `5f09442fc` | Applied | Review | 额度重置后刷新 OpenAI 用量 |
+| `d077002eb` | Applied | Review | 图片工具冷却不再由模型回文字触发 |
+| `9192426d2` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `4a02e5417` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `00b7c855c` | Applied | Review | 保留 API Key 已声明的 namespace 调用 |
+| `00efee430` | Applied | Review | 为 Grok 4.6 广告 xhigh 推理档位 |
+| `9e7aff59d` | Applied | Review | 版本比较时剥离连字符后缀 |
+| `e6ea7b9af` | Applied | Review | 图像能力丢失时冷却图片调度 |
+| `de6ef7134` | Applied | Review | 清洗 Grok Codex Responses 请求 |
+| `f4820c00d` | Applied | Review | 简化非法工具 union 根节点 |
+| `fd872550d` | Applied | Review | 处理带类型的非法工具 union |
+| `f4e3eb1c5` | Applied + Overridden | Conflict | 在 WSv2 透传中识别 Cyber 策略，并保留本地严格门禁及 AfterTurn 顺序 |
+| `b56c61ecc` | Applied | Review | 允许管理员限制用户可访问的公开分组 |
+| `60756c0ca` | Applied + Overridden | Conflict | Responses 透传首输出前发送 SSE 保活，并保持首 Token 暂存边界 |
+| `5929cdd38` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `acd2f09dd` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `0eddfe1cf` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `96e9ab866` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `1e8745c88` | Applied | Review | 补全 EasyPay 返回的相对支付与二维码地址 |
+| `d36f4dd6c` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `ee2c8b97b` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `f83fe6435` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `d24de611f` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `81ac8ccd6` | Applied + Overridden | Conflict | 非流式路径按流式同一规则处理 HTTP 200 终态失败并安全换号 |
+| `eca8d6b9a` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `28fa458dc` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `0f6ad105f` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `002aaaa3d` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `5eb8628ff` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `f7dca22ea` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `7eed2d3b7` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `de084cdfc` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `fafc4d288` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `a0b313018` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `4e9c1d7c8` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `b588c0bc4` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `443537daa` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `59bb131df` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `dc332d141` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `add86cc3b` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `9b61c1bdd` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `d674a04f2` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `c83dced4b` | Applied + Overridden | Conflict | fix(openai): 入站 WS 的客户端正常关闭与断开不再计为账号故障 |
+| `e866ff6ec` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `1e6926cb9` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `446042e51` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `c8a6e93f3` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `423f89575` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `d4754c211` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `7b693ae42` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `0756c9810` | Applied | Review | 批量编辑显式提交关闭 Codex 指纹收敛 |
+| `c4e46c3be` | Applied + Overridden | Conflict | 支持智谱 Team GLM Coding Plan 用量查询，并合并账号创建表单 |
+| `e652f6e20` | Applied | Review | 配额抓取在 singleflight 内重查缓存，消除重复查询 |
+| `02eee39dd` | Applied + Overridden | Conflict | 充值预览显示所选币种，并保留本地赠送与到账余额口径 |
+| `c5ff640df` | Applied | Low Risk | 固定 rollup 触发器集成测试的会话时区 |
+| `5345881b1` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `da10822d7` | Applied | Review | 保留 Anthropic 工具参数 |
+| `c03776604` | Applied | Review | 保留 Claude attribution 请求头 |
+| `32ad1dcdc` | Applied | Review | 对齐订阅周/月窗口展示与实际重置锚点 |
+| `88cb79d8b` | Applied | Review | Grok 缓存身份优先采用客户端 prompt_cache_key |
+| `5688bcba9` | Applied + Overridden | Conflict | Messages 粘性路由采用 Claude Code 会话，并保留本地缓存滚动边界 |
+| `f1d845c63` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `1323d1645` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `6506c0ea6` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `1136e290f` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `25dc5742e` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `604360d1c` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `3045b3ade` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `46598dd49` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `ca319d09f` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `3c2e9a43b` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `fd13c72e9` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `b83284071` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `ac18c588c` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `5d9c7abed` | Applied + Overridden | Conflict | 将 Spark 配额 429 限定到模型范围，并合并本地停调度保护 |
+| `3c22e78af` | Applied + Overridden | Conflict | 保留 Spark 配额重置语义 |
+| `571d1e1d9` | Applied + Overridden | Conflict | 隔离 WebSocket 语义限流状态 |
+| `804679d99` | Applied + Overridden | Conflict | 流式 failover 保留模型范围 |
+| `987588eaa` | Applied | 依赖合并 | 完整 merge 保留祖先关系；具体功能与处置由关联的 non-merge 提交说明 |
+| `c31fe2ed9` | Applied | Review | SMTP 测试端点保留已保存的 TLS 模式 |
+| `706b5676a` | Applied | Review | 分组创建和更新时展示 API 错误信息 |
+| `eb4237a2b` | Applied | Review | 带后缀模型的渠道定价不再被官方兜底价覆盖 |
+| `ed12ea716` | Applied | Review | Codex API Key 模式改为内联认证 |
+| `32ac921f2` | Applied | Review | 避免 Fable OAuth system prompt 被拒绝 |
+| `ea4291a92` | Applied | Review | 仅对 Fable 模型应用 Fable 调度阈值 |
+| `b5827cfd5` | Applied + Overridden | Conflict | 按 DeepSeek 官方工作日峰谷价格修正默认价卡，同时保留分组/渠道自定义价优先 |
+
+
+### `Applied + Overridden` 覆盖边界
+
+- `e39fce270`、`3f1581b2d`、`2abce6503`：接入路由账号能力元数据、Codex 模型目录和倍率探测修复；继续保留本地账号创建预览契约、API Key 专属分组约束和本地模型市场边界。
+- `11ada80d5`、`5705f4a4a`、`a8cfe746b`：记录策略映射前的 requested reasoning effort 和映射后实际值；管理员可审计双值，用户端不暴露映射后强度。
+- `b7ec3cdad`、`60756c0ca`、`81ac8ccd6`：接入 raw Chat 流截断识别、响应前 SSE 保活和非流式 HTTP 200 终态失败换号；继续以首个有效语义输出作为提交边界，保留首 Token 暂存、请求体释放和断开排空计费。
+- `44003d7f6`、`f4e3eb1c5`：接入 Anthropic/Bedrock 统一传输错误和 WSv2 Cyber 识别；插件 `RequestSent=true` 后仍禁止换号、同号重试或重放，Cyber 严格门禁和 `AfterTurn` 顺序不变。
+- `f1aadd48d`、`5d9c7abed`、`3c22e78af`、`571d1e1d9`、`804679d99`：接入 OpenAI 额度耗尽停用、Spark 模型级限流、重置窗口、WS 状态隔离和流式模型级 failover；继续保留本地失败代次、连续失败停调度和模型范围保护。
+- `4795650d2`：错误记录采用实际上游端点，并与本地渠道监控归因口径统一。
+- `7634e3c23`：完整 merge 保留版本提交祖先关系，最终继续使用本地版本 `0.1.226`。
+- `c83dced4b`：接入客户端正常 WebSocket 关闭归因，正常关闭或断开不再记为账号故障，同时保留本地会话结算边界。
+- `c4e46c3be`：接入智谱 Team GLM Coding Plan 用量查询，并与本地账号创建预览表单合并。
+- `02eee39dd`：充值预览显示所选币种，同时保留本地赠送额、到账余额和汇率口径。
+- `5688bcba9`：Messages 粘性路由采用 Claude Code 会话标识，同时保留本地缓存滚动和稳定身份边界。
+- `b5827cfd5`：按 DeepSeek 官方工作日峰谷价修正内置默认价卡；严格缺价、请求模型计费及分组/渠道自定义价格优先级不变。
+
+### 本地提交与文件
+
+- 上游固定范围整体映射到 merge commit `1095fc9428f6ebd1dd8f0bbc5d2b4c60353555eb`；双亲为同步前本地 SHA `8e4a0b6456a67b9b08a3670d88190cf3da379a6b` 和固定上游 SHA `b5827cfd54d58c248a9480b800444d0b40f0c6ea`。
+- 二次开发适配提交为 `ffc464dffe86915758d86fc1d3d1da907492c5a4`，包含测试签名适配、raw Chat 原始边界测试修正、移除两处已被严格计费链路替代的遗留辅助函数、迁移注释中文化，以及 `docs/custom-development-history.md` 更新。
+- 同步代码与适配相对 `LOCAL_PRE_SYNC_SHA` 共变更 255 个文件：新增 35 个、修改 220 个、删除 0 个，增加 17326 行、删除 908 行；本同步记录自身另修改 `docs/upstream-sync-history.md`。
+- 主要新增：按实际分组路由的 Codex 模型目录与能力元数据、requested reasoning effort 审计字段、用户公开分组限制、DeepSeek 工作日峰谷默认价、EasyPay 相对地址补全，以及数据库迁移 231。
+- 主要修复：raw Chat 截断、响应前保活、非流式终态失败换号、WebSocket 正常关闭归因、实际上游端点记录、跨 Provider 传输错误、Spark 模型级限流、Anthropic reasoning 回放、Composite 监控聚合和账户用量缓存。
+- `backend/cmd/server/VERSION` 最终保持 `0.1.226`；两份生产 Compose 字节完全一致，SHA-256 均为 `817B0DB0801F240F991331F4B3AB0F21C0F32844CCAD6EB35678CED69FAB66B0`。
+
+### 文本冲突与最终解决方案
+
+- 20 个文本冲突为：`backend/cmd/server/VERSION`；`backend/internal/handler/admin/account_handler.go`、`account_handler_available_models_test.go`、`openai_gateway_handler.go`；`backend/internal/service/billing_service.go`、`gateway_bedrock.go`、`openai_compact_sse_keepalive.go`、`openai_gateway_cc_pipeline.go`、`openai_gateway_chat_completions_raw.go`、`openai_gateway_passthrough.go`、`openai_gateway_response_handling.go`、`openai_upstream_transport_error.go`、`openai_ws_forwarder_v2.go`、`usage_log_helpers.go`；`frontend/src/api/admin/accounts.ts`、`frontend/src/components/account/CreateAccountModal.vue`、`frontend/src/components/account/__tests__/ModelWhitelistSelector.spec.ts`、`frontend/src/views/admin/UsageView.vue`、`frontend/src/views/user/PaymentView.vue`、`frontend/src/views/user/UsageView.vue`。
+- 版本冲突保留本地 `0.1.226`；账号和模型目录冲突接入上游能力同步、公开分组及智谱用量能力，同时保留本地创建预览、API Key 分组和模型市场契约。
+- 网关、流和 WS 冲突组合接入上游截断识别、保活、终态失败、正常关闭和传输错误处理；首语义输出、插件不可重放、断开计费、请求体释放、Cyber 与失败代次边界保持不变。
+- 计费冲突接入 DeepSeek 峰谷默认价和媒体实际模型识别；严格请求模型计费、Composite 例外及分组/渠道自定义价优先级保持不变。
+- 前端冲突按角色展示 requested reasoning effort，补齐 EasyPay 相对地址和币种预览，并保留管理员/用户可见性、赠送额与到账余额口径。
+- 所有冲突均逐文件解决，未整文件采用 `ours`、`theirs` 或上游版本；最终索引无未解决路径。另复核自动合并路径和 23 个语义覆盖提交。
+
+### 刻意保留的二次开发功能
+
+- `CUST-GW-001`、`CUST-GW-003`、`CUST-GW-006`、`CUST-GW-008`、`CUST-GW-010`：首语义输出暂存、响应前心跳、断开排空计费、请求体释放、连续失败状态和插件请求不可重放。
+- `CUST-PROTO-001`、`CUST-PROTO-005`、`CUST-PROTO-006`：Codex 稳定身份、请求头覆写及 Responses/compact/WS 路由边界。
+- `CUST-ACC-001`、`CUST-ACC-002`、`CUST-ACC-003`、`CUST-ACC-006`：账号状态代次、创建预览、API Key 专属分组和公开分组约束。
+- `CUST-BILL-001`、`CUST-BILL-002`、`CUST-BILL-005`：严格请求模型计费、媒体实际模型、Composite 例外、多层定价优先级和费用展示。
+- `CUST-PROD-002`、`CUST-PROD-006`、`CUST-RISK-002`、`CUST-UI-004`：本地模型市场、充值赠送/到账余额、Cyber 严格门禁和表格浮层边界。
+- `CUST-OPS-003`、`CUST-OPS-004`、`CUST-OPS-005`：生产 bind mount、仅回环暴露、HTTP upstream 业务开关、双生产 Compose 一致性、4 vCPU/8 GiB 参数、按用户串行扣费和 5 秒 usage task 超时。
+
+### 验证记录
+
+本机后端通过 Go 自动工具链实际使用 Go 1.27.0；前端使用本机 Node 环境和 Corepack pnpm，Canvas 以 pnpm 9.15.9 离线冻结安装。golangci-lint 使用与 CI 对齐的 v2.13.0。
+
+| 阶段 | 命令或检查 | 退出码 | 结果 |
+| --- | --- | ---: | --- |
+| 同步前基线 | 后端默认标签与 unit 标签测试、CGO 关闭构建、前端 lint/typecheck/Vitest/build、Canvas format/typecheck/Vitest/build | 0 | 核心基线通过；Apple fixture 单列的平台失败与同步后相同 |
+| 同步前部署静态 | Compose security、Gateway env、Docker resources、Caddy cache | 混合 | security 通过；Gateway env、Docker resources、Caddy 三项既有基线失败在同步后均修复并通过 |
+| 同步后后端 | `go test ./...` | 0 | 默认标签全包测试通过 |
+| 同步后后端 | `go test -tags=unit ./...` | 0 | unit 标签全包测试通过；`internal/service` 用时 191.529 秒 |
+| 同步后后端 | `CGO_ENABLED=0 go build -trimpath ./...` | 0 | CGO 关闭全包构建通过 |
+| repository integration 仅编译 | `go test -tags=integration ./internal/repository -run '^$' -count=1` | 0 | integration 标签下 repository 包编译通过，未执行测试用例 |
+| 后端静态检查 | golangci-lint v2.13.0 `run ./...` | 0 | CI 对应版本与 Go 1.27.0 运行，结果为 `0 issues` |
+| 同步后前端 | `lint:check`、`typecheck`、`test:run`、`build` | 0 | lint/typecheck 通过；268 个测试文件、1920 项 Vitest 通过；生产构建通过 |
+| 同步后 Canvas | 离线 `install --frozen-lockfile`、`format:check`、`typecheck`、`test`、`build` | 0 | pnpm 9.15.9 冻结安装、格式和类型检查通过；8 个测试文件、34 项 Vitest 通过；生产构建通过 |
+| Ent 生成稳定性 | 隔离环境重复生成两轮并比较受控输出 | 0 | 两轮一致，SHA-256 `02BFACF08F167CA912DD860DD3B458B4633A1660E1CCAD0C1F065028D45DC86E` |
+| Wire 生成稳定性 | 隔离环境重复生成两轮并比较受控输出 | 0 | 两轮一致，SHA-256 `15BB73C16A003BC0DD02333B402E2A707827D504066A6BCE1B1F17824A4B3470` |
+| 部署静态 | shell 语法、`docker-compose-security-test.sh`、`docker-compose-gateway-env-test.sh`、`docker-runtime-resources-test.sh`、`test-caddyfile-cache.sh` | 0 | 全部通过；未读取真实 Token、`.env` 或连接外部系统 |
+| Apple fixture | `bash deploy/tests/apple-container-test.sh` | 1 | Windows 不支持 BSD `stat -f '%Lp'`，与同步前一致，属于本机平台限制 |
+| Compose 一致性 | 字节比较及 SHA-256 | 0 | `docker-compose.yml` 与 `docker-compose.sub2api.yml` 字节一致，哈希均为 `817B0DB0801F240F991331F4B3AB0F21C0F32844CCAD6EB35678CED69FAB66B0` |
+| 最终静态复核 | `git diff --check`、冲突标记、意外删除、凭据类候选和祖先关系 | 0 | 适配提交后无空白错误或未解决 Git 冲突；固定上游目标为同步分支祖先，版本、Compose 和受控文件范围符合批准方案 |
+
+### 未验证项与残余风险
+
+- 本机未运行 Docker/Testcontainers、`-race` 或 `govulncheck`；未执行依赖真实 PostgreSQL/Redis 的完整 integration 和迁移 231。
+- 本机未使用 CI 的 Node 20 基线；前端和 Canvas 已在本机环境通过，但仍需后续 CI 验证 Node 20。
+- 未使用真实 OpenAI、Anthropic、DeepSeek、Grok、CN Provider 凭据或真实 OAuth 插件包；真实额度消费、媒体、流式故障转移、第三方支付和插件进程端到端未验证。
+- 未启动依赖 PostgreSQL/Redis 的完整本地服务，未执行 `/health` 检查。
+- 未读取 `.env`、GitHub Token、SSH 私钥或其他业务秘密；未 push、未创建 PR、未部署、未连接远程服务器、未重启容器或操作生产数据。
+- 生产服务器状态、bind mount 实际挂载、实例性能参数和健康检查均未验证；本次仅验证仓库内静态 Compose 约束。
