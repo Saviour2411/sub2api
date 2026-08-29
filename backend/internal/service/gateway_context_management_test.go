@@ -515,7 +515,7 @@ func TestApplyClaudeCodeOAuthMimicryToBody_FableOmitsRefusedExpansion(t *testing
 	svc := &GatewayService{cfg: &config.Config{}}
 
 	out := svc.applyClaudeCodeOAuthMimicryToBody(
-		context.Background(), nil, account, body, "Project instructions", "claude-fable-5",
+		context.Background(), nil, account, body, "Project instructions", "claude-fable-5", "",
 	)
 
 	system := gjson.GetBytes(out, "system").Array()

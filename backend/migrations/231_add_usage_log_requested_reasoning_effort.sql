@@ -1,7 +1,6 @@
--- Persist the client-requested reasoning effort before group policy rewriting
--- and model-family remapping (e.g. max -> xhigh). NULL means historical rows
--- written before this dual-write, or requests that never declared an effort.
+-- 在分组策略改写和模型族映射（例如 max -> xhigh）前保存客户端请求的推理强度。
+-- NULL 表示双写启用前的历史记录，或请求未声明推理强度。
 --
--- Nullable with no default: on PostgreSQL 11+ this is a metadata-only change
--- and does not rewrite the (potentially large, partitioned) usage_logs table.
+-- 字段可空且无默认值：PostgreSQL 11+ 只修改元数据，不会重写可能很大且已分区的
+-- usage_logs 表。
 ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS requested_reasoning_effort VARCHAR(20);

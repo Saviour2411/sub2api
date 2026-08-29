@@ -888,6 +888,8 @@ func TestForwardAsRawChatCompletions_ClientDisconnectTruncationStillBills(t *tes
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Writer = &openAIRawStreamDisconnectedWriter{ResponseWriter: c.Writer}
+	// 本测试只用 writer 写失败模拟断开；排除首 Token 暂存，确保写入触达底层 writer。
+	c.Set("first_token_timeout_excluded", true)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 

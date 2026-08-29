@@ -78,33 +78,6 @@ func openAIWSIngressEndedByClient(err error) bool {
 	return errors.Is(err, context.Canceled)
 }
 
-func openAIWSTurnBillingModel(result *service.OpenAIForwardResult, mapping service.ChannelMappingResult, requestedModel, upstreamModel string) string {
-	billingModel := ""
-	if result != nil {
-		billingModel = strings.TrimSpace(result.BillingModel)
-	}
-	if billingModel == "" {
-		billingModel = strings.TrimSpace(upstreamModel)
-	}
-	if billingModel == "" {
-		billingModel = strings.TrimSpace(requestedModel)
-	}
-
-	requestedModel = strings.TrimSpace(requestedModel)
-	switch mapping.BillingModelSource {
-	case service.BillingModelSourceRequested:
-		if requestedModel != "" {
-			billingModel = requestedModel
-		}
-	case service.BillingModelSourceChannelMapped:
-		mappedModel := strings.TrimSpace(mapping.MappedModel)
-		if mappedModel != "" && mappedModel != requestedModel {
-			billingModel = mappedModel
-		}
-	}
-	return billingModel
-}
-
 type grokMediaEligibilityProber interface {
 	ProbeMediaEligibility(ctx context.Context, accountID int64) (bool, string, error)
 }

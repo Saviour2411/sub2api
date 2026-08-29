@@ -2260,9 +2260,9 @@ func TestForwardGrokResponsesUsesMetadataSessionForCacheIdentityWithoutForwardin
 		return c
 	}
 
-	_, err := svc.forwardGrokResponses(context.Background(), newContext(firstBody), account, firstBody, "grok", false, time.Now())
+	_, err := svc.forwardGrokResponses(context.Background(), newContext(firstBody), account, firstBody, "grok", false, false, time.Now())
 	require.NoError(t, err)
-	_, err = svc.forwardGrokResponses(context.Background(), newContext(secondBody), account, secondBody, "grok", false, time.Now())
+	_, err = svc.forwardGrokResponses(context.Background(), newContext(secondBody), account, secondBody, "grok", false, false, time.Now())
 	require.NoError(t, err)
 	require.Len(t, upstream.bodies, 2)
 

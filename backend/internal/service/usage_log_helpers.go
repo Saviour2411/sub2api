@@ -29,13 +29,6 @@ func coalesceRequestedReasoningEffort(requested, forwarded *string) *string {
 	return nil
 }
 
-func forwardResultBillingModel(requestedModel, upstreamModel string) string {
-	if trimmed := strings.TrimSpace(requestedModel); trimmed != "" {
-		return trimmed
-	}
-	return strings.TrimSpace(upstreamModel)
-}
-
 func optionalInt64Ptr(v int64) *int64 {
 	if v == 0 {
 		return nil
