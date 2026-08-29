@@ -2091,12 +2091,21 @@
 | Apple fixture | `bash deploy/tests/apple-container-test.sh` | 1 | Windows 不支持 BSD `stat -f '%Lp'`，与同步前一致，属于本机平台限制 |
 | Compose 一致性 | 字节比较及 SHA-256 | 0 | `docker-compose.yml` 与 `docker-compose.sub2api.yml` 字节一致，哈希均为 `817B0DB0801F240F991331F4B3AB0F21C0F32844CCAD6EB35678CED69FAB66B0` |
 | 最终静态复核 | `git diff --check`、冲突标记、意外删除、凭据类候选和祖先关系 | 0 | 适配提交后无空白错误或未解决 Git 冲突；固定上游目标为同步分支祖先，版本、Compose 和受控文件范围符合批准方案 |
+| 远端同步分支与 PR | GitHub Actions `CI` #336/#337、`Security Scan` #192/#193 | 0 | push 与 pull_request 两套 shell、Go unit/integration、Node 20 前端/Canvas、golangci-lint 2.13、govulncheck 和依赖审计全部通过；CLA #41/#42 按仓库条件 skipped |
+| 远端 `main` | GitHub Actions `CI` #338、`Security Scan` #194 | 0 | merge commit `4e75ac73847dfabcd05b69e9f87be8c1958e4984` 的 shell、Go unit/integration、Node 20 前端/Canvas、lint、安全与依赖审计全部通过 |
+
+### 远端交付补记
+
+- 经用户后续明确授权，同步分支 `sync/upstream-20260829-b5827cfd5` 已推送，并通过 [PR #17](https://github.com/Saviour2411/sub2api/pull/17) 合入远端 `main`。
+- PR head 为 `769e5dfd977a3464ba35eb9ec0f989693b27aa5b`，base 为 `8e4a0b6456a67b9b08a3670d88190cf3da379a6b`；全部 push/PR 检查成功后使用 merge 方法合入，远端 merge commit 为 `4e75ac73847dfabcd05b69e9f87be8c1958e4984`。
+- 主线 merge commit 触发的 [CI #338](https://github.com/Saviour2411/sub2api/actions/runs/33266733682) 与 [Security Scan #194](https://github.com/Saviour2411/sub2api/actions/runs/33266733687) 再次全部通过；未通过跳过检查、取消任务或绕过保护规则完成合入。
 
 ### 未验证项与残余风险
 
-- 本机未运行 Docker/Testcontainers、`-race` 或 `govulncheck`；未执行依赖真实 PostgreSQL/Redis 的完整 integration 和迁移 231。
-- 本机未使用 CI 的 Node 20 基线；前端和 Canvas 已在本机环境通过，但仍需后续 CI 验证 Node 20。
+- 本机未运行 Docker/Testcontainers 或完整 integration；GitHub Actions 的 Docker integration 已在同步分支、PR 和主线三次通过。真实生产数据上的 PostgreSQL/Redis 和迁移 231 执行仍未验证。
+- 未运行 `-race`；`govulncheck` 已在三次 GitHub Security Scan 中通过，golangci-lint 2.13.0 已在本地和三次 GitHub CI 中通过。
+- 本机未使用 CI 的 Node 20 基线；Node 20 的前端和 Canvas 检查已在同步分支、PR 和主线三次通过。
 - 未使用真实 OpenAI、Anthropic、DeepSeek、Grok、CN Provider 凭据或真实 OAuth 插件包；真实额度消费、媒体、流式故障转移、第三方支付和插件进程端到端未验证。
 - 未启动依赖 PostgreSQL/Redis 的完整本地服务，未执行 `/health` 检查。
-- 未读取 `.env`、GitHub Token、SSH 私钥或其他业务秘密；未 push、未创建 PR、未部署、未连接远程服务器、未重启容器或操作生产数据。
+- 未读取 `.env`、SSH 私钥或其他业务秘密；指定 GitHub Token 仅在临时进程环境中从 `D:\project\github_token.sh` 加载，用于 GitHub API 认证，未输出、写入 Git 配置或提交。Git HTTPS smart-protocol 连接失败后仅使用仓库既有 SSH 认证推送同步分支；经后续授权完成 PR #17 和主线 merge，未执行部署、远程服务器访问、容器重启、生产挂载核验或生产数据操作。
 - 生产服务器状态、bind mount 实际挂载、实例性能参数和健康检查均未验证；本次仅验证仓库内静态 Compose 约束。
