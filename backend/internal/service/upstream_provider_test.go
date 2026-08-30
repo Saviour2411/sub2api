@@ -584,6 +584,111 @@ func TestNewAPIUpstreamProviderReusesCachedCookie(t *testing.T) {
 	require.Equal(t, "9", credential.NewAPIUserID)
 }
 
+func TestNewAPIUpstreamProviderUsesPersonalAccessTokenWithoutLoginSession(t *testing.T) {
+	var loginCalls int
+	var refreshCalls int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/user/login", func(w http.ResponseWriter, _ *http.Request) {
+		loginCalls++
+		http.Error(w, "不应登录", http.StatusInternalServerError)
+	})
+	mux.HandleFunc("/api/user/auth/refresh", func(w http.ResponseWriter, _ *http.Request) {
+		refreshCalls++
+		http.Error(w, "不应刷新", http.StatusInternalServerError)
+	})
+	mux.HandleFunc("/api/user/self", func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "Bearer personal-access-token", r.Header.Get("Authorization"))
+		require.Equal(t, newAPIPersonalAccessTokenUserAgent, r.Header.Get("User-Agent"))
+		require.Empty(t, r.Header.Get("Cookie"))
+		require.Empty(t, r.Header.Get("New-Api-User"))
+		writeUpstreamJSON(t, w, map[string]any{"id": 9, "quota": 100})
+	})
+	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, newAPIPersonalAccessTokenUserAgent, r.Header.Get("User-Agent"))
+		writeUpstreamJSON(t, w, map[string]any{"quota_per_unit": 100})
+	})
+	assertAuthenticatedRequest := func(t *testing.T, r *http.Request) {
+		t.Helper()
+		require.Equal(t, "Bearer personal-access-token", r.Header.Get("Authorization"))
+		require.Equal(t, newAPIPersonalAccessTokenUserAgent, r.Header.Get("User-Agent"))
+		require.Equal(t, "9", r.Header.Get("New-Api-User"))
+		require.Empty(t, r.Header.Get("Cookie"))
+	}
+	mux.HandleFunc("/api/user/self/groups", func(w http.ResponseWriter, r *http.Request) {
+		assertAuthenticatedRequest(t, r)
+		writeUpstreamJSON(t, w, map[string]any{})
+	})
+	mux.HandleFunc("/api/pricing", func(w http.ResponseWriter, r *http.Request) {
+		assertAuthenticatedRequest(t, r)
+		writeUpstreamJSON(t, w, map[string]any{})
+	})
+	mux.HandleFunc("/api/log/self/stat", func(w http.ResponseWriter, r *http.Request) {
+		assertAuthenticatedRequest(t, r)
+		writeUpstreamJSON(t, w, map[string]any{"quota": 10})
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	provider := newNewAPIUpstreamProvider(newTestUpstreamHTTPClient(t))
+	result, err := provider.Sync(context.Background(), UpstreamSyncRequest{
+		Site: &UpstreamSite{
+			BaseURL: server.URL, Platform: UpstreamPlatformNewAPI,
+			AuthMode: UpstreamAuthToken,
+		},
+		Credential: UpstreamCredential{AccessToken: "personal-access-token"},
+		Dates:      []time.Time{time.Now()},
+		Location:   time.Local,
+	})
+	require.NoError(t, err)
+	require.Zero(t, loginCalls)
+	require.Zero(t, refreshCalls)
+	require.Equal(t, "personal-access-token", result.Credential.AccessToken)
+	require.Equal(t, "9", result.Credential.NewAPIUserID)
+	require.Equal(t, newAPIPersonalAccessTokenUserAgent, result.Credential.UserAgent)
+	require.True(t, result.Credential.ImpersonateChrome)
+	require.Empty(t, result.Credential.Cookie)
+}
+
+func TestNewAPIUpstreamProviderDoesNotFallbackToLoginWhenPersonalAccessTokenIsRejected(t *testing.T) {
+	var loginCalls int
+	var refreshCalls int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/user/login", func(w http.ResponseWriter, _ *http.Request) {
+		loginCalls++
+		http.Error(w, "不应登录", http.StatusInternalServerError)
+	})
+	mux.HandleFunc("/api/user/auth/refresh", func(w http.ResponseWriter, _ *http.Request) {
+		refreshCalls++
+		http.Error(w, "不应刷新", http.StatusInternalServerError)
+	})
+	mux.HandleFunc("/api/user/self", func(w http.ResponseWriter, _ *http.Request) {
+		writeUpstreamJSON(t, w, map[string]any{"id": 9, "quota": 100})
+	})
+	mux.HandleFunc("/api/status", func(w http.ResponseWriter, _ *http.Request) {
+		writeUpstreamJSON(t, w, map[string]any{"quota_per_unit": 100})
+	})
+	mux.HandleFunc("/api/user/self/groups", func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "token revoked", http.StatusUnauthorized)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	provider := newNewAPIUpstreamProvider(newTestUpstreamHTTPClient(t))
+	result, err := provider.Sync(context.Background(), UpstreamSyncRequest{
+		Site: &UpstreamSite{
+			BaseURL: server.URL, Platform: UpstreamPlatformNewAPI,
+			AuthMode: UpstreamAuthToken,
+		},
+		Credential: UpstreamCredential{AccessToken: "revoked-token"},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "个人访问令牌无效或已被撤销")
+	require.Zero(t, loginCalls)
+	require.Zero(t, refreshCalls)
+	require.NotNil(t, result)
+	require.Equal(t, "revoked-token", result.Credential.AccessToken)
+}
+
 func TestNewAPIUpstreamProviderUsesRC22BearerTokenFromLogin(t *testing.T) {
 	var loginCalls int
 	var refreshCalls int

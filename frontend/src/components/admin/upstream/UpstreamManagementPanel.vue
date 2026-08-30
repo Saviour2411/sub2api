@@ -345,9 +345,9 @@
         </div>
         <div>
           <label for="upstream-auth-mode" class="input-label">{{ t('admin.customFeatures.upstream.authMode') }}</label>
-          <select id="upstream-auth-mode" v-model="form.auth_mode" class="input" :disabled="form.platform === 'newapi'" @change="handleAuthModeChange">
+          <select id="upstream-auth-mode" v-model="form.auth_mode" class="input" @change="handleAuthModeChange">
             <option value="password" :disabled="turnstileDetected">{{ t('admin.customFeatures.upstream.passwordAuth') }}</option>
-            <option v-if="form.platform === 'sub2api'" value="token">{{ t('admin.customFeatures.upstream.tokenAuth') }}</option>
+            <option value="token">{{ t('admin.customFeatures.upstream.tokenAuth') }}</option>
           </select>
         </div>
         <div
@@ -383,15 +383,16 @@
           <input id="upstream-password" v-model="form.password" class="input" type="password" autocomplete="new-password" :required="!editingSite || editingSite.auth_mode !== 'password' || !editingSite.has_password" :placeholder="editingSite?.auth_mode === 'password' && editingSite.has_password ? t('admin.customFeatures.upstream.keepCredential') : ''" />
         </div>
         <template v-else>
-          <div>
+          <div :class="{ 'md:col-span-2': form.platform === 'newapi' }">
             <label for="upstream-access-token" class="input-label">{{ t('admin.customFeatures.upstream.accessToken') }}</label>
             <input id="upstream-access-token" v-model="form.access_token" class="input" type="password" autocomplete="off" :placeholder="editingSite?.auth_mode === 'token' && editingSite.has_token ? t('admin.customFeatures.upstream.keepCredential') : ''" />
+            <p v-if="form.platform === 'newapi'" class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.customFeatures.upstream.newAPIAccessTokenHint') }}</p>
           </div>
-          <div>
+          <div v-if="form.platform === 'sub2api'">
             <label for="upstream-refresh-token" class="input-label">{{ t('admin.customFeatures.upstream.refreshToken') }}</label>
             <input id="upstream-refresh-token" v-model="form.refresh_token" class="input" type="password" autocomplete="off" :placeholder="editingSite?.auth_mode === 'token' && editingSite.has_token ? t('admin.customFeatures.upstream.keepCredential') : ''" />
           </div>
-          <div class="md:col-span-2">
+          <div v-if="form.platform === 'sub2api'" class="md:col-span-2">
             <label for="upstream-user-agent" class="input-label">{{ t('admin.customFeatures.upstream.sessionUserAgent') }}</label>
             <input id="upstream-user-agent" v-model="form.user_agent" class="input font-mono text-xs" autocomplete="off" maxlength="512" :placeholder="editingSite?.auth_mode === 'token' && editingSite.has_token ? t('admin.customFeatures.upstream.keepSessionUserAgent') : ''" />
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.customFeatures.upstream.sessionUserAgentHint') }}</p>
@@ -990,14 +991,22 @@ function closeForm() {
 function handlePlatformChange() {
   resetCapabilityProbe()
   if (form.platform === 'newapi') {
-    form.auth_mode = 'password'
+    form.refresh_token = ''
+    form.user_agent = ''
     return
   }
+  if (form.auth_mode === 'token' && !form.user_agent?.trim()) form.user_agent = currentBrowserUserAgent()
   void probeSiteCapabilities()
 }
 function handleAuthModeChange() {
   if (turnstileDetected.value && form.auth_mode === 'password') form.auth_mode = 'token'
-  if (form.auth_mode === 'token' && !form.user_agent?.trim()) form.user_agent = currentBrowserUserAgent()
+  if (form.auth_mode === 'token' && form.platform === 'sub2api' && !form.user_agent?.trim()) {
+    form.user_agent = currentBrowserUserAgent()
+  }
+  if (form.auth_mode === 'token' && form.platform === 'newapi') {
+    form.refresh_token = ''
+    form.user_agent = ''
+  }
   loginResponseError.value = ''
 }
 function handleBaseURLInput() {
@@ -1116,10 +1125,16 @@ async function submitForm() {
       return
     }
   }
-  const keepsExistingToken = editingSite.value?.auth_mode === 'token' && editingSite.value.has_token
-  if (form.auth_mode === 'token' && !keepsExistingToken && !form.access_token?.trim() && !form.refresh_token?.trim()) {
-    appStore.showError(t('admin.customFeatures.upstream.tokenRequired'))
-    return
+  const keepsExistingToken = editingSite.value?.platform === form.platform && editingSite.value?.auth_mode === 'token' && editingSite.value.has_token
+  if (form.auth_mode === 'token' && !keepsExistingToken) {
+    if (form.platform === 'newapi' && !form.access_token?.trim()) {
+      appStore.showError(t('admin.customFeatures.upstream.newAPITokenRequired'))
+      return
+    }
+    if (form.platform === 'sub2api' && !form.access_token?.trim() && !form.refresh_token?.trim()) {
+      appStore.showError(t('admin.customFeatures.upstream.tokenRequired'))
+      return
+    }
   }
   saving.value = true
   try {
@@ -1130,8 +1145,8 @@ async function submitForm() {
       account: form.auth_mode === 'password' ? form.account.trim() : '',
       password: form.auth_mode === 'password' ? form.password?.trim() : undefined,
       access_token: form.auth_mode === 'token' ? form.access_token?.trim() : undefined,
-      refresh_token: form.auth_mode === 'token' ? form.refresh_token?.trim() : undefined,
-      user_agent: form.auth_mode === 'token' ? form.user_agent?.trim() : undefined,
+      refresh_token: form.auth_mode === 'token' && form.platform === 'sub2api' ? form.refresh_token?.trim() : undefined,
+      user_agent: form.auth_mode === 'token' && form.platform === 'sub2api' ? form.user_agent?.trim() : undefined,
     }
     if (editingSite.value) await upstreamsAPI.update(editingSite.value.id, payload)
     else await upstreamsAPI.create(payload)

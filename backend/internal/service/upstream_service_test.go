@@ -182,6 +182,28 @@ func TestMergeUpstreamUpdateClearsCredentialFromPreviousAuthMode(t *testing.T) {
 		require.Equal(t, "browser-agent", credential.UserAgent)
 	})
 
+	t.Run("New API 密码会话切换为个人访问令牌", func(t *testing.T) {
+		site := &UpstreamSite{Platform: UpstreamPlatformNewAPI, AuthMode: UpstreamAuthPassword, Account: "admin"}
+		credential := UpstreamCredential{
+			Password: "old-password", AccessToken: "login-access", RefreshToken: "login-refresh",
+			UserAgent: "old-agent", ImpersonateChrome: true, Cookie: "refresh_session=stored", NewAPIUserID: "9",
+		}
+		authMode := UpstreamAuthToken
+		accessToken := "personal-access-token"
+		changed := mergeUpstreamUpdate(site, &credential, UpstreamUpdateInput{
+			AuthMode: &authMode, AccessToken: &accessToken,
+		})
+
+		require.True(t, changed)
+		require.Empty(t, credential.Password)
+		require.Equal(t, "personal-access-token", credential.AccessToken)
+		require.Empty(t, credential.RefreshToken)
+		require.Empty(t, credential.UserAgent)
+		require.False(t, credential.ImpersonateChrome)
+		require.Empty(t, credential.Cookie)
+		require.Empty(t, credential.NewAPIUserID)
+	})
+
 	t.Run("令牌切换为密码", func(t *testing.T) {
 		site := &UpstreamSite{AuthMode: UpstreamAuthToken}
 		credential := UpstreamCredential{
@@ -248,14 +270,53 @@ func TestMergeUpstreamUpdateInvalidatesCachedSessionWhenCredentialScopeChanges(t
 	})
 }
 
-func TestUpstreamServiceRejectsNewAPITokenMode(t *testing.T) {
+func TestUpstreamServiceValidatesNewAPITokenMode(t *testing.T) {
 	service := &UpstreamService{}
-	err := service.validateSite(&UpstreamSite{
+	site := &UpstreamSite{
 		Name: "New API", BaseURL: "https://example.com", Platform: UpstreamPlatformNewAPI,
 		AuthMode: UpstreamAuthToken,
-	}, UpstreamCredential{AccessToken: "token"})
+	}
+
+	require.NoError(t, service.validateSite(site, UpstreamCredential{AccessToken: "personal-access-token"}))
+
+	err := service.validateSite(site, UpstreamCredential{RefreshToken: "refresh-only"})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "new API 仅支持密码认证")
+	require.Contains(t, err.Error(), "new API 令牌认证必须填写个人访问令牌")
+}
+
+func TestSanitizeNewAPIPersonalAccessTokenCredential(t *testing.T) {
+	site := &UpstreamSite{
+		Platform: UpstreamPlatformNewAPI,
+		AuthMode: UpstreamAuthToken,
+		Account:  "不应保留的账号",
+	}
+	credential := UpstreamCredential{
+		Password: "password", AccessToken: "personal-access-token", RefreshToken: "refresh-token",
+		UserAgent: "imported-agent", ImpersonateChrome: true, Cookie: "session=cookie", NewAPIUserID: "9",
+	}
+
+	sanitizeNewAPIPersonalAccessTokenCredential(site, &credential)
+
+	require.Empty(t, site.Account)
+	require.Empty(t, credential.Password)
+	require.Equal(t, "personal-access-token", credential.AccessToken)
+	require.Empty(t, credential.RefreshToken)
+	require.Empty(t, credential.UserAgent)
+	require.False(t, credential.ImpersonateChrome)
+	require.Empty(t, credential.Cookie)
+	require.Equal(t, "9", credential.NewAPIUserID)
+}
+
+func TestMergeUpstreamUpdateClearsNewAPIUserIDWhenPersonalAccessTokenChanges(t *testing.T) {
+	site := &UpstreamSite{Platform: UpstreamPlatformNewAPI, AuthMode: UpstreamAuthToken}
+	credential := UpstreamCredential{AccessToken: "old-token", NewAPIUserID: "9"}
+	accessToken := "new-token"
+
+	changed := mergeUpstreamUpdate(site, &credential, UpstreamUpdateInput{AccessToken: &accessToken})
+
+	require.True(t, changed)
+	require.Equal(t, "new-token", credential.AccessToken)
+	require.Empty(t, credential.NewAPIUserID)
 }
 
 func TestUpstreamServicePersistsRotatedCredentialWhenSyncDataFails(t *testing.T) {

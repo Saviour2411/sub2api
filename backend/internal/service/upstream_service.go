@@ -187,6 +187,7 @@ func (s *UpstreamService) Update(ctx context.Context, id int64, input UpstreamUp
 		return nil, ErrUpstreamCredentialDecrypt.WithCause(err)
 	}
 	mergeUpstreamUpdate(site, &credential, input)
+	sanitizeNewAPIPersonalAccessTokenCredential(site, &credential)
 	if err := s.validateSite(site, credential); err != nil {
 		return nil, err
 	}
@@ -435,6 +436,7 @@ func (s *UpstreamService) prepareCreate(input UpstreamCreateInput) (*UpstreamSit
 		Password: strings.TrimSpace(input.Password), AccessToken: strings.TrimSpace(input.AccessToken),
 		RefreshToken: strings.TrimSpace(input.RefreshToken), UserAgent: strings.TrimSpace(input.UserAgent),
 	}
+	sanitizeNewAPIPersonalAccessTokenCredential(site, &credential)
 	if err := s.validateSite(site, credential); err != nil {
 		return nil, UpstreamCredential{}, err
 	}
@@ -456,17 +458,21 @@ func (s *UpstreamService) validateSite(site *UpstreamSite, credential UpstreamCr
 	if site.AuthMode != UpstreamAuthPassword && site.AuthMode != UpstreamAuthToken {
 		return ErrUpstreamInvalidInput.WithCause(fmt.Errorf("auth_mode 仅支持 password 或 token"))
 	}
-	if site.Platform == UpstreamPlatformNewAPI && site.AuthMode != UpstreamAuthPassword {
-		return ErrUpstreamInvalidInput.WithCause(fmt.Errorf("new API 仅支持密码认证"))
-	}
 	if site.AuthMode == UpstreamAuthPassword {
 		if site.Account == "" || credential.Password == "" {
 			return ErrUpstreamInvalidInput.WithCause(fmt.Errorf("密码认证必须填写账号和密码"))
 		}
-	} else if credential.AccessToken == "" && credential.RefreshToken == "" {
-		return ErrUpstreamInvalidInput.WithCause(fmt.Errorf("令牌认证必须填写访问令牌或刷新令牌"))
-	} else if len(credential.UserAgent) > 512 {
-		return ErrUpstreamInvalidInput.WithCause(fmt.Errorf("会话 User-Agent 不能超过 512 个字符"))
+	} else {
+		if site.Platform == UpstreamPlatformNewAPI {
+			if credential.AccessToken == "" {
+				return ErrUpstreamInvalidInput.WithCause(fmt.Errorf("new API 令牌认证必须填写个人访问令牌"))
+			}
+		} else if credential.AccessToken == "" && credential.RefreshToken == "" {
+			return ErrUpstreamInvalidInput.WithCause(fmt.Errorf("令牌认证必须填写访问令牌或刷新令牌"))
+		}
+		if len(credential.UserAgent) > 512 {
+			return ErrUpstreamInvalidInput.WithCause(fmt.Errorf("会话 User-Agent 不能超过 512 个字符"))
+		}
 	}
 	return nil
 }
@@ -502,6 +508,13 @@ func mergeUpstreamUpdate(site *UpstreamSite, credential *UpstreamCredential, inp
 			credential.Password = ""
 			credential.Cookie = ""
 			credential.NewAPIUserID = ""
+			if site.Platform == UpstreamPlatformNewAPI {
+				// New API 密码模式缓存的是短期登录会话令牌，不能当作个人访问令牌复用。
+				credential.AccessToken = ""
+				credential.RefreshToken = ""
+				credential.UserAgent = ""
+				credential.ImpersonateChrome = false
+			}
 		} else {
 			clearUpstreamSessionCredential(credential)
 		}
@@ -515,7 +528,11 @@ func mergeUpstreamUpdate(site *UpstreamSite, credential *UpstreamCredential, inp
 		changed = true
 	}
 	if input.AccessToken != nil && strings.TrimSpace(*input.AccessToken) != "" {
-		credential.AccessToken = strings.TrimSpace(*input.AccessToken)
+		nextAccessToken := strings.TrimSpace(*input.AccessToken)
+		if site.Platform == UpstreamPlatformNewAPI && site.AuthMode == UpstreamAuthToken && credential.AccessToken != nextAccessToken {
+			credential.NewAPIUserID = ""
+		}
+		credential.AccessToken = nextAccessToken
 		changed = true
 	}
 	if input.RefreshToken != nil && strings.TrimSpace(*input.RefreshToken) != "" {
@@ -527,6 +544,18 @@ func mergeUpstreamUpdate(site *UpstreamSite, credential *UpstreamCredential, inp
 		changed = true
 	}
 	return changed
+}
+
+func sanitizeNewAPIPersonalAccessTokenCredential(site *UpstreamSite, credential *UpstreamCredential) {
+	if site == nil || credential == nil || site.Platform != UpstreamPlatformNewAPI || site.AuthMode != UpstreamAuthToken {
+		return
+	}
+	site.Account = ""
+	credential.Password = ""
+	credential.RefreshToken = ""
+	credential.UserAgent = ""
+	credential.ImpersonateChrome = false
+	credential.Cookie = ""
 }
 
 func clearUpstreamSessionCredential(credential *UpstreamCredential) {
@@ -576,7 +605,8 @@ func (s *UpstreamService) toView(site *UpstreamSite) UpstreamSiteView {
 	credential, err := s.decryptCredential(site.CredentialEncrypted)
 	if err == nil {
 		view.HasPassword = site.AuthMode == UpstreamAuthPassword && credential.Password != ""
-		view.HasToken = site.AuthMode == UpstreamAuthToken && (credential.AccessToken != "" || credential.RefreshToken != "")
+		view.HasToken = site.AuthMode == UpstreamAuthToken && (credential.AccessToken != "" ||
+			(site.Platform != UpstreamPlatformNewAPI && credential.RefreshToken != ""))
 	}
 	return view
 }

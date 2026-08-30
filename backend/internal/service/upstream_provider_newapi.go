@@ -12,7 +12,8 @@ import (
 )
 
 const (
-	newAPIUpstreamPlatformName = "New API"
+	newAPIUpstreamPlatformName         = "New API"
+	newAPIPersonalAccessTokenUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
 
 type newAPIUpstreamProvider struct {
@@ -48,7 +49,8 @@ func (p *newAPIUpstreamProvider) Sync(ctx context.Context, req UpstreamSyncReque
 		}
 		return nil, err
 	}
-	result, err := p.syncAuthenticated(ctx, req, state)
+	syncCtx := withUpstreamChromeImpersonation(ctx, state.credential.ImpersonateChrome)
+	result, err := p.syncAuthenticated(syncCtx, req, state)
 	if err == nil {
 		return result, nil
 	}
@@ -65,7 +67,8 @@ func (p *newAPIUpstreamProvider) Sync(ctx context.Context, req UpstreamSyncReque
 		return upstreamResultWithCredential(result, credential), fmt.Errorf("重新认证 New API: %w", authErr)
 	}
 	state = reauthenticated
-	result, err = p.syncAuthenticated(ctx, req, state)
+	syncCtx = withUpstreamChromeImpersonation(ctx, state.credential.ImpersonateChrome)
+	result, err = p.syncAuthenticated(syncCtx, req, state)
 	if err != nil {
 		return upstreamResultWithCredential(result, state.credential), err
 	}
@@ -110,6 +113,13 @@ func (p *newAPIUpstreamProvider) syncAuthenticated(ctx context.Context, req Upst
 }
 
 func (p *newAPIUpstreamProvider) authenticate(ctx context.Context, site *UpstreamSite, credential UpstreamCredential) (*newAPIAuthState, error) {
+	if site.AuthMode == UpstreamAuthToken {
+		if credential.UserAgent == "" {
+			credential.UserAgent = newAPIPersonalAccessTokenUserAgent
+		}
+		credential.ImpersonateChrome = true
+		return p.loadAuthState(withUpstreamChromeImpersonation(ctx, true), site, credential)
+	}
 	if credential.Cookie != "" {
 		state, err := p.loadAuthState(ctx, site, credential)
 		if err == nil {
@@ -124,6 +134,9 @@ func (p *newAPIUpstreamProvider) authenticate(ctx context.Context, site *Upstrea
 }
 
 func (p *newAPIUpstreamProvider) renewAuthentication(ctx context.Context, site *UpstreamSite, credential UpstreamCredential) (*newAPIAuthState, error) {
+	if site.AuthMode == UpstreamAuthToken {
+		return &newAPIAuthState{credential: credential}, fmt.Errorf("new API 个人访问令牌无效或已被撤销，请更新访问令牌")
+	}
 	if credential.Cookie != "" {
 		state, err := p.refresh(ctx, site, credential)
 		if err == nil {
@@ -197,6 +210,9 @@ func (p *newAPIUpstreamProvider) loadAuthState(ctx context.Context, site *Upstre
 	if credential.AccessToken != "" {
 		headers["Authorization"] = "Bearer " + credential.AccessToken
 	}
+	if credential.UserAgent != "" {
+		headers["User-Agent"] = credential.UserAgent
+	}
 	if credential.NewAPIUserID != "" {
 		headers["New-Api-User"] = credential.NewAPIUserID
 	}
@@ -210,7 +226,7 @@ func (p *newAPIUpstreamProvider) loadAuthState(ctx context.Context, site *Upstre
 		headers["New-Api-User"] = userID
 	}
 	state.self = self
-	status, _, err := p.http.doJSON(ctx, http.MethodGet, site.BaseURL, "/api/status", nil, "", nil)
+	status, _, err := p.http.doJSON(ctx, http.MethodGet, site.BaseURL, "/api/status", headers, "", nil)
 	if err != nil {
 		return state, fmt.Errorf("读取 New API 计价单位: %w", err)
 	}

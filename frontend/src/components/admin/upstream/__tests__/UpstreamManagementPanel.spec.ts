@@ -287,7 +287,7 @@ describe('UpstreamManagementPanel', () => {
     wrapper.unmount()
   })
 
-  it('New API 表单固定密码认证并提交新增站点', async () => {
+  it('New API 保留密码认证并允许选择访问令牌', async () => {
     const wrapper = mountPanel()
     await flushPromises()
     await wrapper.get('[data-test="upstream-add"]').trigger('click')
@@ -298,9 +298,9 @@ describe('UpstreamManagementPanel', () => {
     await wrapper.get('#upstream-account').setValue('admin')
     await wrapper.get('#upstream-password').setValue('secret')
 
-    expect(wrapper.get<HTMLSelectElement>('#upstream-auth-mode').element.disabled).toBe(true)
+    expect(wrapper.get<HTMLSelectElement>('#upstream-auth-mode').element.disabled).toBe(false)
     expect(wrapper.get<HTMLSelectElement>('#upstream-auth-mode').element.value).toBe('password')
-    expect(wrapper.find('#upstream-access-token').exists()).toBe(false)
+    expect(wrapper.get<HTMLSelectElement>('#upstream-auth-mode').findAll('option').map(option => option.attributes('value'))).toContain('token')
 
     await wrapper.get('[data-test="upstream-form"]').trigger('submit')
     await flushPromises()
@@ -311,6 +311,44 @@ describe('UpstreamManagementPanel', () => {
       auth_mode: 'password',
       account: 'admin',
       password: 'secret',
+    }))
+    wrapper.unmount()
+  })
+
+  it('New API 访问令牌模式只提交个人访问令牌', async () => {
+    const wrapper = mountPanel()
+    await flushPromises()
+    await wrapper.get('[data-test="upstream-add"]').trigger('click')
+
+    await wrapper.get('#upstream-name').setValue('New API PAT 上游')
+    await wrapper.get('#upstream-url').setValue('https://newapi.example.com')
+    await wrapper.get('#upstream-platform').setValue('newapi')
+    await wrapper.get('#upstream-auth-mode').setValue('token')
+
+    expect(wrapper.find('#upstream-account').exists()).toBe(false)
+    expect(wrapper.find('#upstream-password').exists()).toBe(false)
+    expect(wrapper.find('#upstream-refresh-token').exists()).toBe(false)
+    expect(wrapper.find('#upstream-user-agent').exists()).toBe(false)
+    expect(wrapper.text()).toContain('admin.customFeatures.upstream.newAPIAccessTokenHint')
+
+    await wrapper.get('[data-test="upstream-form"]').trigger('submit')
+    await flushPromises()
+    expect(api.create).not.toHaveBeenCalled()
+    expect(api.showError).toHaveBeenCalledWith('admin.customFeatures.upstream.newAPITokenRequired')
+
+    await wrapper.get('#upstream-access-token').setValue('personal-access-token')
+    await wrapper.get('[data-test="upstream-form"]').trigger('submit')
+    await flushPromises()
+    expect(api.create).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'New API PAT 上游',
+      base_url: 'https://newapi.example.com',
+      platform: 'newapi',
+      auth_mode: 'token',
+      account: '',
+      password: undefined,
+      access_token: 'personal-access-token',
+      refresh_token: undefined,
+      user_agent: undefined,
     }))
     wrapper.unmount()
   })
