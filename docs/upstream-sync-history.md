@@ -2117,7 +2117,7 @@
 - 本地目标分支：`main`
 - `LOCAL_PRE_SYNC_SHA`：`499114a87384de74b3db987299f29c57217a2ae2`
 - 上游代码合并提交：`5be874e91ef37c35065ae42e92956d49cee32dea`
-- 最后一个代码/测试提交：`736761ba3b55ed393a9efa94e3ebd89b4f5f5c6f`
+- 最后一个代码/测试提交：`35c28e324b17d9e4dcef877a230d803fc6815249`
 - 上游仓库：`https://github.com/Wei-Shaw/sub2api.git`
 - 上游分支：`main`
 - `UPSTREAM_OLD_SHA`：`b5827cfd54d58c248a9480b800444d0b40f0c6ea`
@@ -2291,8 +2291,9 @@
 
 - 上游固定范围整体映射到 merge commit `5be874e91ef37c35065ae42e92956d49cee32dea`；双亲为同步前本地 SHA `499114a87384de74b3db987299f29c57217a2ae2` 和固定上游 SHA `5097b31457e6dc9f49e5f5c9c72b925ce79543b3`。
 - 二次开发适配提交为 `736761ba3b55ed393a9efa94e3ebd89b4f5f5c6f`，修改 8 个文件，增加 290 行、删除 64 行；主要实现 Gemini 边际计价、GPT-5.6/Grok 严格边界、服务层级优先级及对应回归测试，并修正 Ent 生成注释。
+- CI 稳定性修复提交为 `35c28e324b17d9e4dcef877a230d803fc6815249`：首轮 PR integration 在上海时间 23:58 启动，使测试夹具的 `now.Add(2*time.Minute)` 跨越自然日，站点 `TodayTokens` 按下一日正确归零但用例仍断言 150；将夹具固定到上海时区正午，避免测试运行时刻改变业务日期。
 - 写入本记录前，代码与适配相对 `LOCAL_PRE_SYNC_SHA` 共变更 301 个文件：新增 28 个、修改 273 个、删除 0 个，增加 11433 行、删除 1631 行；本记录另修改两份历史台账。
-- 当前代码基线相对固定上游目标变更 919 个文件，增加 130252 行、删除 5976 行；本地独有提交 510 个，当前能力族仍为 53 项、9 个功能域。
+- 当前代码/测试基线相对固定上游目标变更 919 个文件，增加 130491 行、删除 5976 行；本地独有提交 512 个，当前能力族仍为 53 项、9 个功能域。
 - 主要新增：分组 Fast/Free Fast、reasoning effort 模型范围与超限策略、Kimi 原生 Responses、价格目录覆盖文件、原生 compaction 用量、TTFT 管理设置，以及迁移 231、232、233。
 - 主要修复：OpenAI 服务层级观测/计费分离、Codex priority 广告、WS passthrough 会话隔离和终态识别、数据库启动重试、账号到期本地时区、渠道监控用户范围、Grok 视觉工具图片输出和分组定价弹窗布局。
 - `backend/cmd/server/VERSION` 最终保持 `0.1.228`；`deploy/docker-compose.yml` 与 `deploy/docker-compose.sub2api.yml` 字节完全一致，SHA-256 均为 `608C0978CA699089D9BFB13B56DE00FAADC97E65C7EFC085B073AE7649EAEBE6`。
@@ -2334,12 +2335,14 @@
 | Apple fixture 语法 | shell 语法检查 | 0 | 脚本语法通过 |
 | Apple fixture 执行 | Apple 生命周期 fixture | 1 | Windows Git Bash 不支持 macOS BSD `stat -f '%Lp'`，属于平台限制 |
 | golangci-lint | `golangci-lint run ./... --timeout=30m` | 3 | golangci-lint 2.9.0 由 Go 1.26.3 构建，拒绝检查目标 Go 1.27 项目；未将其写为通过 |
+| 远端首轮 CI | push CI `33650959674`、PR CI `33651146176` | 0 / 2 | push 触发的完整检查通过；PR 重复运行仅 `TestUpstreamRepositoryCommitSyncIdempotentAndCascadeDelete` 失败，原因是上海时区自然日边界导致测试夹具跨日，非生产逻辑回归 |
+| CI 稳定性修复 | `go test ./internal/repository -run '^TestUpstreamRepositoryCommitSyncIdempotentAndCascadeDelete$' -count=100` | 0 | 固定上海时区正午后连续 100 次通过 |
 | Compose 一致性 | 字节比较及 SHA-256 | 0 | 两份生产 Compose 字节一致，哈希均为 `608C0978CA699089D9BFB13B56DE00FAADC97E65C7EFC085B073AE7649EAEBE6` |
 | 最终静态复核 | `git diff --check`、标准冲突标记、意外删除、未跟踪文件、凭据类路径候选、版本、祖先关系和提交处置计数 | 0 | 无空白错误、未解决冲突、删除文件、未跟踪文件或敏感路径候选；版本为 `0.1.228`，固定上游目标已是当前分支祖先，137 个 SHA 均且仅出现一次 |
 
 ### 未验证项与残余风险
 
-- 本机 Docker 不可用，未运行真实 integration、Testcontainers、Compose 启动、PostgreSQL/Redis、迁移 231/232/233 或 `/health` 检查；integration 仅完成标签全包编译。
+- 本机 Docker 不可用，未运行真实 integration、Testcontainers、Compose 启动、PostgreSQL/Redis、迁移 231/232/233 或 `/health` 检查；本地 integration 仅完成标签全包编译。远端首轮 push integration 通过，PR 重复运行暴露跨日测试夹具并已修复，后续 CI 继续作为合入门禁。
 - 未运行 `-race`、`govulncheck` 或可用版本的 golangci-lint；发布前仍需由远端 CI 的 Go 1.27、Node 20、golangci-lint 2.13、Docker integration 和 Security Scan 作为最终门禁。
 - Ent 在 Windows 活动目录直接生成两次均因 user-mapped section 锁定失败；通过仓库内隔离 target 完整生成并逐文件比较，损坏的中间文件已恢复，未留下临时目录。
 - 未使用真实 OpenAI、Anthropic、Kimi、Grok、Gemini、CN Provider 凭据或 OAuth 插件包；真实额度消费、服务层级响应、媒体、流式故障转移和 Kimi 原生端点端到端未验证。
