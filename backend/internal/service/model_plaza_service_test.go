@@ -362,7 +362,8 @@ func TestListGroups_TokenLadderFollowsGroupToggle(t *testing.T) {
 		{ID: 10, Name: "on", Platform: PlatformOpenAI, RateMultiplier: 1, LongContextPricingEnabled: true},
 		{ID: 20, Name: "off", Platform: PlatformOpenAI, RateMultiplier: 2, LongContextPricingEnabled: false},
 	}
-	svc := newPlazaServiceWithBilling(channels, groups, map[int64]string{10: PlatformOpenAI, 20: PlatformOpenAI}, nil)
+	svc := newPlazaServiceWithBilling(channels, groups, map[int64]string{10: PlatformOpenAI, 20: PlatformOpenAI},
+		newStubPricingServiceFromJSON(t, openAILadderCatalogJSON))
 	out, err := svc.ListGroups(context.Background())
 	require.NoError(t, err)
 	require.Len(t, out, 2)
@@ -395,13 +396,14 @@ func TestListGroups_TokenLadderFollowsGroupToggle(t *testing.T) {
 	}
 }
 
-func TestListGroups_GeminiLegacyRuleShownAsMarginal(t *testing.T) {
+func TestListGroups_GeminiNativeLadderShownMarginal(t *testing.T) {
 	channels := []Channel{{
 		ID: 1, Name: "ch", Status: StatusActive, GroupIDs: []int64{10},
 		ModelMapping: map[string]map[string]string{PlatformGemini: {"gemini-2.5-pro": "gemini-2.5-pro"}},
 	}}
 	groups := []Group{{ID: 10, Name: "g", Platform: PlatformGemini, RateMultiplier: 1, LongContextPricingEnabled: true}}
-	svc := newPlazaServiceWithBilling(channels, groups, map[int64]string{10: PlatformGemini}, geminiCatalogStub())
+	svc := newPlazaServiceWithBilling(channels, groups, map[int64]string{10: PlatformGemini},
+		newStubPricingServiceFromJSON(t, geminiLadderCatalogJSON))
 	out, err := svc.ListGroups(context.Background())
 	require.NoError(t, err)
 	require.Len(t, out, 1)
@@ -412,9 +414,11 @@ func TestListGroups_GeminiLegacyRuleShownAsMarginal(t *testing.T) {
 	require.Equal(t, ">200K", m.Pricing.Intervals[1].TierLabel)
 	require.InDelta(t, 2.5e-6, *m.Pricing.Intervals[1].InputPrice, 1e-15)
 	require.InDelta(t, 10e-6, *m.Pricing.Intervals[1].OutputPrice, 1e-15)
-	// 官方参考不套用站内旧规则
+	require.InDelta(t, 1.25e-6, *m.Pricing.Intervals[1].CacheWritePrice, 1e-15)
+	require.InDelta(t, 0.25e-6, *m.Pricing.Intervals[1].CacheReadPrice, 1e-15)
+	// 实付走 /v1beta 边际规则；官方参考价仍展示目录整单阶梯。
 	require.NotNil(t, m.OfficialPricing)
-	require.Empty(t, m.OfficialPricing.Intervals)
+	require.Len(t, m.OfficialPricing.Intervals, 2)
 }
 
 func TestListGroups_GroupTokenCardOverridesChannelPricing(t *testing.T) {

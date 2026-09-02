@@ -30,7 +30,8 @@ func TestUpstreamRepositoryCommitSyncIdempotentAndCascadeDelete(t *testing.T) {
 	repo := NewUpstreamRepository(client)
 	ctx := context.Background()
 	loc := time.FixedZone("Asia/Shanghai", 8*60*60)
-	now := time.Now().In(loc)
+	// 固定在上海时区正午，避免 CI 恰逢自然日边界时后续时间偏移跨日。
+	now := time.Date(2026, time.July, 15, 12, 0, 0, 0, loc)
 	site := &service.UpstreamSite{
 		Name: "测试站点", BaseURL: "https://example.com", Platform: service.UpstreamPlatformSub2API,
 		AuthMode: service.UpstreamAuthPassword, Account: "admin", CredentialEncrypted: "encrypted",

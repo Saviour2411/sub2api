@@ -594,7 +594,8 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		forceCacheBilling := fs.ForceCacheBilling
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 		sessionID := service.ExtractClientSessionID(c)
-		// 长上下文规则由计费服务统一持有（模型广场展示同源），入口只负责声明自己适用该规则。
+		// Gemini /v1beta 保留 200K 边际计费；该显式规则在计费核心中优先于
+		// 目录整单阶梯，避免同一请求重复应用两种长上下文计费。
 		var longContextThreshold int
 		var longContextMultiplier float64
 		if rule := h.gatewayService.LegacyLongContextRule(service.PlatformGemini); rule != nil {

@@ -21,8 +21,8 @@ const (
 // 且观测冲突会回退到基线模型（见 responseModelBillingDeclaration）。
 //
 // 同一观察器也记录上游实际使用的 service tier（OpenAI service_tier、Anthropic
-// usage.speed）。计费档位优先采用上游回传值、缺失时回退到出站请求档位，并在
-// ResolveBillingServiceTier 的“只降不升”路径中记录降档审计。
+// usage.speed）。观测值与最终出站档位保持分离，直到用量记录阶段按所选凭据协议
+// 执行“只降不升”的计费档位决议并记录降档审计。
 type upstreamResponseModelObserver struct {
 	first    string
 	terminal string
@@ -215,29 +215,16 @@ func observedUpstreamResponseServiceTier(c *gin.Context) string {
 	return upstreamResponseModelObserverFromContext(c).ServiceTier()
 }
 
-// resolvedOpenAIUpstreamServiceTierFromObserver 返回计费/用量日志实际使用的
-// service tier：
-//
-//  1. observer 记录到的上游真实回显优先——只有上游实际给了 priority/fast 才按
-//     Fast 计费；上游回显 default/flex/auto 等则如实采用并据此计费；
-//  2. 上游未回显时，回退到「最终出站 body」里的 tier（经过 fast policy
-//     filter/force 之后），保证 policy filter 删掉字段后不再按原请求 Fast 计费。
-//
-// HTTP→WS 等使用局部 observer 的路径必须把该 observer 传进来，不能只读
-// Gin context——局部 observer 不会自动写入 context。
-func resolvedOpenAIUpstreamServiceTierFromObserver(observer *upstreamResponseModelObserver, outboundBodyTier *string) *string {
-	if observer != nil {
-		if tier := strings.TrimSpace(observer.ServiceTier()); tier != "" {
-			return normalizeOpenAIServiceTier(tier)
-		}
-	}
+// resolvedOpenAIUpstreamServiceTierFromObserver preserves the final outbound
+// request tier. The observed response tier remains separate on
+// OpenAIForwardResult.UpstreamResponseServiceTier and is reconciled once, at
+// usage time, where the account protocol is available. In particular, the
+// private ChatGPT Codex backend commonly reports default even for effective
+// Fast turns, while public API response tiers remain authoritative.
+func resolvedOpenAIUpstreamServiceTierFromObserver(_ *upstreamResponseModelObserver, outboundBodyTier *string) *string {
 	return outboundBodyTier
 }
 
-// resolvedOpenAIUpstreamServiceTier 读取 Gin context 上的 observer 后委托
-// resolvedOpenAIUpstreamServiceTierFromObserver。标准 HTTP 转发路径通过
-// beginUpstreamResponseModelObservation 把 observer 挂到 context；局部
-// observer 路径应直接调用 FromObserver。
 func resolvedOpenAIUpstreamServiceTier(c *gin.Context, outboundBodyTier *string) *string {
 	return resolvedOpenAIUpstreamServiceTierFromObserver(upstreamResponseModelObserverFromContext(c), outboundBodyTier)
 }
