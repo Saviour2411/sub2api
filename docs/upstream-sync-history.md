@@ -2109,3 +2109,240 @@
 - 未启动依赖 PostgreSQL/Redis 的完整本地服务，未执行 `/health` 检查。
 - 未读取 `.env`、SSH 私钥或其他业务秘密；指定 GitHub Token 仅在临时进程环境中从 `D:\project\github_token.sh` 加载，用于 GitHub API 认证，未输出、写入 Git 配置或提交。Git HTTPS smart-protocol 连接失败后仅使用仓库既有 SSH 认证推送同步分支；经后续授权完成 PR #17 和主线 merge，未执行部署、远程服务器访问、容器重启、生产挂载核验或生产数据操作。
 - 生产服务器状态、bind mount 实际挂载、实例性能参数和健康检查均未验证；本次仅验证仓库内静态 Compose 约束。
+
+## 2026-09-02 同步至 5097b3145
+
+- 执行时间：2026-09-02T23:30:45+08:00
+- 执行状态：同步分支已完整合并固定上游范围、完成二次开发适配并通过当前环境可执行的本地验证；本记录提交后使用 `--ff-only` 更新本地 `main`
+- 本地目标分支：`main`
+- `LOCAL_PRE_SYNC_SHA`：`499114a87384de74b3db987299f29c57217a2ae2`
+- 上游代码合并提交：`5be874e91ef37c35065ae42e92956d49cee32dea`
+- 最后一个代码/测试提交：`736761ba3b55ed393a9efa94e3ebd89b4f5f5c6f`
+- 上游仓库：`https://github.com/Wei-Shaw/sub2api.git`
+- 上游分支：`main`
+- `UPSTREAM_OLD_SHA`：`b5827cfd54d58c248a9480b800444d0b40f0c6ea`
+- `UPSTREAM_NEW_SHA`：`5097b31457e6dc9f49e5f5c9c72b925ce79543b3`
+- merge-base：`b5827cfd54d58c248a9480b800444d0b40f0c6ea`
+- `LAST_FULLY_INTEGRATED_UPSTREAM_SHA`：`5097b31457e6dc9f49e5f5c9c72b925ce79543b3`
+- 集成策略：在隔离同步分支执行 `git merge --no-ff --no-commit 5097b31457e6dc9f49e5f5c9c72b925ce79543b3`，逐文件解决 17 个文本冲突并复核自动合并路径；merge commit 保留完整上游祖先关系，二次开发兼容调整与两份历史台账使用后续独立提交
+- 备份分支：`backup/pre-upstream-sync-20260902-202638-499114a87`
+- 同步分支：`sync/upstream-20260902-5097b31457`
+
+### 上游提交处置
+
+固定范围共 137 个提交，其中 42 个 merge commit、95 个 non-merge commit。最终互斥处置结果为 69 个 `Applied`、68 个 `Applied + Overridden`，`Already Applied`、`Skipped`、`Deferred` 和未解决 `Conflict` 均为 0。42 个 merge commit 均计入 `Applied`，68 个覆盖项均为 non-merge；完整 merge 已保留全部 137 个提交的祖先关系，下表覆盖固定范围内全部 SHA。
+
+| 上游提交 | 集成状态 | 内容与处置 |
+| --- | --- | --- |
+| `92a550973` | Applied + Overridden | 接入 OpenAI 重新授权、额度冷却原子清理、目录禁用账号过滤、passthrough 调度快照及模型冷却修复；继续保留本地失败代次、连续失败停调度、自动测活和账号默认策略 |
+| `6ff771d3d` | Applied | 为 OpenAI 图片工具增加可配置冷却策略 |
+| `b4b537164` | Applied | 保留 Grok Responses 视觉工具输出中的图片 |
+| `1cc6999ad` | Applied + Overridden | 接入原生 compaction 用量类型与 API 契约；本地继续按请求端点归因，并保留 WS 逐轮独立结算和严格计费模型边界 |
+| `1a61eb715` | Applied + Overridden | 接入原生 compaction 用量类型与 API 契约；本地继续按请求端点归因，并保留 WS 逐轮独立结算和严格计费模型边界 |
+| `0aef702b6` | Applied + Overridden | 接入用量窗口统一展示和缓存提示横向滚动修复；保留本地 DataTable、列设置浮层、分页与滚动位置稳定性 |
+| `7c616db07` | Applied + Overridden | 接入 passthrough WS 会话隔离、超大 bridge、空闲连接回收、容量错误和终态 close 修复；本地继续每轮重取请求模型/渠道映射、记录 payload hash、独立结算 usage、释放并发并在失败停调度后阻断后续轮 |
+| `a3bbf33c0` | Applied | 渠道监控分组按用户可访问范围过滤 |
+| `624e4eef6` | Applied + Overridden | 接入出站/观测服务层级分离、fallback/WS 透传及 Codex priority 能力；实际响应只允许降低计费档位，OAuth-like `default` 不得把明确请求上调，Free Fast 用户费用仍按 Standard |
+| `8b4b3f4a9` | Applied + Overridden | 接入出站/观测服务层级分离、fallback/WS 透传及 Codex priority 能力；实际响应只允许降低计费档位，OAuth-like `default` 不得把明确请求上调，Free Fast 用户费用仍按 Standard |
+| `2b8cb628b` | Applied + Overridden | 接入出站/观测服务层级分离、fallback/WS 透传及 Codex priority 能力；实际响应只允许降低计费档位，OAuth-like `default` 不得把明确请求上调，Free Fast 用户费用仍按 Standard |
+| `d39fc491e` | Applied + Overridden | 接入出站/观测服务层级分离、fallback/WS 透传及 Codex priority 能力；实际响应只允许降低计费档位，OAuth-like `default` 不得把明确请求上调，Free Fast 用户费用仍按 Standard |
+| `3a9070359` | Applied + Overridden | 接入出站/观测服务层级分离、fallback/WS 透传及 Codex priority 能力；实际响应只允许降低计费档位，OAuth-like `default` 不得把明确请求上调，Free Fast 用户费用仍按 Standard |
+| `f323d8464` | Applied + Overridden | 接入出站/观测服务层级分离、fallback/WS 透传及 Codex priority 能力；实际响应只允许降低计费档位，OAuth-like `default` 不得把明确请求上调，Free Fast 用户费用仍按 Standard |
+| `50ad6e2e5` | Applied + Overridden | 接入出站/观测服务层级分离、fallback/WS 透传及 Codex priority 能力；实际响应只允许降低计费档位，OAuth-like `default` 不得把明确请求上调，Free Fast 用户费用仍按 Standard |
+| `82105f260` | Applied + Overridden | 接入出站/观测服务层级分离、fallback/WS 透传及 Codex priority 能力；实际响应只允许降低计费档位，OAuth-like `default` 不得把明确请求上调，Free Fast 用户费用仍按 Standard |
+| `57c76584a` | Applied + Overridden | 接入出站/观测服务层级分离、fallback/WS 透传及 Codex priority 能力；实际响应只允许降低计费档位，OAuth-like `default` 不得把明确请求上调，Free Fast 用户费用仍按 Standard |
+| `6532d5b61` | Applied + Overridden | 接入用量窗口统一展示和缓存提示横向滚动修复；保留本地 DataTable、列设置浮层、分页与滚动位置稳定性 |
+| `9f1effd71` | Applied | 分组局部更新时保留额度限制字段 |
+| `30b29e51e` | Applied | Ollama Cloud 用量窗口支持挂载在国产三家平台账号下 |
+| `d5a012463` | Applied + Overridden | 接入 passthrough WS 会话隔离、超大 bridge、空闲连接回收、容量错误和终态 close 修复；本地继续每轮重取请求模型/渠道映射、记录 payload hash、独立结算 usage、释放并发并在失败停调度后阻断后续轮 |
+| `8177f27aa` | Applied | 明确账号到期输入使用本地时区 |
+| `d66bc88e6` | Applied | 将到期时间输入修复应用到源代码路径 |
+| `9eabd2a5b` | Applied + Overridden | 接入账号成本定价、长上下文目录数据驱动、覆盖文件和 cache 字段哨兵；保留分组/渠道显式价优先、Gemini 200K 边际价、GPT-5.6 272K 与 Grok 200K 严格边界及 GPT-5.4 Pro 无目录基础价 |
+| `263605779` | Applied | 补充英文到期时区文案 |
+| `ae1bcdc25` | Applied | 补充中文到期时区文案 |
+| `b7aca87fd` | Applied | 覆盖跨时区本地日期时间解析 |
+| `81e461f65` | Applied | 严格解析账号本地到期时间 |
+| `5778739cd` | Applied | 兑换码使用严格本地到期时间解析 |
+| `3673702af` | Applied | 删除误放的上传组件副本 |
+| `94edcd5d8` | Applied | 删除第二个误放的组件副本 |
+| `897faea33` | Applied + Overridden | 接入 OpenAI 重新授权、额度冷却原子清理、目录禁用账号过滤、passthrough 调度快照及模型冷却修复；继续保留本地失败代次、连续失败停调度、自动测活和账号默认策略 |
+| `e0ecb55d4` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `a4156eea1` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `50a9dd7a6` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `414489d15` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `fbc69322a` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `2e756b71f` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `03ab68768` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `a2d7d4118` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `f34735f46` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `1dd0f2e5d` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `36ee193e3` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `b369fbca1` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `0678b24d5` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `e7c029875` | Applied + Overridden | 接入账号成本定价、长上下文目录数据驱动、覆盖文件和 cache 字段哨兵；保留分组/渠道显式价优先、Gemini 200K 边际价、GPT-5.6 272K 与 Grok 200K 严格边界及 GPT-5.4 Pro 无目录基础价 |
+| `1be69e56a` | Applied | 允许无 call id 的 delegation bootstrap |
+| `fdf9751c1` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `c66e700f0` | Applied + Overridden | 接入 TTFT 管理设置、API 契约和可见性测试；保留本地监控超时、用户范围过滤和用量展示边界 |
+| `8553c91c1` | Applied + Overridden | 接入 TTFT 管理设置、API 契约和可见性测试；保留本地监控超时、用户范围过滤和用量展示边界 |
+| `0fcec63b6` | Applied + Overridden | 接入 TTFT 管理设置、API 契约和可见性测试；保留本地监控超时、用户范围过滤和用量展示边界 |
+| `85b593fd2` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `8f5451587` | Applied | 修复 Anthropic→Responses 流式 thinking 前的 item 生命周期和 content_index |
+| `863667ce6` | Applied | 数据库启动遇临时错误时重试 |
+| `e98ef32eb` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `1dc0a0900` | Applied + Overridden | 接入 passthrough WS 会话隔离、超大 bridge、空闲连接回收、容量错误和终态 close 修复；本地继续每轮重取请求模型/渠道映射、记录 payload hash、独立结算 usage、释放并发并在失败停调度后阻断后续轮 |
+| `b6a7b8b7d` | Applied | 数据库仓储启动临时错误最多重试八次 |
+| `52374af94` | Applied + Overridden | 完整保留上游版本提交的祖先关系，最终不采用上游 `0.1.184`、`0.1.185` 或 `0.2.0`，继续使用本地 `0.1.228` |
+| `7c01ec9be` | Applied + Overridden | 接入按模型 exact/prefix/suffix 限制 reasoning effort 和超限 deny/downgrade；本地保持 exact 优先、较长 affix 次之、全局回退及默认降档边界 |
+| `ba345f105` | Applied + Overridden | 接入 OpenAI 重新授权、额度冷却原子清理、目录禁用账号过滤、passthrough 调度快照及模型冷却修复；继续保留本地失败代次、连续失败停调度、自动测活和账号默认策略 |
+| `e21b849a9` | Applied | API Key 请求不再合成 instructions |
+| `6d5f02784` | Applied + Overridden | 接入 passthrough WS 会话隔离、超大 bridge、空闲连接回收、容量错误和终态 close 修复；本地继续每轮重取请求模型/渠道映射、记录 payload hash、独立结算 usage、释放并发并在失败停调度后阻断后续轮 |
+| `cc6a8e517` | Applied | 更新赞助商资源 |
+| `e2624fb65` | Applied | 保留 Codex 已知图片输入能力 |
+| `200602b41` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `530fb20f2` | Applied + Overridden | 接入账号成本定价、长上下文目录数据驱动、覆盖文件和 cache 字段哨兵；保留分组/渠道显式价优先、Gemini 200K 边际价、GPT-5.6 272K 与 Grok 200K 严格边界及 GPT-5.4 Pro 无目录基础价 |
+| `593fc9365` | Applied + Overridden | 接入账号成本定价、长上下文目录数据驱动、覆盖文件和 cache 字段哨兵；保留分组/渠道显式价优先、Gemini 200K 边际价、GPT-5.6 272K 与 Grok 200K 严格边界及 GPT-5.4 Pro 无目录基础价 |
+| `e2cfaa46e` | Applied + Overridden | 接入账号成本定价、长上下文目录数据驱动、覆盖文件和 cache 字段哨兵；保留分组/渠道显式价优先、Gemini 200K 边际价、GPT-5.6 272K 与 Grok 200K 严格边界及 GPT-5.4 Pro 无目录基础价 |
+| `aa679efe4` | Applied + Overridden | 接入分组 Fast 的迁移、Ent、管理 API、认证快照、前端和网关全链路；与本地严格请求模型计费、服务层级只降不升及 Free Fast 双成本规则共同适配 |
+| `1cb28fd42` | Applied + Overridden | 接入分组 Fast 的迁移、Ent、管理 API、认证快照、前端和网关全链路；与本地严格请求模型计费、服务层级只降不升及 Free Fast 双成本规则共同适配 |
+| `563979e91` | Applied + Overridden | 接入分组 Fast 的迁移、Ent、管理 API、认证快照、前端和网关全链路；与本地严格请求模型计费、服务层级只降不升及 Free Fast 双成本规则共同适配 |
+| `95982a508` | Applied + Overridden | 接入分组 Fast 的迁移、Ent、管理 API、认证快照、前端和网关全链路；与本地严格请求模型计费、服务层级只降不升及 Free Fast 双成本规则共同适配 |
+| `94bb9354c` | Applied + Overridden | 接入分组 Fast 的迁移、Ent、管理 API、认证快照、前端和网关全链路；与本地严格请求模型计费、服务层级只降不升及 Free Fast 双成本规则共同适配 |
+| `e9e66da5a` | Applied + Overridden | 接入分组 Fast 的迁移、Ent、管理 API、认证快照、前端和网关全链路；与本地严格请求模型计费、服务层级只降不升及 Free Fast 双成本规则共同适配 |
+| `7e0681657` | Applied + Overridden | 接入分组 Fast 的迁移、Ent、管理 API、认证快照、前端和网关全链路；与本地严格请求模型计费、服务层级只降不升及 Free Fast 双成本规则共同适配 |
+| `7f5e915dd` | Applied + Overridden | 接入分组 Fast 的迁移、Ent、管理 API、认证快照、前端和网关全链路；与本地严格请求模型计费、服务层级只降不升及 Free Fast 双成本规则共同适配 |
+| `9fba8ed43` | Applied + Overridden | 接入分组 Fast 的迁移、Ent、管理 API、认证快照、前端和网关全链路；与本地严格请求模型计费、服务层级只降不升及 Free Fast 双成本规则共同适配 |
+| `a44a1019f` | Applied + Overridden | 接入分组 Fast 的迁移、Ent、管理 API、认证快照、前端和网关全链路；与本地严格请求模型计费、服务层级只降不升及 Free Fast 双成本规则共同适配 |
+| `f8eae4504` | Applied + Overridden | 接入分组 Fast 的迁移、Ent、管理 API、认证快照、前端和网关全链路；与本地严格请求模型计费、服务层级只降不升及 Free Fast 双成本规则共同适配 |
+| `7903716ad` | Applied + Overridden | 接入分组 Fast 的迁移、Ent、管理 API、认证快照、前端和网关全链路；与本地严格请求模型计费、服务层级只降不升及 Free Fast 双成本规则共同适配 |
+| `1a40e5690` | Applied + Overridden | 接入分组 Fast 的迁移、Ent、管理 API、认证快照、前端和网关全链路；与本地严格请求模型计费、服务层级只降不升及 Free Fast 双成本规则共同适配 |
+| `3fbce499d` | Applied + Overridden | 接入分组 Fast 的迁移、Ent、管理 API、认证快照、前端和网关全链路；与本地严格请求模型计费、服务层级只降不升及 Free Fast 双成本规则共同适配 |
+| `17747df84` | Applied + Overridden | 接入分组 Fast 的迁移、Ent、管理 API、认证快照、前端和网关全链路；与本地严格请求模型计费、服务层级只降不升及 Free Fast 双成本规则共同适配 |
+| `0681aa256` | Applied + Overridden | 接入分组 Fast 的迁移、Ent、管理 API、认证快照、前端和网关全链路；与本地严格请求模型计费、服务层级只降不升及 Free Fast 双成本规则共同适配 |
+| `c7cf84ad3` | Applied + Overridden | 接入分组 Fast 的迁移、Ent、管理 API、认证快照、前端和网关全链路；与本地严格请求模型计费、服务层级只降不升及 Free Fast 双成本规则共同适配 |
+| `eebf4e3ff` | Applied + Overridden | 接入 Free Fast 的迁移、持久化、管理 API、认证快照、前端和计费；用户 `ActualCost` 按 Standard，账号 `TotalCost` 与 usage `service_tier` 保持 priority |
+| `e7caedc22` | Applied + Overridden | 接入 Free Fast 的迁移、持久化、管理 API、认证快照、前端和计费；用户 `ActualCost` 按 Standard，账号 `TotalCost` 与 usage `service_tier` 保持 priority |
+| `fb409787c` | Applied + Overridden | 接入 Free Fast 的迁移、持久化、管理 API、认证快照、前端和计费；用户 `ActualCost` 按 Standard，账号 `TotalCost` 与 usage `service_tier` 保持 priority |
+| `7dcf72846` | Applied + Overridden | 接入 Free Fast 的迁移、持久化、管理 API、认证快照、前端和计费；用户 `ActualCost` 按 Standard，账号 `TotalCost` 与 usage `service_tier` 保持 priority |
+| `636d6be69` | Applied + Overridden | 接入 Free Fast 的迁移、持久化、管理 API、认证快照、前端和计费；用户 `ActualCost` 按 Standard，账号 `TotalCost` 与 usage `service_tier` 保持 priority |
+| `08d6c153b` | Applied + Overridden | 接入 Free Fast 的迁移、持久化、管理 API、认证快照、前端和计费；用户 `ActualCost` 按 Standard，账号 `TotalCost` 与 usage `service_tier` 保持 priority |
+| `fd55f3248` | Applied + Overridden | 接入 Free Fast 的迁移、持久化、管理 API、认证快照、前端和计费；用户 `ActualCost` 按 Standard，账号 `TotalCost` 与 usage `service_tier` 保持 priority |
+| `8224434d2` | Applied + Overridden | 接入 Free Fast 的迁移、持久化、管理 API、认证快照、前端和计费；用户 `ActualCost` 按 Standard，账号 `TotalCost` 与 usage `service_tier` 保持 priority |
+| `e619ca386` | Applied + Overridden | 接入 Free Fast 的迁移、持久化、管理 API、认证快照、前端和计费；用户 `ActualCost` 按 Standard，账号 `TotalCost` 与 usage `service_tier` 保持 priority |
+| `e6722126b` | Applied + Overridden | 接入 Free Fast 的迁移、持久化、管理 API、认证快照、前端和计费；用户 `ActualCost` 按 Standard，账号 `TotalCost` 与 usage `service_tier` 保持 priority |
+| `498e06c58` | Applied + Overridden | 接入 Free Fast 的迁移、持久化、管理 API、认证快照、前端和计费；用户 `ActualCost` 按 Standard，账号 `TotalCost` 与 usage `service_tier` 保持 priority |
+| `4df6b0636` | Applied + Overridden | 接入 Free Fast 的迁移、持久化、管理 API、认证快照、前端和计费；用户 `ActualCost` 按 Standard，账号 `TotalCost` 与 usage `service_tier` 保持 priority |
+| `9908d3ca2` | Applied + Overridden | 接入 Free Fast 的迁移、持久化、管理 API、认证快照、前端和计费；用户 `ActualCost` 按 Standard，账号 `TotalCost` 与 usage `service_tier` 保持 priority |
+| `bdedd6c54` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `e87c47c95` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `064d9b74e` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `2d7767eaf` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `9d9ed1cc6` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `1cce2b38e` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `f218c8d40` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `6b39d0b45` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `2ac784c51` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `aa7a811e6` | Applied + Overridden | 接入按模型 exact/prefix/suffix 限制 reasoning effort 和超限 deny/downgrade；本地保持 exact 优先、较长 affix 次之、全局回退及默认降档边界 |
+| `a2fb09260` | Applied + Overridden | 完整保留上游版本提交的祖先关系，最终不采用上游 `0.1.184`、`0.1.185` 或 `0.2.0`，继续使用本地 `0.1.228` |
+| `421a83282` | Applied | 允许无 call id 的 scheduled automation bootstrap |
+| `200b1406d` | Applied | 仅在声明 server-side-fallback beta 时保留 Anthropic fallbacks |
+| `e93e6368f` | Applied + Overridden | 接入 OpenAI 重新授权、额度冷却原子清理、目录禁用账号过滤、passthrough 调度快照及模型冷却修复；继续保留本地失败代次、连续失败停调度、自动测活和账号默认策略 |
+| `343858021` | Applied + Overridden | 接入 OpenAI 重新授权、额度冷却原子清理、目录禁用账号过滤、passthrough 调度快照及模型冷却修复；继续保留本地失败代次、连续失败停调度、自动测活和账号默认策略 |
+| `e377c4358` | Applied + Overridden | 接入 Kimi 原生 Responses；PayG/Coding 使用各自 `/v1/responses`，显式 `responses`/`adaptive` 强制 `store=false` 并移除 `previous_response_id`，账号测试验证同一契约 |
+| `cd04848b9` | Applied | 更新赞助商资源 |
+| `d596d0844` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `65380be9c` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `0d27f45ea` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `504919a05` | Applied + Overridden | 接入 passthrough WS 会话隔离、超大 bridge、空闲连接回收、容量错误和终态 close 修复；本地继续每轮重取请求模型/渠道映射、记录 payload hash、独立结算 usage、释放并发并在失败停调度后阻断后续轮 |
+| `bfe0a5a87` | Applied + Overridden | 接入 passthrough WS 会话隔离、超大 bridge、空闲连接回收、容量错误和终态 close 修复；本地继续每轮重取请求模型/渠道映射、记录 payload hash、独立结算 usage、释放并发并在失败停调度后阻断后续轮 |
+| `9e2d97f25` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `52c7d8834` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `34b8bf1a6` | Applied | 支持 Claude Fable 5.1 |
+| `2786ae9de` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `8d0b5ede2` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `a668aa8b3` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `a4fb58e42` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `559960865` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `f2804eb2c` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `e50bffb7e` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `6566039bc` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `05ea883e2` | Applied | 修复合并后的 Group Ent 字段索引 |
+| `77729e272` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `3510aa22b` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `1a33dc8cc` | Applied | 优化分组模型定价弹窗布局 |
+| `aa2364883` | Applied | 依赖合并；完整 merge 保留祖先关系，具体功能与处置由关联的 non-merge 提交说明 |
+| `5097b3145` | Applied + Overridden | 完整保留上游版本提交的祖先关系，最终不采用上游 `0.1.184`、`0.1.185` 或 `0.2.0`，继续使用本地 `0.1.228` |
+
+### `Applied + Overridden` 覆盖边界
+
+- 原生 compaction：`1cc6999ad`、`1a61eb715`。接入请求类型和契约，继续按真实端点、请求模型及 WS 轮次独立归因和结算。
+- 服务层级：`624e4eef6`、`8b4b3f4a9`、`2b8cb628b`、`d39fc491e`、`3a9070359`、`f323d8464`、`50ad6e2e5`、`82105f260`、`57c76584a`。接入出站/观测层级分离及 Codex priority 能力；响应层级只允许降低计费档位，OAuth-like `default` 不具备上调权威性，明确 `flex` 仍可降档。
+- 价格目录与账号成本：`9eabd2a5b`、`e7c029875`、`530fb20f2`、`593fc9365`、`e2cfaa46e`。接入目录阶梯、覆盖补丁、缓存字段哨兵和账号成本计价；分组/渠道显式价格优先，Gemini 原生 `/v1beta` 使用 200K 边际规则，GPT-5.6/Grok 使用严格 `>` 边界，GPT-5.4 Pro 无目录时不合成阶梯。
+- 分组 Fast：`aa679efe4`、`1cb28fd42`、`563979e91`、`95982a508`、`94bb9354c`、`e9e66da5a`、`7e0681657`、`7f5e915dd`、`9fba8ed43`、`a44a1019f`、`f8eae4504`、`7903716ad`、`1a40e5690`、`3fbce499d`、`17747df84`、`0681aa256`、`c7cf84ad3`。完整接入迁移、持久化、管理 API、认证快照、前端和网关路径；继续与本地严格请求模型计费及 Free Fast 双成本逻辑组合。
+- Free Fast：`eebf4e3ff`、`e7caedc22`、`fb409787c`、`7dcf72846`、`636d6be69`、`08d6c153b`、`fd55f3248`、`8224434d2`、`e619ca386`、`e6722126b`、`498e06c58`、`4df6b0636`、`9908d3ca2`。上游请求和 usage 保持 priority，用户 `ActualCost` 按 Standard，账号 `TotalCost` 按 priority；只对 OpenAI 账号且 OpenAI/Composite 分组生效。
+- 版本：`52374af94`、`a2fb09260`、`5097b3145`。保留祖先关系但不回退版本，最终继续使用本地 `0.1.228`。
+- Reasoning effort：`7c01ec9be`、`aa7a811e6`。支持 exact/prefix/suffix 模型范围，exact 优先、较长 affix 次之、最后回退全局；超限默认降档，也可配置拒绝。
+- Kimi 原生 Responses：`e377c4358`。PayG/Coding 使用对应原生端点，强制 `store=false` 并移除 `previous_response_id`；账号测试验证同一请求契约。
+- WebSocket 与缓存身份：`7c616db07`、`d5a012463`、`6d5f02784`、`1dc0a0900`、`bfe0a5a87`、`504919a05`。每轮重新取得请求模型和渠道映射、记录 payload hash、独立结算 usage、释放并发并保留真实计价时刻；某轮失败触发停调度后阻断后续轮，只有安全重建上下文时允许换号。
+- TTFT：`c66e700f0`、`8553c91c1`、`0fcec63b6`。接入管理设置和可见性契约，保留本地监控超时、访问范围与费用展示边界。
+- 账号状态与调度：`92a550973`、`897faea33`、`ba345f105`、`e93e6368f`、`343858021`。接入重新授权、额度冷却、目录能力和调度快照修复；继续保留失败代次、连续失败停调度、自动测活和账号默认策略。
+- 前端稳定性：`0aef702b6`、`6532d5b61`。接入用量窗口和缓存提示修复，继续保留本地表格、浮层、分页与滚动位置行为。
+
+### 本地提交与文件
+
+- 上游固定范围整体映射到 merge commit `5be874e91ef37c35065ae42e92956d49cee32dea`；双亲为同步前本地 SHA `499114a87384de74b3db987299f29c57217a2ae2` 和固定上游 SHA `5097b31457e6dc9f49e5f5c9c72b925ce79543b3`。
+- 二次开发适配提交为 `736761ba3b55ed393a9efa94e3ebd89b4f5f5c6f`，修改 8 个文件，增加 290 行、删除 64 行；主要实现 Gemini 边际计价、GPT-5.6/Grok 严格边界、服务层级优先级及对应回归测试，并修正 Ent 生成注释。
+- 写入本记录前，代码与适配相对 `LOCAL_PRE_SYNC_SHA` 共变更 301 个文件：新增 28 个、修改 273 个、删除 0 个，增加 11433 行、删除 1631 行；本记录另修改两份历史台账。
+- 当前代码基线相对固定上游目标变更 919 个文件，增加 130252 行、删除 5976 行；本地独有提交 510 个，当前能力族仍为 53 项、9 个功能域。
+- 主要新增：分组 Fast/Free Fast、reasoning effort 模型范围与超限策略、Kimi 原生 Responses、价格目录覆盖文件、原生 compaction 用量、TTFT 管理设置，以及迁移 231、232、233。
+- 主要修复：OpenAI 服务层级观测/计费分离、Codex priority 广告、WS passthrough 会话隔离和终态识别、数据库启动重试、账号到期本地时区、渠道监控用户范围、Grok 视觉工具图片输出和分组定价弹窗布局。
+- `backend/cmd/server/VERSION` 最终保持 `0.1.228`；`deploy/docker-compose.yml` 与 `deploy/docker-compose.sub2api.yml` 字节完全一致，SHA-256 均为 `608C0978CA699089D9BFB13B56DE00FAADC97E65C7EFC085B073AE7649EAEBE6`。
+
+### 文本冲突与最终解决方案
+
+- 17 个文本冲突为：`backend/cmd/server/VERSION`、`backend/ent/group.go`、`backend/internal/handler/openai_gateway_handler.go`、`backend/internal/service/account_test_service_cn_adaptive.go`、`backend/internal/service/account_test_service_cn_adaptive_test.go`、`backend/internal/service/api_key_auth_cache_impl.go`、`backend/internal/service/api_key_auth_cache_profit_test.go`、`backend/internal/service/billing_service.go`、`backend/internal/service/gateway_usage_billing.go`、`backend/internal/service/model_pricing_resolver.go`、`backend/internal/service/openai_fast_policy_test.go`、`backend/internal/service/openai_gateway_usage.go`、`backend/internal/service/pricing_service.go`、`backend/internal/service/setting_gateway_runtime.go`、`backend/internal/service/upstream_response_model.go`、`deploy/docker-compose.sub2api.yml`、`frontend/src/views/user/__tests__/UsageView.spec.ts`。
+- 版本冲突保留本地 `0.1.228`；未采用上游 `0.2.0`。
+- 定价冲突接入上游目录数据驱动、覆盖文件、服务层级和 Free Fast，同时保留 Gemini 200K 边际规则、GPT-5.6 272K 与 Grok 200K 严格边界、GPT-5.4 Pro 无目录基础价、严格请求模型计费及分组/渠道显式定价优先级。
+- Kimi 冲突接入原生 Responses，并保留 PayG/Coding 端点、自定义请求头、`store=false`、移除 `previous_response_id` 及账号测试覆盖。
+- WS 和 usage 冲突接入上游会话隔离、终态与服务层级处理；继续保留逐轮模型映射、payload hash、独立结算、并发释放、真实计价时刻、失败停调度阻断及安全换号边界。
+- Compose 冲突接入上游健康检查变化，继续保留 bind mount、仅回环暴露、HTTP upstream 业务开关和生产资源变量入口；两份生产 Compose 最终字节一致。
+- 所有冲突均逐文件解决，未整文件采用 `ours`、`theirs` 或上游版本；最终索引无未解决路径。
+
+### 刻意保留的二次开发功能
+
+- `CUST-GW-001`、`CUST-GW-006`、`CUST-GW-008`、`CUST-GW-010`：首语义输出边界、失败代次和停调度、OAuth 插件已发出请求不可重放、WS 逐轮结算/并发释放/失败阻断及请求体安全释放。
+- `CUST-PROTO-001`、`CUST-PROTO-005`、`CUST-PROTO-006`、`CUST-ACC-005`：Codex 稳定身份与服务层级、API Key 请求头覆写、Kimi 原生 Responses、compact/WS 路由和账号测试契约。
+- `CUST-ACC-001`、`CUST-ACC-006`：账号默认策略、创建预览、分组 Fast/Free Fast 认证快照及本地数据迁移兼容。
+- `CUST-BILL-001`、`CUST-BILL-002`、`CUST-BILL-003`、`CUST-BILL-005`、`CUST-BILL-006`：严格请求模型计费、Free Fast 双成本、服务层级只降不升、长上下文边际/阶梯边界、费用展示、按用户串行扣费和 5 秒 usage task 超时。
+- `CUST-OBS-001`、`CUST-UI-004`：渠道监控超时/访问范围、TTFT 可见口径，以及表格、浮层、分页、滚动和时区稳定性。
+- `CUST-OPS-003`、`CUST-OPS-004`、`CUST-OPS-005`：生产 bind mount、回环端口、HTTP upstream 开关、双生产 Compose 一致性、4 vCPU/8 GiB 资源参数及远端 CI 门禁。
+
+### 验证记录
+
+本机实际使用 Go 1.27.0、Node 24.15.0、pnpm 11.19.0；本地 golangci-lint 2.9.0 由 Go 1.26.3 构建，无法检查目标 Go 1.27 项目。未读取 `.env` 或任何业务秘密。
+
+| 阶段 | 命令或检查 | 退出码 | 结果 |
+| --- | --- | ---: | --- |
+| 同步后后端 | `go test ./... -count=1` | 0 | 默认标签全包测试通过 |
+| 同步后后端 | `go test -tags=unit ./... -count=1` | 0 | unit 标签全包测试通过 |
+| 同步后后端 | `go build ./...` | 0 | 全包构建通过 |
+| Wire | `go generate ./cmd/server` | 0 | 连续两轮成功，生成文件无差异 |
+| Ent | 隔离 target 执行 `go generate ./ent` 并比较 320 个文件 | 0 | 仅 `backend/ent/group.go` 存在真实生成注释差异并已提交；临时 target 导入路径排序差异不写入正式目录，隔离目录已删除 |
+| integration 仅编译 | 仓库内临时 no-op `-exec` 包装器执行 integration 标签全包 | 0 | 仅完成编译，未执行 TestMain、Docker 或测试用例；包装器已删除 |
+| 同步后前端 | `pnpm run lint:check`、`pnpm run typecheck`、`pnpm run test:run`、`pnpm run build` | 0 | lint/typecheck/生产构建通过；271 个测试文件、1962 项 Vitest 通过 |
+| 同步后 Canvas | 直接调用本地 Node 模块执行 format、`tsc --noEmit`、Vitest、Vite build | 0 | 格式、类型检查和生产构建通过；8 个测试文件、34 项 Vitest 通过 |
+| 部署静态 | `docker-compose-security-test.sh`、`docker-compose-gateway-env-test.sh`、`docker-runtime-resources-test.sh`、`test-caddyfile-cache.sh` | 0 | 全部通过；未读取真实配置或连接外部系统 |
+| Apple fixture 语法 | shell 语法检查 | 0 | 脚本语法通过 |
+| Apple fixture 执行 | Apple 生命周期 fixture | 1 | Windows Git Bash 不支持 macOS BSD `stat -f '%Lp'`，属于平台限制 |
+| golangci-lint | `golangci-lint run ./... --timeout=30m` | 3 | golangci-lint 2.9.0 由 Go 1.26.3 构建，拒绝检查目标 Go 1.27 项目；未将其写为通过 |
+| Compose 一致性 | 字节比较及 SHA-256 | 0 | 两份生产 Compose 字节一致，哈希均为 `608C0978CA699089D9BFB13B56DE00FAADC97E65C7EFC085B073AE7649EAEBE6` |
+| 最终静态复核 | `git diff --check`、标准冲突标记、意外删除、未跟踪文件、凭据类路径候选、版本、祖先关系和提交处置计数 | 0 | 无空白错误、未解决冲突、删除文件、未跟踪文件或敏感路径候选；版本为 `0.1.228`，固定上游目标已是当前分支祖先，137 个 SHA 均且仅出现一次 |
+
+### 未验证项与残余风险
+
+- 本机 Docker 不可用，未运行真实 integration、Testcontainers、Compose 启动、PostgreSQL/Redis、迁移 231/232/233 或 `/health` 检查；integration 仅完成标签全包编译。
+- 未运行 `-race`、`govulncheck` 或可用版本的 golangci-lint；发布前仍需由远端 CI 的 Go 1.27、Node 20、golangci-lint 2.13、Docker integration 和 Security Scan 作为最终门禁。
+- Ent 在 Windows 活动目录直接生成两次均因 user-mapped section 锁定失败；通过仓库内隔离 target 完整生成并逐文件比较，损坏的中间文件已恢复，未留下临时目录。
+- 未使用真实 OpenAI、Anthropic、Kimi、Grok、Gemini、CN Provider 凭据或 OAuth 插件包；真实额度消费、服务层级响应、媒体、流式故障转移和 Kimi 原生端点端到端未验证。
+- 未执行真实浏览器端到端交互；前端与 Canvas 由组件测试、类型检查和生产构建覆盖。
+- 未读取 `.env`、GitHub Token、密码、Cookie 或 SSH 私钥；未执行 push、PR、部署、远程服务器访问、容器重启、生产挂载核验或生产数据操作。
+- 生产服务器状态、bind mount 实际挂载、实例性能参数和健康检查均未验证；本次仅验证仓库内静态 Compose 约束。
