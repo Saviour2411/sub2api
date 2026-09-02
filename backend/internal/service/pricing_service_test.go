@@ -125,7 +125,7 @@ func TestParsePricingData_ExplicitLongContextFieldsOverrideXAIAbove200kPricing(t
 	require.InDelta(t, 4.0, pricing.LongContextOutputCostMultiplier, 1e-12)
 }
 
-func TestParsePricingData_DoesNotNormalizeNonXAIAbove200kPricing(t *testing.T) {
+func TestParsePricingData_NormalizesNonXAIAbove200kPricing(t *testing.T) {
 	svc := &PricingService{}
 	body := []byte(`{
 		"other-model": {
@@ -140,9 +140,9 @@ func TestParsePricingData_DoesNotNormalizeNonXAIAbove200kPricing(t *testing.T) {
 	data, err := svc.parsePricingData(body)
 	require.NoError(t, err)
 	pricing := data["other-model"]
-	require.Zero(t, pricing.LongContextInputTokenThreshold)
-	require.Zero(t, pricing.LongContextInputCostMultiplier)
-	require.Zero(t, pricing.LongContextOutputCostMultiplier)
+	require.Equal(t, 200000, pricing.LongContextInputTokenThreshold)
+	require.InDelta(t, 2.0, pricing.LongContextInputCostMultiplier, 1e-12)
+	require.InDelta(t, 2.0, pricing.LongContextOutputCostMultiplier, 1e-12)
 }
 
 func TestParsePricingData_DoesNotNormalizeInconsistentXAICacheMultiplier(t *testing.T) {
@@ -199,8 +199,11 @@ func TestBillingService_GPT56CacheWritePricingUsesOfficialMultiplier(t *testing.
 			require.NoError(t, err)
 			require.InDelta(t, tt.input*1.25, pricing.CacheCreationPricePerToken, 1e-12)
 			require.InDelta(t, tt.inputPriority*1.25, pricing.CacheCreationPricePerTokenPriority, 1e-12)
-			// 阶梯由目录数据驱动：条目无 above/long_context 字段时不再由策略强补。
-			require.Zero(t, pricing.LongContextInputThreshold)
+			// GPT-5.6 保留精准兜底：即使目录条目缺少阶梯字段，也必须使用官方 272K 阶梯。
+			require.Equal(t, 272000, pricing.LongContextInputThreshold)
+			require.InDelta(t, 2.0, pricing.LongContextInputMultiplier, 1e-12)
+			require.InDelta(t, 1.5, pricing.LongContextOutputMultiplier, 1e-12)
+			require.False(t, pricing.LongContextThresholdInclusive, "GPT-5.6 阈值保持严格大于")
 
 			tokens := UsageTokens{InputTokens: 700, OutputTokens: 50, CacheCreationTokens: 200, CacheReadTokens: 100}
 			standard, err := svc.CalculateCostWithServiceTier(tt.model, tokens, 1, "")
@@ -500,8 +503,11 @@ func assertGPT56FallbackPricing(t *testing.T, pricing *ModelPricing, input, cach
 	require.InDelta(t, cached, pricing.CacheReadPricePerToken, 1e-12)
 	require.InDelta(t, cacheWrite, pricing.CacheCreationPricePerToken, 1e-12)
 	require.InDelta(t, output, pricing.OutputPricePerToken, 1e-12)
-	// 静态兜底只兜基础价；阶梯由目录数据（above_272k 折算或显式字段）驱动。
-	require.Zero(t, pricing.LongContextInputThreshold)
+	// GPT-5.6 静态兜底同时守住官方 272K 阶梯，避免远端目录缺字段时静默少计。
+	require.Equal(t, 272000, pricing.LongContextInputThreshold)
+	require.InDelta(t, 2.0, pricing.LongContextInputMultiplier, 1e-12)
+	require.InDelta(t, 1.5, pricing.LongContextOutputMultiplier, 1e-12)
+	require.False(t, pricing.LongContextThresholdInclusive, "GPT-5.6 阈值保持严格大于")
 }
 
 func TestParsePricingData_KeepsImageOnlyPricing(t *testing.T) {
@@ -1016,7 +1022,7 @@ func TestParsePricingData_DerivesLongContextFromAboveTierFields(t *testing.T) {
 	require.Equal(t, 128000, data["multi-threshold"].LongContextInputTokenThreshold, "多阈值取最小")
 }
 
-func TestGetModelPricing_XAIThresholdInclusive(t *testing.T) {
+func TestGetModelPricing_XAIThresholdStrictlyGreater(t *testing.T) {
 	svc := NewBillingService(&config.Config{}, newStubPricingServiceFromJSON(t, `{
 		"grok-4.5": {"litellm_provider": "xai", "mode": "chat",
 			"input_cost_per_token": 2e-06, "output_cost_per_token": 6e-06,
@@ -1026,7 +1032,17 @@ func TestGetModelPricing_XAIThresholdInclusive(t *testing.T) {
 	pricing, err := svc.GetModelPricing("grok-4.5")
 	require.NoError(t, err)
 	require.Equal(t, 200000, pricing.LongContextInputThreshold)
-	require.True(t, pricing.LongContextThresholdInclusive, "xAI 阈值语义为达到即进高档")
+	require.False(t, pricing.LongContextThresholdInclusive, "Grok 阈值语义保持严格大于")
+
+	atBoundary, err := svc.CalculateCost("grok-4.5", UsageTokens{InputTokens: 200000}, 1)
+	require.NoError(t, err)
+	require.False(t, atBoundary.LongContextBillingApplied)
+	require.InDelta(t, 200000*2e-6, atBoundary.InputCost, 1e-12)
+
+	aboveBoundary, err := svc.CalculateCost("grok-4.5", UsageTokens{InputTokens: 200001}, 1)
+	require.NoError(t, err)
+	require.True(t, aboveBoundary.LongContextBillingApplied)
+	require.InDelta(t, 200001*2e-6*2, aboveBoundary.InputCost, 1e-12)
 }
 
 // F3：显式 long_context 字段以"字段存在"为准——显式 0 也能压住 above 折算，关闭阶梯。

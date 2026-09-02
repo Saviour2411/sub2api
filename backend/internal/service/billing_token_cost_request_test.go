@@ -132,6 +132,40 @@ func TestCalculateTokenCostForRequest_CatalogLadderFollowsGroupToggle(t *testing
 	}
 }
 
+// Gemini 原生 /v1beta 显式携带 200K 边际规则；目录即使同时含有 200K 整单阶梯，
+// 也必须关闭目录阶梯，避免对同一请求重复升档。
+func TestCalculateTokenCostForRequest_GeminiLegacyMarginalDisablesCatalogWholeRequestLadder(t *testing.T) {
+	bs, resolver := newTokenCostTestEnv(t, PlatformGemini, nil, geminiLadderCatalogStub(t))
+	group := &Group{ID: 100, Platform: PlatformGemini, LongContextPricingEnabled: true}
+	gid := group.ID
+	resolved := resolver.Resolve(context.Background(), PricingInput{Model: "gemini-2.5-pro", GroupID: &gid, Group: group})
+	require.Equal(t, PricingSourceLiteLLM, resolved.Source)
+	rule := bs.LegacyLongContextRule(PlatformGemini)
+	require.NotNil(t, rule)
+	require.Equal(t, 200000, rule.Threshold)
+	require.InDelta(t, 2.0, rule.Multiplier, 1e-12)
+
+	calc := func(inputTokens int) *CostBreakdown {
+		got, err := bs.CalculateTokenCostForRequest(TokenCostRequest{
+			Ctx: context.Background(), Model: "gemini-2.5-pro", Group: group,
+			Tokens: UsageTokens{InputTokens: inputTokens, OutputTokens: 1000}, RateMultiplier: 1,
+			Resolver: resolver, Resolved: resolved, LegacyLongContext: rule,
+		})
+		require.NoError(t, err)
+		return got
+	}
+
+	atBoundary := calc(200000)
+	require.False(t, atBoundary.LongContextBillingApplied)
+	require.InDelta(t, 200000*1.25e-6+1000*10e-6, atBoundary.ActualCost, 1e-12)
+
+	aboveBoundary := calc(300000)
+	require.True(t, aboveBoundary.LongContextBillingApplied)
+	// 仅超出的 100K 输入按 2 倍计费；输出维持基础价。目录整单阶梯若误叠加会得到 0.765。
+	require.InDelta(t, 200000*1.25e-6+100000*1.25e-6*2+1000*10e-6, aboveBoundary.ActualCost, 1e-12)
+	require.NotEqual(t, 0.765, aboveBoundary.ActualCost)
+}
+
 // 目录阶梯对缓存分项同样生效：cache_read / cache_creation 随输入倍率整单换档，
 // 阈值判定计入全部输入侧 token（input + cache_creation + cache_read）。
 func TestCalculateTokenCostForRequest_GeminiLadderAppliesToCacheItems(t *testing.T) {

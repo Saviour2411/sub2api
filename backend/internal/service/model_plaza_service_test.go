@@ -396,7 +396,7 @@ func TestListGroups_TokenLadderFollowsGroupToggle(t *testing.T) {
 	}
 }
 
-func TestListGroups_GeminiCatalogLadderShownWholeRequest(t *testing.T) {
+func TestListGroups_GeminiNativeLadderShownMarginal(t *testing.T) {
 	channels := []Channel{{
 		ID: 1, Name: "ch", Status: StatusActive, GroupIDs: []int64{10},
 		ModelMapping: map[string]map[string]string{PlatformGemini: {"gemini-2.5-pro": "gemini-2.5-pro"}},
@@ -408,13 +408,15 @@ func TestListGroups_GeminiCatalogLadderShownWholeRequest(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, out, 1)
 	m := out[0].Models[0]
-	require.Equal(t, ContextPricingBasisWholeRequest, m.LongContextBasis)
+	require.Equal(t, ContextPricingBasisMarginal, m.LongContextBasis)
 	require.Len(t, m.Pricing.Intervals, 2)
 	require.Equal(t, "≤200K", m.Pricing.Intervals[0].TierLabel)
 	require.Equal(t, ">200K", m.Pricing.Intervals[1].TierLabel)
 	require.InDelta(t, 2.5e-6, *m.Pricing.Intervals[1].InputPrice, 1e-15)
-	require.InDelta(t, 15e-6, *m.Pricing.Intervals[1].OutputPrice, 1e-15)
-	// 官方参考价与实付同源：都来自目录数据的阶梯字段
+	require.InDelta(t, 10e-6, *m.Pricing.Intervals[1].OutputPrice, 1e-15)
+	require.InDelta(t, 1.25e-6, *m.Pricing.Intervals[1].CacheWritePrice, 1e-15)
+	require.InDelta(t, 0.25e-6, *m.Pricing.Intervals[1].CacheReadPrice, 1e-15)
+	// 实付走 /v1beta 边际规则；官方参考价仍展示目录整单阶梯。
 	require.NotNil(t, m.OfficialPricing)
 	require.Len(t, m.OfficialPricing.Intervals, 2)
 }

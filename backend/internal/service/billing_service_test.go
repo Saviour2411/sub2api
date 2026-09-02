@@ -266,15 +266,17 @@ func TestGetModelPricing_OfficialGPT5VariantsUseDedicatedFallbacks(t *testing.T)
 	}
 }
 
-func TestCalculateCost_OpenAIGPT54ProLongContextUsesProRates(t *testing.T) {
+func TestCalculateCost_OpenAIGPT54ProStaticFallbackUsesBaseRates(t *testing.T) {
 	svc := newTestBillingService()
 	tokens := UsageTokens{InputTokens: 272001, OutputTokens: 1000, CacheReadTokens: 1000}
 
 	cost, err := svc.CalculateCost("gpt-5.4-pro", tokens, 1)
 	require.NoError(t, err)
-	require.InDelta(t, float64(tokens.InputTokens)*30e-6*2, cost.InputCost, 1e-10)
-	require.InDelta(t, float64(tokens.OutputTokens)*180e-6*1.5, cost.OutputCost, 1e-10)
-	require.InDelta(t, float64(tokens.CacheReadTokens)*3e-6*2, cost.CacheReadCost, 1e-10)
+	// 无目录数据时静态兜底只负责基础价；GPT-5.4 长上下文阶梯由目录字段驱动。
+	require.False(t, cost.LongContextBillingApplied)
+	require.InDelta(t, float64(tokens.InputTokens)*30e-6, cost.InputCost, 1e-10)
+	require.InDelta(t, float64(tokens.OutputTokens)*180e-6, cost.OutputCost, 1e-10)
+	require.InDelta(t, float64(tokens.CacheReadTokens)*3e-6, cost.CacheReadCost, 1e-10)
 }
 
 func TestGetModelPricing_OpenAICompactAliasesFallback(t *testing.T) {

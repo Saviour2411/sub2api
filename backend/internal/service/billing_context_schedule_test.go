@@ -233,13 +233,13 @@ func scheduleScenarios() []scheduleScenario {
 			},
 		},
 		{
-			name: "Gemini 目录阶梯整单换档", model: "gemini-2.5-pro", platform: PlatformGemini, groupPlatform: PlatformGemini,
-			group: enabledGroup(PlatformGemini), catalog: mustCatalogFromJSON(geminiLadderCatalogJSON), wantBasis: ContextPricingBasisWholeRequest,
+			name: "Gemini 原生入口按 200K 边际规则计费", model: "gemini-2.5-pro", platform: PlatformGemini, groupPlatform: PlatformGemini,
+			group: enabledGroup(PlatformGemini), catalog: mustCatalogFromJSON(geminiLadderCatalogJSON), wantBasis: ContextPricingBasisMarginal,
 			check: func(t *testing.T, s *ContextPricingSchedule) {
 				require.Len(t, s.Tiers, 2)
-				// 缓存写入按标准输入价，与 input 一同整单换档
+				// 边际规则仅提高超阈值 input/cache_read；output 与 cache_write 保持基础价。
 				requireTier(t, s.Tiers[0], 0, intPtr(200000), "≤200K", p(1.25e-6), p(10e-6), p(1.25e-6), p(0.125e-6))
-				requireTier(t, s.Tiers[1], 200000, nil, ">200K", p(2.5e-6), p(15e-6), p(2.5e-6), p(0.25e-6))
+				requireTier(t, s.Tiers[1], 200000, nil, ">200K", p(2.5e-6), p(10e-6), p(1.25e-6), p(0.25e-6))
 			},
 		},
 		{
@@ -263,10 +263,12 @@ func scheduleScenarios() []scheduleScenario {
 			},
 		},
 		{
-			name: "Gemini 目录无阶梯字段时开关开启也无阶梯", model: "gemini-2.5-pro", platform: PlatformGemini, groupPlatform: PlatformGemini,
-			group: enabledGroup(PlatformGemini), catalog: geminiCatalogStub(), wantBasis: ContextPricingBasisWholeRequest,
+			name: "Gemini 目录无阶梯字段仍保留原生边际规则", model: "gemini-2.5-pro", platform: PlatformGemini, groupPlatform: PlatformGemini,
+			group: enabledGroup(PlatformGemini), catalog: geminiCatalogStub(), wantBasis: ContextPricingBasisMarginal,
 			check: func(t *testing.T, s *ContextPricingSchedule) {
-				require.Len(t, s.Tiers, 1)
+				require.Len(t, s.Tiers, 2)
+				requirePrice(t, p(1.25e-6), s.Tiers[0].Input, "input base")
+				requirePrice(t, p(2.5e-6), s.Tiers[1].Input, "input marginal")
 			},
 		},
 		{
@@ -424,9 +426,26 @@ func tierAt(tiers []ContextPricingTier, contextTokens int) ContextPricingTier {
 }
 
 // expectedCostFromSchedule 按阶梯表推算 contextTokens 个某类 token 的费用：
-// 整单基准取所在档单价 × 全量。
+// 整单基准取所在档单价 × 全量；边际基准按每档覆盖的 token 数累加。
 func expectedCostFromSchedule(s *ContextPricingSchedule, kind tokenKind, contextTokens int) float64 {
-	return float64(contextTokens) * tierPrice(tierAt(s.Tiers, contextTokens), kind)
+	if s.Basis != ContextPricingBasisMarginal {
+		return float64(contextTokens) * tierPrice(tierAt(s.Tiers, contextTokens), kind)
+	}
+
+	var total float64
+	for _, tier := range s.Tiers {
+		if contextTokens <= tier.MinTokens {
+			break
+		}
+		upper := contextTokens
+		if tier.MaxTokens != nil && upper > *tier.MaxTokens {
+			upper = *tier.MaxTokens
+		}
+		if upper > tier.MinTokens {
+			total += float64(upper-tier.MinTokens) * tierPrice(tier, kind)
+		}
+	}
+	return total
 }
 
 func TestResolveContextPricingSchedule_ParityWithBilling(t *testing.T) {
@@ -455,10 +474,14 @@ func TestResolveContextPricingSchedule_ParityWithBilling(t *testing.T) {
 				pricingInput.GroupID = &gid
 			}
 			resolved := resolver.Resolve(ctx, pricingInput)
+			var legacy *LegacyLongContextRule
+			if sc.group != nil {
+				legacy = bs.LegacyLongContextRule(sc.platform)
+			}
 			cost := func(tokens UsageTokens) float64 {
 				bd, err := bs.CalculateTokenCostForRequest(TokenCostRequest{
 					Ctx: ctx, Model: sc.model, Group: sc.group, Tokens: tokens, RateMultiplier: 1,
-					Resolver: resolver, Resolved: resolved,
+					Resolver: resolver, Resolved: resolved, LegacyLongContext: legacy,
 				})
 				require.NoError(t, err)
 				return bd.ActualCost
