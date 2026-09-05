@@ -346,6 +346,10 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          if [ "$DEPLOY_HOST" != "152.53.115.95" ] || [ "$DEPLOY_USER" != "root" ] || [ "$DEPLOY_PORT" != "22748" ] || [ "$DEPLOY_DIR" != "/root/proj/sub2api/deploy" ] || [ "$DEPLOY_COMPOSE_FILE" != "docker-compose.yml" ]; then
+            echo "生产部署目标必须是服务器1及其指定活动Compose，拒绝继续。" >&2
+            exit 1
+          fi
           echo "enabled=true" >> "$GITHUB_OUTPUT"
           echo "host=$DEPLOY_HOST" >> "$GITHUB_OUTPUT"
           echo "user=$DEPLOY_USER" >> "$GITHUB_OUTPUT"

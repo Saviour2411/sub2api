@@ -9,6 +9,11 @@ HEALTH_URL_INPUT=${HEALTH_URL:-}
 HEALTH_RETRIES=${HEALTH_RETRIES:-30}
 HEALTH_INTERVAL=${HEALTH_INTERVAL:-5}
 
+if [ "$COMPOSE_FILE" != "docker-compose.yml" ]; then
+    echo "生产部署只允许使用 docker-compose.yml" >&2
+    exit 1
+fi
+
 if [ -z "$DEPLOY_DIR" ]; then
     echo "DEPLOY_DIR is required" >&2
     exit 1
@@ -58,6 +63,46 @@ fi
 SERVER_PORT_VALUE=${SERVER_PORT_VALUE:-8080}
 HEALTH_URL=${HEALTH_URL_INPUT:-http://127.0.0.1:${SERVER_PORT_VALUE}/health}
 
+# 在更新版本或重建容器前核验活动清单、真实挂载和现有健康状态。
+if [ ! -f docker-compose.sub2api.yml ] || ! cmp -s "$COMPOSE_FILE" docker-compose.sub2api.yml; then
+    echo "活动 Compose 与 docker-compose.sub2api.yml 必须完全一致" >&2
+    exit 1
+fi
+
+verify_bind_mount() {
+    container=$1
+    source=$2
+    destination=$3
+    mounts=$(docker inspect "$container" --format '{{range .Mounts}}{{printf "%s\t%s\t%s\n" .Type .Source .Destination}}{{end}}')
+    printf '%s\n' "$mounts"
+    actual=$(printf '%s\n' "$mounts" | awk -F '\t' -v target="$destination" '$3 == target {print}')
+    expected=$(printf 'bind\t%s\t%s' "$source" "$destination")
+    if [ "$actual" != "$expected" ]; then
+        echo "$container 的 $destination 未使用预期的 bind mount，拒绝部署" >&2
+        return 1
+    fi
+}
+
+docker compose -f "$COMPOSE_FILE" ps
+verify_bind_mount sub2api-postgres "$DEPLOY_DIR/postgres_data" /var/lib/postgresql/data
+verify_bind_mount sub2api "$DEPLOY_DIR/data" /app/data
+verify_bind_mount sub2api-redis "$DEPLOY_DIR/redis_data" /data
+
+if command -v curl >/dev/null 2>&1; then
+    if ! curl -fsS --max-time 5 "$HEALTH_URL" >/dev/null; then
+        echo "部署前健康检查失败，未修改版本或重建容器" >&2
+        exit 1
+    fi
+elif command -v wget >/dev/null 2>&1; then
+    if ! wget -q -T 5 -O /dev/null "$HEALTH_URL"; then
+        echo "部署前健康检查失败，未修改版本或重建容器" >&2
+        exit 1
+    fi
+else
+    echo "缺少健康检查工具，拒绝部署" >&2
+    exit 1
+fi
+
 update_env_value() {
     key=$1
     value=$2
@@ -100,9 +145,9 @@ while [ "$i" -le "$HEALTH_RETRIES" ]; do
             exit 0
         fi
     else
-        echo "Neither curl nor wget is available for health check" >&2
+        echo "缺少健康检查工具，不能将部署判定为成功" >&2
         docker compose -f "$COMPOSE_FILE" ps
-        exit 0
+        exit 1
     fi
 
     echo "Waiting for health check ${i}/${HEALTH_RETRIES}..."

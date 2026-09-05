@@ -2694,3 +2694,13 @@
 - 实时核验：远端main仍为`6fed6e108dd7dcdcda2d03251e95a4dedd7aae9b`；最新正式发布为`v0.1.228`，目标`v0.1.229`不存在。候选分支为`codex/release-v0.1.229`，从已验证的本地`6ec6ccd092aaed72e34e2010c4b8ea8636f1fc34`开始，仅递增VERSION并补记录，不扩大固定上游范围。
 - 交付门禁：候选分支的CI与Security Scan均通过后才允许远端main快进；若失败则在候选分支修复并重新验证，不强推或绕过检查。新建annotated tag，不覆盖旧tag。main与tag指向的代码必须一致，Release工作流正常构建镜像后自动部署服务器1，不手工重启。
 - 发布前须只读核验服务器1的活动Compose、应用/PostgreSQL bind mount及本机健康；不访问服务器2、不读取或输出真实.env/私钥，不改生产资源或数据挂载。CI/发布/部署实际结果以相应Actions运行与最终交付总结为准；仅准备候选不写成已部署。
+
+
+### 发布安全预检与自动门禁修复
+
+- 2026-09-05T20:23:57+08:00 只读核验：服务器1运行`saviour2411/sub2api:0.1.228`，revision为`6fed6e108dd7dcdcda2d03251e95a4dedd7aae9b`，活动Compose哈希与仓库相同；应用、PostgreSQL和Redis均使用预期bind mount，回环18080健康正常。仅备用Compose落后（旧SHA256：`2865001838d1c9e8fedc798e77742481ba7b6ac09774e417e889945bbb49a05a`）。
+- 旧备用文件已备份至仓库忽略目录`output/release-20260905/server1/docker-compose.sub2api.before.yml`并校验哈希；随后只把活动文件复制到备用文件，两者现为`608c0978ca699089d9bfb13b56de00faadc97e65c7efc085b073ae7649eaebe6`，活动配置、容器ID、实例.env和数据目录未改变。
+- 自动部署脚本原先没有在重建前强制检查上述约束，因此本发布候选补充生产目标、双Compose、精确bind mount、旧实例健康及缺少检查工具时的失败关闭门禁；不改变正常发布版本更新或业务参数。配套更新二开台账CUST-OPS-003/004并新增12项本地隔离测试，已通过，纳入CI的macOS shell任务。
+- 第一候选`d5b8a3a1441a627ebd88a3579975e5a334f4816f`已触发CI和Security Scan；新增安全门禁后必须以新的候选SHA重新检查，旧候选通过不能替代新候选的合入门禁。
+
+- 首轮候选CI（运行33965856935）的shell、frontend、golangci-lint与test四项全部success，test中的单元和集成步骤均通过；Security Scan（运行33965856933）两个任务success。新加部署安全门禁不复用该结果，仍重新检查最新提交。
