@@ -13,10 +13,11 @@
 
 - 基线日期：2026-09-05
 - 本地版本：`0.1.228`
-- 本地代码基线：本次同步合并树（代码提交由最后同步记录补记；同步前 `6fed6e108dd7dcdcda2d03251e95a4dedd7aae9b`）
+- 本地代码基线提交：`289a00a46b023c957db16bbc30a1fc15c30d44a0`（不含最后的同步记录补记提交）
 - 已完整集成的上游提交：`ab99d56e9626e6cd731592dae8553c9758a0efa2`
 - 本次同步范围：`5097b3145..ab99d56e9`，82 个上游提交，53 项本地能力族均保留
 - 历史识别统计（2026-09-02，`5097b3145..35c28e324`）：919 个差异文件，新增130491行、删除5976行、本地独有512个提交；此为历史快照，不代表本次同步后的统计
+- 本次代码基线差异（`ab99d56e9..289a00a46`）：926个文件，新增130999行、删除6037行；本地独有517个提交（不含最后记录补记）
 - 当前能力族：53 项，分布在 9 个功能域
 
 这组数字只用于确认分析边界，不能直接等同于功能数量。生成代码、测试、文案、上游提交的本地适配和同一能力的连续修复均会放大差异规模。
@@ -166,7 +167,7 @@
 
 | 日期 | 版本/提交 | 类型 | 功能编号 | 变更与原因 | 验证 |
 | --- | --- | --- | --- | --- | --- |
-| 2026-09-05 | `0.1.228` / 本次合并 `ab99d56e9` | 上游适配 | `CUST-GW-001`、`CUST-GW-006`、`CUST-GW-008`、`CUST-GW-010`、`CUST-PROTO-001`、`CUST-PROTO-003`、`CUST-PROTO-005`、`CUST-ACC-001`、`CUST-ACC-006`、`CUST-BILL-001`、`CUST-BILL-002`、`CUST-BILL-003`、`CUST-BILL-005`、`CUST-PROD-006`、`CUST-RISK-002`、`CUST-UI-004` | 完整合并固定上游5097b3145..ab99d56e9的82提交，解决25文件/43冲突块；接入Astra、ultrafast、价格热重载、max倍率、上游请求ID、固定账号只读清单、轻量账号列表、续聊/回放/Cyber修复及支付宝补查。保留严格请求模型/旧来源归一化、未知别名显式价格、Free Fast双成本、长上下文特例、WS逐轮结算和插件已发送禁止重放；图片强制隐藏上游URL优先于可选回填，下载专属公网防护不改业务HTTP开关；EasyPay独立预算与查询集合去重。请求ID敏感头在写/读两端拒绝，认证快照v23同时保留本地字段，生产约束未变。53项/9域与既有编号均保留。 | Go默认及unit全包、build、golangci-lint2.13的0 issues、Wire与Ent320文件零差异、integration仅编译、前端lint/typecheck/274文件1994用例/build、Canvas格式/类型/8文件34用例/build、三部署静态/Caddy/双Compose字节一致和差异检查通过；工具与兼容失败均已定位且完整重跑0。真实数据库/迁移/集成执行、启动健康、真实业务和浏览器E2E未验证；未push、未部署、未访问服务器。 |
+| 2026-09-05 | `0.1.228` / `289a00a46` | 上游适配 | `CUST-GW-001`、`CUST-GW-006`、`CUST-GW-008`、`CUST-GW-010`、`CUST-PROTO-001`、`CUST-PROTO-003`、`CUST-PROTO-005`、`CUST-ACC-001`、`CUST-ACC-006`、`CUST-BILL-001`、`CUST-BILL-002`、`CUST-BILL-003`、`CUST-BILL-005`、`CUST-PROD-006`、`CUST-RISK-002`、`CUST-UI-004` | 完整合并固定上游5097b3145..ab99d56e9的82提交，解决25文件/43冲突块；接入Astra、ultrafast、价格热重载、max倍率、上游请求ID、固定账号只读清单、轻量账号列表、续聊/回放/Cyber修复及支付宝补查。保留严格请求模型/旧来源归一化、未知别名显式价格、Free Fast双成本、长上下文特例、WS逐轮结算和插件已发送禁止重放；图片强制隐藏上游URL优先于可选回填，下载专属公网防护不改业务HTTP开关；EasyPay独立预算与查询集合去重。请求ID敏感头在写/读两端拒绝，认证快照v23同时保留本地字段，生产约束未变。53项/9域与既有编号均保留。 | Go默认及unit全包、build、golangci-lint2.13的0 issues、Wire与Ent320文件零差异、integration仅编译、前端lint/typecheck/274文件1994用例/build、Canvas格式/类型/8文件34用例/build、三部署静态/Caddy/双Compose字节一致和差异检查通过；工具与兼容失败均已定位且完整重跑0。真实数据库/迁移/集成执行、启动健康、真实业务和浏览器E2E未验证；未push、未部署、未访问服务器。 |
 | 2026-09-02 | `0.1.228` / `736761ba3` | 上游适配 | `CUST-GW-001`、`CUST-GW-006`、`CUST-GW-008`、`CUST-GW-010`、`CUST-PROTO-001`、`CUST-PROTO-005`、`CUST-PROTO-006`、`CUST-ACC-001`、`CUST-ACC-005`、`CUST-ACC-006`、`CUST-BILL-001`、`CUST-BILL-002`、`CUST-BILL-003`、`CUST-BILL-005`、`CUST-BILL-006`、`CUST-OBS-001`、`CUST-UI-004`、`CUST-OPS-003`、`CUST-OPS-004`、`CUST-OPS-005` | 完整合并上游 `b5827cfd5..5097b3145` 的 137 个提交（42 个 merge、95 个 non-merge），接入分组 Fast/Free Fast、按模型范围限制 reasoning effort、Kimi 原生 Responses、服务层级分离、价格目录阶梯/覆盖文件、原生 compaction 用量、TTFT 管理设置、WS 会话隔离和数据库启动重试。继续保留普通文本严格按请求模型计费、Free Fast 用户 Standard/账号 priority 双成本、上游服务层级只降不升、Gemini 200K 边际价、GPT-5.6 272K 与 Grok 200K 严格边界、Kimi `store=false`、WS 逐轮模型映射/哈希/结算/失败阻断、按用户串行扣费、5 秒 usage task 超时，以及生产 bind mount、回环暴露、HTTP upstream 和资源变量入口；逐项解决 17 个文本冲突，版本保持 `0.1.228`，未新增二开编号。 | Go 默认及 unit 标签全包、全包构建、Wire 生成、integration 标签仅编译、前端 lint/typecheck/271 文件 1962 项 Vitest/生产构建、Canvas format/typecheck/8 文件 34 项 Vitest/生产构建、部署静态脚本、双生产 Compose 字节一致及 Ent 隔离生成比对通过。golangci-lint 2.9.0 因目标 Go 1.27 高于其构建工具链而拒绝运行；Apple fixture 仅因 Windows 不支持 BSD `stat -f '%Lp'` 失败。Docker/Testcontainers、真实 PostgreSQL/Redis/迁移、Compose 启动、健康检查、真实上游凭据和生产部署未验证。 |
 | 2026-08-30 | `v0.1.228` 发布修复 / 待提交 | 修复 | `CUST-OPS-001` | `v0.1.228` 首次完整发布在并行构建 Docker Hub/GHCR 的 amd64/arm64 镜像时超过 GoReleaser 默认 60 分钟，自动部署被跳过；将完整发布命令超时提升为 120 分钟。 | Release 工作流 YAML 与部署静态检查；通过 `workflow_dispatch` 对既有 `v0.1.228` 重跑完整发布并验证生产部署。 |
 | 2026-08-30 | `0.1.228` / 待提交 | 修改 | `CUST-OBS-002` | New API 上游新增个人访问令牌认证：管理页允许在密码与访问令牌之间选择，令牌模式只提交并加密保存个人访问令牌，不接受或复用用户导入的会话 User-Agent、刷新令牌及 Cookie；后端自动设置固定浏览器 User-Agent 并启用 Chrome TLS/HTTP2 指纹，直接以 Bearer Token 验证和同步余额、分组、定价及统计，首次 `/api/user/self` 成功后记录远端用户 ID，令牌被拒绝时不调用刷新接口或回退密码登录。密码模式原有旧 Cookie 及 rc.22 短期 Access Token/刷新 Cookie 兼容逻辑保持不变；从密码模式切换令牌模式会先清除短期登录会话，避免将缓存会话 Token 误当作个人访问令牌。 | New API 令牌参数校验、密码会话切换隔离、Bearer 请求头/用户 ID 回填、无登录会话同步、令牌拒绝不回退登录，以及管理页密码/令牌模式载荷测试；使用外部 New API 测试站点从服务器 1 网络出口运行 Linux Provider 只读接口探针。 |
