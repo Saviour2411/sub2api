@@ -33,6 +33,7 @@ const messages: Record<string, string> = {
   'admin.dashboard.hour': 'Hour',
   'admin.usage.failedToLoadUser': 'Failed to load user',
 	'admin.usage.requestId': 'Request ID',
+	'admin.usage.upstreamRequestId': 'Upstream ID',
 	'usage.requestedModel': 'Requested model',
 	'usage.sentUpstreamModel': 'Sent upstream model',
 	'usage.upstreamResponseModel': 'Upstream response model',
@@ -561,7 +562,53 @@ describe('admin UsageView request ID column visibility', () => {
     )
     expect(localStorage.setItem).toHaveBeenCalledWith(
       'usage-hidden-columns-version',
-      'request-id-hidden-by-default',
+      'upstream-request-id-hidden-by-default',
+    )
+    wrapper.unmount()
+  })
+
+  it('keeps upstream ID hidden by default and allows enabling it from column settings', async () => {
+    const wrapper = mount(UsageView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          UsageStatsCards: true,
+          UsageFilters: UsageFiltersStub,
+          UsageTable: UsageTableStub,
+          UsageExportProgress: true,
+          UsageCleanupDialog: true,
+          UserBalanceHistoryModal: true,
+          AuditLogModal: true,
+          Pagination: true,
+          Select: true,
+          DateRangePicker: true,
+          Icon: true,
+          TokenUsageTrend: true,
+          ModelDistributionChart: true,
+          GroupDistributionChart: true,
+          EndpointDistributionChart: true,
+          UserTokenRanking: true,
+        },
+      },
+    })
+    await wrapper.vm.$nextTick()
+
+    const usageTable = wrapper.findComponent(UsageTableStub)
+    expect(usageTable.props('columns')).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ key: 'upstream_request_id' })]),
+    )
+
+    await wrapper.get('button[title="admin.users.columnSettings"]').trigger('click')
+    await flushPromises()
+    const upstreamToggle = Array.from(
+      document.body.querySelectorAll<HTMLButtonElement>('.column-settings-dropdown button'),
+    ).find((button) => button.textContent?.trim() === 'Upstream ID')
+    expect(upstreamToggle).toBeDefined()
+    upstreamToggle!.click()
+    await wrapper.vm.$nextTick()
+
+    expect(usageTable.props('columns')).toEqual(
+      expect.arrayContaining([expect.objectContaining({ key: 'upstream_request_id', label: 'Upstream ID' })]),
     )
 
     wrapper.unmount()

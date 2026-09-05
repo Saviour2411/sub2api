@@ -643,6 +643,8 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 		if s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody) {
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				ProxyID:            opsUpstreamProxyID(account),
+				ProxyName:          opsUpstreamProxyName(account),
 				Platform:           account.Platform,
 				AccountID:          account.ID,
 				AccountName:        account.Name,
@@ -675,6 +677,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		if err != nil {
 			failureResult := &OpenAIForwardResult{
 				RequestID:        resp.Header.Get("x-request-id"),
+				UpstreamHeaders:  resp.Header,
 				Usage:            streamUsage,
 				Model:            requestModel,
 				UpstreamModel:    upstreamModel,
@@ -703,6 +706,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		firstTokenMs = ttft
 		return &OpenAIForwardResult{
 			RequestID:        resp.Header.Get("x-request-id"),
+			UpstreamHeaders:  resp.Header,
 			Usage:            usage,
 			Model:            requestModel,
 			UpstreamModel:    upstreamModel,
@@ -729,6 +733,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		imageDelivered = nonStreamDelivered
 		return &OpenAIForwardResult{
 			RequestID:        resp.Header.Get("x-request-id"),
+			UpstreamHeaders:  resp.Header,
 			Usage:            usage,
 			Model:            requestModel,
 			UpstreamModel:    upstreamModel,
@@ -901,6 +906,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(ctx contex
 	if err != nil {
 		return OpenAIUsage{}, 0, nil, false, err
 	}
+	body = s.backfillOpenAIImagesB64JSON(ctx, account, parsed, body)
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := "application/json"
 	if s.cfg != nil && !s.cfg.Security.ResponseHeaders.Enabled {
@@ -1291,7 +1297,17 @@ func (s *OpenAIGatewayService) downloadOpenAIImageURLToDataURL(ctx context.Conte
 	if s == nil || s.httpUpstream == nil {
 		return "", fmt.Errorf("image url response requires upstream downloader")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	// 本地强制内联转换同样使用图片下载专属公网防护，不改变业务上游的 HTTP/私网开关。
+	downloadURL, err := s.validateOutboundURL(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid image url: %w", err)
+	}
+	if err := rejectPrivateImageHost(downloadURL); err != nil {
+		return "", err
+	}
+	ctx, cancel := context.WithTimeout(WithHTTPUpstreamPublicHostsOnly(ctx), openAIImageURLDownloadTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("build image download request: %w", err)
 	}

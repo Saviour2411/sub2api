@@ -319,6 +319,9 @@ func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricin
 		}
 		resolved.BasePricing.FastMultiplier = chPricing.FastMultiplier
 		resolved.BasePricing.FlexMultiplier = chPricing.FlexMultiplier
+		if chPricing.MaxReasoningEffortMultiplier != nil {
+			resolved.BasePricing.MaxReasoningEffortMultiplier = chPricing.MaxReasoningEffortMultiplier
+		}
 		// 渠道定价存在时，图片输出价显式覆盖；未配置即按 0 处理。
 		if chPricing.ImageOutputPrice != nil {
 			resolved.BasePricing.ImageOutputPricePerToken = *chPricing.ImageOutputPrice

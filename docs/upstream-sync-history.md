@@ -2349,3 +2349,329 @@
 - 未执行真实浏览器端到端交互；前端与 Canvas 由组件测试、类型检查和生产构建覆盖。
 - 未读取 `.env`、GitHub Token、密码、Cookie 或 SSH 私钥；未执行 push、PR、部署、远程服务器访问、容器重启、生产挂载核验或生产数据操作。
 - 生产服务器状态、bind mount 实际挂载、实例性能参数和健康检查均未验证；本次仅验证仓库内静态 Compose 约束。
+
+## 2026-09-05 同步至 ab99d56e9
+
+### 固定范围与批准边界
+
+- 开始时间：2026-09-05T19:02:49+08:00；状态：本地完整合并，验证及代码提交在本节末尾记录。
+- 用户已批准集中方案，只授权本地备份、合并、兼容调整、测试、提交和最终 fast-forward；未授权 push、PR、部署或服务器访问，本次均未执行。
+- 本地目标分支：`main`；`LOCAL_PRE_SYNC_SHA=6fed6e108dd7dcdcda2d03251e95a4dedd7aae9b`。
+- 上游：`https://github.com/Wei-Shaw/sub2api`；默认分支通过远端 HEAD 核验为 `main`，不是猜测。
+- `UPSTREAM_OLD_SHA=5097b31457e6dc9f49e5f5c9c72b925ce79543b3`。
+- `UPSTREAM_NEW_SHA=ab99d56e9626e6cd731592dae8553c9758a0efa2`。fetch 后已固定，本次不继续追踪新增上游提交。
+- `ACTUAL_MERGE_BASE=5097b31457e6dc9f49e5f5c9c72b925ce79543b3`。旧基线既是本地祖先也是目标上游祖先，实际 merge 范围与审批范围一致。
+- `LAST_FULLY_INTEGRATED_UPSTREAM_SHA=ab99d56e9626e6cd731592dae8553c9758a0efa2`。
+- 预检：目标分支工作区干净，与已核验的跟踪分支无落后/分叉，stash 0，无活动 submodule/LFS；历史 `REBASE_HEAD` 是无活动 rebase 目录的旧遗留，未擅自清理。
+- 范围：82 个上游提交（48 非 merge、34 merge）；上游差异297文件，其中138与本地定制重叠；无完整 patch-id 等价提交。
+- 集成策略：`git merge --no-ff --no-commit ab99d56e9626e6cd731592dae8553c9758a0efa2`，保留完整祖先关系，不重组上游历史。
+- 备份：`backup/pre-upstream-sync-20260905-190009-6fed6e108`；同步：`sync/upstream-20260905-ab99d56e9`。
+- 本地版本继续 `0.1.228`；上游 `0.2.1` 版本提交记作覆盖，不记作跳过。
+
+### 上游提交逐项处置
+
+82 项全部进入本地祖先历史：`Applied` 43 项，`Applied + Overridden` 39 项，`Already Applied / Skipped / Deferred` 均0，未解决 `Conflict` 0。`Applied + Overridden` 表示纳入提交历史、但按批准方案保留本地行为；不是选择性跳过。合并项的覆盖边界引用其功能父提交，不能据此认为 merge 一律为空。
+
+| 上游完整SHA | 处置 | 内容与原因 |
+| --- | --- | --- |
+| `ca9b4d73f2bc680c243ee7a6da6667bd6e83a710` | Applied + Overridden | 共享不可变 WS 回放体：保留首语义输出前驻留、逐轮 payload hash 和独立结算。 |
+| `0e08c399994fc1934bdae20123a044b8dd0ed995` | Applied + Overridden | 跨轮记录被拒绝的加密内容：合并清理与重建；不越过本地安全续聊和插件已发送禁止重放边界。 |
+| `9ad386569051b60fae616932eca876a7e4f78538` | Applied + Overridden | 负载感知调度补齐渠道限制：旧 upstream 来源仍归一为 requested；原请求模型缺价在负载、粘性、路由选择前拒绝，新增测试适配该本地约束。 |
+| `9be9c0b68c47eb433d886453deecf73c7ed55d68` | Applied + Overridden | 转发失败及时释放会话槽：接入释放修复，同时保留每轮账号槽位和失败停调度保护。 |
+| `8249ab37dbc20eff0abfebac58d63dd9a7fd62a7` | Applied + Overridden | Anthropic 推理等级及 max 定价：接受 Fable 5.1 max 默认3倍与渠道覆盖；使用实际转发等级，保留严格请求模型、渠道优先和本地长上下文规则。 |
+| `10c8f523c49663d6061eabc1cdce13a2a975063f` | Applied | 保留透传推理强度：接入透传修复；保持请求强度与实际转发强度分别记录。 |
+| `b6740c937f007a0e103d182bc6197c31e3c3a14f` | Applied + Overridden | 恢复不可用的 continuation：接入安全恢复；不放宽本地首输出、插件已发送或上下文不可重建时的禁止重放。 |
+| `fdc2ec17e6776bef109c5ea614af28218e56299b` | Applied + Overridden | 价格文件按内容哈希热重载：接入 fallback/override 变更检测，同时保留本地动态价优先和严格已知模型匹配。 |
+| `5e4958c889e0e8a31591a819eb046562807d8beb` | Applied + Overridden | 使用映射模型调度 OpenAI 账号：映射模型只服务账号选择，用户费用仍按请求模型，WS 不恢复旧计费模型回退函数。 |
+| `af90a9bd1fbcee62c5e8a87dbb3bd71ee4216f27` | Applied + Overridden | 兼容历史任务委派续聊：接入历史上下文修复，保留本地逐轮校验、结算和不可重放边界。 |
+| `62198286e93a6ecf3c157417c80d136b68bd84c4` | Applied | 区分网关准入拒绝：保留本地结果归因并纳入并发准入来源。 |
+| `e9e3c46cb76f564554357507102caf44cc79857d` | Applied | 记录上游错误发生时的代理快照：接入代理ID/名称归因，不记录认证头。 |
+| `4c1f920d58d6f8b0e2421a42b76f2661fafe4a61` | Applied | 补齐代理归因并限制排队事件体积：接入队列上限与上下文清理；已有统一错误 helper 的代理字段不重复添加。 |
+| `78fc7b171ec1a802a8d267d0dcc159539ddb0094` | Applied | 网络不可用时跳过可选真实 Token 对比：确定性测试照常执行；本次不提供真实凭据或进行真实接口比较。 |
+| `abc07bb0799c7c8cc15795898d4acec247c7a59c` | Applied | 代理归因测试的 errcheck 和格式修复：完整纳入静态检查修正。 |
+| `432ebc498cb395696d0be9762a33f70a63bf9375` | Applied | 合并#6179：保留完整父子历史；功能处置及覆盖边界同 `abc07bb0799c7c8cc15795898d4acec247c7a59c`。 |
+| `b1748c4ea99ce2120401a269142aa071e18a84da` | Applied | 更新赞助内容：只变更三份 README 赞助项，删除对应两张赞助图片。 |
+| `de8d756afae96f74d46c08f7633eb7e186c25176` | Applied + Overridden | 补查待支付支付宝订单：扩展通用补查，同时保留 EasyPay 独立30秒门槛、每轮10条/10秒预算及幂等审计；按提供商和支付类型划分查询集合。 |
+| `28dde982cb5526d873204a50289928357c10f64f` | Applied | 规范心跳初始化上下文：完整接入请求规范化和确定性回归；不建立任何实际自动化。 |
+| `de27905e88aa291acd2a292e2b439bce3de0f118` | Applied + Overridden | 按账号配置上游请求 ID 响应头并落库：默认关闭；新增写入与读取双向敏感头拒绝，保留WS无响应头时空值及本地列设置浮层。 |
+| `3e60c3b86b4849bdd283f92cb88b5a7c1a79d456` | Applied | 增加轻量管理员账号 DTO：接入轻量清单与详情回取，保持原账号功能字段可在编辑时取得。 |
+| `994192ef4f22baf546c032f557bfb6d14b1dcaf4` | Applied | 补全管理员账号列表类型：纳入前端类型和接口契约验证。 |
+| `db15e0090aace48e62f952c6a294f38048cf6288` | Applied + Overridden | 账号表格保持使用轻量列表：保留本地禁用虚拟化、分页、滚动和编辑详情回取。 |
+| `a3a6a85b73887e8f7961ae25c828d64854f25b9f` | Applied | 测试轻量列表嵌套凭据脱敏：完整保留嵌套脱敏断言。 |
+| `f5ae32e53f6d1b42f4da6c78ff06fbd3d870f156` | Applied | 规范 GLM-5.3 thinking effort：完整接入模型专属推理参数转换。 |
+| `3c8be00131e69d432246855d14ff014d9f7c10e2` | Applied + Overridden | 支持 GPT-6 Astra：精确增加 Astra/gpt-6 及已知兼容别名；未知请求别名仍须显式价格，保留本地费用与映射模型分离。 |
+| `126ac24c8cb4d98ff2a02f46f0008201cd419c10` | Applied + Overridden | 支持 ultrafast 服务层级：接入能力、UI 和标准化；保留本地 Free Fast 用户/账号双成本语义。 |
+| `aa556c372f85f0f5d41398d80d5972e53f708c16` | Applied | 活动子路由下允许折叠侧栏：完整接入并保留本地滚动、列设置浮层。 |
+| `6cf645f87cbe3b616fd4a977e472ee4253d8bc85` | Applied | 限定 OpenCode 会话头转发范围：仅匹配合法 OpenCode 目标；测试适配本地扩展签名及非流式无首 Token 守卫契约。 |
+| `c7538cd256c2f60ed909402213ef869acef2f8b2` | Applied | 为桥接路由广告搜索能力：完整接入搜索能力发现，原工具策略继续生效。 |
+| `51631d032474fe8001d0711b067ba9ac8e65a78f` | Applied | Chat fallback 保留发现的工具：完整接入发现工具的转换及回归断言。 |
+| `9ddf69698d41af3b05e4fe4560f5d9d41b81ebbe` | Applied | 保留零值系统指标：零值不再被误当作缺失。 |
+| `28f673e4cde06ed68fc56c1718b6ac6776bef311` | Applied | Gemini 尊重自定义原生模型清单：接入清单选择，不改本地 Gemini 计费与流式适配。 |
+| `1e28ef59423f121761fd0b7bb95e2fac03ebe823` | Applied + Overridden | OpenAI 分组固定账号 Codex 清单：默认关闭且仅用于只读清单；认证快照升v23并保留本地长上下文/Free Fast字段，不替代推理调度门禁。 |
+| `e9bad40b10a8fc8879f65ac38a31beeaa5a64523` | Applied | 可配置 Claude CLI 广告版本：接入可选版本覆盖，未设置时沿用既有默认。 |
+| `4aaf5cb73bfe87e6dc8502c7bab4023229d43c5e` | Applied | Astra Messages 启用提示缓存：接入模型能力判定与缓存键。 |
+| `7969751f1f0aaa262d7c0a2550d0f12c0fed8a35` | Applied | 推理映射支持 none 来源：完整接入前后端映射字段与范围校验。 |
+| `983a3db3afc0a7f08b51e4e3091b0c75801b6a6f` | Applied | 同步并保存 Astra Codex 能力：接入能力持久化；与本地创建预览、正式同步共存。 |
+| `a016bd4ba5dd1920c11d0c853f56c3f2f3c94e11` | Applied | 能力同步测试格式修复：完整纳入测试格式修正。 |
+| `d8b9a83f8cda66a821b3dcadf8ecbdd2c6c65b90` | Applied + Overridden | 合并#6492：保留完整父子历史；功能处置及覆盖边界同 `9ad386569051b60fae616932eca876a7e4f78538`。 |
+| `1cab4d8c22bb79a82970a467a2492e5ff0a763d9` | Applied + Overridden | 保证价格热重载快照一致：合并锁定与哈希一致性，保留本地覆盖和 nil guard。 |
+| `708b85a6a4b853f6db3c488c0c84701edf1e7929` | Applied + Overridden | 补齐上游请求 ID 传递：接入全部HTTP结果字段，并延续敏感头禁录与本地请求归因。 |
+| `78e1aaedb983a3e30d250e15b1093be3d3ca8018` | Applied + Overridden | 合并#6535：保留完整父子历史；功能处置及覆盖边界同 `1cab4d8c22bb79a82970a467a2492e5ff0a763d9`。 |
+| `91cf660377af627c1e48a2f20776982ae6dc3df1` | Applied + Overridden | 合并#6397：保留完整父子历史；功能处置及覆盖边界同 `0e08c399994fc1934bdae20123a044b8dd0ed995`。 |
+| `701f844755aa4b9dd1d79ae621820a9b3dcf469d` | Applied + Overridden | 合并#6555：保留完整父子历史；功能处置及覆盖边界同 `708b85a6a4b853f6db3c488c0c84701edf1e7929`。 |
+| `c4e6dcfd80abe36e98718c95b98f17e4ba2737df` | Applied + Overridden | 合并#6602：保留完整父子历史；功能处置及覆盖边界同 `1e28ef59423f121761fd0b7bb95e2fac03ebe823`。 |
+| `15278fe2f9f145eb1e45ad136901c0da83cd0be0` | Applied | 合并#6580：保留完整父子历史；功能处置及覆盖边界同 `aa556c372f85f0f5d41398d80d5972e53f708c16`。 |
+| `570bd084c23429077dec0bede49157f8e4191ea7` | Applied | 合并#6594：保留完整父子历史；功能处置及覆盖边界同 `9ddf69698d41af3b05e4fe4560f5d9d41b81ebbe`。 |
+| `2ad6e8fb75dfd2ad75744da1cac7827a96a0fffc` | Applied | 合并#6599：保留完整父子历史；功能处置及覆盖边界同 `28f673e4cde06ed68fc56c1718b6ac6776bef311`。 |
+| `eba6ea563991d62d6742d5c1ae1ae8514b708e35` | Applied | 合并#6590：保留完整父子历史；功能处置及覆盖边界同 `c7538cd256c2f60ed909402213ef869acef2f8b2`。 |
+| `d7fb9b5d35bf3f19cf68df9c329974ce99f7932a` | Applied | 合并#6593：保留完整父子历史；功能处置及覆盖边界同 `51631d032474fe8001d0711b067ba9ac8e65a78f`。 |
+| `85f431a072b391e704df6cc3a12f7db46b62d1ef` | Applied | 合并#6620：保留完整父子历史；功能处置及覆盖边界同 `4aaf5cb73bfe87e6dc8502c7bab4023229d43c5e`。 |
+| `8f1d6af3ed1aae36d2b95cfdbb827ba535787562` | Applied + Overridden | 合并#6531：保留完整父子历史；功能处置及覆盖边界同 `b6740c937f007a0e103d182bc6197c31e3c3a14f`。 |
+| `63dc24b5e8a736279d60c8270b763c3e733c9688` | Applied | 合并#6626：保留完整父子历史；功能处置及覆盖边界同 `7969751f1f0aaa262d7c0a2550d0f12c0fed8a35`。 |
+| `07bf8b92fda067516b7989412f09b75bb39bc113` | Applied + Overridden | 合并#6550：保留完整父子历史；功能处置及覆盖边界同 `de8d756afae96f74d46c08f7633eb7e186c25176`。 |
+| `3c53ba01a7747d7f40302bd15e1d92c908fddbad` | Applied + Overridden | 图片 URL 转 base64 可选回填：开关默认关闭；本地强制隐藏真实图片URL、生成 data URL/b64 的策略仍优先，关闭可选回填不关闭既有内联转换。 |
+| `2da31290a1bcbf68fbf49c8f13b4c3ddb3d29d1e` | Applied + Overridden | 各 WS 路径记录 Cyber 失败：合并跨尝试去重；本地失败终态继续返回错误及部分usage，保留风险门禁和原子逐轮阻断。 |
+| `3a8c9f16de2d06ad425daeddc9b6c405752f7631` | Applied + Overridden | 合并Astra分支与上游：保留完整父子历史；功能处置及覆盖边界同 `07bf8b92fda067516b7989412f09b75bb39bc113`。 |
+| `c227863d51468bee3a48f999515bd233bc2d41cf` | Applied + Overridden | 图片下载公网防护和内容嗅探：原回填器保留公网/字节嗅探；本地强制内联下载也增加公网、重定向与超时防护，不修改业务HTTP/私网 upstream开关。 |
+| `68f099707e2eb9d7c4e9e7e8176c15a588209345` | Applied | 合并#6553：保留完整父子历史；功能处置及覆盖边界同 `28dde982cb5526d873204a50289928357c10f64f`。 |
+| `7b271bbee985e8d62498947811e5886fd93cbc92` | Applied | 合并#6529：保留完整父子历史；功能处置及覆盖边界同 `10c8f523c49663d6061eabc1cdce13a2a975063f`。 |
+| `c6ff69fd12b4d684350e5834c4ab859d0a0afa99` | Applied | 合并#6542：保留完整父子历史；功能处置及覆盖边界同 `62198286e93a6ecf3c157417c80d136b68bd84c4`。 |
+| `620eb3fd006918772882dbe57e62702a2cdfd663` | Applied | 合并#6581：保留完整父子历史；功能处置及覆盖边界同 `6cf645f87cbe3b616fd4a977e472ee4253d8bc85`。 |
+| `40f4d450beda49d2cedee432a51b26f7bfbc4b07` | Applied | 合并#6507：保留完整父子历史；功能处置及覆盖边界同 `f5ae32e53f6d1b42f4da6c78ff06fbd3d870f156`。 |
+| `9517f12cdd34b42c499e96d0a97aef668d14edcc` | Applied + Overridden | 合并#6510：保留完整父子历史；功能处置及覆盖边界同 `9be9c0b68c47eb433d886453deecf73c7ed55d68`。 |
+| `9b4fcfb897455eebc17812a0af2d365c0c86fc3f` | Applied | 合并#6606：保留完整父子历史；功能处置及覆盖边界同 `e9bad40b10a8fc8879f65ac38a31beeaa5a64523`。 |
+| `0d9e7e1530855c93d4d00fc87406960d4a7fefd5` | Applied | 合并#6628：保留完整父子历史；功能处置及覆盖边界同 `a016bd4ba5dd1920c11d0c853f56c3f2f3c94e11`。 |
+| `d7f048a2656612059ae764dcf48f1571ff592e73` | Applied + Overridden | 保留已同步 Astra 能力及续聊：接入能力合并并保留严格模型规范化和安全续聊边界。 |
+| `cc52c93ad7d60c5364c66bbf8c2efacb253a29d7` | Applied + Overridden | 合并#6539：保留完整父子历史；功能处置及覆盖边界同 `af90a9bd1fbcee62c5e8a87dbb3bd71ee4216f27`。 |
+| `aafe93b335763e0586f4f30665751c279dc78c73` | Applied | 合并#6557：保留完整父子历史；功能处置及覆盖边界同 `a3a6a85b73887e8f7961ae25c828d64854f25b9f`。 |
+| `83094abf21c5f5752c3e770bc8c70704737a35ec` | Applied + Overridden | 合并#6536：保留完整父子历史；功能处置及覆盖边界同 `78fc7b171ec1a802a8d267d0dcc159539ddb0094`。 |
+| `2dc287f2e04210209bebe865ebe6f8b42f81f03c` | Applied + Overridden | 合并#6636：保留完整父子历史；功能处置及覆盖边界同 `2da31290a1bcbf68fbf49c8f13b4c3ddb3d29d1e`。 |
+| `c42d78e26c42153dac7641d51ddd6fb0977b0b14` | Applied + Overridden | 合并#6571：保留完整父子历史；功能处置及覆盖边界同 `126ac24c8cb4d98ff2a02f46f0008201cd419c10`。 |
+| `fb44e2dd091970dc899f59cbc568bed961035d3f` | Applied + Overridden | 合并#6514：保留完整父子历史；功能处置及覆盖边界同 `8249ab37dbc20eff0abfebac58d63dd9a7fd62a7`。 |
+| `dee35a841deb8853d67a914c56b50de48fd7143b` | Applied + Overridden | 合并并调和Astra能力：该merge含额外16文件调整，已纳入能力、缓存与续聊审查，不当作空合并。 |
+| `62cd63bfdab33d4bff289be8fe5bfc98eda23294` | Applied | 模型列表不可用时保留已有能力：完整纳入已同步能力保留及部分成功提示。 |
+| `d2f87c612e1820f6d4900a71fda1248c5b3544ed` | Applied + Overridden | 合并#6638：保留完整父子历史；功能处置及覆盖边界同 `c227863d51468bee3a48f999515bd233bc2d41cf`。 |
+| `994ca26e9270ef5bb631fc6b2dd5f4bfbd5f9e06` | Applied + Overridden | Claude billing 指纹与最终 UA 一致：强制模拟后的最终出站 UA 决定 billing 版本，保留本地 Unicode 字符索引覆盖。 |
+| `2e1c7c00a686fbc446f94634522e31724ac23dc5` | Applied | 校验 Claude 测试请求体关闭错误：保留错误检查及本地新增断言。 |
+| `ed7c8f2208f478907782d2ad646463941d455379` | Applied | 合并#6572：保留完整父子历史；功能处置及覆盖边界同 `62cd63bfdab33d4bff289be8fe5bfc98eda23294`。 |
+| `578785ee7fb35030b094b69624efe25670a36f5f` | Applied | 合并#6640：保留完整父子历史；功能处置及覆盖边界同 `2e1c7c00a686fbc446f94634522e31724ac23dc5`。 |
+| `ab99d56e9626e6cd731592dae8553c9758a0efa2` | Applied + Overridden | 上游版本升级到0.2.1：本地版本按批准决定继续0.1.228，不覆盖本地发布约束。 |
+
+### 文本冲突与本地兼容处理
+
+共25文件、43个文本冲突块，按审批逐块组合，未整文件采用 ours/theirs。以下数量是实际冲突块数，自动合并文件另有语义审查和测试适配。
+
+| 文件 | 冲突块 |
+| --- | ---: |
+| `backend/cmd/server/VERSION` | 1 |
+| `backend/internal/service/account_stats_pricing.go` | 2 |
+| `backend/internal/service/api_key_auth_cache_impl.go` | 1 |
+| `backend/internal/service/api_key_auth_cache_profit_test.go` | 1 |
+| `backend/internal/service/billing_service.go` | 2 |
+| `backend/internal/service/model_pricing_resolver.go` | 1 |
+| `backend/internal/service/gateway_usage_billing.go` | 1 |
+| `backend/internal/service/pricing_service.go` | 2 |
+| `backend/internal/service/pricing_service_test.go` | 1 |
+| `backend/internal/service/gateway_billing_header_test.go` | 1 |
+| `backend/internal/repository/http_upstream.go` | 2 |
+| `backend/internal/service/gateway_count_tokens.go` | 1 |
+| `backend/internal/service/gateway_upstream_request.go` | 1 |
+| `backend/internal/service/openai_embeddings.go` | 1 |
+| `backend/internal/service/openai_gateway_grok.go` | 1 |
+| `backend/internal/service/openai_images.go` | 4 |
+| `backend/internal/service/openai_images_responses.go` | 2 |
+| `backend/internal/service/openai_model_alias.go` | 1 |
+| `backend/internal/service/openai_ws_http_bridge.go` | 1 |
+| `backend/internal/service/payment_order_expiry_service.go` | 1 |
+| `backend/internal/service/payment_order_lifecycle.go` | 1 |
+| `frontend/src/components/account/CreateAccountModal.vue` | 8 |
+| `frontend/src/components/account/EditAccountModal.vue` | 1 |
+| `backend/internal/handler/openai_gateway_handler_test.go` | 1 |
+| `backend/internal/handler/openai_gateway_handler.go` | 4 |
+
+1. **计费与映射**：保留严格请求模型、分组/渠道价优先、未知模型缺价拒绝、Free Fast 双成本、Grok/Gemini/GPT长上下文特例及nil保护。映射模型只参与调度；旧渠道计费来源仍归一为 requested，负载/粘性/模型路由不构成价格清单旁路。接入实际推理等级和 Fable 5.1 max 默认3倍及渠道覆盖。
+2. **Astra/能力/认证**：接入 Astra、ultrafast、none来源与固定账号清单；补齐本地精确定价规范化中的 Astra/gpt-6，拒绝未知后缀和自定义别名隐式借价。固定清单默认关闭、仅只读检查组成员/Active/Schedulable/有效期，忽略限流/临时冷却；真实推理保护不变。认证快照 v23 保留新旧全部字段。
+3. **WS与HTTP**：保留每轮模型映射/hash/usage/槽位释放及停调度阻断，接入共享不可变回放体和加密内容恢复。HTTP client receiver化仍启动本地首Token尝试；插件 RequestSent=true 后不可重放。Cyber 逻辑轮次采用原子双状态去重；失败终态返回错误并保留部分usage，不能视为成功。
+4. **图片**：新回填选项默认关闭；本地原有强制内联 data URL/b64、隐藏真实上游URL的策略优先，不因关闭新开关而停用。原回填器保留字节嗅探、公网及大小限制；原强制内联下载也加图片专属公网/重定向与60秒超时防护，但不改业务 HTTP/私网 upstream开关。原实际交付、客户端断开及部分结果结算不回退。
+5. **请求标识与隐私**：写配置和读取兜底均拒绝 Authorization、Proxy-Authorization、Cookie、Set-Cookie、X-API-Key、Api-Key、X-Auth-Token、X-Access-Token。无配置不采集；WS无响应头不伪造；上游ID和请求ID列默认隐藏。
+6. **支付**：通用补查扩展支付宝；EasyPay支付宝由独立路径处理，保持30秒门槛、每轮10条/10秒预算和幂等履约；EasyPay微信保留原通用路径，查询集合无重复。
+7. **账号和UI**：新账号请求ID头/图片回填与本地失败策略/图片尺寸同时保存；轻量列表和详情回取不恢复虚拟化，不覆盖滚动/分页/Teleport浮层。成功同步提示保留数量；测试显式卸载浮层，避免跨用例误点击。
+8. **Claude与OpenCode**：Claude billing使用最终出站UA且保留Unicode字符索引断言；OpenCode新测试适配扩展方法返回值/模型参数，非流式仍无首Token守卫，不关闭任何生产检查。
+9. **迁移/生成/版本**：四份新增上游迁移按完整文件名与本地232/233等同数字前缀共存；两个234文件不重命名，不改历史迁移。Ent/Wire生成一致性与版本覆盖分别核验。赞助素材两处删除属已审查上游变化，不是误删本地功能。
+
+### 二开台账与保留项
+
+同一代码提交更新 `docs/custom-development-history.md` 中16项受影响能力并追加变更记录；仍为53项、9域，无新增/停用/删除编号。按用户串行扣费、5秒usage task超时、全部生产性能参数、bind mount、回环暴露和两份活动Compose一致性继续保留；生产文件本次无修改，未读取真实实例配置或执行生产核验。纯上游能力没有单独新增二开编号。
+
+### 验证记录
+
+最终同环境验证完成时间：2026-09-05T20:05:49+08:00。以下均是本地结果，不代表生产验收。
+
+- 后端默认/`unit`全包测试与全包build均退出0；golangci-lint **v2.13.0（Go1.27构建）**退出0，`0 issues`。
+- 前端：同步前271文件/1962用例，后274文件/1994用例，完整Vitest均通过；lint/typecheck/build均退出0。Canvas前后均8文件/34用例，format/typecheck/test/build全部0；最终按Vue先构建、Canvas后构建保留产物顺序。
+- Ent前后各320生成文件、0差异；Wire生成前后均0且正式生成文件未变。integration标签用`-exec`空执行器**只编译**，退出0不是实际执行通过。
+- 三个部署静态脚本前后均0。Caddy脚本实际在`deploy/test-caddyfile-cache.sh`，早期runner误查`deploy/tests`导致同步前没跑；本次补跑退出0，不伪称同步前也已验证。
+- 两份生产Compose字节一致且与同步前完全相同，SHA256：`608C0978CA699089D9BFB13B56DE00FAADC97E65C7EFC085B073AE7649EAEBE6`；`go.mod/go.sum`、前端/Canvas锁文件和正式Wire生成文件未混入工具变化。
+- 工作树冲突标记0，高置信度秘密扫描命中0，意外删除0；只有已批准的两张赞助图被删。`git diff --check HEAD`和静态差异检查退出0。未跟踪文件0，临时目录均被既有规则忽略。
+
+| 验证项 | 同步前最终退出码 | 同步后最终退出码 | 最后命令ID |
+| --- | ---: | ---: | --- |
+| backend/build | 0 | 0 | V21 |
+| backend/test-default | 0 | 0 | V01 |
+| frontend/lint | 0 | 0 | V14 |
+| backend/test-unit | 0 | 0 | V18 |
+| frontend/typecheck | 0 | 0 | V15 |
+| frontend/test | 0 | 0 | V19 |
+| frontend/build | 0 | 0 | V17 |
+| canvas/format | 0 | 0 | V06 |
+| canvas/typecheck | 0 | 0 | V07 |
+| canvas/test | 0 | 0 | V26 |
+| canvas/build | 0 | 0 | V09 |
+| extra/golangci-lint | 0 | 0 | V20 |
+| extra/compile-wrapper | 0 | 0 | V23 |
+| extra/integration-compile-only | 0 | 0 | V24 |
+| extra/wire-generate | 0 | 0 | V25 |
+| extra/ent-generate | 0 | 0 | V27 |
+| static/docker-compose-security-test | 0 | 0 | V10 |
+| static/docker-compose-gateway-env-test | 0 | 0 | V11 |
+| static/docker-runtime-resources-test | 0 | 0 | V12 |
+| static/test-caddyfile-cache | 未执行（补充检查） | 0 | V28 |
+| static/diff-check | 0 | 0 | V13 |
+| backend/compat-regressions | 未执行（补充检查） | 0 | V30 |
+
+**中间失败并未隐藏：** 初始pnpm11不兼容旧overrides及依赖自动安装，改用校验过的pnpm9.15.9和冻结锁文件安装；Vitest固定`--maxWorkers=4 --minWorkers=1`，不降低断言或关闭检查。Ent首次因空/过深目标无法推断Go包而失败，使用隔离包占位与tools.mod/tools.sum后通过；正式go.sum曾出现8条工具校验和，已确认原因并在merge前只恢复该文件，未混入提交。后端新OpenCode测试签名、非流式nil守卫、Astra严格规范化/自定义别名显式价格、图片内联结果、Cyber失败部分usage、渠道旧upstream来源预期，以及前端计数提示/Teleport用例串扰均已按保留本地业务契约修复；针对性重跑及最终完整回归均0。
+
+<details>
+<summary>全部84次实际验证调用、命令和退出码</summary>
+
+路径宏仅用于缩短记录：`<R>=D:/project/sub2api`；`<V>=D:/project/sub2api/output/upstream-sync-20260905-ab99d56e9`；`<G>=C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin`。命令ID对应同一工作目录、可执行文件和完整参数；未用新命令覆盖旧失败。完整日志、每次起止时间和命令JSON留在验证目录。所有测试清除真实业务/API/数据库环境变量，仅使用mock/隔离夹具；GOMAXPROCS=8、GOFLAGS=-p=4、GOMEMLIMIT=6GiB，TMP和缓存均位于仓库。
+
+| ID | 工作目录 | 实际程序及参数 |
+| --- | --- | --- |
+| V01 | `<R>/backend` | `<G>/go.exe test ./... -count=1 -timeout=20m` |
+| V02 | `<R>/frontend` | `C:/Users/xk/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback/pnpm.cmd run lint:check` |
+| V03 | `<R>/frontend` | `C:/Users/xk/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback/pnpm.cmd run typecheck` |
+| V04 | `<R>/frontend` | `C:/Users/xk/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback/pnpm.cmd run test:run --maxWorkers=4` |
+| V05 | `<R>/frontend` | `C:/Users/xk/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback/pnpm.cmd run build` |
+| V06 | `<R>/canvas` | `C:/Program Files/nodejs/node.exe node_modules/prettier/bin/prettier.cjs --check .` |
+| V07 | `<R>/canvas` | `C:/Program Files/nodejs/node.exe node_modules/typescript/bin/tsc --noEmit` |
+| V08 | `<R>/canvas` | `C:/Program Files/nodejs/node.exe node_modules/vitest/vitest.mjs run --maxWorkers=4` |
+| V09 | `<R>/canvas` | `C:/Program Files/nodejs/node.exe node_modules/vite/bin/vite.js build` |
+| V10 | `<R>` | `C:/Program Files/Git/bin/bash.exe <R>/deploy/tests/docker-compose-security-test.sh` |
+| V11 | `<R>` | `C:/Program Files/Git/bin/bash.exe <R>/deploy/tests/docker-compose-gateway-env-test.sh` |
+| V12 | `<R>` | `C:/Program Files/Git/bin/bash.exe <R>/deploy/tests/docker-runtime-resources-test.sh` |
+| V13 | `<R>` | `git diff --check` |
+| V14 | `<R>/frontend` | `C:/Program Files/nodejs/node.exe <V>/pnpm-9.15.9/package/bin/pnpm.cjs run lint:check` |
+| V15 | `<R>/frontend` | `C:/Program Files/nodejs/node.exe <V>/pnpm-9.15.9/package/bin/pnpm.cjs run typecheck` |
+| V16 | `<R>/frontend` | `C:/Program Files/nodejs/node.exe <V>/pnpm-9.15.9/package/bin/pnpm.cjs run test:run --maxWorkers=4` |
+| V17 | `<R>/frontend` | `C:/Program Files/nodejs/node.exe <V>/pnpm-9.15.9/package/bin/pnpm.cjs run build` |
+| V18 | `<R>/backend` | `<G>/go.exe test -tags=unit ./... -count=1 -timeout=20m` |
+| V19 | `<R>/frontend` | `C:/Program Files/nodejs/node.exe <V>/pnpm-9.15.9/package/bin/pnpm.cjs run test:run --maxWorkers=4 --minWorkers=1` |
+| V20 | `<R>/backend` | `<V>/go-tools/bin/golangci-lint.exe run ./... --timeout=30m` |
+| V21 | `<R>/backend` | `<G>/go.exe build ./...` |
+| V22 | `<R>/backend` | `C:/Program Files/nodejs/node.exe <V>/check-ent.mjs before` |
+| V23 | `<R>/backend` | `<G>/go.exe build -o <V>/artifacts/compile-only.exe <V>/compile-only.go` |
+| V24 | `<R>/backend` | `<G>/go.exe test -tags=integration -exec <V>/artifacts/compile-only.exe ./... -count=1` |
+| V25 | `<R>/backend` | `<G>/go.exe generate ./cmd/server` |
+| V26 | `<R>/canvas` | `C:/Program Files/nodejs/node.exe node_modules/vitest/vitest.mjs run --maxWorkers=4 --minWorkers=1` |
+| V27 | `<R>/backend` | `C:/Program Files/nodejs/node.exe <V>/check-ent.mjs after` |
+| V28 | `<R>` | `C:/Program Files/Git/bin/bash.exe <R>/deploy/test-caddyfile-cache.sh` |
+| V29 | `<R>/backend` | `<G>/go.exe test -tags=unit ./internal/service -run Test(AstraForward&#124;GPT6AstraDedicated&#124;NormalizeKnownOpenAI&#124;OpenAIGatewayServiceForwardImages&#124;OpenCodeSession&#124;ForwardOpenAIWSV2_MarksCyberPolicy&#124;SelectAccountWithLoadAwareness_.*Restriction&#124;本地图片) -count=1 -timeout=10m` |
+| V30 | `<R>/backend` | `<G>/go.exe test -tags=unit ./internal/service -run Test(AstraForward&#124;GPT6AstraDedicated&#124;NormalizeKnownOpenAI&#124;OpenAIGatewayServiceForwardImages&#124;OpenCodeSession&#124;ForwardOpenAIWSV2_MarksCyberPolicy&#124;SelectAccountWithLoadAwareness_.*(Restriction&#124;LegacyUpstream)&#124;本地图片) -count=1 -timeout=10m` |
+
+| 阶段/项目 | 开始时间（2026-09-05 +08:00） | 命令 | 退出码 |
+| --- | --- | --- | ---: |
+| 同步前/backend/test-default | 19:03:20 | V01 | 0 |
+| 同步前/frontend/lint | 19:03:20 | V02 | 1 |
+| 同步前/frontend/typecheck | 19:04:12 | V03 | 1 |
+| 同步前/frontend/test | 19:04:13 | V04 | 1 |
+| 同步前/frontend/build | 19:04:15 | V05 | 1 |
+| 同步前/canvas/format | 19:04:18 | V06 | 0 |
+| 同步前/canvas/typecheck | 19:04:30 | V07 | 0 |
+| 同步前/canvas/test | 19:04:47 | V08 | 0 |
+| 同步前/canvas/build | 19:05:32 | V09 | 0 |
+| 同步前/static/docker-compose-security-test | 19:06:39 | V10 | 0 |
+| 同步前/static/docker-compose-gateway-env-test | 19:06:40 | V11 | 0 |
+| 同步前/static/docker-runtime-resources-test | 19:07:10 | V12 | 0 |
+| 同步前/static/diff-check | 19:07:11 | V13 | 0 |
+| 同步前/frontend/lint | 19:08:08 | V14 | 0 |
+| 同步前/frontend/typecheck | 19:09:16 | V15 | 0 |
+| 同步前/frontend/test | 19:09:44 | V16 | 1 |
+| 同步前/frontend/build | 19:09:54 | V17 | 0 |
+| 同步前/backend/test-unit | 19:09:59 | V18 | 0 |
+| 同步前/canvas/format | 19:11:11 | V06 | 0 |
+| 同步前/canvas/typecheck | 19:11:16 | V07 | 0 |
+| 同步前/canvas/test | 19:11:21 | V08 | 0 |
+| 同步前/canvas/build | 19:11:25 | V09 | 0 |
+| 同步前/frontend/test | 19:13:32 | V19 | 0 |
+| 同步前/extra/golangci-lint | 19:13:56 | V20 | 0 |
+| 同步前/backend/build | 19:14:38 | V21 | 0 |
+| 同步前/extra/ent-generate | 19:15:15 | V22 | 1 |
+| 同步前/extra/compile-wrapper | 19:16:49 | V23 | 0 |
+| 同步前/extra/integration-compile-only | 19:16:54 | V24 | 0 |
+| 同步前/extra/wire-generate | 19:18:39 | V25 | 0 |
+| 同步前/extra/ent-generate | 19:20:00 | V22 | 0 |
+| 同步后/backend/build | 19:27:44 | V21 | 0 |
+| 同步后/backend/test-default | 19:31:06 | V01 | 1 |
+| 同步后/frontend/lint | 19:31:07 | V14 | 0 |
+| 同步后/backend/test-unit | 19:32:10 | V18 | 1 |
+| 同步后/frontend/typecheck | 19:32:32 | V15 | 0 |
+| 同步后/frontend/test | 19:33:21 | V19 | 1 |
+| 同步后/backend/build | 19:33:37 | V21 | 0 |
+| 同步后/backend/test-default | 19:35:00 | V01 | 1 |
+| 同步后/frontend/build | 19:35:47 | V17 | 0 |
+| 同步后/canvas/format | 19:37:05 | V06 | 0 |
+| 同步后/canvas/typecheck | 19:37:09 | V07 | 0 |
+| 同步后/canvas/test | 19:37:16 | V26 | 0 |
+| 同步后/canvas/build | 19:37:39 | V09 | 0 |
+| 同步后/backend/test-unit | 19:38:20 | V18 | 1 |
+| 同步后/backend/build | 19:42:30 | V21 | 0 |
+| 同步后/frontend/lint | 19:42:40 | V14 | 0 |
+| 同步后/extra/golangci-lint | 19:42:40 | V20 | 0 |
+| 同步后/frontend/typecheck | 19:43:07 | V15 | 0 |
+| 同步后/frontend/test | 19:43:39 | V19 | 1 |
+| 同步后/extra/compile-wrapper | 19:44:50 | V23 | 0 |
+| 同步后/extra/integration-compile-only | 19:44:50 | V24 | 0 |
+| 同步后/backend/build | 19:45:16 | V21 | 0 |
+| 同步后/frontend/build | 19:45:27 | V17 | 0 |
+| 同步后/extra/wire-generate | 19:45:42 | V25 | 0 |
+| 同步后/extra/ent-generate | 19:45:54 | V27 | 0 |
+| 同步后/static/docker-compose-security-test | 19:46:04 | V10 | 0 |
+| 同步后/backend/test-default | 19:46:05 | V01 | 1 |
+| 同步后/static/docker-compose-gateway-env-test | 19:46:05 | V11 | 0 |
+| 同步后/static/docker-runtime-resources-test | 19:46:34 | V12 | 0 |
+| 同步后/static/test-caddyfile-cache | 19:46:34 | V28 | 0 |
+| 同步后/static/diff-check | 19:46:35 | V13 | 0 |
+| 同步后/backend/compat-regressions | 19:52:57 | V29 | 1 |
+| 同步后/frontend/lint | 19:52:57 | V14 | 0 |
+| 同步后/frontend/typecheck | 19:53:27 | V15 | 0 |
+| 同步后/frontend/test | 19:53:52 | V19 | 0 |
+| 同步后/frontend/build | 19:55:24 | V17 | 0 |
+| 同步后/backend/test-default | 19:55:41 | V01 | 0 |
+| 同步后/canvas/format | 19:56:28 | V06 | 0 |
+| 同步后/canvas/typecheck | 19:56:31 | V07 | 0 |
+| 同步后/canvas/test | 19:56:35 | V26 | 0 |
+| 同步后/canvas/build | 19:56:39 | V09 | 0 |
+| 同步后/backend/test-unit | 19:58:57 | V18 | 0 |
+| 同步后/backend/compat-regressions | 20:02:18 | V30 | 0 |
+| 同步后/backend/build | 20:03:06 | V21 | 0 |
+| 同步后/extra/golangci-lint | 20:03:14 | V20 | 0 |
+| 同步后/extra/compile-wrapper | 20:04:08 | V23 | 0 |
+| 同步后/extra/integration-compile-only | 20:04:09 | V24 | 0 |
+| 同步后/extra/wire-generate | 20:04:31 | V25 | 0 |
+| 同步后/extra/ent-generate | 20:04:41 | V27 | 0 |
+| 同步后/static/docker-compose-security-test | 20:05:31 | V10 | 0 |
+| 同步后/static/docker-compose-gateway-env-test | 20:05:31 | V11 | 0 |
+| 同步后/static/docker-runtime-resources-test | 20:05:49 | V12 | 0 |
+| 同步后/static/test-caddyfile-cache | 20:05:49 | V28 | 0 |
+| 同步后/static/diff-check | 20:05:49 | V13 | 0 |
+
+</details>
+
+### 未验证项与残余风险
+
+- 本机没有可用 Docker/Podman，integration标签只有编译，未真实运行Testcontainers、PostgreSQL/Redis、SQL迁移、Compose或服务启动/健康检查；不能将编译结果称为集成通过。
+- 未执行真实模型/Token对比、图片下载、支付/回调、数据库写入、真实插件、浏览器E2E、race和govulncheck。没有访问两台远程服务器，没有push、PR或部署。
+- 本地模拟和静态检查通过不代表所有生产组合安全；新字段和四份迁移在未来另行获批的隔离部署前仍须验证。固定账号清单忽略临时冷却是只读清单策略，不应据此放宽推理调度。
+- 本次只更新到固定SHA，不宣称任务完成时互联网上已无更晚提交。
+- 临时工具、缓存、完整命令日志和隔离生成文件留在仓库忽略目录 `output/upstream-sync-20260905-ab99d56e9` 与 `backend/.gocache/upstream-sync-ab99d56e9`，不提交、不擅自删除其他本地资料。

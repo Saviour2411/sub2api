@@ -32,14 +32,15 @@ func (s *BillingService) LegacyLongContextRule(platform string) *LegacyLongConte
 
 // TokenCostRequest 通用网关 token 计费请求。
 type TokenCostRequest struct {
-	Ctx            context.Context
-	Model          string
-	Group          *Group
-	Tokens         UsageTokens
-	RateMultiplier float64
-	PricingAt      time.Time
-	ServiceTier    string
-	Resolver       *ModelPricingResolver
+	Ctx             context.Context
+	Model           string
+	Group           *Group
+	Tokens          UsageTokens
+	RateMultiplier  float64
+	PricingAt       time.Time
+	ServiceTier     string
+	ReasoningEffort string
+	Resolver        *ModelPricingResolver
 	// Resolved 为调用方预先解析的定价（Resolver.Resolve 的结果），nil 表示未解析。
 	Resolved *ResolvedPricing
 	// LegacyLongContext 由 Gemini 原生入口显式携带；nil 表示使用目录整单阶梯。
@@ -74,6 +75,9 @@ func (s *BillingService) CalculateTokenCostForRequest(req TokenCostRequest) (*Co
 		return s.calculateCostWithMarginalLongContext(req, req.LegacyLongContext)
 	}
 	if req.Resolver != nil && req.Group != nil {
+		return s.CalculateCostUnified(s.tokenCostInput(req, resolved))
+	}
+	if req.ReasoningEffort != "" {
 		return s.CalculateCostUnified(s.tokenCostInput(req, resolved))
 	}
 	return s.CalculateCost(req.Model, req.Tokens, req.RateMultiplier)
@@ -156,16 +160,17 @@ func (s *BillingService) calculateTokenCostWithoutLongContext(req TokenCostReque
 
 func (s *BillingService) tokenCostInput(req TokenCostRequest, resolved *ResolvedPricing) CostInput {
 	input := CostInput{
-		Ctx:            req.Ctx,
-		Model:          req.Model,
-		Group:          req.Group,
-		Tokens:         req.Tokens,
-		RequestCount:   1,
-		RateMultiplier: req.RateMultiplier,
-		PricingAt:      req.PricingAt,
-		ServiceTier:    req.ServiceTier,
-		Resolver:       req.Resolver,
-		Resolved:       resolved,
+		Ctx:             req.Ctx,
+		Model:           req.Model,
+		Group:           req.Group,
+		Tokens:          req.Tokens,
+		RequestCount:    1,
+		RateMultiplier:  req.RateMultiplier,
+		PricingAt:       req.PricingAt,
+		ServiceTier:     req.ServiceTier,
+		ReasoningEffort: req.ReasoningEffort,
+		Resolver:        req.Resolver,
+		Resolved:        resolved,
 	}
 	if req.Group != nil {
 		gid := req.Group.ID

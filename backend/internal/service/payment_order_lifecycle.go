@@ -28,7 +28,7 @@ const (
 	checkPaidResultAlreadyPaid = "already_paid"
 	checkPaidResultCancelled   = "cancelled"
 
-	pendingWxpayReconcileLimit        = 20
+	pendingPaymentReconcileLimit      = 20
 	pendingEasyPayReconcileLimit      = 10
 	pendingEasyPayReconcileMinimumAge = 30 * time.Second
 )
@@ -372,26 +372,37 @@ func (s *PaymentService) VerifyOrderByOutTradeNo(ctx context.Context, outTradeNo
 	return o, nil
 }
 
-// ReconcilePendingWxpayOrders actively checks recent pending WeChat orders so
-// missed provider notifications do not wait until order expiry to fulfill.
-func (s *PaymentService) ReconcilePendingWxpayOrders(ctx context.Context) (int, error) {
+// ReconcilePendingPaymentOrders actively checks recent pending Alipay and WeChat
+// orders so missed provider notifications do not wait until order expiry to fulfill.
+func (s *PaymentService) ReconcilePendingPaymentOrders(ctx context.Context) (int, error) {
 	now := time.Now()
 	orders, err := s.entClient.PaymentOrder.Query().
 		Where(
 			paymentorder.StatusEQ(OrderStatusPending),
 			paymentorder.ExpiresAtGT(now),
+			// EasyPay 非微信订单由独立补查负责，保留其等待门槛、数量和超时预算。
+			paymentorder.Or(
+				paymentorder.ProviderKeyIsNil(),
+				paymentorder.ProviderKeyNEQ(payment.TypeEasyPay),
+				paymentorder.PaymentTypeEQ(payment.TypeWxpay),
+				paymentorder.PaymentTypeHasPrefix(payment.TypeWxpay+"_"),
+			),
 			paymentorder.Or(
 				paymentorder.PaymentTypeEQ(payment.TypeWxpay),
 				paymentorder.PaymentTypeHasPrefix(payment.TypeWxpay+"_"),
 				paymentorder.ProviderKeyEQ(payment.TypeWxpay),
 				paymentorder.ProviderKeyHasPrefix(payment.TypeWxpay+"_"),
+				paymentorder.PaymentTypeEQ(payment.TypeAlipay),
+				paymentorder.PaymentTypeHasPrefix(payment.TypeAlipay+"_"),
+				paymentorder.ProviderKeyEQ(payment.TypeAlipay),
+				paymentorder.ProviderKeyHasPrefix(payment.TypeAlipay+"_"),
 			),
 		).
 		Order(dbent.Asc(paymentorder.FieldCreatedAt)).
-		Limit(pendingWxpayReconcileLimit).
+		Limit(pendingPaymentReconcileLimit).
 		All(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("query pending wxpay orders: %w", err)
+		return 0, fmt.Errorf("query pending payment orders: %w", err)
 	}
 
 	recovered := 0

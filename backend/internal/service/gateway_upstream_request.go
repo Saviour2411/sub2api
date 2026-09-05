@@ -88,12 +88,9 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		}
 	}
 
-	// 模拟分支最终强制使用当前 Claude Code UA；billing 必须同步同一版本，
-	// 不能复用入站客户端或账号缓存的旧指纹。
-	if mimicClaudeCode {
-		body = syncBillingHeaderVersion(body, claude.DefaultHeaders["User-Agent"])
-	} else if fingerprint != nil {
-		body = syncBillingHeaderVersion(body, fingerprint.UserAgent)
+	// 即使没有缓存指纹，强制模拟也可能覆盖 User-Agent，billing 必须使用最终出站版本。
+	if billingUA := effectiveBillingUserAgent(tokenType, mimicClaudeCode, fingerprint); billingUA != "" {
+		body = syncBillingHeaderVersion(body, billingUA)
 	}
 
 	// === 计算最终 anthropic-beta header（先于 body sanitize 与 CCH 签名）===

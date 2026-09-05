@@ -6,6 +6,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestNormalizeKnownOpenAICodexModelGPT6Astra(t *testing.T) {
+	for _, model := range []string{"gpt-6-astra", "openai/gpt-6-astra", "gpt-6", "openai/gpt-6"} {
+		require.Equal(t, "gpt-6-astra", normalizeKnownOpenAICodexModel(model))
+	}
+}
+
 func TestNormalizeKnownOpenAICodexModel_BareGPT56RoutesToSol(t *testing.T) {
 	tests := map[string]string{
 		"gpt-5.6":               "gpt-5.6-sol",
@@ -49,25 +55,30 @@ func TestNormalizeKnownOpenAICodexModel_RejectsUnknownGPT5Variants(t *testing.T)
 
 func TestNormalizeKnownOpenAIPricingModel_OfficialFamilies(t *testing.T) {
 	tests := map[string]string{
-		"gpt-5.1-2025-11-13":      "gpt-5.1",
-		"gpt-5.1-chat-latest":     "gpt-5.1",
-		"gpt-5.2-chat-latest":     "gpt-5.2",
-		"gpt-5.2-codex":           "gpt-5.2",
-		"gpt-5.2-pro-2025-12-11":  "gpt-5.2-pro",
-		"gpt-5.3-chat-latest":     "gpt-5.3-codex",
-		"gpt-5.4-2026-03-05":      "gpt-5.4",
-		"gpt-5.4-mini-2026-03-17": "gpt-5.4-mini",
-		"gpt-5.4-nano-2026-03-17": "gpt-5.4-nano",
-		"gpt-5.4-pro-2026-03-05":  "gpt-5.4-pro",
-		"openai/gpt-5.4-pro":      "gpt-5.4-pro",
-		"gpt-5.6-terra-preview":   "gpt-5.6-terra",
+		"gpt-6-astra":                "gpt-6-astra",
+		"openai/gpt-6-astra":         "gpt-6-astra",
+		"gpt-6":                      "gpt-6-astra",
+		"openai/gpt-6":               "gpt-6-astra",
+		"gpt-6-astra-openai-compact": "gpt-6-astra",
+		"gpt-5.1-2025-11-13":         "gpt-5.1",
+		"gpt-5.1-chat-latest":        "gpt-5.1",
+		"gpt-5.2-chat-latest":        "gpt-5.2",
+		"gpt-5.2-codex":              "gpt-5.2",
+		"gpt-5.2-pro-2025-12-11":     "gpt-5.2-pro",
+		"gpt-5.3-chat-latest":        "gpt-5.3-codex",
+		"gpt-5.4-2026-03-05":         "gpt-5.4",
+		"gpt-5.4-mini-2026-03-17":    "gpt-5.4-mini",
+		"gpt-5.4-nano-2026-03-17":    "gpt-5.4-nano",
+		"gpt-5.4-pro-2026-03-05":     "gpt-5.4-pro",
+		"openai/gpt-5.4-pro":         "gpt-5.4-pro",
+		"gpt-5.6-terra-preview":      "gpt-5.6-terra",
 	}
 	for input, expected := range tests {
 		t.Run(input, func(t *testing.T) {
 			require.Equal(t, expected, normalizeKnownOpenAIPricingModel(input))
 		})
 	}
-	for _, input := range []string{"gpt-5.999", "gpt-5.4-custom", "gpt-5.2-pro-custom"} {
+	for _, input := range []string{"gpt-5.999", "gpt-5.4-custom", "gpt-5.2-pro-custom", "gpt-6-custom", "gpt-6-astra-custom", "x-gpt-6-astra", "astra-public"} {
 		t.Run("reject/"+input, func(t *testing.T) {
 			require.Empty(t, normalizeKnownOpenAIPricingModel(input))
 		})
