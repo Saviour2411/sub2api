@@ -281,7 +281,7 @@ func (s *ScheduledTestRunnerService) deferOrdinaryPlanDuringRecovery(ctx context
 		logger.LegacyPrintf("service.scheduled_test_runner", "读取普通测试计划的账号状态失败: plan=%d error=%v", plan.ID, err)
 		return true
 	}
-	if !isAutoManagedProbeNeeded(account, time.Now()) {
+	if !hasAutoManagedRecoveryState(account, time.Now()) {
 		return false
 	}
 	// 仅补齐缺失的系统计划；已有计划的启用状态和退避时间绝不能被普通 Cron 提前刷新。
@@ -446,6 +446,14 @@ func scheduledTestAutoManagedBackoffDuration(consecutiveFailures int, configured
 
 func isAutoManagedProbeNeeded(account *Account, now time.Time) bool {
 	if account == nil || account.IsManuallySchedulingPaused() {
+		return false
+	}
+	return hasAutoManagedRecoveryState(account, now)
+}
+
+// 人工暂停只阻止恢复任务启用，不能让故障中的普通计划重新发出探测。
+func hasAutoManagedRecoveryState(account *Account, now time.Time) bool {
+	if account == nil {
 		return false
 	}
 	if now.IsZero() {

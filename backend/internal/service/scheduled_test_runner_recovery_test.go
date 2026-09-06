@@ -135,6 +135,27 @@ func Test定时测活同账号互斥并复核旧到期快照(t *testing.T) {
 	require.Equal(t, int32(1), calls.Load())
 }
 
+func Test人工暂停的故障账号仍跳过普通定时测试(t *testing.T) {
+	ordinary := dueRecoveryPlan(1, false)
+	store := &recoveryPlanStore{plans: map[int64]*ScheduledTestPlan{1: ordinary}}
+	account := &Account{ID: 42, Status: StatusError, Extra: map[string]any{AccountManualSchedulingPauseKey: true}}
+	results := &firstTokenRecoveryResultRepoStub{}
+	runner := &ScheduledTestRunnerService{
+		planRepo: store, scheduledSvc: NewScheduledTestService(store, results),
+		accountRepo: &mockAccountRepoForGemini{accountsByID: map[int64]*Account{42: account}},
+		accountTestSvc: scheduledTesterFunc(func(context.Context, int64, string, ...string) (*ScheduledTestResult, error) {
+			t.Fatal("人工暂停不能让普通 Cron 绕过系统故障停调度")
+			return nil, nil
+		}),
+	}
+	runner.runDuePlan(context.Background(), ordinary)
+	require.Len(t, store.deferred, 1)
+	require.True(t, ordinary.Enabled)
+	require.Empty(t, results.results)
+	require.False(t, isAutoManagedProbeNeeded(account, time.Now()))
+	require.Equal(t, []bool{false}, store.ensuredEnabled)
+}
+
 func Test自动测活按配置递进退避且普通计划不能提前重排(t *testing.T) {
 	auto, ordinary := dueRecoveryPlan(1, true), dueRecoveryPlan(2, false)
 	store := &recoveryPlanStore{plans: map[int64]*ScheduledTestPlan{1: auto, 2: ordinary}}
