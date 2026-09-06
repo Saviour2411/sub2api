@@ -735,9 +735,11 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoningOnAccepted(
 			if needModelReplace && mappedModel != "" && strings.Contains(line, mappedModel) {
 				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
 			}
-			startsClientOutput := forceFlushFailedEvent || openAIStreamDataStartsClientOutput(data, eventType)
-			startsVisibleOutput := openAIStreamDataStartsVisibleOutput(data, eventType)
-			startsTTFTOutput := openAIStreamDataStartsTTFT(data, eventType, forceFlushFailedEvent, ttftMode)
+			strictFirstToken := isStrictFirstTokenRequest(c)
+			startsClientOutput := forceFlushFailedEvent || openAIStreamDataStartsClientOutput(data, eventType, strictFirstToken)
+			// 严格模式下，空白也不能通过可见输出或 TTFT 快速刷新旁路提交响应。
+			startsVisibleOutput := openAIStreamDataStartsVisibleOutput(data, eventType) && (!strictFirstToken || startsClientOutput)
+			startsTTFTOutput := openAIStreamDataStartsTTFT(data, eventType, forceFlushFailedEvent, ttftMode) && (!strictFirstToken || startsClientOutput)
 			if stageFirstOutput {
 				eventStartsClientOutput = eventStartsClientOutput || startsClientOutput
 				eventStartsTTFTOutput = eventStartsTTFTOutput || startsTTFTOutput

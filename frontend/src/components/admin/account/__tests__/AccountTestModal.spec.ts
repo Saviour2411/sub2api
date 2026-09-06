@@ -124,6 +124,33 @@ describe('AccountTestModal', () => {
     vi.restoreAllMocks()
   })
 
+  it.each([
+    ['openai', 'gpt-6-astra'],
+    ['anthropic', 'claude-opus-5'],
+    ['gemini', 'gemini-3.8-flash'],
+    ['antigravity', 'claude-opus-5'],
+    ['grok', 'grok-4.6'],
+    ['kimi', 'kimi-text'],
+    ['zhipu', 'glm-text'],
+    ['deepseek', 'deepseek-chat']
+  ])('%s 手动测试预选并提交新的文本默认模型', async (platform, model) => {
+    const isCN = ['kimi', 'zhipu', 'deepseek'].includes(platform)
+    const choices = [{ id: model, display_name: model }, { id: 'older-model', display_name: 'older-model' }]
+    getAvailableModels.mockResolvedValue(isCN ? choices : [...choices].reverse())
+    global.fetch = vi.fn().mockResolvedValue(createStreamResponse([
+      'data: {"type":"test_complete","success":true}\n'
+    ])) as any
+    const wrapper = mountModal({ id: 42, platform, type: 'apikey', status: 'active', credentials: {} })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+    expect((wrapper.vm as any).selectedModelId).toBe(model)
+    await (wrapper.vm as any).startTest()
+    await flushPromises()
+    const [, request] = (global.fetch as any).mock.calls[0]
+    expect(JSON.parse(request.body)).toMatchObject({ model_id: isCN ? '' : model })
+    wrapper.unmount()
+  })
+
   it('gemini 图片模型测试会携带提示词并渲染图片预览', async () => {
     const wrapper = mountModal()
     await wrapper.setProps({ show: true })

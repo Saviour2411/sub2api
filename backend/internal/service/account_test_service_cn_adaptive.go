@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/gin-gonic/gin"
 )
 
@@ -23,11 +22,11 @@ const accountTestSuppressCompletionContextKey = "account_test_suppress_completio
 func (s *AccountTestService) testCNProviderAdaptiveConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
 	ctx := c.Request.Context()
 	testPrompt := s.resolveTextTestPrompt(ctx, prompt)
-	testModelID := strings.TrimSpace(modelID)
-	if testModelID == "" {
-		testModelID = openai.DefaultTestModel
+	account, modelID, err := prepareAccountTestModel(account, modelID)
+	if err != nil {
+		return s.sendErrorAndEnd(c, err.Error())
 	}
-	testModelID = account.GetMappedModel(testModelID)
+	testModelID := account.GetMappedModel(modelID)
 
 	authToken := strings.TrimSpace(account.GetOpenAIProtocolAPIKey())
 	if authToken == "" {
@@ -211,7 +210,7 @@ func (s *AccountTestService) doCNProviderAdaptiveRequest(req *http.Request, acco
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
-	return s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	return s.doAccountTestUpstreamWithTLS(req, proxyURL, account, s.tlsFPProfileService.ResolveTLSProfile(account))
 }
 
 // testCNProviderAnthropicConnection verifies the native Anthropic endpoint of a
@@ -224,9 +223,9 @@ func (s *AccountTestService) doCNProviderAdaptiveRequest(req *http.Request, acco
 func (s *AccountTestService) testCNProviderAnthropicConnection(c *gin.Context, account *Account, modelID string) error {
 	ctx := c.Request.Context()
 
-	testModelID := strings.TrimSpace(modelID)
-	if testModelID == "" {
-		testModelID = claude.DefaultTestModel
+	account, testModelID, err := prepareAccountTestModel(account, modelID)
+	if err != nil {
+		return s.sendErrorAndEnd(c, err.Error())
 	}
 	testModelID = account.GetMappedModel(testModelID)
 

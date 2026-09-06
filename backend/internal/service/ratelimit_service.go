@@ -2109,6 +2109,9 @@ func (s *RateLimitService) RecoverAccountState(ctx context.Context, accountID in
 	if options.OpenAIQuotaResetSnapshot != nil {
 		return s.recoverObservedOpenAIQuotaBlock(ctx, account, *options.OpenAIQuotaResetSnapshot)
 	}
+	if account.IsManuallySchedulingPaused() {
+		return &SuccessfulTestRecoveryResult{}, nil
+	}
 
 	result := &SuccessfulTestRecoveryResult{}
 	if account.Status == StatusError {

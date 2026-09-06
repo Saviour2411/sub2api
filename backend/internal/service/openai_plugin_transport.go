@@ -47,6 +47,12 @@ func (s *AccountTestService) doOpenAIAccountTestUpstream(
 	account *Account,
 	useTLSFallback bool,
 ) (*http.Response, error) {
+	return withFirstTokenRecoveryProbe(request, account, func(guarded *http.Request) (*http.Response, error) {
+		return s.doOpenAIAccountTestUpstreamWithoutGuard(guarded, proxyURL, account, useTLSFallback)
+	})
+}
+
+func (s *AccountTestService) doOpenAIAccountTestUpstreamWithoutGuard(request *http.Request, proxyURL string, account *Account, useTLSFallback bool) (*http.Response, error) {
 	if s.pluginManager != nil {
 		response, handled, err := s.pluginManager.RoundTripOpenAIOAuth(request.Context(), request, proxyURL, account)
 		if handled {

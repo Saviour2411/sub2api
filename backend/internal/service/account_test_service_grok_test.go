@@ -146,7 +146,7 @@ func TestAccountTestService_TestAccountConnection_GrokUsesXAIResponses(t *testin
 	require.Contains(t, rec.Body.String(), `"type":"test_complete"`)
 }
 
-func TestAccountTestService_TestAccountConnection_GrokDefaultsEmptyModelTo45(t *testing.T) {
+func TestAccountTestService_TestAccountConnection_GrokDefaultsEmptyModelTo46(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	account := &Account{
@@ -184,8 +184,8 @@ func TestAccountTestService_TestAccountConnection_GrokDefaultsEmptyModelTo45(t *
 	err := svc.TestAccountConnection(c, account.ID, "", "", AccountTestModeDefault)
 
 	require.NoError(t, err)
-	require.Equal(t, grokDefaultResponsesModel, gjson.GetBytes(upstream.lastBody, "model").String())
-	require.Contains(t, recorder.Body.String(), `"model":"grok-4.5"`)
+	require.Equal(t, "grok-4.6", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Contains(t, recorder.Body.String(), `"model":"grok-4.6"`)
 }
 
 func TestAccountTestService_Grok429PersistsRateLimitReset(t *testing.T) {

@@ -516,6 +516,26 @@ func TestRateLimitService_RecoverAccountAfterSuccessfulTest_DoesNotRestoreManual
 	require.Empty(t, repo.updateExtraCalls)
 }
 
+func Test测活成功不能解除故障后写入的人工暂停(t *testing.T) {
+	account := &Account{ID: 44, Status: StatusError, Schedulable: false, Extra: map[string]any{
+		AccountManualSchedulingPauseKey: true,
+		accountFailureStrategyUnscheduledKey: map[string]any{
+			accountFailureStrategyUnscheduledIncidentIDKey: "paused-incident",
+		},
+	}}
+	repo := &rateLimitClearRepoStub{getByIDAccount: account}
+	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	result, err := svc.RecoverAccountAfterSuccessfulTestIncident(context.Background(), 44, "paused-incident")
+	require.NoError(t, err)
+	require.Equal(t, &SuccessfulTestRecoveryResult{}, result)
+	result, err = svc.RecoverAccountAfterSuccessfulTest(context.Background(), 44)
+	require.NoError(t, err)
+	require.Equal(t, &SuccessfulTestRecoveryResult{}, result)
+	require.Empty(t, repo.setSchedulableCalls)
+	require.Empty(t, repo.updateExtraCalls)
+	require.False(t, isAutoManagedProbeNeeded(account, time.Now()))
+}
+
 func TestRateLimitService_RecoverAccountAfterSuccessfulTest_ClearErrorFailed(t *testing.T) {
 	repo := &rateLimitClearRepoStub{
 		getByIDAccount: &Account{

@@ -39,12 +39,8 @@ func (r *scheduledTestPlanRepository) EnsureAutoManaged(ctx context.Context, acc
 		SET enabled = scheduled_test_plans.enabled OR EXCLUDED.enabled,
 			auto_recover = true,
 			next_run_at = CASE
-				WHEN EXCLUDED.enabled THEN
-					CASE
-						WHEN scheduled_test_plans.next_run_at IS NULL THEN EXCLUDED.next_run_at
-						WHEN EXCLUDED.next_run_at IS NULL THEN scheduled_test_plans.next_run_at
-						ELSE LEAST(scheduled_test_plans.next_run_at, EXCLUDED.next_run_at)
-					END
+				WHEN EXCLUDED.enabled AND (NOT scheduled_test_plans.enabled OR scheduled_test_plans.next_run_at IS NULL)
+					THEN EXCLUDED.next_run_at
 				ELSE scheduled_test_plans.next_run_at
 			END,
 			updated_at = NOW()
@@ -96,6 +92,7 @@ func (r *scheduledTestPlanRepository) ListAutoManagedActivationCandidates(ctx co
 		JOIN accounts a ON a.id = p.account_id AND a.deleted_at IS NULL
 		WHERE p.auto_managed = true
 		  AND p.enabled = false
+		  AND COALESCE(a.extra->>'manual_scheduling_paused', 'false') <> 'true'
 		  AND (
 		      a.status = 'error'
 		      OR (
@@ -143,7 +140,17 @@ func (r *scheduledTestPlanRepository) EnableAutoManaged(ctx context.Context, id 
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE scheduled_test_plans
 		SET enabled = true, next_run_at = $2, updated_at = NOW()
-		WHERE id = $1 AND auto_managed = true
+		WHERE id = $1 AND auto_managed = true AND enabled = false
+	`, id, nextRunAt)
+	return err
+}
+
+// DeferOrdinaryPlan 跳过故障期间的普通计划，不伪造执行记录或改变管理员开关。
+func (r *scheduledTestPlanRepository) DeferOrdinaryPlan(ctx context.Context, id int64, nextRunAt time.Time) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE scheduled_test_plans SET next_run_at = $2, updated_at = NOW()
+		WHERE id = $1 AND auto_managed = false AND enabled = true
+			AND (next_run_at IS NULL OR next_run_at < $2)
 	`, id, nextRunAt)
 	return err
 }
@@ -180,7 +187,7 @@ func (r *scheduledTestPlanRepository) DisableAutoManagedIfAccountHealthy(
 
 	var healthy bool
 	err = tx.QueryRowContext(ctx, `
-		SELECT NOT (
+		SELECT COALESCE(extra->>'manual_scheduling_paused', 'false') = 'true' OR NOT (
 			COALESCE(status = 'error', false)
 			OR (
 				COALESCE(extra, '{}'::jsonb) ? 'failure_strategy_unscheduled'
@@ -243,7 +250,11 @@ func (r *scheduledTestPlanRepository) RescheduleEnabledAutoManaged(ctx context.C
 
 	rows, err := tx.QueryContext(ctx, `
 		SELECT p.id, p.last_run_at, p.next_run_at,
-			COALESCE((
+			CASE WHEN (a.extra->'auto_managed_probe_state'->>'plan_id')::bigint = p.id
+				AND (a.extra->'auto_managed_probe_state'->>'last_run_at')::timestamptz = p.last_run_at
+				AND (a.extra->'auto_managed_probe_state'->>'next_run_at')::timestamptz = p.next_run_at
+			THEN (a.extra->'auto_managed_probe_state'->>'failures')::integer
+			ELSE COALESCE((
 				SELECT COUNT(*)
 				FROM scheduled_test_results r
 				WHERE r.plan_id = p.id
@@ -253,10 +264,12 @@ func (r *scheduledTestPlanRepository) RescheduleEnabledAutoManaged(ctx context.C
 					FROM scheduled_test_results stop
 					WHERE stop.plan_id = p.id AND stop.status <> 'failed'
 				  ), 0)
-			), 0) AS consecutive_failures
+			), 0) END AS consecutive_failures
 		FROM scheduled_test_plans p
+		JOIN accounts a ON a.id = p.account_id AND a.deleted_at IS NULL
 		WHERE p.auto_managed = true AND p.enabled = true
 		ORDER BY p.id
+		FOR UPDATE OF a
 	`)
 	if err != nil {
 		return err
@@ -313,10 +326,21 @@ func (r *scheduledTestPlanRepository) RescheduleEnabledAutoManaged(ctx context.C
 			nextRunAt = now
 		}
 		if _, err := tx.ExecContext(ctx, `
-			UPDATE scheduled_test_plans
-			SET next_run_at = $2, updated_at = NOW()
-			WHERE id = $1 AND auto_managed = true AND enabled = true
-		`, state.id, nextRunAt); err != nil {
+			WITH changed AS (
+				UPDATE scheduled_test_plans
+				SET next_run_at = $2, updated_at = NOW()
+				WHERE id = $1 AND auto_managed = true AND enabled = true
+					AND last_run_at IS NOT DISTINCT FROM $3::timestamptz
+					AND next_run_at IS NOT DISTINCT FROM $4::timestamptz
+				RETURNING account_id
+			)
+			UPDATE accounts a SET extra = jsonb_set(a.extra,
+				'{auto_managed_probe_state,next_run_at}', to_jsonb($2::timestamptz))
+			FROM changed WHERE a.id = changed.account_id
+				AND (a.extra->'auto_managed_probe_state'->>'plan_id')::bigint = $1
+				AND (a.extra->'auto_managed_probe_state'->>'last_run_at')::timestamptz = $3
+				AND (a.extra->'auto_managed_probe_state'->>'next_run_at')::timestamptz = $4
+		`, state.id, nextRunAt, state.lastRunAt, state.existingNextRunAt); err != nil {
 			return err
 		}
 	}

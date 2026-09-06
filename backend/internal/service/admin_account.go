@@ -94,6 +94,7 @@ func cloneAccountJSONMap(value map[string]any) (map[string]any, error) {
 var duplicateAccountDiscardedExtraKeys = map[string]struct{}{
 	// A retry identity belongs to the operation that created one copy, not to later copies.
 	duplicateAccountOperationIDExtraKey: {},
+	"auto_managed_probe_state":          {},
 	// External sync identity belongs to one local account only.
 	"crs_account_id": {},
 	"crs_kind":       {},
@@ -320,10 +321,14 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 	}
 	// A copied credential must be reviewed before it can share live traffic with its source.
 	duplicate.Schedulable = false
+	if duplicate.Extra == nil {
+		duplicate.Extra = make(map[string]any)
+	}
+	duplicate.Extra[AccountManualSchedulingPauseKey] = true
 	if s.accountDuplicateRepo == nil {
 		return nil, errors.New("account duplicate repository is not configured")
 	}
-	if err := s.accountDuplicateRepo.CreateWithAccountGroups(ctx, duplicate, groups); err != nil {
+	if err := s.accountDuplicateRepo.CreateDuplicateWithPlans(ctx, source.ID, duplicate, groups); err != nil {
 		return nil, fmt.Errorf("create duplicate account: %w", err)
 	}
 	for i := range groups {
@@ -1384,7 +1389,14 @@ func (s *adminServiceImpl) SetAccountError(ctx context.Context, id int64, errorM
 }
 
 func (s *adminServiceImpl) SetAccountSchedulable(ctx context.Context, id int64, schedulable bool) (*Account, error) {
-	if err := s.accountRepo.SetSchedulable(ctx, id, schedulable); err != nil {
+	var err error
+	if repo, ok := s.accountRepo.(adminAccountSchedulingRepository); ok {
+		err = repo.SetAdminSchedulable(ctx, id, schedulable)
+	} else {
+		// 兼容旧测试桩，生产仓储使用原子写入。
+		err = s.accountRepo.SetSchedulable(ctx, id, schedulable)
+	}
+	if err != nil {
 		return nil, err
 	}
 	updated, err := s.accountRepo.GetByID(ctx, id)

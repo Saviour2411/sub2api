@@ -168,7 +168,7 @@ type codexSeedDuplicateRepo struct {
 	*upstreamBillingProbeAccountRepo
 }
 
-func (r *codexSeedDuplicateRepo) CreateWithAccountGroups(ctx context.Context, account *Account, _ []AccountGroup) error {
+func (r *codexSeedDuplicateRepo) CreateDuplicateWithPlans(ctx context.Context, _ int64, account *Account, _ []AccountGroup) error {
 	return r.Create(ctx, account)
 }
 

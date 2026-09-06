@@ -38,6 +38,7 @@ const (
 	accountFailureStrategyUnscheduledTimeoutSecondsKey   = "timeout_seconds"
 	accountFailureStrategyUnscheduledConsecutiveCountKey = "consecutive_count"
 	accountFailureStrategyUnscheduledThresholdKey        = "threshold"
+	accountFailureStrategyUnscheduledStrictOutputKey     = "strict_first_output"
 	accountFailureStrategyUnscheduledIncidentIDKey       = "incident_id"
 	accountFailureStrategyUnscheduledStrictSource        = "strict_failure_strategy"
 )
@@ -166,6 +167,9 @@ func (s *RateLimitService) handleFirstTokenTimeoutOutcome(
 	marker[accountFailureStrategyUnscheduledTimeoutSecondsKey] = timeoutSeconds
 	marker[accountFailureStrategyUnscheduledConsecutiveCountKey] = streak.Count
 	marker[accountFailureStrategyUnscheduledThresholdKey] = threshold
+	if isFirstTokenScopedRequest(ctx) {
+		marker[accountFailureStrategyUnscheduledStrictOutputKey] = true
+	}
 	marker[accountFailureStrategyUnscheduledIncidentIDKey] = incidentID
 
 	if ctx == nil {
@@ -319,10 +323,6 @@ func failureSchedulingOperationContext(ctx context.Context) (context.Context, co
 	return context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 }
 
-func (s *RateLimitService) resetFailureStreak(ctx context.Context, accountID int64, source AccountFailureStreakSource, timeoutSeconds int) {
-	s.resetFailureStreakAt(ctx, accountID, source, timeoutSeconds, time.Now().UTC())
-}
-
 func (s *RateLimitService) resetFailureStreakAt(
 	ctx context.Context,
 	accountID int64,
@@ -371,10 +371,6 @@ func (s *RateLimitService) resetFailureStreakEvent(
 			zap.Error(err),
 		)
 	}
-}
-
-func (s *RateLimitService) resetFirstTokenTimeoutStreak(ctx context.Context, accountID int64, timeoutSeconds int) {
-	s.resetFailureStreak(ctx, accountID, AccountFailureStreakSourceFirstTokenTimeout, timeoutSeconds)
 }
 
 // FailureStrategyUnscheduledIncident 返回账号当前事故的 ID 和来源。
@@ -462,6 +458,9 @@ func (s *RateLimitService) RecoverAccountAfterSuccessfulTestIncident(
 	account, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {
 		return nil, err
+	}
+	if account.IsManuallySchedulingPaused() {
+		return &SuccessfulTestRecoveryResult{}, nil
 	}
 	incidentID = strings.TrimSpace(incidentID)
 	currentIncidentID, _ := account.FailureStrategyUnscheduledIncident()

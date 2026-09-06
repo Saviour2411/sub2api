@@ -49,6 +49,8 @@ export interface GatewaySettings {
   additional_failover_status_codes: number[]
   auto_managed_probe_backoff_minutes: number[]
   first_token_timeout_seconds: number
+  first_token_timeout_scope: 'all' | 'selected_groups'
+  first_token_timeout_group_ids: number[]
   first_token_timeout_consecutive_threshold: number
   upstream_error_status_codes: number[]
   upstream_error_consecutive_threshold: number

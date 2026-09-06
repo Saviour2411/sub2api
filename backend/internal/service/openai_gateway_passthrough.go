@@ -1247,10 +1247,13 @@ func openAIStreamAddedEventStartsClientOutput(payload []byte, eventType string) 
 	}
 }
 
-func openAIStreamDataStartsClientOutput(data, eventType string) bool {
+func openAIStreamDataStartsClientOutput(data, eventType string, strict ...bool) bool {
 	trimmed := strings.TrimSpace(data)
 	if trimmed == "" {
 		return false
+	}
+	if len(strict) > 0 && strict[0] && eventType != "error" && eventType != "response.failed" && !openAIStreamEventTypeIsTerminal(eventType) {
+		return isMeaningfulFirstTokenJSON([]byte(openAICompatPayloadWithEventType(trimmed, eventType)), true)
 	}
 	switch strings.TrimSpace(eventType) {
 	case "response.failed":
@@ -2317,7 +2320,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthroughOnAccepted(
 				trimmedData = strings.TrimSpace(string(sanitizedData))
 				line = "data: " + string(sanitizedData)
 			}
-			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
+			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType, isStrictFirstTokenRequest(c))
 			if lineStartsClientOutput && trimmedData != "[DONE]" && !openAIStreamEventTypeIsTerminal(eventType) {
 				semanticOutputSeen = true
 			}

@@ -375,6 +375,7 @@ import { useClipboard } from '@/composables/useClipboard'
 import { buildApiUrl } from '@/api/client'
 import { ADMIN_UI_REQUEST_HEADER } from '@/api/adminUIRequest'
 import { adminAPI } from '@/api/admin'
+import { accountTestRequestModel, pickAccountTestDefaultModel } from '@/utils/accountTestModels'
 import type { Account, ClaudeModel } from '@/types'
 
 const { t } = useI18n()
@@ -406,6 +407,7 @@ const streamingContent = ref('')
 const errorMessage = ref('')
 const availableModels = ref<ClaudeModel[]>([])
 const selectedModelId = ref('')
+const defaultModelId = ref('')
 const testPrompt = ref('')
 const defaultTextTestPrompt = ref('hi')
 const loadingModels = ref(false)
@@ -727,11 +729,7 @@ const pickDefaultModelForMode = () => {
   }
   if (opts.some((m) => m.id === selectedModelId.value)) return
   if (grokTestMode.value === 'text') {
-    const preferred =
-      opts.find((m) => m.id.includes('grok-4.5')) ||
-      opts.find((m) => m.id === 'grok') ||
-      opts[0]
-    selectedModelId.value = preferred.id
+    selectedModelId.value = props.account ? pickAccountTestDefaultModel(props.account, opts) : opts[0].id
     return
   }
   selectedModelId.value = opts[0].id
@@ -799,21 +797,14 @@ const loadAvailableModels = async () => {
 
   loadingModels.value = true
   selectedModelId.value = '' // Reset selection before loading
+  defaultModelId.value = ''
   try {
     const models = await adminAPI.accounts.getAvailableModels(props.account.id)
     availableModels.value = props.account.platform === 'gemini' || props.account.platform === 'antigravity'
       ? sortTestModels(models)
       : models
-    // Default selection by platform
-    if (availableModels.value.length > 0) {
-      if (props.account.platform === 'gemini') {
-        selectedModelId.value = availableModels.value[0].id
-      } else {
-        // Try to select Sonnet as default, otherwise use first model
-        const sonnetModel = availableModels.value.find((m) => m.id.includes('sonnet'))
-        selectedModelId.value = sonnetModel?.id || availableModels.value[0].id
-      }
-    }
+    defaultModelId.value = pickAccountTestDefaultModel(props.account, availableModels.value)
+    selectedModelId.value = defaultModelId.value
   } catch (error) {
     console.error('Failed to load available models:', error)
     // Fallback to empty list
@@ -885,7 +876,9 @@ const startTest = async () => {
       image_data_url?: string
       audio_data_url?: string
     } = {
-      model_id: showModelSelect.value ? selectedModelId.value : '',
+      model_id: showModelSelect.value
+        ? accountTestRequestModel(props.account, selectedModelId.value, defaultModelId.value)
+        : '',
       prompt: supportsPromptInput.value ? testPrompt.value.trim() : ''
     }
     if (isOpenAIAccount.value) {

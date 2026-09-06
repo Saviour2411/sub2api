@@ -412,6 +412,43 @@
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
               {{ t('admin.customFeatures.gateway.firstTokenTimeout.description') }}
             </p>
+            <fieldset class="mt-4">
+              <legend class="input-label">{{ t('admin.customFeatures.gateway.firstTokenTimeout.scope') }}</legend>
+              <div class="flex flex-wrap gap-5">
+                <label v-for="scope in ['all', 'selected_groups'] as const" :key="scope" class="inline-flex items-center gap-2 text-sm">
+                  <input
+                    v-model="gateway.first_token_timeout_scope"
+                    type="radio"
+                    name="first-token-timeout-scope"
+                    :value="scope"
+                    :data-test="`gateway-first-token-scope-${scope}`"
+                    class="text-primary-600 focus:ring-primary-500"
+                  />
+                  {{ t(`admin.customFeatures.gateway.firstTokenTimeout.${scope}`) }}
+                </label>
+              </div>
+            </fieldset>
+            <fieldset v-if="gateway.first_token_timeout_scope === 'selected_groups'" class="mt-4">
+              <legend class="input-label">{{ t('admin.customFeatures.gateway.firstTokenTimeout.groups') }}</legend>
+              <div class="grid max-h-48 gap-3 overflow-y-auto sm:grid-cols-2">
+                <label v-for="group in firstTokenGroupOptions" :key="group.id" class="flex min-w-0 items-start gap-2 text-sm">
+                  <input
+                    v-model="gateway.first_token_timeout_group_ids"
+                    type="checkbox"
+                    :value="group.id"
+                    :data-test="`gateway-first-token-group-${group.id}`"
+                    class="mt-0.5 shrink-0 rounded text-primary-600 focus:ring-primary-500"
+                  />
+                  <span class="min-w-0 break-all">{{ group.name }}</span>
+                </label>
+              </div>
+              <p v-if="firstTokenGroupOptions.length === 0" class="text-sm text-gray-500">
+                {{ t('admin.customFeatures.modelMarketplace.noGroups') }}
+              </p>
+              <p class="mt-2 text-xs text-amber-700 dark:text-amber-400">
+                {{ t('admin.customFeatures.gateway.firstTokenTimeout.accountWideWarning') }}
+              </p>
+            </fieldset>
             <div class="mt-4 grid gap-5 md:grid-cols-2">
               <div>
                 <label class="input-label" for="gateway-first-token-timeout">
@@ -869,6 +906,8 @@ const gateway = reactive<GatewaySettings>({
   additional_failover_status_codes: [451],
   auto_managed_probe_backoff_minutes: [5, 10, 15, 30, 60],
   first_token_timeout_seconds: 60,
+  first_token_timeout_scope: 'all',
+  first_token_timeout_group_ids: [],
   first_token_timeout_consecutive_threshold: 3,
   upstream_error_status_codes: [502, 503, 504],
   upstream_error_consecutive_threshold: 10,
@@ -883,6 +922,16 @@ const gatewayAdditionalFailoverStatusCodesInput = ref(
   gateway.additional_failover_status_codes.join(', ')
 )
 const gatewayUpstreamErrorStatusCodesInput = ref(gateway.upstream_error_status_codes.join(', '))
+
+const firstTokenGroupOptions = computed(() => {
+  const groups = activeGroups.value.map(({ id, name }) => ({ id, name }))
+  for (const id of gateway.first_token_timeout_group_ids) {
+    if (!groups.some((group) => group.id === id)) {
+      groups.push({ id, name: t('admin.customFeatures.gateway.firstTokenTimeout.unavailableGroup', { id }) })
+    }
+  }
+  return groups
+})
 
 const subscriptionGroupOptions = computed(() =>
   activeGroups.value
@@ -927,6 +976,8 @@ function cloneGateway(settings?: Partial<GatewaySettings>): GatewaySettings {
       ...(settings?.auto_managed_probe_backoff_minutes ?? [5, 10, 15, 30, 60])
     ],
     first_token_timeout_seconds: settings?.first_token_timeout_seconds ?? 60,
+    first_token_timeout_scope: settings?.first_token_timeout_scope ?? 'all',
+    first_token_timeout_group_ids: [...(settings?.first_token_timeout_group_ids ?? [])],
     first_token_timeout_consecutive_threshold:
       settings?.first_token_timeout_consecutive_threshold ?? 3,
     upstream_error_status_codes: [...(settings?.upstream_error_status_codes ?? [502, 503, 504])],
@@ -1075,6 +1126,12 @@ function validateGateway(): GatewayValidationResult {
   }
 
   const timeoutSeconds = gateway.first_token_timeout_seconds
+  if (gateway.first_token_timeout_scope === 'selected_groups' && gateway.first_token_timeout_group_ids.length === 0) {
+    return gatewayValidationError(
+      t('admin.customFeatures.gateway.validation.firstTokenGroups'),
+      retryStatusCodes
+    )
+  }
   if (!Number.isInteger(timeoutSeconds) || timeoutSeconds < 0 || timeoutSeconds > 600) {
     return gatewayValidationError(
       t('admin.customFeatures.gateway.validation.firstTokenTimeout'),
@@ -1171,6 +1228,8 @@ async function saveGateway() {
       additional_failover_status_codes: validation.additionalFailoverStatusCodes,
       auto_managed_probe_backoff_minutes: gateway.auto_managed_probe_backoff_minutes.map(Number),
       first_token_timeout_seconds: Number(gateway.first_token_timeout_seconds),
+      first_token_timeout_scope: gateway.first_token_timeout_scope,
+      first_token_timeout_group_ids: [...new Set(gateway.first_token_timeout_group_ids)],
       first_token_timeout_consecutive_threshold: Number(
         gateway.first_token_timeout_consecutive_threshold
       ),

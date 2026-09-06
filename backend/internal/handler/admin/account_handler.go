@@ -2682,6 +2682,16 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		return
 	}
 
+	if account.IsCNProvider() {
+		modelIDs := service.CNAccountTestModels(account)
+		models := make([]claude.Model, 0, len(modelIDs))
+		for _, model := range modelIDs {
+			models = append(models, claude.Model{ID: model, Type: "model", DisplayName: model})
+		}
+		response.Success(c, models)
+		return
+	}
+
 	// Handle OpenAI accounts
 	if account.IsOpenAI() {
 		// OpenAI 自动透传会绕过常规模型改写，测试/模型列表也应回落到默认模型集。

@@ -294,16 +294,16 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		}
 
 		if err != nil {
-			fs.RecordOutcomeError(requestCtx, h.gatewayService, account.ID, err, result != nil && result.ClientDisconnect)
+			fs.RecordOutcomeError(c.Request.Context(), h.gatewayService, account.ID, err, result != nil && result.ClientDisconnect)
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
 				// Can't failover if streaming content already sent
 				if c.Writer.Size() != writerSizeBeforeForward {
-					fs.RecordTerminalFailureOutcome(requestCtx, h.gatewayService, account.ID, failoverErr)
+					fs.RecordTerminalFailureOutcome(c.Request.Context(), h.gatewayService, account.ID, failoverErr)
 					h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed", true)
 					return
 				}
-				action := fs.HandleFailoverError(requestCtx, h.gatewayService, account.ID, account.Platform, failoverErr, account.GetPoolModeRetryCount())
+				action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, failoverErr, account.GetPoolModeRetryCount())
 				switch action {
 				case FailoverContinue:
 					continue

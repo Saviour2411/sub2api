@@ -57,6 +57,7 @@ type ScheduledTestPlanRepository interface {
 	Update(ctx context.Context, plan *ScheduledTestPlan) (*ScheduledTestPlan, error)
 	Delete(ctx context.Context, id int64) error
 	UpdateAfterRun(ctx context.Context, id int64, lastRunAt time.Time, nextRunAt time.Time) error
+	DeferOrdinaryPlan(ctx context.Context, id int64, nextRunAt time.Time) error
 	EnableAutoManaged(ctx context.Context, id int64, nextRunAt time.Time) error
 	DisableAutoManaged(ctx context.Context, id int64, lastRunAt *time.Time) error
 	RescheduleEnabledAutoManaged(ctx context.Context, backoffSteps []time.Duration, now time.Time) error

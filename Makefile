@@ -16,6 +16,9 @@ FRONTEND_CRITICAL_VITEST := \
 	src/features/channel-monitor-v2/__tests__/monitorFormat.spec.ts \
 	src/features/channel-monitor-v2/__tests__/monitorZoom.spec.ts \
 	src/router/__tests__/feature-access.spec.ts \
+	src/components/admin/account/__tests__/AccountTestModal.spec.ts \
+	src/utils/__tests__/accountTestModels.spec.ts \
+	src/views/admin/__tests__/CustomFeaturesView.spec.ts \
 	src/utils/__tests__/canvasBridge.spec.ts
 
 # 一键编译前后端

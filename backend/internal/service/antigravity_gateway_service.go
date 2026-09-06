@@ -383,19 +383,20 @@ func (s *AntigravityGatewayService) TestConnection(ctx context.Context, account 
 	// 复用 antigravityRetryLoop：完整的重试 / credits overages / 智能重试
 	prefix := fmt.Sprintf("[antigravity-Test] account=%d(%s)", account.ID, account.Name)
 	p := antigravityRetryLoopParams{
-		ctx:            ctx,
-		prefix:         prefix,
-		account:        account,
-		proxyURL:       proxyURL,
-		accessToken:    accessToken,
-		action:         "streamGenerateContent",
-		body:           requestBody,
-		c:              nil, // 无 gin.Context → 跳过 ops 追踪
-		httpUpstream:   s.httpUpstream,
-		settingService: s.settingService,
-		accountRepo:    s.accountRepo,
-		requestedModel: modelID,
-		handleError:    testConnectionHandleError,
+		ctx:              ctx,
+		prefix:           prefix,
+		account:          account,
+		proxyURL:         proxyURL,
+		accessToken:      accessToken,
+		action:           "streamGenerateContent",
+		body:             requestBody,
+		c:                nil, // 无 gin.Context → 跳过 ops 追踪
+		httpUpstream:     s.httpUpstream,
+		settingService:   s.settingService,
+		accountRepo:      s.accountRepo,
+		requestedModel:   modelID,
+		handleError:      testConnectionHandleError,
+		firstTokenStream: firstTokenRecoveryProbeFromContext(ctx) != nil,
 	}
 
 	result, err := s.antigravityRetryLoop(p)
@@ -412,8 +413,10 @@ func (s *AntigravityGatewayService) TestConnection(ctx context.Context, account 
 		return nil, errors.New("upstream returned empty response")
 	}
 	defer func() { _ = result.resp.Body.Close() }()
+	result.firstTokenAttempt.wrapResponse(result.resp, nil, firstTokenProtocolSSE)
 
 	respBody, err := io.ReadAll(io.LimitReader(result.resp.Body, s.upstreamErrorBodyReadLimit()))
+	err = result.firstTokenAttempt.finish(err)
 	if err != nil {
 		return nil, fmt.Errorf("读取响应失败: %w", err)
 	}

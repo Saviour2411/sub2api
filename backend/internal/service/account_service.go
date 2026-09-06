@@ -127,9 +127,8 @@ type AccountRepository interface {
 }
 
 type AccountDuplicateRepository interface {
-	// CreateWithAccountGroups atomically persists an account, its exact group priorities,
-	// and the scheduler outbox event for the new routing snapshot.
-	CreateWithAccountGroups(ctx context.Context, account *Account, groups []AccountGroup) error
+	// CreateDuplicateWithPlans 在同一事务中复制账号、分组优先级和暂停的测试计划。
+	CreateDuplicateWithPlans(ctx context.Context, sourceAccountID int64, account *Account, groups []AccountGroup) error
 }
 
 // AccountBillingSettingsRepository applies an admin edit without overwriting a

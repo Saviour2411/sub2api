@@ -132,6 +132,8 @@ function settingsFixture(): CustomFeatureSettings {
       additional_failover_status_codes: [451],
       auto_managed_probe_backoff_minutes: [5, 10, 15, 30, 60],
       first_token_timeout_seconds: 60,
+      first_token_timeout_scope: 'all',
+      first_token_timeout_group_ids: [],
       first_token_timeout_consecutive_threshold: 3,
       upstream_error_status_codes: [502, 503, 504],
       upstream_error_consecutive_threshold: 10,
@@ -244,6 +246,8 @@ describe('admin CustomFeaturesView', () => {
       additional_failover_status_codes: [409, 451],
       auto_managed_probe_backoff_minutes: [5, 10, 15, 30, 60],
       first_token_timeout_seconds: 60,
+      first_token_timeout_scope: 'all',
+      first_token_timeout_group_ids: [],
       first_token_timeout_consecutive_threshold: 3,
       upstream_error_status_codes: [502, 504],
       upstream_error_consecutive_threshold: 10,
@@ -260,6 +264,8 @@ describe('admin CustomFeaturesView', () => {
   it('旧版响应缺失新字段时使用安全默认值', async () => {
     const legacySettings = settingsFixture()
     const legacyGateway: Partial<GatewaySettings> = { ...legacySettings.gateway }
+    delete legacyGateway.first_token_timeout_scope
+    delete legacyGateway.first_token_timeout_group_ids
     delete legacyGateway.first_token_timeout_consecutive_threshold
     delete legacyGateway.additional_failover_status_codes_enabled
     delete legacyGateway.additional_failover_status_codes
@@ -278,6 +284,7 @@ describe('admin CustomFeaturesView', () => {
     await flushPromises()
     await wrapper.get('[data-test="custom-feature-tab-gateway"]').trigger('click')
 
+    expect(wrapper.get<HTMLInputElement>('[data-test="gateway-first-token-scope-all"]').element.checked).toBe(true)
     expect(
       wrapper.get<HTMLInputElement>('[data-test="gateway-first-token-consecutive-threshold"]')
         .element.value
@@ -310,6 +317,50 @@ describe('admin CustomFeaturesView', () => {
       wrapper.get<HTMLInputElement>('[data-test="gateway-additional-failover-status-codes"]')
         .element.value
     ).toBe('451')
+  })
+
+  it('指定分组必须勾选分组，保存后保留范围及原换号配置', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="custom-feature-tab-gateway"]').trigger('click')
+    await wrapper.get('[data-test="gateway-first-token-scope-selected_groups"]').setValue()
+    await wrapper.get('[data-test="gateway-form"]').trigger('submit')
+    expect(updateGateway).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenLastCalledWith('admin.customFeatures.gateway.validation.firstTokenGroups')
+
+    await wrapper.get('[data-test="gateway-first-token-group-1"]').setValue(true)
+    await wrapper.get('[data-test="gateway-first-token-consecutive-threshold"]').setValue('2')
+    await wrapper.get('[data-test="gateway-form"]').trigger('submit')
+    await flushPromises()
+    expect(updateGateway).toHaveBeenCalledWith(expect.objectContaining({
+      first_token_timeout_scope: 'selected_groups',
+      first_token_timeout_group_ids: [1],
+      first_token_timeout_consecutive_threshold: 2,
+      default_pool_mode_retry_count: 1,
+    }))
+    expect(wrapper.get<HTMLInputElement>('[data-test="gateway-first-token-group-1"]').element.checked).toBe(true)
+    await wrapper.get('[data-test="gateway-first-token-scope-all"]').setValue()
+    await wrapper.get('[data-test="gateway-first-token-scope-selected_groups"]').setValue()
+    expect(wrapper.get<HTMLInputElement>('[data-test="gateway-first-token-group-1"]').element.checked).toBe(true)
+  })
+
+  it('已不可用的历史分组可取消选择并替换', async () => {
+    const settings = settingsFixture()
+    settings.gateway.first_token_timeout_scope = 'selected_groups'
+    settings.gateway.first_token_timeout_group_ids = [999]
+    getSettings.mockResolvedValueOnce(settings)
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="custom-feature-tab-gateway"]').trigger('click')
+    expect(wrapper.get<HTMLInputElement>('[data-test="gateway-first-token-group-999"]').element.checked).toBe(true)
+    await wrapper.get('[data-test="gateway-first-token-group-999"]').setValue(false)
+    await wrapper.get('[data-test="gateway-first-token-group-2"]').setValue(true)
+    await wrapper.get('[data-test="gateway-form"]').trigger('submit')
+    await flushPromises()
+    expect(updateGateway).toHaveBeenCalledWith(expect.objectContaining({
+      first_token_timeout_scope: 'selected_groups',
+      first_token_timeout_group_ids: [2],
+    }))
   })
 
   it('校验 Anthropic 采样参数过滤模型并在关闭时保留选择', async () => {

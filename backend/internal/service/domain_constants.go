@@ -386,6 +386,8 @@ const (
 	SettingKeyGatewayAdditionalFailoverStatusCodes           = "gateway_additional_failover_status_codes"
 	SettingKeyGatewayAutoManagedProbeBackoffMinutes          = "gateway_auto_managed_probe_backoff_minutes"
 	SettingKeyGatewayFirstTokenTimeoutSeconds                = "gateway_first_token_timeout_seconds"
+	SettingKeyGatewayFirstTokenTimeoutScope                  = "gateway_first_token_timeout_scope"
+	SettingKeyGatewayFirstTokenTimeoutGroupIDs               = "gateway_first_token_timeout_group_ids"
 	SettingKeyGatewayFirstTokenTimeoutConsecutiveThreshold   = "gateway_first_token_timeout_consecutive_threshold"
 	SettingKeyGatewayUpstreamErrorStatusCodes                = "gateway_upstream_error_status_codes"
 	SettingKeyGatewayUpstreamErrorConsecutiveThreshold       = "gateway_upstream_error_consecutive_threshold"

@@ -1864,7 +1864,7 @@ func (s *stubAccountRepo) Create(ctx context.Context, account *service.Account) 
 	return errors.New("not implemented")
 }
 
-func (s *stubAccountRepo) CreateWithAccountGroups(ctx context.Context, account *service.Account, groups []service.AccountGroup) error {
+func (s *stubAccountRepo) CreateDuplicateWithPlans(ctx context.Context, _ int64, account *service.Account, groups []service.AccountGroup) error {
 	return errors.New("not implemented")
 }
 

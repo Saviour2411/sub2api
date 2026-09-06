@@ -81,6 +81,7 @@ type firstTokenAttempt struct {
 	failurePolicy  AccountFailureStreakPolicy
 	failureLimit   int
 	checkPolicy    bool
+	strictOutput   bool
 	timeoutEvent   AccountFailureStreakEvent
 	requestCtx     context.Context
 	ginCtx         *gin.Context
@@ -128,14 +129,26 @@ func newFirstTokenAttempt(
 	if requestCtx == nil {
 		requestCtx = context.Background()
 	}
+	if probe := firstTokenRecoveryProbeFromContext(requestCtx); probe != nil {
+		return probe.begin(requestCtx, c, account)
+	}
 	settings := resolveFirstTokenTimeoutSettings(requestCtx, rateLimit)
+	if !firstTokenTimeoutApplies(requestCtx, settings) {
+		resumeOpenAICompactSSEKeepalive(c)
+		return nil
+	}
 	timeout := time.Duration(settings.FirstTokenTimeoutSeconds) * time.Second
 	if timeout <= 0 {
 		resumeOpenAICompactSSEKeepalive(c)
 		return nil
 	}
+	strictOutput := settings.FirstTokenTimeoutScope == FirstTokenTimeoutScopeSelectedGroups
+	if strictOutput {
+		requestCtx = markFirstTokenScopedRequest(requestCtx, c)
+	}
 	attempt := newFirstTokenAttemptWithTimeout(requestCtx, c, rateLimit, account, model, timeout)
 	if attempt != nil {
+		attempt.strictOutput = strictOutput
 		attempt.failurePolicy = BuildAccountFailureStreakPolicy(AccountFailureStreakSourceFirstTokenTimeout, settings)
 		attempt.failureLimit = settings.FirstTokenTimeoutConsecutiveThreshold
 		attempt.checkPolicy = true
@@ -774,7 +787,7 @@ func (r *firstTokenReadCloser) Read(p []byte) (int, error) {
 				r.attempt.markPreludeOverflow()
 				return 0, errFirstTokenPreludeTooLarge
 			}
-			received, decided := inspectFirstTokenBuffer(r.buffer, r.protocol)
+			received, decided := inspectFirstTokenBuffer(r.buffer, r.protocol, r.attempt.strictOutput)
 			if received {
 				r.attempt.markReceived()
 				r.readable = true
@@ -816,20 +829,20 @@ func (r *firstTokenReadCloser) Close() error {
 	return r.upstream.Close()
 }
 
-func inspectFirstTokenBuffer(buffer []byte, protocol firstTokenProtocol) (received bool, decided bool) {
+func inspectFirstTokenBuffer(buffer []byte, protocol firstTokenProtocol, strict ...bool) (received bool, decided bool) {
 	switch protocol {
 	case firstTokenProtocolBedrock:
-		return inspectBedrockFirstToken(buffer)
+		return inspectBedrockFirstToken(buffer, strict...)
 	case firstTokenProtocolOpenAICompact:
-		return inspectOpenAICompactFirstToken(buffer)
+		return inspectOpenAICompactFirstToken(buffer, strict...)
 	default:
-		return inspectSSEFirstToken(buffer)
+		return inspectSSEFirstToken(buffer, strict...)
 	}
 }
 
-func inspectOpenAICompactFirstToken(buffer []byte) (received bool, decided bool) {
+func inspectOpenAICompactFirstToken(buffer []byte, strict ...bool) (received bool, decided bool) {
 	if bodyHasSSEFraming(buffer) {
-		return inspectSSEFirstToken(buffer)
+		return inspectSSEFirstToken(buffer, strict...)
 	}
 	trimmed := bytes.TrimSpace(buffer)
 	if len(trimmed) == 0 || !gjson.ValidBytes(trimmed) {
@@ -848,7 +861,7 @@ func inspectOpenAICompactFirstToken(buffer []byte) (received bool, decided bool)
 	return false, false
 }
 
-func inspectSSEFirstToken(buffer []byte) (received bool, decided bool) {
+func inspectSSEFirstToken(buffer []byte, strict ...bool) (received bool, decided bool) {
 	normalized := bytes.ReplaceAll(buffer, []byte("\r\n"), []byte("\n"))
 	events := bytes.Split(normalized, []byte("\n\n"))
 	for i := 0; i < len(events)-1; i++ {
@@ -877,7 +890,7 @@ func inspectSSEFirstToken(buffer []byte) (received bool, decided bool) {
 			continue
 		}
 		data = openAICompatPayloadWithEventType(data, eventType)
-		if isMeaningfulFirstTokenJSON([]byte(data)) {
+		if isMeaningfulFirstTokenJSON([]byte(data), strict...) {
 			return true, true
 		}
 		if isTerminalOrErrorStreamJSON([]byte(data)) {
@@ -887,7 +900,7 @@ func inspectSSEFirstToken(buffer []byte) (received bool, decided bool) {
 	return false, decided
 }
 
-func inspectBedrockFirstToken(buffer []byte) (received bool, decided bool) {
+func inspectBedrockFirstToken(buffer []byte, strict ...bool) (received bool, decided bool) {
 	for offset := 0; offset+12 <= len(buffer); {
 		totalLength := int(binary.BigEndian.Uint32(buffer[offset : offset+4]))
 		headersLength := int(binary.BigEndian.Uint32(buffer[offset+4 : offset+8]))
@@ -903,7 +916,7 @@ func inspectBedrockFirstToken(buffer []byte) (received bool, decided bool) {
 			encoded := gjson.GetBytes(buffer[payloadStart:payloadEnd], "bytes").String()
 			if encoded != "" {
 				if data, err := base64.StdEncoding.DecodeString(encoded); err == nil {
-					if isMeaningfulFirstTokenJSON(data) {
+					if isMeaningfulFirstTokenJSON(data, strict...) {
 						return true, true
 					}
 					if isTerminalOrErrorStreamJSON(data) {
@@ -917,14 +930,14 @@ func inspectBedrockFirstToken(buffer []byte) (received bool, decided bool) {
 	return false, decided
 }
 
-func isMeaningfulFirstTokenJSON(data []byte) bool {
+func isMeaningfulFirstTokenJSON(data []byte, strict ...bool) bool {
 	if !gjson.ValidBytes(data) {
 		return false
 	}
 	eventType := strings.ToLower(strings.TrimSpace(gjson.GetBytes(data, "type").String()))
 	switch eventType {
 	case "response.output_text.delta", "response.reasoning_summary_text.delta", "response.reasoning_text.delta", "response.refusal.delta":
-		return gjson.GetBytes(data, "delta").String() != ""
+		return firstTokenTextMeaningful(gjson.GetBytes(data, "delta").String(), strict...)
 	case "response.function_call_arguments.delta", "response.custom_tool_call_input.delta":
 		return firstTokenToolPayloadMeaningful(gjson.GetBytes(data, "delta"))
 	case "response.output_item.added", "response.output_item.done":
@@ -942,7 +955,7 @@ func isMeaningfulFirstTokenJSON(data []byte) bool {
 		deltaType := strings.ToLower(gjson.GetBytes(data, "delta.type").String())
 		switch deltaType {
 		case "text_delta", "thinking_delta":
-			return gjson.GetBytes(data, "delta.text").String() != "" || gjson.GetBytes(data, "delta.thinking").String() != ""
+			return firstTokenTextMeaningful(gjson.GetBytes(data, "delta.text").String(), strict...) || firstTokenTextMeaningful(gjson.GetBytes(data, "delta.thinking").String(), strict...)
 		case "input_json_delta":
 			return firstTokenToolPayloadMeaningful(gjson.GetBytes(data, "delta.partial_json"))
 		}
@@ -952,10 +965,10 @@ func isMeaningfulFirstTokenJSON(data []byte) bool {
 	if choices.IsArray() {
 		for _, choice := range choices.Array() {
 			delta := choice.Get("delta")
-			if delta.Get("content").String() != "" ||
-				delta.Get("reasoning_content").String() != "" ||
-				delta.Get("reasoning").String() != "" ||
-				delta.Get("refusal").String() != "" ||
+			if firstTokenTextMeaningful(delta.Get("content").String(), strict...) ||
+				firstTokenTextMeaningful(delta.Get("reasoning_content").String(), strict...) ||
+				firstTokenTextMeaningful(delta.Get("reasoning").String(), strict...) ||
+				firstTokenTextMeaningful(delta.Get("refusal").String(), strict...) ||
 				firstTokenToolCallsMeaningful(delta.Get("tool_calls")) ||
 				firstTokenFunctionCallMeaningful(delta.Get("function_call")) {
 				return true
@@ -963,7 +976,7 @@ func isMeaningfulFirstTokenJSON(data []byte) bool {
 		}
 	}
 
-	return geminiJSONHasGeneratedPart(gjson.ParseBytes(data)) || geminiJSONHasGeneratedPart(gjson.GetBytes(data, "response"))
+	return geminiJSONHasGeneratedPart(gjson.ParseBytes(data), strict...) || geminiJSONHasGeneratedPart(gjson.GetBytes(data, "response"), strict...)
 }
 
 func openAICompactOutputItemMeaningful(item gjson.Result) bool {
@@ -982,7 +995,7 @@ func openAICompactOutputItemMeaningful(item gjson.Result) bool {
 	return false
 }
 
-func geminiJSONHasGeneratedPart(root gjson.Result) bool {
+func geminiJSONHasGeneratedPart(root gjson.Result, strict ...bool) bool {
 	if !root.Exists() {
 		return false
 	}
@@ -996,7 +1009,7 @@ func geminiJSONHasGeneratedPart(root gjson.Result) bool {
 			continue
 		}
 		for _, part := range parts.Array() {
-			if part.Get("text").String() != "" ||
+			if firstTokenTextMeaningful(part.Get("text").String(), strict...) ||
 				firstTokenFunctionCallMeaningful(part.Get("functionCall")) ||
 				firstTokenFunctionCallMeaningful(part.Get("function_call")) {
 				return true

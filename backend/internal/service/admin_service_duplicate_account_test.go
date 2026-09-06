@@ -19,6 +19,8 @@ type duplicateAccountRepoStub struct {
 	*sparkShadowRepoStub
 	atomicCreateErr error
 	accountGroupsOf map[int64][]AccountGroup
+	copySourceID    int64
+	copyCalls       int
 }
 
 func newDuplicateAccountRepoStub() *duplicateAccountRepoStub {
@@ -28,7 +30,9 @@ func newDuplicateAccountRepoStub() *duplicateAccountRepoStub {
 	}
 }
 
-func (s *duplicateAccountRepoStub) CreateWithAccountGroups(ctx context.Context, account *Account, groups []AccountGroup) error {
+func (s *duplicateAccountRepoStub) CreateDuplicateWithPlans(ctx context.Context, sourceAccountID int64, account *Account, groups []AccountGroup) error {
+	s.copySourceID = sourceAccountID
+	s.copyCalls++
 	if s.atomicCreateErr != nil {
 		return s.atomicCreateErr
 	}
@@ -109,6 +113,7 @@ func TestDuplicateAccountCopiesConfigurationAndResetsRuntimeState(t *testing.T) 
 			"nested":  map[string]any{"token": "source-token"},
 		},
 		Extra: map[string]any{
+			"auto_managed_probe_state":        map[string]any{"failures": 9},
 			"config":                          map[string]any{"region": "us-east-1"},
 			"items":                           []any{map[string]any{"enabled": true}},
 			"quota_limit":                     1000,
@@ -149,6 +154,7 @@ func TestDuplicateAccountCopiesConfigurationAndResetsRuntimeState(t *testing.T) 
 
 	require.NoError(t, err)
 	require.NotEqual(t, source.ID, duplicate.ID)
+	require.NotContains(t, duplicate.Extra, "auto_managed_probe_state")
 	require.Equal(t, "primary (Copy)", duplicate.Name)
 	require.Equal(t, source.Platform, duplicate.Platform)
 	require.Equal(t, source.Type, duplicate.Type)
@@ -158,10 +164,11 @@ func TestDuplicateAccountCopiesConfigurationAndResetsRuntimeState(t *testing.T) 
 	require.Equal(t, source.GroupIDs, duplicate.GroupIDs)
 	require.Equal(t, source.Credentials, duplicate.Credentials)
 	require.Equal(t, map[string]any{
-		"config":         map[string]any{"region": "us-east-1"},
-		"items":          []any{map[string]any{"enabled": true}},
-		"quota_limit":    float64(1000),
-		"codex_cli_only": true,
+		AccountManualSchedulingPauseKey: true,
+		"config":                        map[string]any{"region": "us-east-1"},
+		"items":                         []any{map[string]any{"enabled": true}},
+		"quota_limit":                   float64(1000),
+		"codex_cli_only":                true,
 	}, duplicate.Extra)
 	require.NotContains(t, duplicate.Extra, UpstreamBillingRateSyncEnabledExtraKey)
 	require.NotNil(t, duplicate.ExpiresAt)
@@ -322,5 +329,7 @@ func TestDuplicateAccountReturnsExistingCopyForSameOperationKey(t *testing.T) {
 	require.Nil(t, otherAdminRecovery, "durable recovery identity must remain scoped to the initiating admin")
 	require.NotEqual(t, first.ID, otherAdminCopy.ID)
 	require.Len(t, repo.accounts, 3)
+	require.Equal(t, source.ID, repo.copySourceID)
+	require.Equal(t, 2, repo.copyCalls, "同一操作重放不能再次复制测试计划")
 	require.NotEmpty(t, first.Extra[duplicateAccountOperationIDExtraKey])
 }

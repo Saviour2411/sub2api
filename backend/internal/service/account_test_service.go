@@ -45,7 +45,7 @@ var sseDataPrefix = regexp.MustCompile(`^data:\s*`)
 const (
 	testClaudeAPIURL            = "https://api.anthropic.com/v1/messages?beta=true"
 	chatgptCodexAPIURL          = "https://chatgpt.com/backend-api/codex/responses"
-	defaultAntigravityTestModel = "claude-sonnet-4-6"
+	defaultAntigravityTestModel = "claude-opus-5"
 )
 
 // TestEvent represents a SSE event for account testing
@@ -301,7 +301,7 @@ func createAPIKeyClaudeCodeTestPayload(account *Account, modelID string, prompts
 }
 
 // TestAccountConnection tests an account's connection by sending a test request
-// modelID is optional - if empty, defaults to claude.DefaultTestModel
+// modelID 留空时按账号平台和已配置的支持模型选择测试默认值。
 // mode is optional - "compact" routes OpenAI accounts to the /responses/compact probe path
 // opts is optional media (image/audio data URLs for real generation / STT).
 func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int64, modelID string, prompt string, mode string, opts ...AccountTestOptions) error {
@@ -312,6 +312,10 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	account, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Account not found")
+	}
+	if probe := firstTokenRecoveryProbeFromContext(ctx); probe != nil {
+		account = probe.accountForTest(account)
+		modelID = probe.model
 	}
 
 	// Synthetic UI load-test accounts exercise the real SSE parsing and modal
@@ -329,6 +333,14 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	}
 
 	// Route to platform-specific test method
+	// Grok 媒体模式有独立默认模型，不能被文本测试默认值覆盖。
+	if account.Platform == PlatformGrok {
+		return s.testGrokAccountConnection(c, account, modelID, prompt, mode, testOpts)
+	}
+	account, modelID, err = prepareAccountTestModel(account, modelID)
+	if err != nil {
+		return s.sendErrorAndEnd(c, err.Error())
+	}
 	if account.IsCNProvider() {
 		switch account.GetAPIProtocol() {
 		case APIProtocolAdaptive:
@@ -350,10 +362,6 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.testGeminiAccountConnection(c, account, modelID, prompt)
 	}
 
-	if account.Platform == PlatformGrok {
-		return s.testGrokAccountConnection(c, account, modelID, prompt, mode, testOpts)
-	}
-
 	if account.Platform == PlatformAntigravity {
 		return s.routeAntigravityTest(c, account, modelID, prompt)
 	}
@@ -372,9 +380,9 @@ func (s *AccountTestService) resolveTextTestPrompt(ctx context.Context, prompt s
 }
 
 func (s *AccountTestService) testCNProviderChatCompletionsConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
-	testModelID := strings.TrimSpace(modelID)
-	if testModelID == "" {
-		testModelID = openai.DefaultTestModel
+	account, testModelID, err := prepareAccountTestModel(account, modelID)
+	if err != nil {
+		return s.sendErrorAndEnd(c, err.Error())
 	}
 	testModelID = account.GetMappedModel(testModelID)
 
@@ -398,9 +406,9 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 	textPrompt := s.resolveTextTestPrompt(ctx, firstNonEmptyPrompt(prompts, ""))
 
 	// Determine the model to use
-	testModelID := modelID
-	if testModelID == "" {
-		testModelID = claude.DefaultTestModel
+	account, testModelID, err := prepareAccountTestModel(account, modelID)
+	if err != nil {
+		return s.sendErrorAndEnd(c, err.Error())
 	}
 
 	// API Key 账号测试连接时也需要应用通配符模型映射。
@@ -520,7 +528,7 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.doAccountTestUpstreamWithTLS(req, proxyURL, account, s.tlsFPProfileService.ResolveTLSProfile(account))
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
@@ -606,7 +614,7 @@ func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Con
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.doAccountTestUpstreamWithTLS(req, proxyURL, account, s.tlsFPProfileService.ResolveTLSProfile(account))
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
@@ -660,8 +668,9 @@ func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx co
 	}
 	bedrockBody, _ := json.Marshal(bedrockPayload)
 
-	// Use non-streaming endpoint (response is standard Claude JSON)
-	apiURL := BuildBedrockURL(region, testModelID, false)
+	// 恢复探测需要真实流式首输出，普通手动测试仍保持非流式。
+	recoveryStream := firstTokenRecoveryProbeFromContext(ctx) != nil
+	apiURL := BuildBedrockURL(region, testModelID, recoveryStream)
 
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
 
@@ -693,11 +702,14 @@ func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx co
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, nil)
+	resp, err := s.doAccountTestUpstreamWithTLS(req, proxyURL, account, nil)
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if recoveryStream && resp.StatusCode == http.StatusOK {
+		return s.processBedrockRecoveryStream(c, resp.Body, account)
+	}
 
 	body, _ := io.ReadAll(resp.Body)
 
@@ -733,10 +745,9 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	ctx := c.Request.Context()
 	mode = normalizeAccountTestMode(mode)
 
-	// Default to openai.DefaultTestModel for OpenAI testing
-	testModelID := modelID
-	if testModelID == "" {
-		testModelID = openai.DefaultTestModel
+	account, testModelID, err := prepareAccountTestModel(account, modelID)
+	if err != nil {
+		return s.sendErrorAndEnd(c, err.Error())
 	}
 
 	// Align test routing with gateway behavior: OpenAI accounts apply normal
@@ -970,7 +981,7 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 		// Force text Responses even if model_id looks like media.
 		testModelID := strings.TrimSpace(modelID)
 		if testModelID == "" {
-			testModelID = grokDefaultResponsesModel
+			testModelID = defaultGrokAccountTestModel
 		}
 		if mapped := strings.TrimSpace(account.GetMappedModel(testModelID)); mapped != "" {
 			testModelID = mapped
@@ -981,7 +992,7 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 	// mode == default: infer from model family (legacy UI / API clients).
 	testModelID := strings.TrimSpace(modelID)
 	if testModelID == "" {
-		testModelID = grokDefaultResponsesModel
+		testModelID = defaultGrokAccountTestModel
 	}
 	if mapped := strings.TrimSpace(account.GetMappedModel(testModelID)); mapped != "" {
 		testModelID = mapped
@@ -1202,7 +1213,7 @@ func (s *AccountTestService) testGrokResponsesConnection(c *gin.Context, ctx con
 	}
 	s.applyGrokTestRequestHeaders(req, account, authToken, "application/json, text/event-stream")
 
-	resp, err := s.httpUpstream.Do(req, s.grokTestProxyURL(account), account.ID, account.Concurrency)
+	resp, err := s.doAccountTestUpstream(req, s.grokTestProxyURL(account), account)
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok Responses API request failed: %s", err.Error()))
 	}
@@ -1532,7 +1543,7 @@ func (s *AccountTestService) testGrokWebSearch(c *gin.Context, ctx context.Conte
 User query:
 %s`, maxResults, query)
 	payload := map[string]any{
-		"model":   grokDefaultResponsesModel,
+		"model":   defaultGrokAccountTestModel,
 		"input":   prompt,
 		"tools":   []map[string]any{{"type": "web_search"}},
 		"include": []string{"web_search_call.action.sources"},
@@ -1556,7 +1567,7 @@ User query:
 		return s.sendErrorAndEnd(c, fmt.Sprintf("standalone web_search probe failed: %s", err.Error()))
 	}
 	defer func() { _ = resp.Body.Close() }()
-	s.observeGrokTestResponse(withGrokTeamRateLimitModel(ctx, grokDefaultResponsesModel), account, resp)
+	s.observeGrokTestResponse(withGrokTeamRateLimitModel(ctx, defaultGrokAccountTestModel), account, resp)
 
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
@@ -2089,7 +2100,7 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.doAccountTestUpstreamWithTLS(req, proxyURL, account, s.tlsFPProfileService.ResolveTLSProfile(account))
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Chat Completions API (/v1/chat/completions) request failed: %s", err.Error()))
 	}
@@ -2342,10 +2353,9 @@ func (s *AccountTestService) reconcileOpenAI429State(ctx context.Context, accoun
 func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
 	ctx := c.Request.Context()
 
-	// Determine the model to use
-	testModelID := modelID
-	if testModelID == "" {
-		testModelID = geminicli.DefaultTestModel
+	account, testModelID, err := prepareAccountTestModel(account, modelID)
+	if err != nil {
+		return s.sendErrorAndEnd(c, err.Error())
 	}
 
 	// For static upstream credentials with model mapping, map the model
@@ -2373,7 +2383,6 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 
 	// Build request based on account type
 	var req *http.Request
-	var err error
 
 	switch account.Type {
 	case AccountTypeAPIKey:
@@ -2399,7 +2408,7 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.doAccountTestUpstreamWithTLS(req, proxyURL, account, s.tlsFPProfileService.ResolveTLSProfile(account))
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}

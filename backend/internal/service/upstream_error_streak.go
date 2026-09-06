@@ -101,7 +101,7 @@ func (s *RateLimitService) recordUpstreamFailureOutcomeSnapshot(
 	}
 	// 首 Token 连续超时按一次用户请求中的账号最终结果结算；任何明确的
 	// 非超时结果都在这里清零，避免内部协议重试提前改写 streak。
-	s.resetFailureStreakEvent(ctx, accountID, AccountFailureStreakSourceFirstTokenTimeout, 0, event)
+	s.resetFirstTokenTimeoutStreakForRequest(ctx, accountID, event)
 
 	if !managed {
 		s.resetFailureStreakEvent(ctx, accountID, AccountFailureStreakSourceUpstreamError, 0, event)
@@ -227,7 +227,7 @@ func (s *RateLimitService) RecordUpstreamSuccessOutcomeAt(ctx context.Context, a
 	if event.OccurredAt.IsZero() || strings.TrimSpace(event.ID) == "" {
 		event = NewAccountFailureStreakEvent(time.Now().UTC())
 	}
-	s.resetFailureStreakEvent(ctx, accountID, AccountFailureStreakSourceFirstTokenTimeout, 0, event)
+	s.resetFirstTokenTimeoutStreakForRequest(ctx, accountID, event)
 	s.resetFailureStreakEvent(ctx, accountID, AccountFailureStreakSourceUpstreamError, 0, event)
 }
 
@@ -330,7 +330,7 @@ func (s *GatewayService) HandleUpstreamFailoverError(ctx context.Context, accoun
 	}
 	blocked := s.rateLimitService.HandleUpstreamFailoverError(ctx, account, failoverErr)
 	if blocked && !failoverErr.FirstTokenTimeout {
-		s.rateLimitService.resetFirstTokenTimeoutStreak(ctx, accountID, 0)
+		s.rateLimitService.resetFirstTokenTimeoutStreakForRequest(ctx, accountID, NewAccountFailureStreakEvent(time.Now().UTC()))
 	}
 	return blocked
 }
@@ -389,7 +389,7 @@ func (s *OpenAIGatewayService) HandleUpstreamFailoverError(ctx context.Context, 
 	}
 	blocked := s.rateLimitService.HandleUpstreamFailoverError(ctx, account, failoverErr)
 	if blocked && !failoverErr.FirstTokenTimeout {
-		s.rateLimitService.resetFirstTokenTimeoutStreak(ctx, accountID, 0)
+		s.rateLimitService.resetFirstTokenTimeoutStreakForRequest(ctx, accountID, NewAccountFailureStreakEvent(time.Now().UTC()))
 	}
 	return blocked
 }

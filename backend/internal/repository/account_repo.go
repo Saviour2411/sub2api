@@ -207,9 +207,8 @@ func createAccountRecord(ctx context.Context, client *dbent.Client, account *ser
 	return nil
 }
 
-// CreateWithAccountGroups atomically persists an account, its exact per-group priorities,
-// and the scheduler outbox event used to publish the new routing snapshot.
-func (r *accountRepository) CreateWithAccountGroups(ctx context.Context, account *service.Account, groups []service.AccountGroup) error {
+// CreateDuplicateWithPlans 将账号、分组、测试计划和调度通知作为一个整体提交。
+func (r *accountRepository) CreateDuplicateWithPlans(ctx context.Context, sourceAccountID int64, account *service.Account, groups []service.AccountGroup) error {
 	if account == nil {
 		return service.ErrAccountNilInput
 	}
@@ -227,6 +226,13 @@ func (r *accountRepository) CreateWithAccountGroups(ctx context.Context, account
 		txClient = r.client
 	}
 
+	exists, err := txClient.Account.Query().Where(dbaccount.IDEQ(sourceAccountID), dbaccount.DeletedAtIsNil()).Exist(ctx)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return service.ErrAccountNotFound
+	}
 	if err := createAccountRecord(ctx, txClient, account); err != nil {
 		return err
 	}
@@ -248,6 +254,9 @@ func (r *accountRepository) CreateWithAccountGroups(ctx context.Context, account
 	}
 	account.GroupIDs = groupIDs
 	account.AccountGroups = append([]service.AccountGroup(nil), groups...)
+	if err := copyAccountScheduledTestPlans(ctx, txClient, sourceAccountID, account.ID); err != nil {
+		return err
+	}
 	if err := enqueueSchedulerOutbox(ctx, txClient, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(groupIDs)); err != nil {
 		return err
 	}
@@ -2587,10 +2596,11 @@ func (r *accountRepository) UpdateSessionWindowEnd(ctx context.Context, id int64
 }
 
 func (r *accountRepository) SetSchedulable(ctx context.Context, id int64, schedulable bool) error {
-	_, err := r.client.Account.Update().
-		Where(dbaccount.IDEQ(id)).
-		SetSchedulable(schedulable).
-		Save(ctx)
+	// 后台恢复不能覆盖管理员在探测期间写入的暂停。
+	_, err := r.sql.ExecContext(ctx, `UPDATE accounts SET schedulable = $2, updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL
+			AND (NOT $2::boolean OR COALESCE(extra->>'manual_scheduling_paused', 'false') <> 'true')
+	`, id, schedulable)
 	if err != nil {
 		return err
 	}
@@ -2759,6 +2769,7 @@ func (r *accountRepository) PersistFailureSchedulingState(
 			updated_at = NOW()
 		WHERE id = $2
 			AND deleted_at IS NULL
+			AND COALESCE(extra->>'manual_scheduling_paused', 'false') <> 'true'
 			AND (
 				NOT (COALESCE(extra, '{}'::jsonb) ? 'failure_strategy_unscheduled')
 				OR extra->'failure_strategy_unscheduled' IS NULL
@@ -2836,6 +2847,7 @@ func (r *accountRepository) RecoverFailureSchedulingState(ctx context.Context, a
 			updated_at = NOW()
 		WHERE id = $1
 			AND deleted_at IS NULL
+			AND COALESCE(extra->>'manual_scheduling_paused', 'false') <> 'true'
 			AND extra->'failure_strategy_unscheduled'->>'incident_id' = $2
 	`, accountID, strings.TrimSpace(incidentID))
 	if err != nil {
@@ -2893,6 +2905,7 @@ func (r *accountRepository) ClearFailureSchedulingState(ctx context.Context, acc
 			updated_at = NOW()
 		WHERE id = $1
 			AND deleted_at IS NULL
+			AND COALESCE(extra->>'manual_scheduling_paused', 'false') <> 'true'
 			AND extra ? 'failure_strategy_unscheduled'
 			AND extra->'failure_strategy_unscheduled' IS NOT NULL
 			AND extra->'failure_strategy_unscheduled' <> 'null'::jsonb
@@ -3189,6 +3202,10 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		setClauses = append(setClauses, "schedulable = $"+itoa(idx))
 		args = append(args, *updates.Schedulable)
 		idx++
+		if updates.Extra == nil {
+			updates.Extra = make(map[string]any)
+		}
+		updates.Extra[service.AccountManualSchedulingPauseKey] = !*updates.Schedulable
 	}
 	if updates.ProbeEnabled != nil {
 		if updates.Extra == nil {

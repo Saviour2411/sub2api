@@ -87,7 +87,7 @@ func BuildAccountFailureStreakPolicy(source AccountFailureStreakSource, settings
 	}
 }
 
-// BuildGatewayFailurePolicyFingerprint 仅包含会改变连续失败语义的四项配置。
+// BuildGatewayFailurePolicyFingerprint 包含会改变连续失败语义及生效范围的配置。
 func BuildGatewayFailurePolicyFingerprint(settings GatewaySettings) string {
 	return fmt.Sprintf(
 		"first_token={%s};upstream={%s}",
@@ -101,11 +101,16 @@ func BuildGatewayFailurePolicyFingerprint(settings GatewaySettings) string {
 func BuildAccountFailureStreakPolicyFingerprint(source AccountFailureStreakSource, settings GatewaySettings) string {
 	switch source {
 	case AccountFailureStreakSourceFirstTokenTimeout:
-		return fmt.Sprintf(
+		fingerprint := fmt.Sprintf(
 			"timeout_seconds=%d;threshold=%d",
 			settings.FirstTokenTimeoutSeconds,
 			settings.FirstTokenTimeoutConsecutiveThreshold,
 		)
+		// 保留原全局指纹，升级后不让已有 Redis 计数产生同代次冲突。
+		if settings.FirstTokenTimeoutScope == FirstTokenTimeoutScopeSelectedGroups {
+			fingerprint += ";scope=selected_groups;groups=" + marshalFirstTokenTimeoutGroupIDs(normalizeCustomFeatureGroupIDs(settings.FirstTokenTimeoutGroupIDs))
+		}
+		return fingerprint
 	case AccountFailureStreakSourceUpstreamError:
 		codes := normalizeRetryStatusCodes(settings.UpstreamErrorStatusCodes)
 		parts := make([]string, len(codes))

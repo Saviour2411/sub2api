@@ -19,6 +19,7 @@ type scheduledTestPlanRepoStub struct {
 	disabled             []scheduledPlanDisableCall
 	rescheduledSteps     []time.Duration
 	rescheduledAt        time.Time
+	deferred             []scheduledPlanEnableCall
 }
 
 type scheduledTestResultRepoStub struct {
@@ -127,6 +128,11 @@ func (r *scheduledTestPlanRepoStub) UpdateAfterRun(ctx context.Context, id int64
 
 func (r *scheduledTestPlanRepoStub) EnableAutoManaged(ctx context.Context, id int64, nextRunAt time.Time) error {
 	r.enabled = append(r.enabled, scheduledPlanEnableCall{id: id, nextRunAt: nextRunAt})
+	return nil
+}
+
+func (r *scheduledTestPlanRepoStub) DeferOrdinaryPlan(_ context.Context, id int64, nextRunAt time.Time) error {
+	r.deferred = append(r.deferred, scheduledPlanEnableCall{id: id, nextRunAt: nextRunAt})
 	return nil
 }
 

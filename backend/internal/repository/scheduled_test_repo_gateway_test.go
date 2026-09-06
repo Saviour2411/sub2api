@@ -47,7 +47,7 @@ func TestRescheduleEnabledAutoManagedUsesFailureStepFromLastRun(t *testing.T) {
 			AddRow(int64(8), lastRunAt, now.Add(time.Minute), 2),
 	)
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE scheduled_test_plans")).
-		WithArgs(int64(8), wantNextRunAt).
+		WithArgs(int64(8), wantNextRunAt, lastRunAt, now.Add(time.Minute)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
@@ -65,7 +65,7 @@ func TestDisableAutoManagedIfAccountHealthyUsesAccountLock(t *testing.T) {
 	now := time.Date(2026, 7, 12, 10, 0, 0, 0, time.UTC)
 	finishedAt := now.Add(-time.Second)
 	mock.ExpectBegin()
-	mock.ExpectQuery("SELECT NOT").
+	mock.ExpectQuery("SELECT COALESCE").
 		WithArgs(int64(42), now).
 		WillReturnRows(sqlmock.NewRows([]string{"healthy"}).AddRow(true))
 	mock.ExpectExec("UPDATE scheduled_test_plans").
@@ -93,7 +93,7 @@ func TestDisableAutoManagedIfAccountHealthyKeepsPlanForNewIncident(t *testing.T)
 
 	now := time.Date(2026, 7, 12, 10, 0, 0, 0, time.UTC)
 	mock.ExpectBegin()
-	mock.ExpectQuery("SELECT NOT").
+	mock.ExpectQuery("SELECT COALESCE").
 		WithArgs(int64(42), now).
 		WillReturnRows(sqlmock.NewRows([]string{"healthy"}).AddRow(false))
 	mock.ExpectRollback()

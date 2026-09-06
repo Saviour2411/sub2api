@@ -85,6 +85,8 @@ type GatewaySettings struct {
 	AdditionalFailoverStatusCodes           []int    `json:"additional_failover_status_codes"`
 	AutoManagedProbeBackoffMinutes          []int    `json:"auto_managed_probe_backoff_minutes"`
 	FirstTokenTimeoutSeconds                int      `json:"first_token_timeout_seconds"`
+	FirstTokenTimeoutScope                  string   `json:"first_token_timeout_scope"`
+	FirstTokenTimeoutGroupIDs               []int64  `json:"first_token_timeout_group_ids"`
 	FirstTokenTimeoutConsecutiveThreshold   int      `json:"first_token_timeout_consecutive_threshold"`
 	UpstreamErrorStatusCodes                []int    `json:"upstream_error_status_codes"`
 	UpstreamErrorConsecutiveThreshold       int      `json:"upstream_error_consecutive_threshold"`
@@ -122,6 +124,8 @@ type CustomFeatureSettings struct {
 }
 
 var gatewaySettingKeys = []string{
+	SettingKeyGatewayFirstTokenTimeoutScope,
+	SettingKeyGatewayFirstTokenTimeoutGroupIDs,
 	SettingKeyGatewayDefaultPoolModeRetryCount,
 	SettingKeyGatewayDefaultPoolModeRetryStatusCodes,
 	SettingKeyGatewayAdditionalFailoverStatusCodesEnabled,
@@ -140,6 +144,8 @@ var gatewaySettingKeys = []string{
 }
 
 var customFeatureSettingKeys = []string{
+	SettingKeyGatewayFirstTokenTimeoutScope,
+	SettingKeyGatewayFirstTokenTimeoutGroupIDs,
 	SettingKeyCanvasEnabled,
 	SettingKeyModelMarketplaceEnabled,
 	SettingKeyModelMarketplaceIntro,
@@ -236,6 +242,8 @@ func DefaultGatewaySettings() GatewaySettings {
 		AdditionalFailoverStatusCodes:           append([]int(nil), defaultGatewayAdditionalFailoverCodes...),
 		AutoManagedProbeBackoffMinutes:          append([]int(nil), defaultGatewayProbeBackoffMinutes...),
 		FirstTokenTimeoutSeconds:                DefaultGatewayFirstTokenTimeout,
+		FirstTokenTimeoutScope:                  FirstTokenTimeoutScopeAll,
+		FirstTokenTimeoutGroupIDs:               []int64{},
 		FirstTokenTimeoutConsecutiveThreshold:   DefaultGatewayFirstTokenTimeoutConsecutiveThreshold,
 		UpstreamErrorStatusCodes:                append([]int(nil), defaultGatewayUpstreamErrorStatusCodes...),
 		UpstreamErrorConsecutiveThreshold:       DefaultGatewayUpstreamErrorConsecutiveThreshold,
@@ -301,13 +309,23 @@ func (s *SettingService) GetGatewayRuntime(ctx context.Context) GatewaySettings 
 
 // UpdateGatewaySettings 校验、规范化并保存网关配置。
 func (s *SettingService) UpdateGatewaySettings(ctx context.Context, input GatewaySettings) (*GatewaySettings, error) {
+	current, err := s.GetGatewaySettings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// 旧管理客户端未发送范围字段时保留已有选择，避免意外扩展为全局。
+	if input.FirstTokenTimeoutScope == "" {
+		input.FirstTokenTimeoutScope = current.FirstTokenTimeoutScope
+		input.FirstTokenTimeoutGroupIDs = append([]int64{}, current.FirstTokenTimeoutGroupIDs...)
+	}
 	input.AnthropicSamplingParameterFilterModels = normalizeAnthropicSamplingParameterFilterModels(input.AnthropicSamplingParameterFilterModels)
 	if err := validateGatewaySettings(&input); err != nil {
 		return nil, err
 	}
-	current, err := s.GetGatewaySettings(ctx)
-	if err != nil {
-		return nil, err
+	if input.FirstTokenTimeoutScope == FirstTokenTimeoutScopeSelectedGroups {
+		if err := s.validateCustomFeatureGroups(ctx, input.FirstTokenTimeoutGroupIDs, false); err != nil {
+			return nil, err
+		}
 	}
 	currentFingerprint := BuildGatewayFailurePolicyFingerprint(*current)
 	desiredFingerprint := BuildGatewayFailurePolicyFingerprint(input)
@@ -332,6 +350,8 @@ func (s *SettingService) UpdateGatewaySettings(ctx context.Context, input Gatewa
 		return nil, fmt.Errorf("序列化 Anthropic 采样参数过滤模型: %w", err)
 	}
 	updates := map[string]string{
+		SettingKeyGatewayFirstTokenTimeoutScope:                  input.FirstTokenTimeoutScope,
+		SettingKeyGatewayFirstTokenTimeoutGroupIDs:               marshalFirstTokenTimeoutGroupIDs(input.FirstTokenTimeoutGroupIDs),
 		SettingKeyGatewayDefaultPoolModeRetryCount:               strconv.Itoa(input.DefaultPoolModeRetryCount),
 		SettingKeyGatewayDefaultPoolModeRetryStatusCodes:         string(statusCodesJSON),
 		SettingKeyGatewayAdditionalFailoverStatusCodesEnabled:    strconv.FormatBool(input.AdditionalFailoverStatusCodesEnabled),
@@ -464,6 +484,11 @@ func parseGatewaySettings(values map[string]string) GatewaySettings {
 	if value, err := strconv.Atoi(strings.TrimSpace(values[SettingKeyGatewayFirstTokenTimeoutSeconds])); err == nil && value >= 0 && value <= MaxGatewayFirstTokenTimeoutSeconds {
 		settings.FirstTokenTimeoutSeconds = value
 	}
+	if scope := strings.TrimSpace(values[SettingKeyGatewayFirstTokenTimeoutScope]); scope != "" && scope != FirstTokenTimeoutScopeAll {
+		// 无效范围按指定分组处理，不能退回全局生效。
+		settings.FirstTokenTimeoutScope = FirstTokenTimeoutScopeSelectedGroups
+	}
+	settings.FirstTokenTimeoutGroupIDs = normalizeCustomFeatureGroupIDs(parseCustomFeatureGroupIDs(values[SettingKeyGatewayFirstTokenTimeoutGroupIDs]))
 	if value, err := strconv.Atoi(strings.TrimSpace(values[SettingKeyGatewayFirstTokenTimeoutConsecutiveThreshold])); err == nil && value >= 1 && value <= MaxGatewayFailureConsecutiveThreshold {
 		settings.FirstTokenTimeoutConsecutiveThreshold = value
 	}
@@ -509,6 +534,21 @@ func validateGatewaySettings(settings *GatewaySettings) error {
 	}
 	if settings.FirstTokenTimeoutSeconds < 0 || settings.FirstTokenTimeoutSeconds > MaxGatewayFirstTokenTimeoutSeconds {
 		return ErrGatewaySettingsInvalid.WithMetadata(map[string]string{"field": "first_token_timeout_seconds"})
+	}
+	if settings.FirstTokenTimeoutScope == "" {
+		settings.FirstTokenTimeoutScope = FirstTokenTimeoutScopeAll
+	}
+	if settings.FirstTokenTimeoutScope != FirstTokenTimeoutScopeAll && settings.FirstTokenTimeoutScope != FirstTokenTimeoutScopeSelectedGroups {
+		return ErrGatewaySettingsInvalid.WithMetadata(map[string]string{"field": "first_token_timeout_scope"})
+	}
+	for _, id := range settings.FirstTokenTimeoutGroupIDs {
+		if id <= 0 {
+			return ErrGatewaySettingsInvalid.WithMetadata(map[string]string{"field": "first_token_timeout_group_ids"})
+		}
+	}
+	settings.FirstTokenTimeoutGroupIDs = normalizeCustomFeatureGroupIDs(settings.FirstTokenTimeoutGroupIDs)
+	if settings.FirstTokenTimeoutScope == FirstTokenTimeoutScopeSelectedGroups && len(settings.FirstTokenTimeoutGroupIDs) == 0 {
+		return ErrGatewaySettingsInvalid.WithMetadata(map[string]string{"field": "first_token_timeout_group_ids"})
 	}
 	if settings.FirstTokenTimeoutConsecutiveThreshold < 1 || settings.FirstTokenTimeoutConsecutiveThreshold > MaxGatewayFailureConsecutiveThreshold {
 		return ErrGatewaySettingsInvalid.WithMetadata(map[string]string{"field": "first_token_timeout_consecutive_threshold"})
@@ -612,6 +652,7 @@ func validateAnthropicSamplingParameterFilterModels(models []string) error {
 }
 
 func cloneGatewaySettings(settings GatewaySettings) GatewaySettings {
+	settings.FirstTokenTimeoutGroupIDs = append([]int64{}, settings.FirstTokenTimeoutGroupIDs...)
 	settings.DefaultPoolModeRetryStatusCodes = append([]int{}, settings.DefaultPoolModeRetryStatusCodes...)
 	settings.AdditionalFailoverStatusCodes = append([]int{}, settings.AdditionalFailoverStatusCodes...)
 	settings.UpstreamErrorStatusCodes = append([]int{}, settings.UpstreamErrorStatusCodes...)
