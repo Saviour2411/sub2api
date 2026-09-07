@@ -57,17 +57,21 @@ func TestListPlazaGroups_GroupCentricAggregation(t *testing.T) {
 	require.Equal(t, "claude-sonnet", out[0].Models[1].Name)
 }
 
-func TestWithDefaultMaxReasoningEffortMultiplier_Fable51(t *testing.T) {
-	base := &ChannelModelPricing{BillingMode: BillingModeToken}
-	got := withDefaultMaxReasoningEffortMultiplier(base, "claude-fable-5-1")
-	require.NotSame(t, base, got)
-	require.NotNil(t, got.MaxReasoningEffortMultiplier)
-	require.Equal(t, 3.0, *got.MaxReasoningEffortMultiplier)
-	require.Nil(t, base.MaxReasoningEffortMultiplier)
-
-	configured := 1.25
-	custom := &ChannelModelPricing{MaxReasoningEffortMultiplier: &configured}
-	require.Same(t, custom, withDefaultMaxReasoningEffortMultiplier(custom, "claude-fable-5-1"))
+func TestModelPlazaPricing_Fable51DoesNotInjectMaxMultiplier(t *testing.T) {
+	for _, multiplier := range []*float64{nil, testPtrFloat64(1.25)} {
+		for _, withSchedule := range []bool{false, true} {
+			pricing := &ChannelModelPricing{BillingMode: BillingModeToken, MaxReasoningEffortMultiplier: multiplier}
+			model := &PlazaModel{Name: "claude-fable-5-1", Platform: PlatformAnthropic, Pricing: pricing}
+			svc := &ModelPlazaService{}
+			if withSchedule {
+				svc.billingService, svc.resolver = newTokenCostTestEnv(t, PlatformAnthropic, nil, nil)
+			}
+			svc.fillDisplayPricing(context.Background(), model, &Group{ID: 100, Platform: PlatformAnthropic})
+			require.NotNil(t, model.Pricing)
+			require.Equal(t, multiplier, model.Pricing.MaxReasoningEffortMultiplier)
+			require.Equal(t, multiplier, pricing.MaxReasoningEffortMultiplier)
+		}
+	}
 }
 
 func TestListPlazaGroups_DedupFirstWinsWithPricingUpgrade(t *testing.T) {

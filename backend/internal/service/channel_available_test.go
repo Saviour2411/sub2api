@@ -308,3 +308,21 @@ func TestFillGlobalPricingFallback_KeepsExistingPrice(t *testing.T) {
 func newStubPricingServiceFromMap(data map[string]*LiteLLMModelPricing) *PricingService {
 	return &PricingService{pricingData: data}
 }
+
+func TestFillGlobalPricingFallback_Fable51DoesNotInjectMaxMultiplier(t *testing.T) {
+	for _, multiplier := range []*float64{nil, testPtrFloat64(1.25)} {
+		models := []SupportedModel{{
+			Name:    "claude-fable-5-1",
+			Pricing: &ChannelModelPricing{MaxReasoningEffortMultiplier: multiplier},
+		}}
+		fillGlobalPricingFallback(nil, models)
+		require.Equal(t, multiplier, models[0].Pricing.MaxReasoningEffortMultiplier)
+		catalog := newStubPricingServiceFromMap(map[string]*LiteLLMModelPricing{
+			"claude-fable-5-1": {InputCostPerToken: 10e-6, OutputCostPerToken: 50e-6},
+		})
+		fillGlobalPricingFallback(catalog, models)
+		require.Equal(t, multiplier, models[0].Pricing.MaxReasoningEffortMultiplier)
+		require.NotNil(t, models[0].Pricing.InputPrice)
+		require.InDelta(t, 10e-6, *models[0].Pricing.InputPrice, 1e-12)
+	}
+}

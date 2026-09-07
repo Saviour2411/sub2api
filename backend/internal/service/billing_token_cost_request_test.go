@@ -251,21 +251,79 @@ func TestCalculateTokenCostForRequest_NoResolverFallsBackToCatalog(t *testing.T)
 	require.Equal(t, want, got)
 }
 
-func TestCalculateTokenCostForRequest_Fable51MaxEffortUsesDefaultMultiplier(t *testing.T) {
+// 复现线上费用截图：推理等级只影响实际用量，不能再隐式乘三。
+func TestCalculateTokenCostForRequest_Fable51MaxEffortUsesStandardPricing(t *testing.T) {
+	const model = "claude-fable-5-1"
+	tokens := UsageTokens{
+		InputTokens: 4, OutputTokens: 163,
+		CacheCreationTokens: 3042, CacheCreation5mTokens: 3042, CacheReadTokens: 192039,
+	}
+	for _, source := range []string{"fallback", "catalog", "channel"} {
+		t.Run(source, func(t *testing.T) {
+			var catalog *PricingService
+			var channelPricing []ChannelModelPricing
+			if source == "catalog" {
+				catalog = newStubPricingServiceFromMap(map[string]*LiteLLMModelPricing{
+					model: {
+						Mode: "chat", LiteLLMProvider: PlatformAnthropic, SupportsPromptCaching: true,
+						InputCostPerToken: 10e-6, OutputCostPerToken: 50e-6,
+						CacheCreationInputTokenCost: 12.5e-6, CacheCreationInputTokenCostAbove1hr: 20e-6,
+						CacheReadInputTokenCost: 0.25e-6,
+					},
+				})
+			}
+			if source == "channel" {
+				channelPricing = []ChannelModelPricing{{
+					Platform: PlatformAnthropic, Models: []string{model}, BillingMode: BillingModeToken,
+					InputPrice: testPtrFloat64(10e-6), OutputPrice: testPtrFloat64(50e-6),
+					CacheWritePrice: testPtrFloat64(12.5e-6), CacheWrite1hPrice: testPtrFloat64(20e-6),
+					CacheReadPrice: testPtrFloat64(0.25e-6),
+				}}
+			}
+			bs, resolver := newTokenCostTestEnv(t, PlatformAnthropic, channelPricing, catalog)
+			group := &Group{ID: 100, Platform: PlatformAnthropic, LongContextPricingEnabled: true}
+			if source == "fallback" {
+				resolver = nil
+			}
+			for _, effort := range []string{"", "low", "medium", "high", "xhigh", "max"} {
+				t.Run("effort="+effort, func(t *testing.T) {
+					got, err := bs.CalculateTokenCostForRequest(TokenCostRequest{
+						Ctx: context.Background(), Model: model, Group: group, Tokens: tokens,
+						RateMultiplier: 1.1, ReasoningEffort: effort, Resolver: resolver,
+					})
+					require.NoError(t, err)
+					require.InDelta(t, 0.00004, got.InputCost, 1e-12)
+					require.InDelta(t, 0.00815, got.OutputCost, 1e-12)
+					require.InDelta(t, 0.038025, got.CacheCreationCost, 1e-12)
+					require.InDelta(t, 0.04800975, got.CacheReadCost, 1e-12)
+					require.InDelta(t, 0.09422475, got.TotalCost, 1e-12)
+					require.InDelta(t, 0.103647225, got.ActualCost, 1e-12)
+					require.False(t, got.LongContextBillingApplied)
+				})
+			}
+		})
+	}
+}
+
+func TestCalculateTokenCostForRequest_Fable51MaxEffortCacheTTLAndUserRate(t *testing.T) {
 	bs := NewBillingService(&config.Config{}, nil)
-	tokens := UsageTokens{InputTokens: 1000, OutputTokens: 10}
-	standard, err := bs.CalculateTokenCostForRequest(TokenCostRequest{
-		Model: "claude-fable-5-1", Tokens: tokens, RateMultiplier: 1, ReasoningEffort: "xhigh",
-	})
-	require.NoError(t, err)
-	max, err := bs.CalculateTokenCostForRequest(TokenCostRequest{
-		Model: "claude-fable-5-1", Tokens: tokens, RateMultiplier: 1, ReasoningEffort: "max",
-	})
-	require.NoError(t, err)
-	require.InDelta(t, standard.TotalCost*3, max.TotalCost, 1e-12)
-	require.InDelta(t, standard.ActualCost*3, max.ActualCost, 1e-12)
-	require.InDelta(t, standard.InputCost*3, max.InputCost, 1e-12)
-	require.InDelta(t, standard.OutputCost*3, max.OutputCost, 1e-12)
+	tokens := UsageTokens{
+		InputTokens: 10, OutputTokens: 20, CacheCreationTokens: 300,
+		CacheCreation5mTokens: 100, CacheCreation1hTokens: 200, CacheReadTokens: 400,
+	}
+	for _, rate := range []float64{0, 1, 1.1} {
+		standard, err := bs.CalculateTokenCostForRequest(TokenCostRequest{
+			Model: "claude-fable-5-1", Tokens: tokens, RateMultiplier: rate, ReasoningEffort: "high",
+		})
+		require.NoError(t, err)
+		max, err := bs.CalculateTokenCostForRequest(TokenCostRequest{
+			Model: "claude-fable-5-1", Tokens: tokens, RateMultiplier: rate, ReasoningEffort: "max",
+		})
+		require.NoError(t, err)
+		require.Equal(t, standard, max)
+		require.InDelta(t, 100*12.5e-6+200*20e-6, max.CacheCreationCost, 1e-12)
+		require.InDelta(t, max.TotalCost*rate, max.ActualCost, 1e-12)
+	}
 }
 
 func TestCalculateTokenCostForRequest_ChannelOverridesFable51MaxEffortMultiplier(t *testing.T) {

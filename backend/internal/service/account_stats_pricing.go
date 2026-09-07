@@ -17,7 +17,7 @@ import (
 // upstreamModel 是最终发往上游的模型 ID。
 // totalCost 是本次请求的客户计费（倍率前），用于优先级 2。
 // serviceTier 是最终参与用户计费的 OpenAI 服务层级，用于优先级 3。
-// reasoningEffort 是最终转发等级；Fable 5.1 max 默认按 3 倍额度消耗。
+// reasoningEffort 是最终转发等级；未显式配置倍率时，不因 max 等级增加额度消耗。
 func resolveAccountStatsCost(
 	ctx context.Context,
 	channelService *ChannelService,
@@ -84,7 +84,7 @@ func tryModelFilePricing(billingService *BillingService, model string, tokens Us
 	if err != nil || breakdown == nil || breakdown.TotalCost <= 0 {
 		return nil
 	}
-	applyCostBreakdownMultiplier(breakdown, maxReasoningEffortBillingMultiplier(model, reasoningEffort, nil))
+	applyCostBreakdownMultiplier(breakdown, maxReasoningEffortBillingMultiplier(reasoningEffort, nil))
 	return &breakdown.TotalCost
 }
 
@@ -109,7 +109,7 @@ func tryCustomRules(
 		}
 		cost := calculateStatsCost(pricing, tokens, requestCount)
 		if cost != nil {
-			*cost *= maxReasoningEffortBillingMultiplier(model, reasoningEffort, nil)
+			*cost *= maxReasoningEffortBillingMultiplier(reasoningEffort, nil)
 		}
 		return cost
 	}

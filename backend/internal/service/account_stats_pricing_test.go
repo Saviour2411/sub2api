@@ -478,7 +478,7 @@ func TestTryModelFilePricing_Success(t *testing.T) {
 	require.InDelta(t, 0.2, *result, 1e-12)
 }
 
-func TestTryModelFilePricing_Fable51MaxEffortUsesTripleQuota(t *testing.T) {
+func TestTryModelFilePricing_Fable51MaxEffortUsesStandardCost(t *testing.T) {
 	bs := newTestBillingServiceWithPrices(map[string]*ModelPricing{
 		"claude-fable-5-1": {InputPricePerToken: 0.001},
 	})
@@ -487,7 +487,8 @@ func TestTryModelFilePricing_Fable51MaxEffortUsesTripleQuota(t *testing.T) {
 	max := tryModelFilePricing(bs, "claude-fable-5-1", tokens, "", "max")
 	require.NotNil(t, standard)
 	require.NotNil(t, max)
-	require.InDelta(t, *standard*3, *max, 1e-12)
+	require.InDelta(t, *standard, *max, 1e-12)
+	require.InDelta(t, 0.1, *max, 1e-12)
 }
 
 func TestTryModelFilePricing_AppliesLongContextPricing(t *testing.T) {
@@ -964,4 +965,21 @@ func newTestChannelServiceForStats(t *testing.T, channel *Channel, groupID int64
 	cache.loadedAt = time.Now()
 	cs.cache.Store(cache)
 	return cs
+}
+
+func TestTryCustomRules_Fable51MaxEffortDoesNotAddSurcharge(t *testing.T) {
+	channel := &Channel{AccountStatsPricingRules: []AccountStatsPricingRule{{
+		AccountIDs: []int64{1},
+		Pricing: []ChannelModelPricing{{
+			Platform: PlatformAnthropic, Models: []string{"claude-fable-5-1"}, BillingMode: BillingModeToken,
+			InputPrice: testPtrFloat64(10e-6), OutputPrice: testPtrFloat64(50e-6),
+		}},
+	}}}
+	tokens := UsageTokens{InputTokens: 100, OutputTokens: 20}
+	standard := tryCustomRules(channel, 1, 10, PlatformAnthropic, "claude-fable-5-1", tokens, 1, "high")
+	max := tryCustomRules(channel, 1, 10, PlatformAnthropic, "claude-fable-5-1", tokens, 1, "max")
+	require.NotNil(t, standard)
+	require.NotNil(t, max)
+	require.InDelta(t, *standard, *max, 1e-12)
+	require.InDelta(t, 0.002, *max, 1e-12)
 }

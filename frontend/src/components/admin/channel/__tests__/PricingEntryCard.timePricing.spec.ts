@@ -86,3 +86,19 @@ describe('PricingEntryCard request multipliers', () => {
     expect(shown.text()).toContain('admin.channels.form.maxReasoningEffortMultiplier')
   })
 })
+
+// 默认值不应再根据模型名称显示三倍加价。
+describe('Max 推理倍率默认值', () => {
+  it('Fable 5.1 默认不加价，仍允许显式配置倍率', async () => {
+    const entry = { ...createEntry(), models: ['claude-fable-5-1'] }
+    const wrapper = shallowMount(PricingEntryCard, {
+      props: { entry, enableTierMultipliers: true },
+    })
+    await wrapper.get('.cursor-pointer').trigger('click')
+    const input = wrapper.get('input[placeholder="admin.channels.form.maxReasoningEffortMultiplierPlaceholder"]')
+    expect((input.element as HTMLInputElement).value).toBe('')
+    expect(wrapper.html()).not.toContain('fable51DefaultMaxReasoningMultiplier')
+    await input.setValue('1.25')
+    expect(wrapper.emitted('update')?.[0]?.[0]).toMatchObject({ max_reasoning_effort_multiplier: '1.25' })
+  })
+})
