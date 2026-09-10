@@ -2704,3 +2704,346 @@
 - 第一候选`d5b8a3a1441a627ebd88a3579975e5a334f4816f`已触发CI和Security Scan；新增安全门禁后必须以新的候选SHA重新检查，旧候选通过不能替代新候选的合入门禁。
 
 - 首轮候选CI（运行33965856935）的shell、frontend、golangci-lint与test四项全部success，test中的单元和集成步骤均通过；Security Scan（运行33965856933）两个任务success。新加部署安全门禁不复用该结果，仍重新检查最新提交。
+
+
+## 2026-09-11：增量同步至 98d86915b
+
+### 固定范围与权限
+
+- 时间：2026-09-11T00:49:38+08:00（Asia/Shanghai）。状态：本地集成与验证通过；合并代码提交 SHA 见本节最后记录补记。
+- 原目标：`main`；LOCAL_PRE_SYNC_SHA：`d3c44a97b0a25fddd7fae3cdeb537682f365ebf5`。
+- 上游：`https://github.com/Wei-Shaw/sub2api.git`，远端 HEAD 核验默认分支 `main`；本次 fetch 后即固定目标，不自动扩大到之后提交。
+- UPSTREAM_OLD_SHA：`ab99d56e9626e6cd731592dae8553c9758a0efa2`；UPSTREAM_NEW_SHA：`98d86915becae9fe9491a91ffc6defd5235c8d2b`。
+- ACTUAL_MERGE_BASE：`ab99d56e9626e6cd731592dae8553c9758a0efa2`，等于已记录旧基线，旧基线是双方祖先；实际 merge 范围无额外未审提交。
+- LAST_FULLY_INTEGRATED_UPSTREAM_SHA：`98d86915becae9fe9491a91ffc6defd5235c8d2b`。
+- 范围共 181 提交（103 普通、78 merge），499 个上游变化文件、189 个本地重叠文件；完整 patch-id 检查未发现重复集成。
+- 原 main 与 origin/main 一致且干净，用户集中批准后先建隔离分支、运行基线，再执行 `git merge --no-ff --no-commit 98d86915becae9fe9491a91ffc6defd5235c8d2b`。
+- 备份：`backup/pre-upstream-sync-20260910-232555-d3c44a97b`；同步：`sync/upstream-20260910-98d86915b`。版本保留 `0.1.231`。
+- 本次授权仅限本地；未 push/PR、未 SSH、未部署或写生产数据，未自动 stash、reset、clean、整文件 ours/theirs。
+
+### 功能变化与冲突处理
+
+- 纳入分组请求白名单与数据修复、固定账号模型发现、简单模式基本分组、MiniMax、媒体及协议兼容、DeepSeek 峰谷账号成本、代理到期回退、渠道缓存广播、HTTP/2 PING、监控排名、日志保留、密钥分页及 i18n 门禁等全部获批变化。
+- 实际 24 个文本冲突与预演一致：Makefile、VERSION、Wire、OpenAI handler/测试、API 合约/路由、账号成本/测试/管理/认证缓存、Live、WS forwarder/relay、插件 ZIP、公共设置/依赖及四个前端账号/用量文件。逐冲突处理，未整文件选任一侧。
+- 白名单在认证之后、Composite 改写之前；本地公开市场与批量图片模型列表同步过滤。未知模型变体不扩大为已知基础模型；启用空白名单不回填默认列表。
+- WS 保留首语义输出、逐轮模型/定价/Cyber、失败停调度与人工暂停隔离；策略验证后只占槽一次，终态写入后结算，断连排空元数据完整且失败不伪报成功。插件 RequestSent=true 后不重放。
+- 账号复制测试计划、固定默认测试模型、请求模型严格缺价、Free Fast 双成本、长上下文、Fable 无默认三倍、Canvas/签到/本地市场开关和 DataTable 行为均保留。
+- 两份生产 Compose 字节一致，仅共同加入 SUB2API_IMAGES_MAIN_MODEL；bind mount、回环、HTTP upstream、资源参数、生产持久化 3600 秒响应头覆盖、5 秒 usage task 与按用户串行扣费均不变，未读真实实例配置。
+- Ent 隔离生成 320 文件无差异，Wire 重新生成接线并验证；不重命名或改写历史迁移。
+
+### 逐提交处置
+
+- Applied：148；Applied + Overridden：33；Already Applied/Skipped/Deferred/Conflict：均为 0。所有 SHA 经完整 merge 保留祖先关系，统一映射到最后补记中的合并代码提交。Overridden 表示已集成且有明确本地覆盖，不是跳过。
+
+| 上游完整 SHA | 处置 | 功能组 | 原因/覆盖 |
+| --- | --- | --- | --- |
+| `cff3f89850738e3504e35b01c9b4028d62b65a01` | Applied + Overridden | 分组准入与模型目录 | 请求白名单按批准启用；保留本地精确模型别名、WS 逐轮计费/Cyber 校验、图片统计和公开模型市场。 |
+| `55c5eed9fc74debfeb774790f88ecfd6c3466e2f` | Applied | 分组准入与模型目录 | 模型白名单、清单编辑、固定账号发现、推理等级拒绝及列修复；适配本地模型市场与严格缺价检查。 |
+| `f3bbb95310fe01ef29f5f86f7b7eeea991cc443e` | Applied | 分组准入与模型目录 | 模型白名单、清单编辑、固定账号发现、推理等级拒绝及列修复；适配本地模型市场与严格缺价检查。 |
+| `cb31033972023e596d1f16f6fd944b3ca09a6478` | Applied | 分组准入与模型目录 | 模型白名单、清单编辑、固定账号发现、推理等级拒绝及列修复；适配本地模型市场与严格缺价检查。 |
+| `f88d62ad282bd6dceffa93924e81543cf481c9ff` | Applied + Overridden | 分组准入与模型目录 | 合入可用模型发现；保留本地固定默认测试模型、配置映射选择和恢复事故模型优先级。 |
+| `a3aa9bae6da021bae11f09bcb563704fc9d5794f` | Applied + Overridden | 合并祖先关系 | 保留完整合并祖先关系；本次引入功能中的本地覆盖继承上述逐提交策略。 |
+| `a3675552bd1af0eadb42b6992f1258ecf8d6faf2` | Applied + Overridden | 简单模式与账号管理 | 基础分组纳入简单模式，同时保留本地账号复制测试计划、失败缓存和人工暂停依赖。 |
+| `05ad6b49a1605ca0aa3c5eee597139a1037bd450` | Applied | 简单模式与账号管理 | 基础分组边界、账号管理修复与周成本展示；保留本地计划复制、默认测试模型和人工暂停。 |
+| `f46038820bc29197ebf9f39e10138021e26f70f9` | Applied | 简单模式与账号管理 | 基础分组边界、账号管理修复与周成本展示；保留本地计划复制、默认测试模型和人工暂停。 |
+| `4a4fd35e0cb82765059d8409fa29736ca30eef74` | Applied + Overridden | 简单模式与账号管理 | 空分组删除锁与本地差量绑定、上游倍率绑定清理共存；SQLite 夹具保留存在性校验。 |
+| `b59f3bf46c66a24b6c59260092d66d2d871c7173` | Applied | 简单模式与账号管理 | 基础分组边界、账号管理修复与周成本展示；保留本地计划复制、默认测试模型和人工暂停。 |
+| `a7d2c782df93b017c50be117d805d6c6c76aef87` | Applied + Overridden | 合并祖先关系 | 保留完整合并祖先关系；本次引入功能中的本地覆盖继承上述逐提交策略。 |
+| `8c8fd6e298521f1032a739d42cb0acdf0b8a1522` | Applied | 页面认证与使用记录 | 订阅用量跳转、密钥分页、认证加载、注册可见性、支付安全 Markdown 与自定义页拖动；保留本地列设置和认证容错。 |
+| `8f7f2b5d9235435d872ad395f13de21798c02b73` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `7a70de401c01ffdd8c58357451d772f757d4ec2b` | Applied | 计费与兑换 | 峰谷成本、缓存价格和支付兑换隔离；继续按请求模型计费、按用户串行扣费且无 Fable 默认三倍加价。 |
+| `ce328fb37a55ee8a28d8a5c07c59e3e2250a0e5b` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `0b061c5fa133bf930981816d483d563231a63952` | Applied | 网关调度与流式生命周期 | 调度、逐轮槽位、取消归因、连接保活和流式修复；保留首语义输出、逐轮结算与插件已发送禁止重放。 |
+| `e274de45b784fc39bac880a57ec61c4b1e361cd3` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `985428d9d2f5fabb7aa99b10ac702f3e41dfae5d` | Applied | 网关调度与流式生命周期 | 调度、逐轮槽位、取消归因、连接保活和流式修复；保留首语义输出、逐轮结算与插件已发送禁止重放。 |
+| `9578ddbddd863185503bb9a4abf811ccf888a348` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `222181efd6bebc28d2258a7ac5b5b4a8044fb649` | Applied | 协议与媒体兼容 | Claude、Astra、Ollama、Grok、Antigravity 与 Image 2.5 兼容；保留本地模拟、采样过滤、图片策略和媒体结果校验。 |
+| `c0420e2b8a45598c39f957dd7e5ce6c88ac1c814` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `5fb5dfb34cd1540a39639983f0e7b17c2a62ce58` | Applied + Overridden | 网关调度与流式生命周期 | 逐轮重新占槽纳入；保留本地策略校验成功后才占槽的顺序，移除合并产生的重复回调。 |
+| `959cbe3d87186c80b36a2b8bde44559bf7da17e3` | Applied + Overridden | 合并祖先关系 | 保留完整合并祖先关系；本次引入功能中的本地覆盖继承上述逐提交策略。 |
+| `6271c517da6ec76905667fb5f2bcd958d5acdfd9` | Applied | 网关调度与流式生命周期 | 调度、逐轮槽位、取消归因、连接保活和流式修复；保留首语义输出、逐轮结算与插件已发送禁止重放。 |
+| `8116d235ef62dc1d88e7a2a9603058e87e368cea` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `28167bbf8596dc031e0cea70077611890cb8940a` | Applied | 分组准入与模型目录 | 模型白名单、清单编辑、固定账号发现、推理等级拒绝及列修复；适配本地模型市场与严格缺价检查。 |
+| `027e3f2d54a1e0fedbb1b1b65c09f77941cdebfa` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `96884dd1aee34c9c76dbe827476dcaa3bb83ad86` | Applied | 网关调度与流式生命周期 | 调度、逐轮槽位、取消归因、连接保活和流式修复；保留首语义输出、逐轮结算与插件已发送禁止重放。 |
+| `f09a5b602e57dc712a1ee8df20f569769308e778` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `8363d537e0dd88a749e1faa7a3f47ca3b4f91cfd` | Applied | 网关调度与流式生命周期 | 调度、逐轮槽位、取消归因、连接保活和流式修复；保留首语义输出、逐轮结算与插件已发送禁止重放。 |
+| `f8e1e7fed64bd2966199b86f4f34e69b0517a572` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `3cb2381bdc9fafcc895f331212fd25fb74847983` | Applied | 协议与媒体兼容 | Claude、Astra、Ollama、Grok、Antigravity 与 Image 2.5 兼容；保留本地模拟、采样过滤、图片策略和媒体结果校验。 |
+| `ce157b32ed584bd91b1edafcf305ca5fb84c52ed` | Applied | 协议与媒体兼容 | Claude、Astra、Ollama、Grok、Antigravity 与 Image 2.5 兼容；保留本地模拟、采样过滤、图片策略和媒体结果校验。 |
+| `3efeba33a47a9cfc51faac6057806a50cabee12d` | Applied | 协议与媒体兼容 | Claude、Astra、Ollama、Grok、Antigravity 与 Image 2.5 兼容；保留本地模拟、采样过滤、图片策略和媒体结果校验。 |
+| `787a6a33df3c7a7d17563d1e9d61e3d4800e38e7` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `b3ad9b67cfb3bd7d419a924725ef6bbf2a6f2f5a` | Applied | 构建部署与发布元数据 | i18n 门禁、Redis 依赖、备份锁、插件 ZIP 关闭、部署脚本和资料更新；保留本地版本及双 Compose 约束。 |
+| `111c41cf3f345c36a40ed7cbf7f279cb7a2627b0` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `a6430bfe20ce5ebb7c8e625d49c5540c5c8b53f0` | Applied | 协议与媒体兼容 | Claude、Astra、Ollama、Grok、Antigravity 与 Image 2.5 兼容；保留本地模拟、采样过滤、图片策略和媒体结果校验。 |
+| `1f716aa18142880a69790c94008b1e3a3374405c` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `32bf3d0f33c39e2ca8a9ca5816daccf620dc3e92` | Applied | 协议与媒体兼容 | Claude、Astra、Ollama、Grok、Antigravity 与 Image 2.5 兼容；保留本地模拟、采样过滤、图片策略和媒体结果校验。 |
+| `96cf8bd76ab0e062e0b8774ef11d189f1db42761` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `c7343d2aa26274fda4d95646ba7315c5f59f4e49` | Applied | 监控与日志 | 监控排名开关、探测角色与系统日志保留边界；保留本地配额隐藏及其他功能开关。 |
+| `b8ff74ad701c13cb11403f6b3714c9bd5d5e602d` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `a16070ccf62200674d51ad2fb3ae58ba50b013d3` | Applied | 页面认证与使用记录 | 订阅用量跳转、密钥分页、认证加载、注册可见性、支付安全 Markdown 与自定义页拖动；保留本地列设置和认证容错。 |
+| `909b8c7ef44cfc7eeae18e37f629c4e58c9b727b` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `81ff9384cb6bcba37b070acaa1173b8bb09b582f` | Applied + Overridden | 合并祖先关系 | 保留完整合并祖先关系；本次引入功能中的本地覆盖继承上述逐提交策略。 已审查相对自动合并额外产生的解决内容。 |
+| `b939fa9d4a2128f06be9a9e86bbdfd70659d1ee9` | Applied | 协议与媒体兼容 | Claude、Astra、Ollama、Grok、Antigravity 与 Image 2.5 兼容；保留本地模拟、采样过滤、图片策略和媒体结果校验。 |
+| `7ae0312091520ce46aea4fe0016f57e14c17d730` | Applied | 协议与媒体兼容 | Claude、Astra、Ollama、Grok、Antigravity 与 Image 2.5 兼容；保留本地模拟、采样过滤、图片策略和媒体结果校验。 |
+| `2cc1e7ef900962735992c42e351430abe3a0603e` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `b8ed24508555406a34b0bbc9c980ff158362d678` | Applied + Overridden | 网关调度与流式生命周期 | 合入后续轮额度恢复；保留失败停调度阻断后续轮、可重建上下文和逐轮结算边界。 |
+| `22c16d0517d1511c95678e5cb6fcf24cc257453b` | Applied + Overridden | 合并祖先关系 | 保留完整合并祖先关系；本次引入功能中的本地覆盖继承上述逐提交策略。 |
+| `58e35a4f327e82fe4f4c9de9e53c0e53a7fd7bad` | Applied | 协议与媒体兼容 | Claude、Astra、Ollama、Grok、Antigravity 与 Image 2.5 兼容；保留本地模拟、采样过滤、图片策略和媒体结果校验。 |
+| `f7c48ba59a81e8a2dee644866e3ea1cae9f96f2c` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `3bdb869fcad8ce2c6881a3f503c2964ef23d5575` | Applied | 计费与兑换 | 峰谷成本、缓存价格和支付兑换隔离；继续按请求模型计费、按用户串行扣费且无 Fable 默认三倍加价。 |
+| `b9ebc8f20989e5793455d4da64ad336e797b6e35` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `dc6b318c343dfc4e7b5cb2a4c4b4b6455b23237a` | Applied + Overridden | 页面认证与使用记录 | 使用记录密钥分页纳入，继续使用本地筛选控件与列设置，不恢复旧下拉实现。 |
+| `c05bc4d3ccb4d52b88e7261df58d03ed5f59aa15` | Applied + Overridden | 合并祖先关系 | 保留完整合并祖先关系；本次引入功能中的本地覆盖继承上述逐提交策略。 |
+| `2e31d8b702aa4d27e2c71e3066d7c6c612ae2025` | Applied | 协议与媒体兼容 | Claude、Astra、Ollama、Grok、Antigravity 与 Image 2.5 兼容；保留本地模拟、采样过滤、图片策略和媒体结果校验。 |
+| `43491f67a15f2675ea19cf49dd9774a6e1a0b29b` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `2db78bd3d68f58968d73b664c289c79ebee71aee` | Applied | 协议与媒体兼容 | Claude、Astra、Ollama、Grok、Antigravity 与 Image 2.5 兼容；保留本地模拟、采样过滤、图片策略和媒体结果校验。 |
+| `ad4b2f30f591e4aa9bf331cc450e4ffd9b02aaf9` | Applied | 协议与媒体兼容 | Claude、Astra、Ollama、Grok、Antigravity 与 Image 2.5 兼容；保留本地模拟、采样过滤、图片策略和媒体结果校验。 |
+| `561fc1c3e455e405af4d604339e8e9df4f044445` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `6aabbdf547d305bc3d22acfa5529e47087b12892` | Applied | 网关调度与流式生命周期 | 调度、逐轮槽位、取消归因、连接保活和流式修复；保留首语义输出、逐轮结算与插件已发送禁止重放。 |
+| `81c0f11d7a8634e2fd2b04deb6dbb5465e59ea66` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `8a469478659b0a87405193afa89df0e0a9f3302f` | Applied | 协议与媒体兼容 | Claude、Astra、Ollama、Grok、Antigravity 与 Image 2.5 兼容；保留本地模拟、采样过滤、图片策略和媒体结果校验。 |
+| `cbb4b7e53e4bd7e94f09a72325f27250b0360e5c` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `c74a4f521c7b71635b20a2f15e9d2758991de05c` | Applied | 计费与兑换 | 峰谷成本、缓存价格和支付兑换隔离；继续按请求模型计费、按用户串行扣费且无 Fable 默认三倍加价。 |
+| `2b1e5e7f5c65309c57771744754b94ed8d8d0d35` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `a7f1ed8fa49a2f3a7ae9ba81eac45f8d22f426f7` | Applied + Overridden | 网关调度与流式生命周期 | pending-turn 时序与本地 response-ID/模型逐轮绑定共存，合法终态和断连不得双结算。 |
+| `4bfcbd0c78b92ff498d437b65fa2499ac4550642` | Applied + Overridden | 合并祖先关系 | 保留完整合并祖先关系；本次引入功能中的本地覆盖继承上述逐提交策略。 |
+| `a7742306616c9596bb564d790d5a21e5a88dd0b0` | Applied | 协议与媒体兼容 | Claude、Astra、Ollama、Grok、Antigravity 与 Image 2.5 兼容；保留本地模拟、采样过滤、图片策略和媒体结果校验。 |
+| `71e5a4baf79894ddbfcef04af00e15dfde997d38` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `958a21ad6e2eddae4b1ebafa68c24dee8666092a` | Applied + Overridden | 计费与兑换 | 统一峰谷账号成本管线；保留无渠道仍按上游型号计成本、请求模型严格缺价和 Fable 无默认三倍。 |
+| `3eb5a84ea132c006509a2d98a7e0a57b6523bdb1` | Applied + Overridden | 合并祖先关系 | 保留完整合并祖先关系；本次引入功能中的本地覆盖继承上述逐提交策略。 |
+| `95023e7d49cde9f740a4875b3c5d2582ea230628` | Applied | 构建部署与发布元数据 | i18n 门禁、Redis 依赖、备份锁、插件 ZIP 关闭、部署脚本和资料更新；保留本地版本及双 Compose 约束。 |
+| `88b697d5dfb3de1b42beca811bec5a3c107ebf98` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `666a5c6f877a306c4743310c04dc5f400656f7a5` | Applied | 计费与兑换 | 峰谷成本、缓存价格和支付兑换隔离；继续按请求模型计费、按用户串行扣费且无 Fable 默认三倍加价。 |
+| `abf70750fdb697be3e87a59ff19a45f88e0bb570` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `f49a3935667e1a081cd0d2f5b9669cd429c2a597` | Applied | 分组准入与模型目录 | 模型白名单、清单编辑、固定账号发现、推理等级拒绝及列修复；适配本地模型市场与严格缺价检查。 |
+| `eba85dc47854c7cb0942173a09177170ea7675eb` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `00eabe8ab9dd9de16cf07f62a165b98671c40a97` | Applied | 简单模式与账号管理 | 基础分组边界、账号管理修复与周成本展示；保留本地计划复制、默认测试模型和人工暂停。 |
+| `de69bf1e031a08ffb805e1b82902aa106bd132a8` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `b1ce821c497adabcdce6631577134b6ac23040ec` | Applied | 分组准入与模型目录 | 模型白名单、清单编辑、固定账号发现、推理等级拒绝及列修复；适配本地模型市场与严格缺价检查。 |
+| `65246e69d72159f515b9b9d6c60f92bed8434d9b` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `f62ec2e4a0f7ad7f92359971ef52c80bfb974b48` | Applied | 分组准入与模型目录 | 模型白名单、清单编辑、固定账号发现、推理等级拒绝及列修复；适配本地模型市场与严格缺价检查。 |
+| `dc46daa690d8a9bfb3718772a7b6b29909ce3a24` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `415a0dc9d0cae3bda18bb1c1573e16de999eb3bf` | Applied | 计费与兑换 | 峰谷成本、缓存价格和支付兑换隔离；继续按请求模型计费、按用户串行扣费且无 Fable 默认三倍加价。 |
+| `ff758f37d2e751aa26183c6b4473974eb5c69971` | Applied | 计费与兑换 | 峰谷成本、缓存价格和支付兑换隔离；继续按请求模型计费、按用户串行扣费且无 Fable 默认三倍加价。 |
+| `d03c42d7986cad7170d9e4751852287e84ec3374` | Applied | 计费与兑换 | 峰谷成本、缓存价格和支付兑换隔离；继续按请求模型计费、按用户串行扣费且无 Fable 默认三倍加价。 |
+| `66cd8a72bc9315396d6b84524ff3c3e84054fa22` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `3aeab296d8ec9a07bdaacdab80cfcaf011f6c15d` | Applied | 页面认证与使用记录 | 订阅用量跳转、密钥分页、认证加载、注册可见性、支付安全 Markdown 与自定义页拖动；保留本地列设置和认证容错。 |
+| `10fe591e5477ccce0b7dd8a799f0d6cb0d2a1a0a` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `d106b3b5a067eec3499ce246635ab3bae02e0ab8` | Applied + Overridden | 合并祖先关系 | 保留完整合并祖先关系；本次引入功能中的本地覆盖继承上述逐提交策略。 已审查相对自动合并额外产生的解决内容。 |
+| `b491c3271bd0ca33da9131528c6a85cfcb08015f` | Applied | 计费与兑换 | 峰谷成本、缓存价格和支付兑换隔离；继续按请求模型计费、按用户串行扣费且无 Fable 默认三倍加价。 |
+| `f6d580200a5442e2da6e4954b60208351cf50ed8` | Applied | 分组准入与模型目录 | 模型白名单、清单编辑、固定账号发现、推理等级拒绝及列修复；适配本地模型市场与严格缺价检查。 |
+| `8193b80a59ada85d8cdff4f1e47a9be48fca6292` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `2031c1d5ad91cdc4e381fd535b216e11ff770bb7` | Applied + Overridden | 合并祖先关系 | 保留完整合并祖先关系；本次引入功能中的本地覆盖继承上述逐提交策略。 已审查相对自动合并额外产生的解决内容。 |
+| `f8351e9e33477287379c37cdd6a2a044feeeb1fc` | Applied + Overridden | 合并祖先关系 | 保留完整合并祖先关系；本次引入功能中的本地覆盖继承上述逐提交策略。 |
+| `0aaed397cc62cca9d954ba33e1715725cdbeccf7` | Applied | 协议与媒体兼容 | Claude、Astra、Ollama、Grok、Antigravity 与 Image 2.5 兼容；保留本地模拟、采样过滤、图片策略和媒体结果校验。 |
+| `5485f368b29d05adb95a00f71801c7c23d8f48af` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `b7dba62678a834080564966c002fd0ca2b328b7a` | Applied + Overridden | 构建部署与发布元数据 | 保留本地 VERSION 0.1.231，不采用上游 0.2.2。 |
+| `e094a3f40b1c84b78c5f6298004145587a3ba2a0` | Applied + Overridden | 分组准入与模型目录 | 保留本地默认测试模型及显式任务模型，兼容实时发现的模型显示名称。 |
+| `b439dddfda4ea696480482a8df97b73260b6006b` | Applied + Overridden | 合并祖先关系 | 保留完整合并祖先关系；本次引入功能中的本地覆盖继承上述逐提交策略。 |
+| `cc91155fe4cb7dcb37228be034749924750465c8` | Applied | 协议与媒体兼容 | Claude、Astra、Ollama、Grok、Antigravity 与 Image 2.5 兼容；保留本地模拟、采样过滤、图片策略和媒体结果校验。 |
+| `2fc24d8879951d571e540718aa011c30ccd7b9a6` | Applied | 协议与媒体兼容 | Claude、Astra、Ollama、Grok、Antigravity 与 Image 2.5 兼容；保留本地模拟、采样过滤、图片策略和媒体结果校验。 |
+| `57387445f3cf204717d9b15b3e8a863c52d1115d` | Applied | 协议与媒体兼容 | Claude、Astra、Ollama、Grok、Antigravity 与 Image 2.5 兼容；保留本地模拟、采样过滤、图片策略和媒体结果校验。 |
+| `14e0a49e17afebf62c5f788f4ef1dc8eef56ac76` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `4a7739acdf4ff12a1683c74a9e99163d15f7d11c` | Applied | 分组准入与模型目录 | 模型白名单、清单编辑、固定账号发现、推理等级拒绝及列修复；适配本地模型市场与严格缺价检查。 |
+| `8fa67d477d6651a744754392a8982ea589c26ae6` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `772a0382f079676983c06f24b0d41e09139a8462` | Applied + Overridden | 构建部署与发布元数据 | 保留本地 VERSION 0.1.231，不采用上游 0.2.3。 |
+| `19382f275e8fdc05a655e3e20fbd688bb9a7ec2a` | Applied + Overridden | MiniMax 平台 | MiniMax 完整接入，本地账号测试和手动预选继续按确定性配置映射规则工作。 |
+| `6f2295bfc7a29367e3a300909c75bc79720804f1` | Applied | MiniMax 平台 | 完整接入 MiniMax 平台、配额、监控和调度，补齐本地账号测试平台枚举。 |
+| `3495635a52bb0009ad15b4a6990ac3d2b1c43811` | Applied | MiniMax 平台 | 完整接入 MiniMax 平台、配额、监控和调度，补齐本地账号测试平台枚举。 |
+| `10940ecf39bf67000c668b07facd6321ec7fb21e` | Applied | MiniMax 平台 | 完整接入 MiniMax 平台、配额、监控和调度，补齐本地账号测试平台枚举。 |
+| `dbe92a1c241a03c77e2b218761369ff988b8356b` | Applied + Overridden | 合并祖先关系 | 保留完整合并祖先关系；本次引入功能中的本地覆盖继承上述逐提交策略。 |
+| `859de4c8fddb1afe3aaebba0a7b0fcf48eaa46eb` | Applied | 代理与日期校验 | 代理到期回退、有向共享备份关系与日期校验。 |
+| `28b807a7353154d09f48b084e757ed866824d6f4` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `efc6e4a816df82189f8e866c8a56b4b3f2032378` | Applied | 代理与日期校验 | 代理到期回退、有向共享备份关系与日期校验。 |
+| `4892b8f17edcda6a4355ded98c190ac5775982b9` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `941a0487abc30ff9c66af5056244b25087d15b17` | Applied | 简单模式与账号管理 | 基础分组边界、账号管理修复与周成本展示；保留本地计划复制、默认测试模型和人工暂停。 |
+| `3ee92b40c5fc34e1254f304219f1da4881b8d00e` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `df64b5f368cce77b5ebc32a86084dd1f8dd40dbf` | Applied | 简单模式与账号管理 | 基础分组边界、账号管理修复与周成本展示；保留本地计划复制、默认测试模型和人工暂停。 |
+| `6378fb0cbaff51c968470ef2fe5271e79d59b9fc` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `b6ee9f0a320cbdd980c68e916ff551e1feb573a0` | Applied | 协议与媒体兼容 | Claude、Astra、Ollama、Grok、Antigravity 与 Image 2.5 兼容；保留本地模拟、采样过滤、图片策略和媒体结果校验。 |
+| `979fe247f9026db677598de170f93d6e1930215e` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `35e69af41b13f42c391f36bea0beb405bec26e7e` | Applied | 简单模式与账号管理 | 基础分组边界、账号管理修复与周成本展示；保留本地计划复制、默认测试模型和人工暂停。 |
+| `9bcf8a5b801badd8ab39f200ee559b08ec57d2ff` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `be4ab92b2bdcd3e27fbe819546665dd15723912e` | Applied | 网关调度与流式生命周期 | 调度、逐轮槽位、取消归因、连接保活和流式修复；保留首语义输出、逐轮结算与插件已发送禁止重放。 |
+| `b6384452347fb6d240fe25dbfca202ca77e6acfb` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `99eba19ffce4b661f4720c139da40434784d374e` | Applied | 构建部署与发布元数据 | i18n 门禁、Redis 依赖、备份锁、插件 ZIP 关闭、部署脚本和资料更新；保留本地版本及双 Compose 约束。 |
+| `1923d1c27d411beb5ad8c1fb875900e06c8ec11c` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `38cfd7e2d94decaa2c185169955f996d9990dc37` | Applied | 代理与日期校验 | 代理到期回退、有向共享备份关系与日期校验。 |
+| `9e7039ebca5d4cd668ca1868becbd243d14f3c65` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `3fc08745a6a41dc8e77a526e4585d7b6cf045f22` | Applied | 分组准入与模型目录 | 模型白名单、清单编辑、固定账号发现、推理等级拒绝及列修复；适配本地模型市场与严格缺价检查。 |
+| `1e6114c27090a8a9b5f55276feb32c28aa228ba9` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `7f0f579bb0a4e71c2041e9ff1fc16de4b1883fac` | Applied | 简单模式与账号管理 | 基础分组边界、账号管理修复与周成本展示；保留本地计划复制、默认测试模型和人工暂停。 |
+| `68773aab9862256a274b5a78e76c73d93847cb60` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `dfb3978b9d95c174b3402da0f8f5358ae29a9388` | Applied | 页面认证与使用记录 | 订阅用量跳转、密钥分页、认证加载、注册可见性、支付安全 Markdown 与自定义页拖动；保留本地列设置和认证容错。 |
+| `fa556700c28f1a73b5e1cef101afbfcf611a218f` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `6c8ad0bd4a05914065c4cd22800e6624eac32b73` | Applied | 页面认证与使用记录 | 订阅用量跳转、密钥分页、认证加载、注册可见性、支付安全 Markdown 与自定义页拖动；保留本地列设置和认证容错。 |
+| `ae4cc14b280e91f407b12a141c768d88d6c535ab` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `188e3a9f90498ce6104ce0158486f34f9b57b9d7` | Applied | 代理与日期校验 | 代理到期回退、有向共享备份关系与日期校验。 |
+| `5cbb9191a76394d6c3a95ec8a83b2f8e80265802` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `335fcdc1d657f93833a5fd8183f9acb2ed142fc0` | Applied + Overridden | 构建部署与发布元数据 | ZIP 在提交安装目录前关闭，与本地幂等清理及错误回滚路径合并，避免重复关闭。 |
+| `b42157a725fa9079192c1d1badc12a8647f6ff52` | Applied | 构建部署与发布元数据 | i18n 门禁、Redis 依赖、备份锁、插件 ZIP 关闭、部署脚本和资料更新；保留本地版本及双 Compose 约束。 |
+| `aa167a25a7ec3bf27acf1814f64e9157f55197fb` | Applied + Overridden | 合并祖先关系 | 保留完整合并祖先关系；本次引入功能中的本地覆盖继承上述逐提交策略。 |
+| `4e5d67df358cf698134ad71ec317892c25caa9ed` | Applied | 网关调度与流式生命周期 | 调度、逐轮槽位、取消归因、连接保活和流式修复；保留首语义输出、逐轮结算与插件已发送禁止重放。 |
+| `4e9b01fd59b6621c4e02e5ab44dc93ce52c8534d` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `5fea83dcaedf49d0b6d866595de7d3c256256d2f` | Applied | 网关调度与流式生命周期 | 调度、逐轮槽位、取消归因、连接保活和流式修复；保留首语义输出、逐轮结算与插件已发送禁止重放。 |
+| `e2fd418a964206c374586740025bade1d5493a07` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `1ee929e4b9b1ec9c5aba45363f9322c845d948a6` | Applied | 网关调度与流式生命周期 | 调度、逐轮槽位、取消归因、连接保活和流式修复；保留首语义输出、逐轮结算与插件已发送禁止重放。 |
+| `15557e779637f5de073a5c757bcdac2f1f1a009f` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `a10ff1255cbaf2ec61dc9dcbc647cbc5bf5d3535` | Applied + Overridden | 网关调度与流式生命周期 | 取消归因同时检查原始请求和分离后的上游上下文；排空结果保留图片、推理等级和失败归因。 |
+| `43569bb44c3eea843cec5fcacf0688961cd97f6b` | Applied + Overridden | 合并祖先关系 | 保留完整合并祖先关系；本次引入功能中的本地覆盖继承上述逐提交策略。 |
+| `163eb7ffae9c1327735fc5cadb108eda67d3ecf2` | Applied | 监控与日志 | 监控排名开关、探测角色与系统日志保留边界；保留本地配额隐藏及其他功能开关。 |
+| `95acbf1f031a291335c60515ee368014139da113` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `0d3dbae710f7106e4b79d970e3a2f495850d88b2` | Applied | 监控与日志 | 监控排名开关、探测角色与系统日志保留边界；保留本地配额隐藏及其他功能开关。 |
+| `52f7bcaedddd5294d88eb76d7964e3c2fd8a12c2` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `6d339ec93b35fb1e7b51388519c415c0ed068d54` | Applied | 网关调度与流式生命周期 | 调度、逐轮槽位、取消归因、连接保活和流式修复；保留首语义输出、逐轮结算与插件已发送禁止重放。 |
+| `6f0d0ababc64f79f06b6a532b1f0d041b1716d94` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `01bd9b71a26fbb28ef11840b3a7f1a3e3589ef1c` | Applied | 协议与媒体兼容 | Claude、Astra、Ollama、Grok、Antigravity 与 Image 2.5 兼容；保留本地模拟、采样过滤、图片策略和媒体结果校验。 |
+| `29646ba6b4e6b3355ca59cb17141b6ac3e92f206` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `e835f7981981a9be8a09bf072fcc7118655ad685` | Applied | 代理与日期校验 | 代理到期回退、有向共享备份关系与日期校验。 |
+| `7137fae2a63d20a95f75f0c6ca8eb89b3feab1b4` | Applied | 代理与日期校验 | 代理到期回退、有向共享备份关系与日期校验。 |
+| `c54897a59dfe3faa819f2a33117aa423353e2a1e` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `1859519573deed0a60bd99cc18d10216377aafa8` | Applied | 构建部署与发布元数据 | i18n 门禁、Redis 依赖、备份锁、插件 ZIP 关闭、部署脚本和资料更新；保留本地版本及双 Compose 约束。 |
+| `f9d78267112d7a4637643f310ac9093f13b554ef` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `81fd8530056c6480df8e69770a85d8f411340290` | Applied | 网关调度与流式生命周期 | 调度、逐轮槽位、取消归因、连接保活和流式修复；保留首语义输出、逐轮结算与插件已发送禁止重放。 |
+| `9dc4c40bff675cadd95e78a106c5325472ba3f8a` | Applied | 网关调度与流式生命周期 | 调度、逐轮槽位、取消归因、连接保活和流式修复；保留首语义输出、逐轮结算与插件已发送禁止重放。 |
+| `f5e4da5e72acd4fb026e0e97e7dfc61eae29735c` | Applied | 网关调度与流式生命周期 | 调度、逐轮槽位、取消归因、连接保活和流式修复；保留首语义输出、逐轮结算与插件已发送禁止重放。 |
+| `233f3dffe64b0748ea7d610ccca4bdb44544051d` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `c8deeb0b0571fb22f9c1b17b2481800633ece8d0` | Applied | 协议与媒体兼容 | Claude、Astra、Ollama、Grok、Antigravity 与 Image 2.5 兼容；保留本地模拟、采样过滤、图片策略和媒体结果校验。 |
+| `d9efbf8229c955e252138d10a279725f6a691fbb` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `76efc52fb6ca8a88b3eb1c7a643426a3e210c60c` | Applied | 页面认证与使用记录 | 订阅用量跳转、密钥分页、认证加载、注册可见性、支付安全 Markdown 与自定义页拖动；保留本地列设置和认证容错。 |
+| `775348b402b8612203310fec6456c79ce3503837` | Applied | 合并祖先关系 | 保留完整合并祖先关系及对应功能变化。 |
+| `570106ac17cecfbca95a460bd5047d43e8c0aafc` | Applied | 构建部署与发布元数据 | i18n 门禁、Redis 依赖、备份锁、插件 ZIP 关闭、部署脚本和资料更新；保留本地版本及双 Compose 约束。 |
+| `270eac6973049fe1b50eb75560a74a029e82884c` | Applied | 构建部署与发布元数据 | i18n 门禁、Redis 依赖、备份锁、插件 ZIP 关闭、部署脚本和资料更新；保留本地版本及双 Compose 约束。 |
+| `7ccc8a6f5047a819ad5e57f0feaae4bd6f65840b` | Applied + Overridden | 协议与媒体兼容 | Image 2.5 与主控模型覆盖纳入；保留本地媒体结果校验、统计和双 Compose 约束。 |
+| `5de5e2bed035d43591a2e10e51f420ef6a84eb98` | Applied + Overridden | 合并祖先关系 | 保留完整合并祖先关系；本次引入功能中的本地覆盖继承上述逐提交策略。 |
+| `98d86915becae9fe9491a91ffc6defd5235c8d2b` | Applied + Overridden | 构建部署与发布元数据 | 保留本地 VERSION 0.1.231，不采用上游 0.2.4。 |
+
+### 验证与重测
+
+- Windows：Go 1.27.0、Node 20.20.2、pnpm 9.15.9、golangci-lint 2.13.0。22 项相同基线命令前后最终退出码均为 0。前端基线 275 文件/2015 用例，同步后 288 文件/2129 用例；Canvas 前后均 34 用例。
+- Linux：本地 WSL Ubuntu 24.04/Docker 29.4.1、隔离 PostgreSQL 18.1 与 Redis 8.4；真实执行 integration 标签、全部迁移和仓库/API 用例，不是仅编译。前后仅保留同一权限基线失败 `TestOpenAIFirstOutputStageOverflowIsAtomicAndCleanupRemovesSpool`：Windows 挂载将期望 0600 报为 0777；该未变单项在工作目录临时 POSIX tmpfs 中补测退出 0，挂载已卸载。
+- 带超时的独立数据库/缓存初始化与应用 /health 前后均成功；不使用现有本地业务容器，脚本仅回收自己标记的临时容器和进程。
+- 首轮新增失败已定位并修复：新构造签名、删除方法引用、认证快照版本、路由链源码断言、MiniMax 枚举、Pinia 测试依赖、本地精确模型规范化、DeepSeek 请求别名渠道定价夹具、无渠道账号成本断言、WS 原始取消上下文和异步结算回调时序。未删业务断言或关闭门禁。
+- 环境失败如实保留：前端嵌套 pnpm 误用系统新版后，固定 pnpm 9 并 frozen/offline 重建依赖后通过，锁文件未变化；备份 mock 测试补足 Git Bash 的 sh PATH；验证码 SDK 需要 NO_PROXY 精确到端口，夹具显式隔离代理并保持端口占用；首次健康构建的 WSL Git ownership 仅通过进程级 safe.directory 修复；同步后首次 Linux 依赖获取/编译运行中断（143）并从本地校验缓存重跑。
+- ZIP close 和测试 type assertion 的 errcheck 失败已修复；多次重测均列下表，失败历史未抹去。
+
+<details>
+<summary>全部实际验证命令、时间和退出码</summary>
+
+| 编号 | 阶段/组/检查 | 开始时间 | 实际命令 | 退出码 |
+| --- | --- | --- | --- | --- |
+| V001 | 同步前/backend/test-default | 2026-09-10T23:32:29.6307159+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test ./... -count=1 -timeout=20m` | 0 |
+| V002 | 同步前/frontend/lint | 2026-09-10T23:32:29.9447796+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run lint:check` | 0 |
+| V003 | 同步前/canvas/format | 2026-09-10T23:32:30.2839262+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe node_modules/prettier/bin/prettier.cjs --check .` | 0 |
+| V004 | 同步前/static/docker-compose-security-test.sh | 2026-09-10T23:32:30.5814436+08:00 | `C:/Program Files/Git/bin/bash.exe D:\project\sub2api\deploy\tests\docker-compose-security-test.sh` | 0 |
+| V005 | 同步前/static/docker-compose-gateway-env-test.sh | 2026-09-10T23:32:31.3104696+08:00 | `C:/Program Files/Git/bin/bash.exe D:\project\sub2api\deploy\tests\docker-compose-gateway-env-test.sh` | 0 |
+| V006 | 同步前/canvas/typecheck | 2026-09-10T23:32:41.8675871+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe node_modules/typescript/bin/tsc --noEmit` | 0 |
+| V007 | 同步前/canvas/test | 2026-09-10T23:33:07.0577672+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe node_modules/vitest/vitest.mjs run --maxWorkers=4 --minWorkers=1` | 0 |
+| V008 | 同步前/static/docker-runtime-resources-test.sh | 2026-09-10T23:33:10.1603887+08:00 | `C:/Program Files/Git/bin/bash.exe D:\project\sub2api\deploy\tests\docker-runtime-resources-test.sh` | 0 |
+| V009 | 同步前/static/remote-deploy-test.sh | 2026-09-10T23:33:10.6698371+08:00 | `C:/Program Files/Git/bin/bash.exe D:\project\sub2api\deploy\tests\remote-deploy-test.sh` | 0 |
+| V010 | 同步前/extra/golangci-lint | 2026-09-10T23:33:21.0805681+08:00 | `D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\go-tools\bin\golangci-lint.exe run ./... --timeout=30m` | 0 |
+| V011 | 同步前/static/caddy-cache | 2026-09-10T23:33:27.2462329+08:00 | `C:/Program Files/Git/bin/bash.exe D:\project\sub2api\deploy\test-caddyfile-cache.sh` | 0 |
+| V012 | 同步前/static/apple-syntax | 2026-09-10T23:33:28.2602353+08:00 | `C:/Program Files/Git/bin/bash.exe -n D:\project\sub2api\deploy\apple-container.sh` | 0 |
+| V013 | 同步前/static/diff-check | 2026-09-10T23:33:28.4050410+08:00 | `git diff --check` | 0 |
+| V014 | 同步前/frontend/typecheck | 2026-09-10T23:34:50.6659382+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run typecheck` | 0 |
+| V015 | 同步前/frontend/test | 2026-09-10T23:35:56.5423376+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run test:run --maxWorkers=4 --minWorkers=1` | 0 |
+| V016 | 同步前/generate/ent-check | 2026-09-10T23:36:30.4641916+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260910-98d86915b\check-ent.mjs before` | 0 |
+| V017 | 同步前/generate/wire | 2026-09-10T23:36:53.4489158+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe generate ./cmd/server` | 0 |
+| V018 | 同步前/backend/test-unit | 2026-09-10T23:36:59.2624056+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test -tags=unit ./... -count=1 -timeout=20m` | 0 |
+| V019 | 同步前/extra/integration-compile-only | 2026-09-10T23:37:45.6880344+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test -tags=integration -exec D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\artifacts\compile-only.exe ./... -count=1` | 0 |
+| V020 | 同步前/frontend/build | 2026-09-10T23:40:17.9568966+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run build` | 0 |
+| V021 | 同步前/integration-linux/ | 2026-09-10T23:40:22+08:00 | `go test -tags=integration ./... -count=1 -timeout=25m` | 1 |
+| V022 | 同步前/backend/build | 2026-09-10T23:41:04.4786663+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe build ./...` | 0 |
+| V023 | 同步前/canvas-build/build | 2026-09-10T23:42:57.0496372+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run build` | 0 |
+| V024 | 同步前/smoke-linux/ | 2026-09-10T23:51:19+08:00 | `smoke.sh before` | 1 |
+| V025 | 同步前/smoke-linux/ | 2026-09-10T23:53:50+08:00 | `smoke.sh before` | 0 |
+| V026 | 同步后/frontend/typecheck | 2026-09-10T23:59:47.4611371+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run typecheck` | 0 |
+| V027 | 同步后/generate/ent-check | 2026-09-10T23:59:47.8139427+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260910-98d86915b\check-ent.mjs after` | 0 |
+| V028 | 同步后/backend/build | 2026-09-11T00:00:56.2253155+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe build ./...` | 1 |
+| V029 | 同步后/frontend/lint | 2026-09-11T00:01:43.4167712+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run lint:check` | 0 |
+| V030 | 同步后/generate/wire | 2026-09-11T00:01:43.8194593+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe generate ./cmd/server` | 0 |
+| V031 | 同步后/frontend/typecheck | 2026-09-11T00:02:27.1153357+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run typecheck` | 0 |
+| V032 | 同步后/frontend/test | 2026-09-11T00:02:55.0458600+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run test:run --maxWorkers=4 --minWorkers=1` | 1 |
+| V033 | 同步后/frontend/build | 2026-09-11T00:05:37.4048208+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run build` | 1 |
+| V034 | 同步后/backend/test-default | 2026-09-11T00:07:05.4933801+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test ./... -count=1 -timeout=20m` | 1 |
+| V035 | 同步后/frontend/install | 2026-09-11T00:08:47.1703437+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs install --frozen-lockfile --offline --ignore-scripts` | 0 |
+| V036 | 同步后/backend/test-unit | 2026-09-11T00:10:18.8645738+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test -tags=unit ./... -count=1 -timeout=20m` | 1 |
+| V037 | 同步后/backend/build | 2026-09-11T00:11:21.0099177+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe build ./...` | 0 |
+| V038 | 同步后/frontend/lint | 2026-09-11T00:12:06.6348384+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run lint:check` | 0 |
+| V039 | 同步后/frontend/typecheck | 2026-09-11T00:13:13.5341557+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run typecheck` | 0 |
+| V040 | 同步后/frontend/test | 2026-09-11T00:13:53.4170620+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run test:run --maxWorkers=4 --minWorkers=1` | 0 |
+| V041 | 同步后/frontend/build | 2026-09-11T00:17:12.2856238+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run build` | 0 |
+| V042 | 同步后/backend/test-default | 2026-09-11T00:17:51.9506042+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test ./... -count=1 -timeout=20m` | 1 |
+| V043 | 同步后/canvas/format | 2026-09-11T00:17:52.7540297+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe node_modules/prettier/bin/prettier.cjs --check .` | 0 |
+| V044 | 同步后/static/docker-compose-security-test.sh | 2026-09-11T00:17:53.1203631+08:00 | `C:/Program Files/Git/bin/bash.exe D:\project\sub2api\deploy\tests\docker-compose-security-test.sh` | 0 |
+| V045 | 同步后/static/docker-compose-gateway-env-test.sh | 2026-09-11T00:17:53.7949682+08:00 | `C:/Program Files/Git/bin/bash.exe D:\project\sub2api\deploy\tests\docker-compose-gateway-env-test.sh` | 0 |
+| V046 | 同步后/canvas/typecheck | 2026-09-11T00:18:02.9201715+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe node_modules/typescript/bin/tsc --noEmit` | 0 |
+| V047 | 同步后/integration-linux/ | 2026-09-11T00:18:08+08:00 | `go test -tags=integration ./... -count=1 -timeout=25m` | 143 |
+| V048 | 同步后/canvas/test | 2026-09-11T00:18:12.7223806+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe node_modules/vitest/vitest.mjs run --maxWorkers=4 --minWorkers=1` | 0 |
+| V049 | 同步后/static/docker-runtime-resources-test.sh | 2026-09-11T00:18:45.8992425+08:00 | `C:/Program Files/Git/bin/bash.exe D:\project\sub2api\deploy\tests\docker-runtime-resources-test.sh` | 0 |
+| V050 | 同步后/static/remote-deploy-test.sh | 2026-09-11T00:18:46.5491102+08:00 | `C:/Program Files/Git/bin/bash.exe D:\project\sub2api\deploy\tests\remote-deploy-test.sh` | 0 |
+| V051 | 同步后/static/caddy-cache | 2026-09-11T00:19:04.0352462+08:00 | `C:/Program Files/Git/bin/bash.exe D:\project\sub2api\deploy\test-caddyfile-cache.sh` | 0 |
+| V052 | 同步后/static/apple-syntax | 2026-09-11T00:19:05.3969386+08:00 | `C:/Program Files/Git/bin/bash.exe -n D:\project\sub2api\deploy\apple-container.sh` | 0 |
+| V053 | 同步后/static/diff-check | 2026-09-11T00:19:05.5704776+08:00 | `git diff --check` | 0 |
+| V054 | 同步后/extra/golangci-lint | 2026-09-11T00:21:15.6368921+08:00 | `D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\go-tools\bin\golangci-lint.exe run ./... --timeout=30m` | 1 |
+| V055 | 同步后/canvas-build/build | 2026-09-11T00:21:15.9875648+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run build` | 0 |
+| V056 | 同步后/backend/test-unit | 2026-09-11T00:21:50.7996042+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test -tags=unit ./... -count=1 -timeout=20m` | 1 |
+| V057 | 同步后/extra/integration-compile-only | 2026-09-11T00:24:06.2846780+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test -tags=integration -exec D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\artifacts\compile-only.exe ./... -count=1` | 0 |
+| V058 | 同步后/backend/regressions | 2026-09-11T00:26:15.0372313+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test -tags=unit ./internal/service ./internal/handler ./internal/repository -run Test(ModelMarketplaceModelsForGroup_Allowlist\|AliyunCaptchaVerifier_TransportError\|OpenAIGatewayServiceRecordUsage_DeepSeekAccountStatsUsesRequestPricingAtAndUpstreamModel\|ForwardOpenAIWSV2_ClientCancellationDrainsWithoutSyntheticFailure\|PassthroughIngressFollowUpCallsBeforeTurnAfterBeforeRequest\|AccountRepositoryCleansBindingsOnMembershipChangeAndDelete\|APIKeyAuthSnapshotProfitControlRoundtrip\|GroupModelAllowlistAllows)$ -count=5 -timeout=5m` | 1 |
+| V059 | 同步后/backend/build | 2026-09-11T00:26:50.2514825+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe build ./...` | 0 |
+| V060 | 同步后/posix-spool-linux/ | 2026-09-11T00:27:10+08:00 | `TMPDIR=posix-tmp go test -tags=integration ./internal/service -run ^TestOpenAIFirstOutputStageOverflowIsAtomicAndCleanupRemovesSpool$ -count=1 -timeout=5m` | 0 |
+| V061 | 同步后/integration-linux/ | 2026-09-11T00:27:11+08:00 | `go test -tags=integration ./... -count=1 -timeout=25m` | 1 |
+| V062 | 同步后/backend/regressions | 2026-09-11T00:28:32.5940549+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test -tags=unit ./internal/service ./internal/handler ./internal/repository -run Test(ModelMarketplaceModelsForGroup_Allowlist\|AliyunCaptchaVerifier_TransportError\|OpenAIGatewayServiceRecordUsage_DeepSeekAccountStatsUsesRequestPricingAtAndUpstreamModel\|ForwardOpenAIWSV2_ClientCancellationDrainsWithoutSyntheticFailure\|PassthroughIngressFollowUpCallsBeforeTurnAfterBeforeRequest\|AccountRepositoryCleansBindingsOnMembershipChangeAndDelete\|APIKeyAuthSnapshotProfitControlRoundtrip\|GroupModelAllowlistAllows)$ -count=5 -timeout=5m` | 1 |
+| V063 | 同步后/backend/test-default | 2026-09-11T00:31:33.8297288+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test ./... -count=1 -timeout=20m` | 0 |
+| V064 | 同步后/extra/golangci-lint | 2026-09-11T00:31:34.2206130+08:00 | `D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\go-tools\bin\golangci-lint.exe run ./... --timeout=30m` | 0 |
+| V065 | 同步后/smoke-linux/ | 2026-09-11T00:31:34+08:00 | `smoke.sh after` | 0 |
+| V066 | 同步后/extra/integration-compile-only | 2026-09-11T00:34:42.9495121+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test -tags=integration -exec D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\artifacts\compile-only.exe ./... -count=1` | 0 |
+| V067 | 同步后/backend/test-unit | 2026-09-11T00:35:29.3843768+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test -tags=unit ./... -count=1 -timeout=20m` | 1 |
+| V068 | 同步后/backend/build | 2026-09-11T00:36:25.6042596+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe build ./...` | 0 |
+| V069 | 同步后/backend/regressions | 2026-09-11T00:42:32.1540383+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test -tags=unit ./internal/service ./internal/handler ./internal/repository -run Test(ModelMarketplaceModelsForGroup_Allowlist\|AliyunCaptchaVerifier_TransportError\|OpenAIGatewayServiceRecordUsage_DeepSeekAccountStatsUsesRequestPricingAtAndUpstreamModel\|ForwardOpenAIWSV2_ClientCancellationDrainsWithoutSyntheticFailure\|PassthroughIngressFollowUpCallsBeforeTurnAfterBeforeRequest\|AccountRepositoryCleansBindingsOnMembershipChangeAndDelete\|APIKeyAuthSnapshotProfitControlRoundtrip\|GroupModelAllowlistAllows)$ -count=5 -timeout=5m` | 0 |
+| V070 | 同步后/backend/test-unit | 2026-09-11T00:42:32.1825679+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test -tags=unit ./... -count=1 -timeout=20m` | 0 |
+| V071 | 同步后/backend/resource-test | 2026-09-11T00:44:52.4049820+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test ./internal/pkg/openai -count=1 -timeout=5m` | 0 |
+| V072 | 同步后/backend/build | 2026-09-11T00:44:54.6038243+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe build ./...` | 0 |
+
+</details>
+
+### 未验证与残余风险
+
+- 未访问真实模型/Token/插件、支付/消息/回调或生产数据库；没有真实浏览器 E2E、完整 race、govulncheck/安全漏洞数据库复核和 Apple container/plutil 运行验证。真实上游兼容性及专有平台能力仍为未验证。
+- 本地服务只做无外部副作用的隔离健康测试，不代表生产功能组合均通过。后续部署仍需独立授权并遵守生产检查门禁。
+- 前端与 Canvas 构建仍有大 chunk 提示，属于基线已有构建警告，不在本次同步中顺便拆包。
+- 全部原始日志、工具和缓存保留在仓库忽略目录 `output/upstream-sync-20260910-98d86915b` 及前次缓存目录，不纳入提交，不删除其他本地资料。
+- 最终完成还要求记录提交、原 main 未变化、仅 ff-only 更新本地 main 和干净工作树；最终 SHA 在交付总结报告，避免文档自引用。
+
+
+### 本地提交与最终门禁补记
+
+- 时间：2026-09-11T00:54:59+08:00。合并代码提交：`cf1c01913d01555412224e86f07350cc43da2894`，两个父提交依次为 `d3c44a97b0a25fddd7fae3cdeb537682f365ebf5` 和 `98d86915becae9fe9491a91ffc6defd5235c8d2b`。全部 181 个上游 SHA 均作为祖先纳入此 merge；无需 cherry-pick 或 squash 映射。
+- 相对同步前变更 507 个文件；Git 原始统计：`507 files changed, 21049 insertions(+), 2793 deletions(-)`。完整清单可用 `git diff --name-status d3c44a97b0a25fddd7fae3cdeb537682f365ebf5 cf1c01913d01555412224e86f07350cc43da2894` 复核。
+- 24 个索引冲突均已清除；55 个稳定编号全部保留，无未知变更、意外删除或秘密检查命中。代码提交后工作树干净，main 仍位于同步前 SHA。
+- 此最终记录提交只更新两份台账，不改变已验证代码。完成后仅允许 `git switch main` 和 `git merge --ff-only sync/upstream-20260910-98d86915b`。本记录自身 SHA 与最终 main SHA 仅在最终总结报告。
+- 本地代码集成与可用验证通过；全部失败重测、权限基线和未验证范围见前文。未推送、未创建 PR、未连接服务器或部署。
+- 最终复核：`node output/upstream-sync-20260910-98d86915b/final-audit.mjs check`、`node output/upstream-sync-20260910-98d86915b/write-records.mjs preview`、`git diff --cached --check`、`git diff --check` 均退出 0；额外断言确认同步历史只追加、181 条完整 SHA 处置与 Git 固定范围一一对应、备份分支正确、合并双亲正确。台账补记后再次审计通过。
+- 本地清理核验：本次标签下没有遗留容器，健康检查应用进程不存在，POSIX 临时挂载已卸载。WSL 默认用户首次查询 Docker socket 无权限，改用同一本机 WSL 的 root 只读查询成功；没有连接任何远程服务器。
+
+### 2026-09-11 推送与 CI 修复补记
+
+- 时间：2026-09-11T01:16:14+08:00；用户在本地同步交付后明确授权提交远端、CI 通过后合入主线。已推送 `sync/upstream-20260910-98d86915b` 并创建 `Saviour2411/sub2api` PR #21，目标 `main`；操作前远端 main 仍为 `d3c44a97b0a25fddd7fae3cdeb537682f365ebf5`。
+- 首轮候选 `40df432d3e6753fa027ac2340dd1b31b62d9f297` 的 push/PR Security Scan 均在 Canvas 审计失败：`js-yaml 4.3.1` 命中 `GHSA-2883-xcg3-v3hh`；后端 govulncheck、前端构建、lint、macOS shell 检查已通过，后端测试当时仍在执行。本段不把未完成的检查记为成功。
+- 新修复只将 Canvas 的受影响 js-yaml 4.x 范围定向覆盖到 `4.3.2`，更新包完整性摘要与 cosmiconfig 解析；YAML 结构化前后比较确认其他包与版本不变。未改 CI、安全例外和任何业务默认值，`CUST-PROD-007` 清单同步更新。上游固定范围和完整集成 SHA 不变。
+- 本地实际验证采用既有 Node 20.20.2 与 pnpm 9.15.9：
+
+| 实际命令（工作目录） | 退出码 | 结果 |
+| --- | --- | --- |
+| `pnpm install --lockfile-only --ignore-scripts --reporter=append-only`（canvas） | 0 | 定向重新解析锁文件；沿用原有 peer 提示 |
+| `pnpm install --frozen-lockfile --ignore-scripts --reporter=append-only`（canvas） | 0 | 安装补丁，锁文件冻结验证 |
+| `node node_modules/prettier/bin/prettier.cjs --write package.json pnpm-lock.yaml`（canvas） | 0 | 仅恢复两个变更文件的既有格式 |
+| `validate.ps1 -Phase after -Suite canvas`（仓库根目录，脚本位于本次 output 目录） | 0 | format、typecheck、34 项 Vitest 全部通过 |
+| `validate.ps1 -Phase after -Suite canvas-build`（仓库根目录，脚本位于本次 output 目录） | 0 | 类型检查和生产构建通过；原有大 chunk 提示保留 |
+| `pnpm audit --prod --audit-level=high --json`（canvas） | 1 | JSON：高危 0、严重 0、中危 6；js-yaml 告警已消失，原始退出码保留 |
+| `python3 tools/check_pnpm_audit_exceptions.py --audit output/upstream-sync-20260910-98d86915b/logs/ci-followup-canvas-audit.json --exceptions .github/audit-exceptions.yml`（本机 WSL，仓库根目录） | 0 | 与 CI 相同的审计门禁通过，未新增例外 |
+| `git diff --check`（仓库根目录） | 0 | 无空白错误 |
+
+- 推送本次修复后必须等待最新 PR head 对应 CI 和 Security Scan 成功，再用 merge commit 保留上游祖先关系合入 main；禁止 squash/rebase 或在失败状态绕过检查。最终 PR/合并 SHA 在交付总结记录，避免自引用。
+- 本次不推送任何版本标签、不触发 Release、不部署、不连接远程服务器。剩余 6 项中危、真实业务服务和完整 race 等未验证范围仍需后续关注。

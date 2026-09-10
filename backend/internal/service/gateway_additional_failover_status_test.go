@@ -49,6 +49,7 @@ func TestAdditionalFailoverStatus_PreservesSemanticTerminalRules(t *testing.T) {
 
 	contextBody := []byte(`{"error":{"message":"maximum context length exceeded"}}`)
 	require.False(t, openAIService.shouldFailoverOpenAIUpstreamResponse(
+		nil,
 		http.StatusBadRequest,
 		"maximum context length exceeded",
 		contextBody,
@@ -56,6 +57,7 @@ func TestAdditionalFailoverStatus_PreservesSemanticTerminalRules(t *testing.T) {
 
 	cyberBody := []byte(`{"error":{"code":"cyber_policy","message":"request blocked"}}`)
 	require.False(t, openAIService.shouldFailoverOpenAIUpstreamResponse(
+		nil,
 		http.StatusBadRequest,
 		"request blocked",
 		cyberBody,

@@ -11,7 +11,7 @@ const defaultModels: Record<string, string> = {
   antigravity: 'claude-opus-5'
 }
 
-const cnPlatforms = new Set(['kimi', 'zhipu', 'deepseek'])
+const cnPlatforms = new Set(['kimi', 'zhipu', 'deepseek', 'minimax'])
 
 export function pickAccountTestDefaultModel(account: TestAccount, models: TestModel[]): string {
   if (cnPlatforms.has(account.platform)) return models[0]?.id || ''

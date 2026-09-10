@@ -1,11 +1,46 @@
 package handler
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+func TestModelMarketplaceModelsForGroup_Allowlist(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, tc := range []struct {
+		name      string
+		allowlist service.GroupModelAllowlist
+		want      []string
+	}{
+		{"未启用时保留账号模型", service.GroupModelAllowlist{}, []string{"gpt-custom-allowed", "gpt-custom-denied"}},
+		{"启用后仅展示允许的模型", service.GroupModelAllowlist{Enabled: true, Models: []string{"gpt-custom-allowed"}}, []string{"gpt-custom-allowed"}},
+		{"支持通配条目", service.GroupModelAllowlist{Enabled: true, Models: []string{"gpt-custom-*"}}, []string{"gpt-custom-allowed", "gpt-custom-denied"}},
+		{"无匹配不回填平台默认列表", service.GroupModelAllowlist{Enabled: true, Models: []string{"missing-model"}}, []string{}},
+		{"遗留启用空配置不回填默认列表", service.GroupModelAllowlist{Enabled: true}, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			group := service.Group{ID: 21, Platform: service.PlatformOpenAI, ModelAllowlist: tc.allowlist}
+			repo := &gatewayModelsAccountRepoStub{byGroup: map[int64][]service.Account{
+				group.ID: {{ID: 1, Platform: service.PlatformOpenAI, Credentials: map[string]any{
+					"model_mapping": map[string]any{"gpt-custom-allowed": "mapped-a", "gpt-custom-denied": "mapped-b"},
+				}}},
+			}}
+			h := &ModelMarketplaceHandler{gatewayService: newGatewayModelsHandlerForTest(repo).gatewayService}
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/model-marketplace", nil)
+			got := h.modelsForGroup(c, group)
+			require.Equal(t, tc.want, got)
+			for _, model := range got {
+				require.True(t, group.ModelAllowlist.Allows(model), "公开模型必须通过相同的请求准入规则")
+			}
+		})
+	}
+}
 
 func TestRequestFormatsForGroup_OnlyConversationFormats(t *testing.T) {
 	cases := []struct {

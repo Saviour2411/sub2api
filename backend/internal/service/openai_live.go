@@ -199,7 +199,7 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 		selection.ReleaseFunc()
 		if createErr != nil {
 			s.releaseLiveLease(account.ID, identity.UserID, identity.APIKeyID, leaseID)
-			if !s.shouldFailoverLiveCreateError(createErr) {
+			if !s.shouldFailoverLiveCreateError(account, createErr) {
 				return nil, createErr
 			}
 			excluded[account.ID] = struct{}{}
@@ -245,7 +245,7 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 	return nil, ErrLiveUnavailable
 }
 
-func (s *OpenAIGatewayService) shouldFailoverLiveCreateError(err error) bool {
+func (s *OpenAIGatewayService) shouldFailoverLiveCreateError(account *Account, err error) bool {
 	if isOpenAIRequestSentPluginError(err) {
 		return false
 	}
@@ -254,7 +254,7 @@ func (s *OpenAIGatewayService) shouldFailoverLiveCreateError(err error) bool {
 		// 凭证读取和网络传输错误都可能只影响当前账号或代理。
 		return true
 	}
-	return s.shouldFailoverOpenAIUpstreamResponse(
+	return s.shouldFailoverOpenAIUpstreamResponse(account,
 		upstreamErr.StatusCode,
 		"",
 		upstreamErr.ResponseBody,

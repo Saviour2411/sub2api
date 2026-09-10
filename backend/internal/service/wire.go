@@ -131,6 +131,7 @@ func ProvideAccountTestService(
 	)
 	svc.SetSettingService(settingService)
 	svc.agentIdentityWS = openAIGatewayService
+	svc.SetOpenAIGatewayService(openAIGatewayService)
 	svc.SetPluginManager(pluginManager)
 	return svc
 }
