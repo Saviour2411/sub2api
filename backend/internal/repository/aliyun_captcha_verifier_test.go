@@ -26,6 +26,8 @@ func newAliyunCaptchaTestTarget(t *testing.T, handler http.HandlerFunc) (*aliyun
 		SceneID:         "scene-1",
 		Endpoint:        strings.TrimPrefix(server.URL, "http://"),
 	}
+	// SDK 按完整 host:port 匹配 NO_PROXY，不能只配置回环 IP。
+	t.Setenv("NO_PROXY", cred.Endpoint)
 	return verifier, cred
 }
 
@@ -74,9 +76,17 @@ func TestAliyunCaptchaVerifier_APIErrorNormalized(t *testing.T) {
 }
 
 func TestAliyunCaptchaVerifier_TransportError(t *testing.T) {
-	server := httptest.NewServer(http.NotFoundHandler())
+	// 保持端口占用并主动断开连接，避免并行测试复用已关闭端口而收到 HTTP 错误。
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hijacker, ok := w.(http.Hijacker)
+		require.True(t, ok)
+		conn, _, err := hijacker.Hijack()
+		require.NoError(t, err)
+		_ = conn.Close()
+	}))
+	t.Cleanup(server.Close)
 	endpoint := strings.TrimPrefix(server.URL, "http://")
-	server.Close() // 立即关闭，制造连接失败
+	t.Setenv("NO_PROXY", endpoint)
 
 	verifier := &aliyunCaptchaVerifier{protocol: "HTTP", timeoutMillis: 2_000}
 	cred := service.AliyunCaptchaCredentials{
@@ -89,5 +99,5 @@ func TestAliyunCaptchaVerifier_TransportError(t *testing.T) {
 	_, err := verifier.VerifyCaptcha(context.Background(), cred, "param")
 	require.Error(t, err)
 	var apiErr *service.AliyunCaptchaAPIError
-	require.False(t, errors.As(err, &apiErr), "transport errors must not be normalized to API errors")
+	require.False(t, errors.As(err, &apiErr), "传输错误不得转为 API 错误，实际类型 %T：%v", err, err)
 }

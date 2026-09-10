@@ -816,6 +816,11 @@ func TestAccountRepositoryCleansBindingsOnMembershipChangeAndDelete(t *testing.T
 
 	localGroup, err := client.Group.Create().SetName("生命周期本地组").SetPlatform(service.PlatformOpenAI).Save(ctx)
 	require.NoError(t, err)
+	require.NoError(t, lockLiveGroups(ctx, client, []int64{localGroup.ID, localGroup.ID}), "重复分组 ID 不应影响存在性校验")
+	require.ErrorIs(t, lockLiveGroups(ctx, client, []int64{localGroup.ID, 999999}), service.ErrGroupNotFound)
+	deletedGroup, err := client.Group.Create().SetName("已删除的夹具分组").SetDeletedAt(now).Save(ctx)
+	require.NoError(t, err)
+	require.ErrorIs(t, lockLiveGroups(ctx, client, []int64{deletedGroup.ID}), service.ErrGroupNotFound)
 	createBoundAccount := func(name string) *dbent.Account {
 		account, createErr := client.Account.Create().
 			SetName(name).

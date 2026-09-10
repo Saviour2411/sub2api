@@ -121,8 +121,8 @@ func modelMarketplaceGroupVisible(group service.Group, configured map[int64]stru
 func (h *ModelMarketplaceHandler) modelsForGroup(c *gin.Context, group service.Group) []string {
 	groupID := group.ID
 	models := h.gatewayService.GetAvailableModels(c.Request.Context(), &groupID, group.Platform)
-	if group.CustomModelsListEnabled() {
-		return filterModelsByCustomList(models, defaultModelIDsForPlatform(group.Platform), group.ModelsListConfig.Models)
+	if group.ModelAllowlistEnabled() {
+		return group.ModelAllowlist.FilterForListing(modelListingSource(group.Platform, models, defaultModelIDsForPlatform(group.Platform)))
 	}
 	if len(models) > 0 {
 		return cloneModelMarketplaceModels(models)

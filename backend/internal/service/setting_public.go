@@ -232,6 +232,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
 		SettingKeyChannelMonitorHideThroughput,
 		SettingKeyChannelMonitorShowQuota,
+		SettingKeyChannelMonitorHideUserRanking,
 		SettingKeyAvailableChannelsEnabled,
 		SettingKeyCanvasEnabled,
 		SettingKeyModelPlazaEnabled,
@@ -361,6 +362,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		ChannelMonitorDefaultIntervalSeconds: parseChannelMonitorInterval(settings[SettingKeyChannelMonitorDefaultIntervalSeconds]),
 		ChannelMonitorHideThroughput:         !isFalseSettingValue(settings[SettingKeyChannelMonitorHideThroughput]),
 		ChannelMonitorShowQuota:              settings[SettingKeyChannelMonitorShowQuota] == "true",
+		ChannelMonitorHideUserRanking:        isTrueSettingValue(settings[SettingKeyChannelMonitorHideUserRanking]),
 
 		AvailableChannelsEnabled: settings[SettingKeyAvailableChannelsEnabled] == "true",
 		CanvasEnabled:            settings[SettingKeyCanvasEnabled] != "false",
@@ -436,6 +438,9 @@ type ChannelMonitorRuntime struct {
 	// snapshots; otherwise the user handler strips them server-side.
 	// Parsed fail-closed (only literal "true" enables). Admin always sees them.
 	ShowQuota bool
+	// HideUserRanking: when true, user-facing V2 views hide the user ranking tab
+	// and the /users payload. Parsed fail-open (only literal "true" hides it).
+	HideUserRanking bool
 }
 
 // ActiveProbesAllowed reports whether V1 active provider probes may run.
@@ -465,6 +470,7 @@ func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMo
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
 		SettingKeyChannelMonitorHideThroughput,
 		SettingKeyChannelMonitorShowQuota,
+		SettingKeyChannelMonitorHideUserRanking,
 	})
 	if err != nil {
 		return ChannelMonitorRuntime{
@@ -480,6 +486,7 @@ func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMo
 		DefaultIntervalSeconds: parseChannelMonitorInterval(vals[SettingKeyChannelMonitorDefaultIntervalSeconds]),
 		HideThroughput:         !isFalseSettingValue(vals[SettingKeyChannelMonitorHideThroughput]),
 		ShowQuota:              vals[SettingKeyChannelMonitorShowQuota] == "true",
+		HideUserRanking:        isTrueSettingValue(vals[SettingKeyChannelMonitorHideUserRanking]),
 	}
 }
 
@@ -673,17 +680,18 @@ type PublicSettingsInjectionPayload struct {
 	// 就能隐藏 RPM/TPM，形成纵深防护。
 	ChannelMonitorHideThroughput bool `json:"channel_monitor_hide_throughput"`
 	// 用户端配额/余额展示默认关闭；管理端始终展示。
-	ChannelMonitorShowQuota    bool `json:"channel_monitor_show_quota"`
-	AvailableChannelsEnabled   bool `json:"available_channels_enabled"`
-	CanvasEnabled              bool `json:"canvas_enabled"`
-	ModelPlazaEnabled          bool `json:"model_plaza_enabled"`
-	ModelPlazaRequireAuth      bool `json:"model_plaza_require_auth"`
-	PluginManagementEnabled    bool `json:"plugin_management_enabled"`
-	AffiliateEnabled           bool `json:"affiliate_enabled"`
-	RiskControlEnabled         bool `json:"risk_control_enabled"`
-	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
-	ModelMarketplaceEnabled    bool `json:"model_marketplace_enabled"`
-	DailyCheckinEnabled        bool `json:"daily_checkin_enabled"`
+	ChannelMonitorShowQuota       bool `json:"channel_monitor_show_quota"`
+	AvailableChannelsEnabled      bool `json:"available_channels_enabled"`
+	CanvasEnabled                 bool `json:"canvas_enabled"`
+	ModelPlazaEnabled             bool `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth         bool `json:"model_plaza_require_auth"`
+	PluginManagementEnabled       bool `json:"plugin_management_enabled"`
+	AffiliateEnabled              bool `json:"affiliate_enabled"`
+	RiskControlEnabled            bool `json:"risk_control_enabled"`
+	AllowUserViewErrorRequests    bool `json:"allow_user_view_error_requests"`
+	ModelMarketplaceEnabled       bool `json:"model_marketplace_enabled"`
+	DailyCheckinEnabled           bool `json:"daily_checkin_enabled"`
+	ChannelMonitorHideUserRanking bool `json:"channel_monitor_hide_user_ranking"`
 }
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
@@ -758,6 +766,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 		ChannelMonitorHideThroughput:         settings.ChannelMonitorHideThroughput,
 		ChannelMonitorShowQuota:              settings.ChannelMonitorShowQuota,
+		ChannelMonitorHideUserRanking:        settings.ChannelMonitorHideUserRanking,
 		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
 		CanvasEnabled:                        settings.CanvasEnabled,
 		ModelPlazaEnabled:                    settings.ModelPlazaEnabled,

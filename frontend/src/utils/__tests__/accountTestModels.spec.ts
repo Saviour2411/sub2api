@@ -26,7 +26,7 @@ describe('账号测试默认模型', () => {
     ])).toBe('gemini-2.0-flash')
   })
 
-  it.each(['kimi', 'zhipu', 'deepseek'] as const)('%s 使用后端确定的首选项并保留单次映射语义', platform => {
+  it.each(['kimi', 'zhipu', 'deepseek', 'minimax'] as const)('%s 使用后端确定的首选项并保留单次映射语义', platform => {
     const a = account(platform)
     const preferred = pickAccountTestDefaultModel(a, [{ id: 'native-model' }, { id: 'another-model' }])
     expect(preferred).toBe('native-model')
