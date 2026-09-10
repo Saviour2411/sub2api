@@ -3026,3 +3026,24 @@
 - 本地代码集成与可用验证通过；全部失败重测、权限基线和未验证范围见前文。未推送、未创建 PR、未连接服务器或部署。
 - 最终复核：`node output/upstream-sync-20260910-98d86915b/final-audit.mjs check`、`node output/upstream-sync-20260910-98d86915b/write-records.mjs preview`、`git diff --cached --check`、`git diff --check` 均退出 0；额外断言确认同步历史只追加、181 条完整 SHA 处置与 Git 固定范围一一对应、备份分支正确、合并双亲正确。台账补记后再次审计通过。
 - 本地清理核验：本次标签下没有遗留容器，健康检查应用进程不存在，POSIX 临时挂载已卸载。WSL 默认用户首次查询 Docker socket 无权限，改用同一本机 WSL 的 root 只读查询成功；没有连接任何远程服务器。
+
+### 2026-09-11 推送与 CI 修复补记
+
+- 时间：2026-09-11T01:16:14+08:00；用户在本地同步交付后明确授权提交远端、CI 通过后合入主线。已推送 `sync/upstream-20260910-98d86915b` 并创建 `Saviour2411/sub2api` PR #21，目标 `main`；操作前远端 main 仍为 `d3c44a97b0a25fddd7fae3cdeb537682f365ebf5`。
+- 首轮候选 `40df432d3e6753fa027ac2340dd1b31b62d9f297` 的 push/PR Security Scan 均在 Canvas 审计失败：`js-yaml 4.3.1` 命中 `GHSA-2883-xcg3-v3hh`；后端 govulncheck、前端构建、lint、macOS shell 检查已通过，后端测试当时仍在执行。本段不把未完成的检查记为成功。
+- 新修复只将 Canvas 的受影响 js-yaml 4.x 范围定向覆盖到 `4.3.2`，更新包完整性摘要与 cosmiconfig 解析；YAML 结构化前后比较确认其他包与版本不变。未改 CI、安全例外和任何业务默认值，`CUST-PROD-007` 清单同步更新。上游固定范围和完整集成 SHA 不变。
+- 本地实际验证采用既有 Node 20.20.2 与 pnpm 9.15.9：
+
+| 实际命令（工作目录） | 退出码 | 结果 |
+| --- | --- | --- |
+| `pnpm install --lockfile-only --ignore-scripts --reporter=append-only`（canvas） | 0 | 定向重新解析锁文件；沿用原有 peer 提示 |
+| `pnpm install --frozen-lockfile --ignore-scripts --reporter=append-only`（canvas） | 0 | 安装补丁，锁文件冻结验证 |
+| `node node_modules/prettier/bin/prettier.cjs --write package.json pnpm-lock.yaml`（canvas） | 0 | 仅恢复两个变更文件的既有格式 |
+| `validate.ps1 -Phase after -Suite canvas`（仓库根目录，脚本位于本次 output 目录） | 0 | format、typecheck、34 项 Vitest 全部通过 |
+| `validate.ps1 -Phase after -Suite canvas-build`（仓库根目录，脚本位于本次 output 目录） | 0 | 类型检查和生产构建通过；原有大 chunk 提示保留 |
+| `pnpm audit --prod --audit-level=high --json`（canvas） | 1 | JSON：高危 0、严重 0、中危 6；js-yaml 告警已消失，原始退出码保留 |
+| `python3 tools/check_pnpm_audit_exceptions.py --audit output/upstream-sync-20260910-98d86915b/logs/ci-followup-canvas-audit.json --exceptions .github/audit-exceptions.yml`（本机 WSL，仓库根目录） | 0 | 与 CI 相同的审计门禁通过，未新增例外 |
+| `git diff --check`（仓库根目录） | 0 | 无空白错误 |
+
+- 推送本次修复后必须等待最新 PR head 对应 CI 和 Security Scan 成功，再用 merge commit 保留上游祖先关系合入 main；禁止 squash/rebase 或在失败状态绕过检查。最终 PR/合并 SHA 在交付总结记录，避免自引用。
+- 本次不推送任何版本标签、不触发 Release、不部署、不连接远程服务器。剩余 6 项中危、真实业务服务和完整 race 等未验证范围仍需后续关注。
