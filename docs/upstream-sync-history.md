@@ -3015,3 +3015,14 @@
 - 前端与 Canvas 构建仍有大 chunk 提示，属于基线已有构建警告，不在本次同步中顺便拆包。
 - 全部原始日志、工具和缓存保留在仓库忽略目录 `output/upstream-sync-20260910-98d86915b` 及前次缓存目录，不纳入提交，不删除其他本地资料。
 - 最终完成还要求记录提交、原 main 未变化、仅 ff-only 更新本地 main 和干净工作树；最终 SHA 在交付总结报告，避免文档自引用。
+
+
+### 本地提交与最终门禁补记
+
+- 时间：2026-09-11T00:54:59+08:00。合并代码提交：`cf1c01913d01555412224e86f07350cc43da2894`，两个父提交依次为 `d3c44a97b0a25fddd7fae3cdeb537682f365ebf5` 和 `98d86915becae9fe9491a91ffc6defd5235c8d2b`。全部 181 个上游 SHA 均作为祖先纳入此 merge；无需 cherry-pick 或 squash 映射。
+- 相对同步前变更 507 个文件；Git 原始统计：`507 files changed, 21049 insertions(+), 2793 deletions(-)`。完整清单可用 `git diff --name-status d3c44a97b0a25fddd7fae3cdeb537682f365ebf5 cf1c01913d01555412224e86f07350cc43da2894` 复核。
+- 24 个索引冲突均已清除；55 个稳定编号全部保留，无未知变更、意外删除或秘密检查命中。代码提交后工作树干净，main 仍位于同步前 SHA。
+- 此最终记录提交只更新两份台账，不改变已验证代码。完成后仅允许 `git switch main` 和 `git merge --ff-only sync/upstream-20260910-98d86915b`。本记录自身 SHA 与最终 main SHA 仅在最终总结报告。
+- 本地代码集成与可用验证通过；全部失败重测、权限基线和未验证范围见前文。未推送、未创建 PR、未连接服务器或部署。
+- 最终复核：`node output/upstream-sync-20260910-98d86915b/final-audit.mjs check`、`node output/upstream-sync-20260910-98d86915b/write-records.mjs preview`、`git diff --cached --check`、`git diff --check` 均退出 0；额外断言确认同步历史只追加、181 条完整 SHA 处置与 Git 固定范围一一对应、备份分支正确、合并双亲正确。台账补记后再次审计通过。
+- 本地清理核验：本次标签下没有遗留容器，健康检查应用进程不存在，POSIX 临时挂载已卸载。WSL 默认用户首次查询 Docker socket 无权限，改用同一本机 WSL 的 root 只读查询成功；没有连接任何远程服务器。
