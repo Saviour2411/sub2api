@@ -1,0 +1,18 @@
+--- a/vps_backup.sh
++++ b/vps_backup.sh
+@@ -266,6 +266,7 @@ make_system_config_tar() {
+     etc/cron.d/certbot
+     etc/systemd/system/certbot.service.d
+     etc/systemd/system/certbot.timer.d
++    etc/systemd/system/nginx.service.d
+     etc/cron.d/vps_backup
+     etc/docker/daemon.json
+     etc/fail2ban/jail.local
+@@ -276,6 +277,7 @@ make_system_config_tar() {
+     etc/sysctl.d/50-IPv6.conf
+     etc/sysctl.d/99-nc-kernel.conf
+     etc/sysctl.d/99-sysctl.conf
++    etc/sysctl.d/99-sub2api-redis.conf
+     etc/ufw
+     var/www
+     var/lib/docker/volumes/lobechat_lobechat_data/_data

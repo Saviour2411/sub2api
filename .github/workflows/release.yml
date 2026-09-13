@@ -334,7 +334,7 @@ jobs:
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || vars.DEPLOY_HOST || '216.152.153.86' }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER || vars.DEPLOY_USER || 'root' }}
-          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || vars.DEPLOY_PORT || '22' }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || vars.DEPLOY_PORT || '22748' }}
           DEPLOY_DIR: ${{ secrets.DEPLOY_DIR || vars.DEPLOY_DIR || '/root/proj/sub2api/deploy' }}
           DEPLOY_COMPOSE_FILE: ${{ secrets.DEPLOY_COMPOSE_FILE || vars.DEPLOY_COMPOSE_FILE || 'docker-compose.yml' }}
           DEPLOY_UPLOAD_COMPOSE: ${{ secrets.DEPLOY_UPLOAD_COMPOSE || vars.DEPLOY_UPLOAD_COMPOSE || 'false' }}
@@ -346,7 +346,7 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if [ "$DEPLOY_HOST" != "216.152.153.86" ] || [ "$DEPLOY_USER" != "root" ] || [ "$DEPLOY_PORT" != "22" ] || [ "$DEPLOY_DIR" != "/root/proj/sub2api/deploy" ] || [ "$DEPLOY_COMPOSE_FILE" != "docker-compose.yml" ]; then
+          if [ "$DEPLOY_HOST" != "216.152.153.86" ] || [ "$DEPLOY_USER" != "root" ] || [ "$DEPLOY_PORT" != "22748" ] || [ "$DEPLOY_DIR" != "/root/proj/sub2api/deploy" ] || [ "$DEPLOY_COMPOSE_FILE" != "docker-compose.yml" ]; then
             echo "生产部署目标必须是新生产机及其指定活动Compose；旧机仅转发，拒绝向旧机部署。" >&2
             exit 1
           fi
