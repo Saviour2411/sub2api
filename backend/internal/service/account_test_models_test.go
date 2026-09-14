@@ -18,6 +18,7 @@ func Test账号测试默认模型与受限接入(t *testing.T) {
 		name, platform, kind, oauth, want string
 	}{
 		{"OpenAI", PlatformOpenAI, AccountTypeAPIKey, "", "gpt-6-astra"},
+		{"OpenCode", PlatformOpenCodeGo, AccountTypeAPIKey, "", "glm-5.3"},
 		{"OpenAI OAuth", PlatformOpenAI, AccountTypeOAuth, "", "gpt-6-astra"},
 		{"Anthropic", PlatformAnthropic, AccountTypeAPIKey, "", "claude-opus-5"},
 		{"Gemini", PlatformGemini, AccountTypeAPIKey, "", "gemini-3.8-flash"},
@@ -45,7 +46,7 @@ func Test账号测试默认模型与受限接入(t *testing.T) {
 }
 
 func Test国产测试模型确定性选择与单次映射(t *testing.T) {
-	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax} {
+	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo} {
 		t.Run(platform, func(t *testing.T) {
 			account := &Account{Platform: platform, Type: AccountTypeAPIKey, Credentials: map[string]any{
 				"model_mapping": map[string]any{
@@ -111,7 +112,12 @@ func TestAntigravity默认Opus5映射不改写自定义映射(t *testing.T) {
 }
 
 func TestFetchOpenAIAccountModelsOAuthPopulatesPickerFields(t *testing.T) {
-	_, calls := newCodexModelsOAuthCacheServer(t, `{"models":[{"slug":"new-oauth-model"},{"slug":"gpt-6-astra"}]}`)
+	_, calls := newCodexModelsOAuthCacheServer(t, `{"models":[
+		{"slug":"new-oauth-model","display_name":"New OAuth Model"},
+		{"slug":"gpt-5.6-sol"},
+		{"slug":"blank-display-name","display_name":"   "},
+		{"slug":"gpt-6-astra"}
+	]}`)
 	gateway := &OpenAIGatewayService{}
 	svc := &AccountTestService{openaiGatewayService: gateway}
 	account := newCodexModelsTestAccount()
@@ -122,9 +128,16 @@ func TestFetchOpenAIAccountModelsOAuthPopulatesPickerFields(t *testing.T) {
 	models, err := svc.FetchOpenAIAccountModels(ctx, account)
 	require.NoError(t, err)
 	require.Greater(t, len(models), 2)
-	for i, id := range []string{"new-oauth-model", "gpt-6-astra"} {
-		require.Equal(t, id, models[i].ID)
-		require.Equal(t, id, models[i].DisplayName)
+	// Upstream display name wins; a missing one falls back to the local catalog name,
+	// then to the raw slug.
+	for i, expected := range []struct{ id, displayName string }{
+		{id: "new-oauth-model", displayName: "New OAuth Model"},
+		{id: "gpt-5.6-sol", displayName: "GPT-5.6 Sol"},
+		{id: "blank-display-name", displayName: "blank-display-name"},
+		{id: "gpt-6-astra", displayName: "GPT-6 Astra"},
+	} {
+		require.Equal(t, expected.id, models[i].ID)
+		require.Equal(t, expected.displayName, models[i].DisplayName)
 		require.Equal(t, "model", models[i].Type)
 	}
 	ids := make([]string, 0, len(models))
@@ -137,7 +150,7 @@ func TestFetchOpenAIAccountModelsOAuthPopulatesPickerFields(t *testing.T) {
 	after, err := gateway.FetchOpenAIModelsList(ctx, account)
 	require.NoError(t, err)
 	require.Equal(t, before.Body, after.Body, "picker fields must not change the shared catalog")
-	require.NotContains(t, string(after.Body), "display_name")
+	require.Contains(t, string(after.Body), `"display_name":"New OAuth Model"`, "the shared catalog keeps the upstream display name")
 	require.EqualValues(t, 1, calls.Load(), "picker must reuse the shared discovery cache")
 }
 
@@ -170,6 +183,21 @@ func TestFetchOpenAIAccountModelsPreservesEmptyCatalog(t *testing.T) {
 	models, err := svc.FetchOpenAIAccountModels(context.Background(), newCodexModelsAPIKeyTestAccount("https://models.example/v1"))
 	require.NoError(t, err)
 	require.Empty(t, models, "an empty upstream catalog must not become a static model list")
+}
+
+func TestFetchOpenAIAccountModelsOAuthLabelsLocalImageModelsLikeUpstream(t *testing.T) {
+	newCodexModelsOAuthCacheServer(t, `{"models":[{"slug":"gpt-5.6-sol"}]}`)
+	svc := &AccountTestService{openaiGatewayService: &OpenAIGatewayService{}}
+	account := newCodexModelsTestAccount()
+	account.Credentials["model_mapping"] = map[string]any{"gpt-image-2.5-flare": "gpt-image-2.5-flare"}
+	models, err := svc.FetchOpenAIAccountModels(context.Background(), account)
+	require.NoError(t, err)
+	byID := make(map[string]string, len(models))
+	for _, model := range models {
+		byID[model.ID] = model.DisplayName
+	}
+	require.Equal(t, "GPT-5.6 Sol", byID["gpt-5.6-sol"], "upstream slug must not be the only label source")
+	require.Equal(t, "GPT Image 2.5 Flare", byID["gpt-image-2.5-flare"], "locally added models use the same naming rule")
 }
 
 func TestFetchOpenAIAccountModelsOAuthRespectsImageAllowlist(t *testing.T) {

@@ -191,6 +191,7 @@ export interface CustomMenuItem {
   icon_svg: string
   url: string
   page_slug?: string
+  hide_open_button?: boolean
   visibility: 'user' | 'admin'
   sort_order: number
 }
@@ -331,6 +332,10 @@ export interface PublicSettings {
   channel_monitor_hide_user_ranking?: boolean
   available_channels_enabled: boolean
   canvas_enabled?: boolean
+  /** 用户订阅界面开关，默认开启。 */
+  subscription_enabled: boolean
+  /** 与余额充值禁用配置保持一致，true 表示关闭余额充值。 */
+  payment_balance_disabled: boolean
   model_plaza_enabled: boolean
   model_plaza_require_auth: boolean
   plugin_management_enabled: boolean
@@ -590,7 +595,7 @@ export interface PaginationConfig {
 
 // ==================== API Key & Group Types ====================
 
-export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'composite'
+export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'opencode_go' | 'composite'
 
 export type VideoModelPrices = Record<string, Record<string, number>>
 
@@ -971,7 +976,7 @@ export interface UpdateGroupRequest {
 
 // ==================== Account & Proxy Types ====================
 
-export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax'
+export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'opencode_go'
 export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock' | 'service_account'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'

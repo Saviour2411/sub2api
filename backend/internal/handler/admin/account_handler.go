@@ -2806,7 +2806,7 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		return
 	}
 
-	if account.IsCNProvider() {
+	if account.IsCNProvider() || account.IsOpenCodeGo() {
 		modelIDs := service.CNAccountTestModels(account)
 		models := make([]claude.Model, 0, len(modelIDs))
 		for _, model := range modelIDs {
