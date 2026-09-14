@@ -382,7 +382,7 @@ const contactInfo = ref('')
 
 // Helper functions for history display
 const isBalanceType = (type: string) => {
-  return type === 'balance' || type === 'admin_balance' || type === 'daily_checkin_balance'
+  return type === 'balance' || type === 'admin_balance' || type === 'daily_checkin_balance' || type === 'temporary_credit'
 }
 
 const isSubscriptionType = (type: string) => {
@@ -398,10 +398,11 @@ const isDailyCheckinReward = (type: string) => {
 }
 
 const shouldShowCode = (item: RedeemHistoryItem) => {
-  return !isAdminAdjustment(item.type) && !isDailyCheckinReward(item.type)
+  return !isAdminAdjustment(item.type) && !isDailyCheckinReward(item.type) && item.type !== 'temporary_credit'
 }
 
 const getHistoryItemTitle = (item: RedeemHistoryItem) => {
+  if (item.type === 'temporary_credit') return t('userCustomization.temporaryCredit')
   if (item.type === 'balance') {
     return t('redeem.balanceAddedRedeem')
   } else if (item.type === 'daily_checkin_balance') {

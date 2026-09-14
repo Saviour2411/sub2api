@@ -92,6 +92,7 @@ const DataTableStub = {
         <slot name="cell-reasoning_effort" :row="row" :value="row.reasoning_effort" />
         <slot name="cell-billing_mode" :row="row" />
         <slot name="cell-tokens" :row="row" />
+        <slot name="cell-latency" :row="row" />
         <slot name="cell-cost" :row="row" />
         <slot name="cell-request_id" :row="row" />
         <slot name="cell-upstream_request_id" :row="row" />
@@ -129,6 +130,15 @@ const baseImageRow = {
 }
 
 describe('admin UsageTable tooltip', () => {
+  it('在总耗时下方显示输出速率', () => {
+    const wrapper = mount(UsageTable, {
+      props: { data: [{ ...baseImageRow, image_count: 0, billing_mode: 'token', request_type: 'stream', stream: true, output_tokens: 1000, duration_ms: 12000, first_token_ms: 2000 }] as any, columns: [] },
+      global: { stubs: { DataTable: DataTableStub } }
+    })
+    expect(wrapper.get('[data-test="output-rate"]').text()).toBe('100.00 tk/s')
+    expect(wrapper.text().indexOf('usage.latencyDuration')).toBeLessThan(wrapper.text().indexOf('100.00 tk/s'))
+    wrapper.unmount()
+  })
   beforeEach(() => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       x: 0,

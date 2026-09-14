@@ -19,6 +19,12 @@ import { resolveRouteDocumentTitle } from './title'
  * Route definitions with lazy loading
  */
 const routes: RouteRecordRaw[] = [
+  {
+    path: '/balance-query',
+    name: 'BalanceQuery',
+    component: () => import('@/views/public/BalanceQueryView.vue'),
+    meta: { requiresAuth: false, titleKey: 'balanceQuery.title' }
+  },
   // ==================== Setup Routes ====================
   {
     path: '/setup',
@@ -813,6 +819,7 @@ const BACKEND_MODE_CALLBACK_PATHS = [
 const BACKEND_MODE_PENDING_AUTH_PATHS = ['/register', '/email-verify']
 
 function isBackendModePublicRouteAllowed(path: string, hasPendingAuthSession: boolean): boolean {
+  if (path === '/balance-query') return true
   if (BACKEND_MODE_ALLOWED_PATHS.some((allowedPath) => path === allowedPath || path.startsWith(allowedPath))) {
     return true
   }
@@ -831,6 +838,13 @@ function isBackendModePublicRouteAllowed(path: string, hasPendingAuthSession: bo
 router.beforeEach(async (to, _from, next) => {
   // 开始导航加载状态
   navigationLoading.startNavigation()
+
+  // 免登录余额页不恢复本机登录凭据，也不受后台模式重定向影响。
+  if (to.name === 'BalanceQuery') {
+    document.title = resolveRouteDocumentTitle(to, 'Sub2API', [])
+    next()
+    return
+  }
 
   const authStore = useAuthStore()
 

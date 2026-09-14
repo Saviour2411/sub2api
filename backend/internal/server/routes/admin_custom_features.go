@@ -15,6 +15,16 @@ func registerCustomFeatureRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		customFeatures.PUT("/gateway", h.Admin.CustomFeature.UpdateGateway)
 		customFeatures.POST("/gateway/image-group-success-rates/reset", h.Admin.CustomFeature.ResetImageGroupSuccessRates)
 
+		users := customFeatures.Group("/user-customizations")
+		users.GET("", h.Admin.CustomFeature.ListUserCustomizations)
+		users.GET("/payment-methods", h.Admin.CustomFeature.GetUserPaymentMethods)
+		users.PUT("/payment-methods", h.Admin.CustomFeature.UpdateUserPaymentMethods)
+		users.PUT("/:id", h.Admin.CustomFeature.UpdateUserCustomization)
+		users.GET("/:id/link", h.Admin.CustomFeature.GetUserCustomizationLink)
+		users.POST("/:id/link", h.Admin.CustomFeature.RotateUserCustomizationLink)
+		users.PATCH("/:id/link", h.Admin.CustomFeature.SetUserCustomizationLinkEnabled)
+		users.POST("/:id/restore-credit", h.Admin.CustomFeature.RestoreUserCustomizationCredit)
+
 		upstreams := customFeatures.Group("/upstreams")
 		{
 			upstreams.GET("", h.Admin.CustomFeature.ListUpstreams)

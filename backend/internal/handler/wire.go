@@ -3,6 +3,7 @@ package handler
 import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
+	"github.com/Wei-Shaw/sub2api/internal/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -173,9 +174,10 @@ func ProvideAdminSettingHandler(settingService *service.SettingService, emailSer
 	return h
 }
 
-func ProvideCustomFeatureHandler(settingService *service.SettingService, successRateService *service.ImageGroupSuccessRateService, upstreamService *service.UpstreamService) *admin.CustomFeatureHandler {
+func ProvideCustomFeatureHandler(settingService *service.SettingService, successRateService *service.ImageGroupSuccessRateService, upstreamService *service.UpstreamService, userCustomization *service.UserCustomizationService) *admin.CustomFeatureHandler {
 	handler := admin.NewCustomFeatureHandler(settingService, successRateService)
 	handler.SetUpstreamService(upstreamService)
+	handler.SetUserCustomizationService(userCustomization)
 	return handler
 }
 
@@ -204,6 +206,7 @@ func ProvideHandlers(
 	batchImageHandler *BatchImageHandler,
 	dailyCheckinHandler *DailyCheckinHandler,
 	modelMarketplaceHandler *ModelMarketplaceHandler,
+	balanceQueryHandler *BalanceQueryHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 	_ *service.OpenAIQuotaAutoResetService,
@@ -232,6 +235,7 @@ func ProvideHandlers(
 		BatchImage:       batchImageHandler,
 		DailyCheckin:     dailyCheckinHandler,
 		ModelMarketplace: modelMarketplaceHandler,
+		BalanceQuery:     balanceQueryHandler,
 	}
 }
 
@@ -257,6 +261,8 @@ var ProviderSet = wire.NewSet(
 	NewAvailableChannelHandler,
 	NewDailyCheckinHandler,
 	NewModelMarketplaceHandler,
+	NewBalanceQueryHandler,
+	middleware.NewRateLimiter,
 	NewModelPlazaHandler,
 	NewAsyncImageHandler,
 	ProvideBatchImageHandler,

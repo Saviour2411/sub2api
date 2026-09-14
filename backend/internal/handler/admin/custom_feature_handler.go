@@ -16,6 +16,7 @@ type CustomFeatureHandler struct {
 	settingService     *service.SettingService
 	successRateService *service.ImageGroupSuccessRateService
 	upstreamService    *service.UpstreamService
+	userCustomization  *service.UserCustomizationService
 }
 
 func NewCustomFeatureHandler(settingService *service.SettingService, successRateService *service.ImageGroupSuccessRateService) *CustomFeatureHandler {

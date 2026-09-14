@@ -24,6 +24,9 @@ func RegisterAuthRoutes(
 ) {
 	// 创建速率限制器
 	rateLimiter := middleware.NewRateLimiter(redisClient)
+	if h.BalanceQuery != nil {
+		v1.GET("/public/balance-query", h.BalanceQuery.Query)
+	}
 
 	// 公开接口
 	auth := v1.Group("/auth")

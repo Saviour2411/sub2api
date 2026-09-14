@@ -20,6 +20,11 @@ FRONTEND_CRITICAL_VITEST := \
 	src/components/admin/account/__tests__/AccountTestModal.spec.ts \
 	src/utils/__tests__/accountTestModels.spec.ts \
 	src/views/admin/__tests__/CustomFeaturesView.spec.ts \
+	src/utils/__tests__/usageOutputRate.spec.ts \
+	src/components/admin/usage/__tests__/UsageTable.spec.ts \
+	src/api/__tests__/balanceQuery.spec.ts \
+	src/components/admin/user/__tests__/UserCustomizationsPanel.spec.ts \
+	src/views/public/__tests__/BalanceQueryView.spec.ts \
 	src/utils/__tests__/canvasBridge.spec.ts
 
 # 一键编译前后端

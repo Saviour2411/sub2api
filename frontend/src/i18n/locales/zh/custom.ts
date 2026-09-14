@@ -1,5 +1,27 @@
 export default {
+  userCustomization: {
+    title: '用户定制', paymentMethods: '全局充值方式', methodKey: '名称，例如币安 ID', methodValue: '收款信息',
+    noPaymentMethods: '暂未配置充值方式', moveUp: '上移', moveDown: '下移', search: '搜索用户名或用户 ID',
+    user: '用户', queryLink: '查询链接', autoCredit: '自动授信', noUsers: '暂无用户', totalUsers: '共 {count} 位用户',
+    linkActive: '已启用', linkDisabled: '已停用', noLink: '未生成', copyLink: '复制查询链接', generateLink: '生成链接',
+    disableLink: '停用', enableLink: '启用', resetLink: '重置链接', configure: '授信配置',
+    threshold: '余额触发阈值', amount: '单次授信金额', used: '本轮已使用', ready: '待触发', off: '已关闭',
+    restoreCredit: '恢复自动授信', temporaryCredit: '临时授信',
+    restoreConfirm: '为 {user}（ID {id}）恢复一次自动授信？余额低于 {threshold} 时将增加 {amount}；若当前已低于阈值，下次后台检查即可入账。',
+    resetLinkConfirm: '重置 {user}（ID {id}）的查询链接？旧链接将立即失效，授信状态不变。',
+    loadFailed: '加载失败，请重试', invalidMethods: '请填写完整的充值方式名称和收款信息',
+    saved: '已保存', saveFailed: '保存失败，请检查配置后重试', operationFailed: '操作未完成，已刷新用户状态，请检查后重试',
+    copied: '查询链接已复制', copyFailed: '复制失败，请检查浏览器剪贴板权限'
+  },
+  balanceQuery: {
+    title: '余额查询', balance: '当前余额', refresh: '刷新余额', paymentMethods: '充值方式', history: '充值记录',
+    empty: '暂无充值记录', time: '时间', amount: '到账金额', note: '备注',
+    unavailable: '查询链接不可用', rateLimited: '查询过于频繁，请稍后重试', serviceUnavailable: '查询暂时不可用，请稍后重试',
+    retryAfter: '{seconds} 秒后可重试', copy: '复制收款信息', copied: '已复制', copyFailed: '复制失败，请检查浏览器剪贴板权限'
+  },
   common: {
+    previous: '上一页',
+    retry: '重试',
     apply: '应用',
     clear: '清空',
     creating: '创建中...',

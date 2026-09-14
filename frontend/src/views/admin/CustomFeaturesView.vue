@@ -25,6 +25,7 @@
       </div>
 
       <UpstreamManagementPanel v-if="activeTab === 'upstream'" />
+      <UserCustomizationsPanel v-else-if="activeTab === 'user-customizations'" />
 
       <div v-else-if="loading" class="flex items-center justify-center py-16">
         <div class="h-8 w-8 animate-spin rounded-full border-b-2 border-primary-600"></div>
@@ -842,6 +843,7 @@ import Select from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import UpstreamManagementPanel from '@/components/admin/upstream/UpstreamManagementPanel.vue'
+import UserCustomizationsPanel from '@/components/admin/user/UserCustomizationsPanel.vue'
 import groupsAPI from '@/api/admin/groups'
 import customFeaturesAPI, {
   type DailyCheckinPrizeConfig,
@@ -855,12 +857,13 @@ import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { isValidWildcardPattern } from '@/composables/useModelWhitelist'
 
-type CustomFeatureTab = 'upstream' | 'canvas' | 'model-marketplace' | 'gateway' | 'daily-checkin'
+type CustomFeatureTab = 'upstream' | 'canvas' | 'model-marketplace' | 'gateway' | 'daily-checkin' | 'user-customizations'
 
 const { t } = useI18n()
 const appStore = useAppStore()
 
 const tabs: Array<{ key: CustomFeatureTab; labelKey: string; icon: 'server' | 'cube' | 'cog' | 'gift' }> = [
+  { key: 'user-customizations', labelKey: 'userCustomization.title', icon: 'cog' },
   { key: 'upstream', labelKey: 'admin.customFeatures.tabs.upstream', icon: 'server' },
   { key: 'canvas', labelKey: 'admin.customFeatures.tabs.canvas', icon: 'cube' },
   { key: 'model-marketplace', labelKey: 'admin.customFeatures.tabs.modelMarketplace', icon: 'cube' },
