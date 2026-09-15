@@ -188,7 +188,27 @@
         </div>
 
         <div class="space-y-8 px-5 py-6 sm:px-6">
-          <section aria-labelledby="gateway-anthropic-claude-code-title">
+          <section aria-labelledby="gateway-stream-safe-retry-title" data-test="gateway-stream-safe-retry">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <h3 id="gateway-stream-safe-retry-title" class="font-semibold text-gray-900 dark:text-white">{{ t('admin.customFeatures.gateway.streamSafeRetry.title') }}</h3>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.customFeatures.gateway.streamSafeRetry.description') }}</p>
+              </div>
+              <Toggle v-model="gateway.anthropic_stream_safe_retry_enabled" data-test="gateway-stream-safe-retry-enabled" />
+            </div>
+            <div class="mt-4 grid gap-4 sm:grid-cols-2">
+              <div>
+                <label class="input-label" for="gateway-stream-safe-retries">{{ t('admin.customFeatures.gateway.streamSafeRetry.maxRetries') }}</label>
+                <input id="gateway-stream-safe-retries" v-model.number="gateway.anthropic_stream_safe_retry_max_retries" data-test="gateway-stream-safe-retry-max-retries" class="input" type="number" min="0" max="5" step="1" />
+              </div>
+              <div>
+                <label class="input-label" for="gateway-stream-safe-budget">{{ t('admin.customFeatures.gateway.streamSafeRetry.budget') }}</label>
+                <input id="gateway-stream-safe-budget" v-model.number="gateway.anthropic_stream_safe_retry_total_wait_seconds" data-test="gateway-stream-safe-retry-budget" class="input" type="number" min="1" max="600" step="1" />
+              </div>
+            </div>
+            <p class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.customFeatures.gateway.streamSafeRetry.hint') }}</p>
+          </section>
+          <section class="border-t border-gray-100 pt-8 dark:border-dark-700" aria-labelledby="gateway-anthropic-claude-code-title">
             <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h3 id="gateway-anthropic-claude-code-title" class="font-semibold text-gray-900 dark:text-white">
@@ -863,8 +883,8 @@ const { t } = useI18n()
 const appStore = useAppStore()
 
 const tabs: Array<{ key: CustomFeatureTab; labelKey: string; icon: 'server' | 'cube' | 'cog' | 'gift' }> = [
-  { key: 'user-customizations', labelKey: 'userCustomization.title', icon: 'cog' },
   { key: 'upstream', labelKey: 'admin.customFeatures.tabs.upstream', icon: 'server' },
+  { key: 'user-customizations', labelKey: 'userCustomization.title', icon: 'cog' },
   { key: 'canvas', labelKey: 'admin.customFeatures.tabs.canvas', icon: 'cube' },
   { key: 'model-marketplace', labelKey: 'admin.customFeatures.tabs.modelMarketplace', icon: 'cube' },
   { key: 'gateway', labelKey: 'admin.customFeatures.tabs.gateway', icon: 'cog' },
@@ -903,6 +923,9 @@ const dailyCheckin = reactive<DailyCheckinSettings>({
 })
 
 const gateway = reactive<GatewaySettings>({
+  anthropic_stream_safe_retry_enabled: false,
+  anthropic_stream_safe_retry_max_retries: 2,
+  anthropic_stream_safe_retry_total_wait_seconds: 300,
   default_pool_mode_retry_count: 1,
   default_pool_mode_retry_status_codes: [401, 403, 429, 502, 503, 504],
   additional_failover_status_codes_enabled: false,
@@ -978,6 +1001,9 @@ function cloneGateway(settings?: Partial<GatewaySettings>): GatewaySettings {
     auto_managed_probe_backoff_minutes: [
       ...(settings?.auto_managed_probe_backoff_minutes ?? [5, 10, 15, 30, 60])
     ],
+    anthropic_stream_safe_retry_enabled: settings?.anthropic_stream_safe_retry_enabled ?? false,
+    anthropic_stream_safe_retry_max_retries: settings?.anthropic_stream_safe_retry_max_retries ?? 2,
+    anthropic_stream_safe_retry_total_wait_seconds: settings?.anthropic_stream_safe_retry_total_wait_seconds ?? 300,
     first_token_timeout_seconds: settings?.first_token_timeout_seconds ?? 60,
     first_token_timeout_scope: settings?.first_token_timeout_scope ?? 'all',
     first_token_timeout_group_ids: [...(settings?.first_token_timeout_group_ids ?? [])],
@@ -1083,6 +1109,11 @@ function gatewayValidationError(
 }
 
 function validateGateway(): GatewayValidationResult {
+  const retries = Number(gateway.anthropic_stream_safe_retry_max_retries)
+  const budget = Number(gateway.anthropic_stream_safe_retry_total_wait_seconds)
+  if (!Number.isInteger(retries) || retries < 0 || retries > 5 || !Number.isInteger(budget) || budget < 1 || budget > 600) {
+    return gatewayValidationError(t('admin.customFeatures.gateway.streamSafeRetry.validation'))
+  }
   const retryCount = gateway.default_pool_mode_retry_count
   if (!Number.isInteger(retryCount) || retryCount < 0 || retryCount > 10) {
     return gatewayValidationError(t('admin.customFeatures.gateway.validation.retryCount'))
@@ -1230,6 +1261,9 @@ async function saveGateway() {
         gateway.additional_failover_status_codes_enabled,
       additional_failover_status_codes: validation.additionalFailoverStatusCodes,
       auto_managed_probe_backoff_minutes: gateway.auto_managed_probe_backoff_minutes.map(Number),
+      anthropic_stream_safe_retry_enabled: gateway.anthropic_stream_safe_retry_enabled,
+      anthropic_stream_safe_retry_max_retries: Number(gateway.anthropic_stream_safe_retry_max_retries),
+      anthropic_stream_safe_retry_total_wait_seconds: Number(gateway.anthropic_stream_safe_retry_total_wait_seconds),
       first_token_timeout_seconds: Number(gateway.first_token_timeout_seconds),
       first_token_timeout_scope: gateway.first_token_timeout_scope,
       first_token_timeout_group_ids: [...new Set(gateway.first_token_timeout_group_ids)],

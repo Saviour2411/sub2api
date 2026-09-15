@@ -126,6 +126,9 @@ function settingsFixture(): CustomFeatureSettings {
       linuxdo_exempt_enabled: true,
     },
     gateway: {
+      anthropic_stream_safe_retry_enabled: false,
+      anthropic_stream_safe_retry_max_retries: 2,
+      anthropic_stream_safe_retry_total_wait_seconds: 300,
       default_pool_mode_retry_count: 1,
       default_pool_mode_retry_status_codes: [401, 403, 429, 502, 503, 504],
       additional_failover_status_codes_enabled: false,
@@ -188,6 +191,7 @@ describe('admin CustomFeaturesView', () => {
     const wrapper = mountView()
     await flushPromises()
 
+    expect(wrapper.findAll('[role="tab"]')[0].attributes('data-test')).toBe('custom-feature-tab-upstream')
     const content = wrapper.get('[data-test="custom-features-content"]')
     expect(content.classes()).toContain('max-w-[1600px]')
     expect(content.classes()).toContain('space-y-4')
@@ -240,6 +244,9 @@ describe('admin CustomFeaturesView', () => {
     await flushPromises()
 
     expect(updateGateway).toHaveBeenCalledWith({
+      anthropic_stream_safe_retry_enabled: false,
+      anthropic_stream_safe_retry_max_retries: 2,
+      anthropic_stream_safe_retry_total_wait_seconds: 300,
       default_pool_mode_retry_count: 1,
       default_pool_mode_retry_status_codes: [401, 429, 504],
       additional_failover_status_codes_enabled: true,
@@ -261,9 +268,43 @@ describe('admin CustomFeaturesView', () => {
     expect(showSuccess).toHaveBeenCalledWith('admin.customFeatures.gateway.saved')
   })
 
+  it('独立保存安全重试开关、次数和预算', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="custom-feature-tab-gateway"]').trigger('click')
+    expect(wrapper.get('[data-test="gateway-stream-safe-retry-enabled"]').text()).toBe('off')
+    await wrapper.get('[data-test="gateway-stream-safe-retry-enabled"]').trigger('click')
+    await wrapper.get('[data-test="gateway-stream-safe-retry-max-retries"]').setValue(1)
+    await wrapper.get('[data-test="gateway-stream-safe-retry-budget"]').setValue(240)
+    await wrapper.get('[data-test="gateway-form"]').trigger('submit')
+    await flushPromises()
+    expect(updateGateway).toHaveBeenCalledWith(expect.objectContaining({
+      anthropic_stream_safe_retry_enabled: true,
+      anthropic_stream_safe_retry_max_retries: 1,
+      anthropic_stream_safe_retry_total_wait_seconds: 240,
+      default_pool_mode_retry_count: 1,
+    }))
+  })
+
+  it('拒绝越界或非整数的安全重试预算', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="custom-feature-tab-gateway"]').trigger('click')
+    for (const [count, budget] of [[6, 300], [-1, 300], [1.5, 300], [2, 0], [2, 601]]) {
+      await wrapper.get('[data-test="gateway-stream-safe-retry-max-retries"]').setValue(count)
+      await wrapper.get('[data-test="gateway-stream-safe-retry-budget"]').setValue(budget)
+      await wrapper.get('[data-test="gateway-form"]').trigger('submit')
+    }
+    expect(updateGateway).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenCalledWith('admin.customFeatures.gateway.streamSafeRetry.validation')
+  })
+
   it('旧版响应缺失新字段时使用安全默认值', async () => {
     const legacySettings = settingsFixture()
     const legacyGateway: Partial<GatewaySettings> = { ...legacySettings.gateway }
+    delete legacyGateway.anthropic_stream_safe_retry_enabled
+    delete legacyGateway.anthropic_stream_safe_retry_max_retries
+    delete legacyGateway.anthropic_stream_safe_retry_total_wait_seconds
     delete legacyGateway.first_token_timeout_scope
     delete legacyGateway.first_token_timeout_group_ids
     delete legacyGateway.first_token_timeout_consecutive_threshold
@@ -336,6 +377,9 @@ describe('admin CustomFeaturesView', () => {
       first_token_timeout_scope: 'selected_groups',
       first_token_timeout_group_ids: [1],
       first_token_timeout_consecutive_threshold: 2,
+      anthropic_stream_safe_retry_enabled: false,
+      anthropic_stream_safe_retry_max_retries: 2,
+      anthropic_stream_safe_retry_total_wait_seconds: 300,
       default_pool_mode_retry_count: 1,
     }))
     expect(wrapper.get<HTMLInputElement>('[data-test="gateway-first-token-group-1"]').element.checked).toBe(true)

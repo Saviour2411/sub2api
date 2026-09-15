@@ -79,23 +79,26 @@ type DailyCheckinSettings struct {
 
 // GatewaySettings 是二开功能中的网关运行配置。
 type GatewaySettings struct {
-	DefaultPoolModeRetryCount               int      `json:"default_pool_mode_retry_count"`
-	DefaultPoolModeRetryStatusCodes         []int    `json:"default_pool_mode_retry_status_codes"`
-	AdditionalFailoverStatusCodesEnabled    bool     `json:"additional_failover_status_codes_enabled"`
-	AdditionalFailoverStatusCodes           []int    `json:"additional_failover_status_codes"`
-	AutoManagedProbeBackoffMinutes          []int    `json:"auto_managed_probe_backoff_minutes"`
-	FirstTokenTimeoutSeconds                int      `json:"first_token_timeout_seconds"`
-	FirstTokenTimeoutScope                  string   `json:"first_token_timeout_scope"`
-	FirstTokenTimeoutGroupIDs               []int64  `json:"first_token_timeout_group_ids"`
-	FirstTokenTimeoutConsecutiveThreshold   int      `json:"first_token_timeout_consecutive_threshold"`
-	UpstreamErrorStatusCodes                []int    `json:"upstream_error_status_codes"`
-	UpstreamErrorConsecutiveThreshold       int      `json:"upstream_error_consecutive_threshold"`
-	ImageGroupSuccessRateVisible            bool     `json:"image_group_success_rate_visible"`
-	AnthropicClaudeCodeMimicryEnabled       bool     `json:"anthropic_claude_code_mimicry_enabled"`
-	AnthropicSamplingParameterFilterEnabled bool     `json:"anthropic_sampling_parameter_filter_enabled"`
-	AnthropicSamplingParameterFilterModels  []string `json:"anthropic_sampling_parameter_filter_models"`
-	DisableRechargeBonusForCustomRateUsers  bool     `json:"disable_recharge_bonus_for_custom_rate_users"`
-	FailurePolicyRevision                   int64    `json:"-"`
+	AnthropicStreamSafeRetryEnabled          bool     `json:"anthropic_stream_safe_retry_enabled"`
+	AnthropicStreamSafeRetryMaxRetries       int      `json:"anthropic_stream_safe_retry_max_retries"`
+	AnthropicStreamSafeRetryTotalWaitSeconds int      `json:"anthropic_stream_safe_retry_total_wait_seconds"`
+	DefaultPoolModeRetryCount                int      `json:"default_pool_mode_retry_count"`
+	DefaultPoolModeRetryStatusCodes          []int    `json:"default_pool_mode_retry_status_codes"`
+	AdditionalFailoverStatusCodesEnabled     bool     `json:"additional_failover_status_codes_enabled"`
+	AdditionalFailoverStatusCodes            []int    `json:"additional_failover_status_codes"`
+	AutoManagedProbeBackoffMinutes           []int    `json:"auto_managed_probe_backoff_minutes"`
+	FirstTokenTimeoutSeconds                 int      `json:"first_token_timeout_seconds"`
+	FirstTokenTimeoutScope                   string   `json:"first_token_timeout_scope"`
+	FirstTokenTimeoutGroupIDs                []int64  `json:"first_token_timeout_group_ids"`
+	FirstTokenTimeoutConsecutiveThreshold    int      `json:"first_token_timeout_consecutive_threshold"`
+	UpstreamErrorStatusCodes                 []int    `json:"upstream_error_status_codes"`
+	UpstreamErrorConsecutiveThreshold        int      `json:"upstream_error_consecutive_threshold"`
+	ImageGroupSuccessRateVisible             bool     `json:"image_group_success_rate_visible"`
+	AnthropicClaudeCodeMimicryEnabled        bool     `json:"anthropic_claude_code_mimicry_enabled"`
+	AnthropicSamplingParameterFilterEnabled  bool     `json:"anthropic_sampling_parameter_filter_enabled"`
+	AnthropicSamplingParameterFilterModels   []string `json:"anthropic_sampling_parameter_filter_models"`
+	DisableRechargeBonusForCustomRateUsers   bool     `json:"disable_recharge_bonus_for_custom_rate_users"`
+	FailurePolicyRevision                    int64    `json:"-"`
 }
 
 type gatewaySettingsRevisionWriter interface {
@@ -126,6 +129,9 @@ type CustomFeatureSettings struct {
 var gatewaySettingKeys = []string{
 	SettingKeyGatewayFirstTokenTimeoutScope,
 	SettingKeyGatewayFirstTokenTimeoutGroupIDs,
+	SettingKeyGatewayAnthropicStreamSafeRetryEnabled,
+	SettingKeyGatewayAnthropicStreamSafeRetryMaxRetries,
+	SettingKeyGatewayAnthropicStreamSafeRetryTotalWaitSeconds,
 	SettingKeyGatewayDefaultPoolModeRetryCount,
 	SettingKeyGatewayDefaultPoolModeRetryStatusCodes,
 	SettingKeyGatewayAdditionalFailoverStatusCodesEnabled,
@@ -159,6 +165,9 @@ var customFeatureSettingKeys = []string{
 	SettingKeyDailyCheckinUnpaidFullDays,
 	SettingKeyDailyCheckinUnpaidDecayRules,
 	SettingKeyDailyCheckinLinuxDoExemptEnabled,
+	SettingKeyGatewayAnthropicStreamSafeRetryEnabled,
+	SettingKeyGatewayAnthropicStreamSafeRetryMaxRetries,
+	SettingKeyGatewayAnthropicStreamSafeRetryTotalWaitSeconds,
 	SettingKeyGatewayDefaultPoolModeRetryCount,
 	SettingKeyGatewayDefaultPoolModeRetryStatusCodes,
 	SettingKeyGatewayAdditionalFailoverStatusCodesEnabled,
@@ -236,23 +245,26 @@ func (s *SettingService) UpdateCanvasSettings(ctx context.Context, input CanvasS
 // DefaultGatewaySettings 返回未持久化配置时使用的默认值。
 func DefaultGatewaySettings() GatewaySettings {
 	return GatewaySettings{
-		DefaultPoolModeRetryCount:               DefaultGatewayPoolModeRetryCount,
-		DefaultPoolModeRetryStatusCodes:         append([]int(nil), defaultGatewayPoolModeRetryStatusCodes...),
-		AdditionalFailoverStatusCodesEnabled:    false,
-		AdditionalFailoverStatusCodes:           append([]int(nil), defaultGatewayAdditionalFailoverCodes...),
-		AutoManagedProbeBackoffMinutes:          append([]int(nil), defaultGatewayProbeBackoffMinutes...),
-		FirstTokenTimeoutSeconds:                DefaultGatewayFirstTokenTimeout,
-		FirstTokenTimeoutScope:                  FirstTokenTimeoutScopeAll,
-		FirstTokenTimeoutGroupIDs:               []int64{},
-		FirstTokenTimeoutConsecutiveThreshold:   DefaultGatewayFirstTokenTimeoutConsecutiveThreshold,
-		UpstreamErrorStatusCodes:                append([]int(nil), defaultGatewayUpstreamErrorStatusCodes...),
-		UpstreamErrorConsecutiveThreshold:       DefaultGatewayUpstreamErrorConsecutiveThreshold,
-		ImageGroupSuccessRateVisible:            true,
-		AnthropicClaudeCodeMimicryEnabled:       false,
-		AnthropicSamplingParameterFilterEnabled: false,
-		AnthropicSamplingParameterFilterModels:  []string{},
-		DisableRechargeBonusForCustomRateUsers:  false,
-		FailurePolicyRevision:                   DefaultGatewayFailurePolicyRevision,
+		AnthropicStreamSafeRetryEnabled:          false,
+		AnthropicStreamSafeRetryMaxRetries:       2,
+		AnthropicStreamSafeRetryTotalWaitSeconds: 300,
+		DefaultPoolModeRetryCount:                DefaultGatewayPoolModeRetryCount,
+		DefaultPoolModeRetryStatusCodes:          append([]int(nil), defaultGatewayPoolModeRetryStatusCodes...),
+		AdditionalFailoverStatusCodesEnabled:     false,
+		AdditionalFailoverStatusCodes:            append([]int(nil), defaultGatewayAdditionalFailoverCodes...),
+		AutoManagedProbeBackoffMinutes:           append([]int(nil), defaultGatewayProbeBackoffMinutes...),
+		FirstTokenTimeoutSeconds:                 DefaultGatewayFirstTokenTimeout,
+		FirstTokenTimeoutScope:                   FirstTokenTimeoutScopeAll,
+		FirstTokenTimeoutGroupIDs:                []int64{},
+		FirstTokenTimeoutConsecutiveThreshold:    DefaultGatewayFirstTokenTimeoutConsecutiveThreshold,
+		UpstreamErrorStatusCodes:                 append([]int(nil), defaultGatewayUpstreamErrorStatusCodes...),
+		UpstreamErrorConsecutiveThreshold:        DefaultGatewayUpstreamErrorConsecutiveThreshold,
+		ImageGroupSuccessRateVisible:             true,
+		AnthropicClaudeCodeMimicryEnabled:        false,
+		AnthropicSamplingParameterFilterEnabled:  false,
+		AnthropicSamplingParameterFilterModels:   []string{},
+		DisableRechargeBonusForCustomRateUsers:   false,
+		FailurePolicyRevision:                    DefaultGatewayFailurePolicyRevision,
 	}
 }
 
@@ -350,22 +362,25 @@ func (s *SettingService) UpdateGatewaySettings(ctx context.Context, input Gatewa
 		return nil, fmt.Errorf("序列化 Anthropic 采样参数过滤模型: %w", err)
 	}
 	updates := map[string]string{
-		SettingKeyGatewayFirstTokenTimeoutScope:                  input.FirstTokenTimeoutScope,
-		SettingKeyGatewayFirstTokenTimeoutGroupIDs:               marshalFirstTokenTimeoutGroupIDs(input.FirstTokenTimeoutGroupIDs),
-		SettingKeyGatewayDefaultPoolModeRetryCount:               strconv.Itoa(input.DefaultPoolModeRetryCount),
-		SettingKeyGatewayDefaultPoolModeRetryStatusCodes:         string(statusCodesJSON),
-		SettingKeyGatewayAdditionalFailoverStatusCodesEnabled:    strconv.FormatBool(input.AdditionalFailoverStatusCodesEnabled),
-		SettingKeyGatewayAdditionalFailoverStatusCodes:           string(additionalFailoverStatusCodesJSON),
-		SettingKeyGatewayAutoManagedProbeBackoffMinutes:          string(backoffJSON),
-		SettingKeyGatewayFirstTokenTimeoutSeconds:                strconv.Itoa(input.FirstTokenTimeoutSeconds),
-		SettingKeyGatewayFirstTokenTimeoutConsecutiveThreshold:   strconv.Itoa(input.FirstTokenTimeoutConsecutiveThreshold),
-		SettingKeyGatewayUpstreamErrorStatusCodes:                string(upstreamErrorStatusCodesJSON),
-		SettingKeyGatewayUpstreamErrorConsecutiveThreshold:       strconv.Itoa(input.UpstreamErrorConsecutiveThreshold),
-		SettingKeyGatewayImageGroupSuccessRateVisible:            strconv.FormatBool(input.ImageGroupSuccessRateVisible),
-		SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled:       strconv.FormatBool(input.AnthropicClaudeCodeMimicryEnabled),
-		SettingKeyGatewayAnthropicSamplingParameterFilterEnabled: strconv.FormatBool(input.AnthropicSamplingParameterFilterEnabled),
-		SettingKeyGatewayAnthropicSamplingParameterFilterModels:  string(filterModelsJSON),
-		SettingKeyGatewayDisableRechargeBonusForCustomRateUsers:  strconv.FormatBool(input.DisableRechargeBonusForCustomRateUsers),
+		SettingKeyGatewayAnthropicStreamSafeRetryEnabled:          strconv.FormatBool(input.AnthropicStreamSafeRetryEnabled),
+		SettingKeyGatewayAnthropicStreamSafeRetryMaxRetries:       strconv.Itoa(input.AnthropicStreamSafeRetryMaxRetries),
+		SettingKeyGatewayAnthropicStreamSafeRetryTotalWaitSeconds: strconv.Itoa(input.AnthropicStreamSafeRetryTotalWaitSeconds),
+		SettingKeyGatewayFirstTokenTimeoutScope:                   input.FirstTokenTimeoutScope,
+		SettingKeyGatewayFirstTokenTimeoutGroupIDs:                marshalFirstTokenTimeoutGroupIDs(input.FirstTokenTimeoutGroupIDs),
+		SettingKeyGatewayDefaultPoolModeRetryCount:                strconv.Itoa(input.DefaultPoolModeRetryCount),
+		SettingKeyGatewayDefaultPoolModeRetryStatusCodes:          string(statusCodesJSON),
+		SettingKeyGatewayAdditionalFailoverStatusCodesEnabled:     strconv.FormatBool(input.AdditionalFailoverStatusCodesEnabled),
+		SettingKeyGatewayAdditionalFailoverStatusCodes:            string(additionalFailoverStatusCodesJSON),
+		SettingKeyGatewayAutoManagedProbeBackoffMinutes:           string(backoffJSON),
+		SettingKeyGatewayFirstTokenTimeoutSeconds:                 strconv.Itoa(input.FirstTokenTimeoutSeconds),
+		SettingKeyGatewayFirstTokenTimeoutConsecutiveThreshold:    strconv.Itoa(input.FirstTokenTimeoutConsecutiveThreshold),
+		SettingKeyGatewayUpstreamErrorStatusCodes:                 string(upstreamErrorStatusCodesJSON),
+		SettingKeyGatewayUpstreamErrorConsecutiveThreshold:        strconv.Itoa(input.UpstreamErrorConsecutiveThreshold),
+		SettingKeyGatewayImageGroupSuccessRateVisible:             strconv.FormatBool(input.ImageGroupSuccessRateVisible),
+		SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled:        strconv.FormatBool(input.AnthropicClaudeCodeMimicryEnabled),
+		SettingKeyGatewayAnthropicSamplingParameterFilterEnabled:  strconv.FormatBool(input.AnthropicSamplingParameterFilterEnabled),
+		SettingKeyGatewayAnthropicSamplingParameterFilterModels:   string(filterModelsJSON),
+		SettingKeyGatewayDisableRechargeBonusForCustomRateUsers:   strconv.FormatBool(input.DisableRechargeBonusForCustomRateUsers),
 	}
 	var revision int64
 	if writer, ok := s.settingRepo.(gatewaySettingsRevisionWriter); ok {
@@ -457,6 +472,13 @@ func ApplyGatewayPoolModeDefaults(accountType string, credentials map[string]any
 
 func parseGatewaySettings(values map[string]string) GatewaySettings {
 	settings := DefaultGatewaySettings()
+	settings.AnthropicStreamSafeRetryEnabled = strings.EqualFold(strings.TrimSpace(values[SettingKeyGatewayAnthropicStreamSafeRetryEnabled]), "true")
+	if n, err := strconv.Atoi(values[SettingKeyGatewayAnthropicStreamSafeRetryMaxRetries]); err == nil && n >= 0 && n <= 5 {
+		settings.AnthropicStreamSafeRetryMaxRetries = n
+	}
+	if n, err := strconv.Atoi(values[SettingKeyGatewayAnthropicStreamSafeRetryTotalWaitSeconds]); err == nil && n >= 1 && n <= 600 {
+		settings.AnthropicStreamSafeRetryTotalWaitSeconds = n
+	}
 	if value, err := strconv.Atoi(strings.TrimSpace(values[SettingKeyGatewayDefaultPoolModeRetryCount])); err == nil && value >= 0 && value <= MaxGatewayPoolModeRetryCount {
 		settings.DefaultPoolModeRetryCount = value
 	}
@@ -529,6 +551,12 @@ func parseGatewaySettings(values map[string]string) GatewaySettings {
 }
 
 func validateGatewaySettings(settings *GatewaySettings) error {
+	if settings.AnthropicStreamSafeRetryMaxRetries < 0 || settings.AnthropicStreamSafeRetryMaxRetries > 5 {
+		return ErrGatewaySettingsInvalid.WithMetadata(map[string]string{"field": "anthropic_stream_safe_retry_max_retries"})
+	}
+	if settings.AnthropicStreamSafeRetryTotalWaitSeconds < 1 || settings.AnthropicStreamSafeRetryTotalWaitSeconds > 600 {
+		return ErrGatewaySettingsInvalid.WithMetadata(map[string]string{"field": "anthropic_stream_safe_retry_total_wait_seconds"})
+	}
 	if settings == nil || settings.DefaultPoolModeRetryCount < 0 || settings.DefaultPoolModeRetryCount > MaxGatewayPoolModeRetryCount {
 		return ErrGatewaySettingsInvalid.WithMetadata(map[string]string{"field": "default_pool_mode_retry_count"})
 	}

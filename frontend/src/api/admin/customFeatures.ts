@@ -43,6 +43,9 @@ export interface DailyCheckinSettings {
 }
 
 export interface GatewaySettings {
+  anthropic_stream_safe_retry_enabled: boolean
+  anthropic_stream_safe_retry_max_retries: number
+  anthropic_stream_safe_retry_total_wait_seconds: number
   default_pool_mode_retry_count: number
   default_pool_mode_retry_status_codes: number[]
   additional_failover_status_codes_enabled: boolean

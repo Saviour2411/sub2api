@@ -16,6 +16,9 @@ import {
 } from '@/api/admin/customFeatures'
 
 const gatewaySettings: GatewaySettings = {
+  anthropic_stream_safe_retry_enabled: false,
+  anthropic_stream_safe_retry_max_retries: 2,
+  anthropic_stream_safe_retry_total_wait_seconds: 300,
   default_pool_mode_retry_count: 1,
   default_pool_mode_retry_status_codes: [401, 403, 429, 502, 503, 504],
   additional_failover_status_codes_enabled: false,

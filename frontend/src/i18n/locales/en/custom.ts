@@ -395,6 +395,14 @@ export default {
         description: 'Configure account pool defaults, additional failover statuses, managed probe backoff, streaming first-token timeout and Image group success rates.',
         minutes: 'minutes',
         saved: 'Gateway settings saved',
+        streamSafeRetry: {
+          title: 'Claude 透传流安全重试',
+          description: '仅适用于 Claude API Key 透传流。默认关闭；尚未交付有效内容时，有限重试空流、EOF 和流空闲超时。',
+          maxRetries: '额外重试次数（0–5）',
+          budget: '总等待预算（秒，1–600）',
+          hint: '预算从首次成功流响应头到达开始，跨尝试累计，不是请求总时长。先原账号、再换号，无替代账号时允许原号使用剩余次数。已交付文本、思考或工具调用后禁止重放。预算短于流空闲超时时可能没有重试机会；0次表示不重发，启用后的前导保护和预算仍生效。',
+          validation: '额外重试次数须为0–5的整数，总等待预算须为1–600秒的整数。'
+        },
         anthropicClaudeCodeMimicry: {
           title: 'Anthropic Claude Code Upstream Mimicry',
           description: 'When enabled, API key accounts without passthrough mode in all Anthropic groups mimic Claude Code requests. OAuth accounts continue to mimic automatically, and genuine Claude Code requests are not rewritten.',

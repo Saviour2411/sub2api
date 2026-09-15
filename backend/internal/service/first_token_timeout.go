@@ -335,6 +335,18 @@ func (a *firstTokenAttempt) upstreamContext(fallback context.Context) context.Co
 	return a.requestCtx
 }
 
+// useExternalStreamGuard 让 Claude 安全重试守卫独占前导缓存，保留首 Token 计时和故障归因。
+func (a *firstTokenAttempt) useExternalStreamGuard() {
+	if a == nil {
+		return
+	}
+	a.discardAndRestoreWriter()
+	a.mu.Lock()
+	a.bufferedWriter = nil
+	a.originalWriter = nil
+	a.mu.Unlock()
+}
+
 func (a *firstTokenAttempt) wrapResponse(resp *http.Response, c *gin.Context, protocol firstTokenProtocol) {
 	if a == nil || resp == nil || resp.Body == nil {
 		return
