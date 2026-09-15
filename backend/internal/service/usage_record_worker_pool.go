@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/lifecycle"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/alitto/pond/v2"
 	"go.uber.org/zap"
@@ -158,7 +159,17 @@ func NewUsageRecordWorkerPoolWithOptions(opts UsageRecordWorkerPoolOptions) *Usa
 
 // Submit 提交一个使用量记录任务。
 // 提交失败（队列满）时按 overflowPolicy 执行降级策略：drop/sample/sync。
-func (p *UsageRecordWorkerPool) Submit(task UsageRecordTask) UsageRecordSubmitMode {
+func (p *UsageRecordWorkerPool) Submit(task UsageRecordTask) (mode UsageRecordSubmitMode) {
+	if p != nil && task != nil {
+		pending := lifecycle.Track(lifecycle.UsagePending)
+		original := task
+		task = func(ctx context.Context) { pending(); original(ctx) }
+		defer func() {
+			if mode.Dropped() {
+				pending()
+			}
+		}()
+	}
 	if p == nil || task == nil {
 		return UsageRecordSubmitModeDropped
 	}
@@ -185,7 +196,17 @@ func (p *UsageRecordWorkerPool) Submit(task UsageRecordTask) UsageRecordSubmitMo
 }
 
 // SubmitKeyed 按 key 聚合任务。同一 key 由一个 worker 串行排空，不同 key 仍可并行。
-func (p *UsageRecordWorkerPool) SubmitKeyed(key int64, task UsageRecordTask) UsageRecordSubmitMode {
+func (p *UsageRecordWorkerPool) SubmitKeyed(key int64, task UsageRecordTask) (mode UsageRecordSubmitMode) {
+	if key > 0 && p != nil && task != nil {
+		pending := lifecycle.Track(lifecycle.UsagePending)
+		original := task
+		task = func(ctx context.Context) { pending(); original(ctx) }
+		defer func() {
+			if mode.Dropped() {
+				pending()
+			}
+		}()
+	}
 	if key <= 0 {
 		return p.Submit(task)
 	}
@@ -195,7 +216,7 @@ func (p *UsageRecordWorkerPool) SubmitKeyed(key int64, task UsageRecordTask) Usa
 	if p.pool == nil || p.pool.Stopped() {
 		p.droppedPoolStopped.Add(1)
 		p.logDrop("stopped")
-		return UsageRecordSubmitModeDropped
+		return UsageRecordSubmitModeDroppedStopped
 	}
 
 	p.keyedMu.Lock()
@@ -225,7 +246,7 @@ func (p *UsageRecordWorkerPool) SubmitKeyed(key int64, task UsageRecordTask) Usa
 	if p.pool.Stopped() {
 		p.droppedPoolStopped.Add(1)
 		p.logDrop("stopped")
-		return UsageRecordSubmitModeDropped
+		return UsageRecordSubmitModeDroppedStopped
 	}
 	return p.handleOverflow(task)
 }
@@ -419,6 +440,7 @@ func (p *UsageRecordWorkerPool) shouldSyncFallback() bool {
 }
 
 func (p *UsageRecordWorkerPool) execute(task UsageRecordTask) {
+	defer lifecycle.Track(lifecycle.Usage)()
 	ctx, cancel := context.WithTimeout(context.Background(), p.taskTimeout)
 	defer cancel()
 

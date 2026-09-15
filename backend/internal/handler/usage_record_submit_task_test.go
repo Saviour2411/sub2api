@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -218,4 +219,20 @@ func TestOpenAIGatewayHandlerSubmitOpenAIUsageRecordTask_SearchCountUsesMandator
 	close(release)
 
 	require.True(t, called.Load(), "search surcharge usage task must be mandatory when async submit is dropped")
+}
+
+// 正常鉴权请求携带UserID，必须覆盖SubmitKeyed而不仅是无用户上下文的Submit。
+func TestStoppedKeyedUsageRunsFallbackExactlyOnce(t *testing.T) {
+	pool := service.NewUsageRecordWorkerPoolWithOptions(service.UsageRecordWorkerPoolOptions{WorkerCount: 1, QueueSize: 1, TaskTimeout: time.Second})
+	pool.Stop()
+	parent := context.WithValue(context.Background(), ctxkey.UserID, int64(42))
+	for _, submit := range []func(context.Context, service.UsageRecordTask){
+		(&GatewayHandler{usageRecordWorkerPool: pool}).submitUsageRecordTask,
+		(&OpenAIGatewayHandler{usageRecordWorkerPool: pool}).submitUsageRecordTask,
+		(&OpenAIGatewayHandler{usageRecordWorkerPool: pool}).submitMandatoryUsageRecordTask,
+	} {
+		var calls atomic.Int32
+		submit(parent, func(context.Context) { calls.Add(1) })
+		require.Equal(t, int32(1), calls.Load())
+	}
 }

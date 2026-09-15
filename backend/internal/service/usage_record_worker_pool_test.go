@@ -608,3 +608,40 @@ func TestUsageRecordWorkerPool_ResizeAndLogDropBranches(t *testing.T) {
 		pool.logDrop("full")
 	})
 }
+
+func TestUsageRecordWorkerPool_StopRaceExecutesEachTaskOnce(t *testing.T) {
+	for _, keyed := range []bool{false, true} {
+		t.Run(map[bool]string{false: "普通", true: "按用户"}[keyed], func(t *testing.T) {
+			pool := NewUsageRecordWorkerPoolWithOptions(UsageRecordWorkerPoolOptions{WorkerCount: 4, QueueSize: 128, TaskTimeout: time.Second, OverflowPolicy: config.UsageRecordOverflowPolicySync})
+			const n = 200
+			counts := make([]atomic.Int32, n)
+			start := make(chan struct{})
+			var wg sync.WaitGroup
+			for i := range n {
+				wg.Add(1)
+				go func(i int) {
+					defer wg.Done()
+					<-start
+					task := func(context.Context) { counts[i].Add(1) }
+					var mode UsageRecordSubmitMode
+					if keyed {
+						mode = pool.SubmitKeyed(int64(i%5+1), task)
+					} else {
+						mode = pool.Submit(task)
+					}
+					if mode == UsageRecordSubmitModeDroppedStopped {
+						task(context.Background())
+					}
+				}(i)
+			}
+			stopped := make(chan struct{})
+			go func() { <-start; pool.Stop(); close(stopped) }()
+			close(start)
+			wg.Wait()
+			<-stopped
+			for i := range n {
+				require.EqualValues(t, 1, counts[i].Load(), "task=%d", i)
+			}
+		})
+	}
+}
