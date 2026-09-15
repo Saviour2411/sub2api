@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/lifecycle"
 )
 
 // ─── Mocks ───
@@ -1086,8 +1087,10 @@ func TestStartBackup_ReturnsImmediately(t *testing.T) {
 	store := newMockObjectStore()
 	svc := newTestBackupService(repo, dumper, store)
 
+	before := lifecycle.Process.Snapshot().Work[lifecycle.Background]
 	record, err := svc.StartBackup(context.Background(), "manual", 14)
 	require.NoError(t, err)
+	require.Equal(t, before+1, lifecycle.Process.Snapshot().Work[lifecycle.Background])
 	require.Equal(t, "running", record.Status)
 	require.NotEmpty(t, record.ID)
 
@@ -1137,15 +1140,16 @@ func TestStartBackup_ShuttingDown(t *testing.T) {
 func TestRecoverStaleRecords(t *testing.T) {
 	repo := newMockSettingRepo()
 	svc := newTestBackupService(repo, &mockDumper{}, newMockObjectStore())
+	svc.lockCache = deadBackupOwner{dead: true}
 
 	// 模拟一条孤立的 running 记录
-	_ = svc.saveRecord(context.Background(), &BackupRecord{
+	_ = svc.saveRecord(context.Background(), &BackupRecord{OwnerInstance: "dead-peer", RestoreOwnerInstance: "dead-peer",
 		ID:        "stale-1",
 		Status:    "running",
 		StartedAt: time.Now().Add(-1 * time.Hour).Format(time.RFC3339),
 	})
 	// 模拟一条孤立的恢复中记录
-	_ = svc.saveRecord(context.Background(), &BackupRecord{
+	_ = svc.saveRecord(context.Background(), &BackupRecord{OwnerInstance: "dead-peer", RestoreOwnerInstance: "dead-peer",
 		ID:            "stale-2",
 		Status:        "completed",
 		RestoreStatus: "running",
@@ -1168,6 +1172,7 @@ func TestBackupService_RecoverStaleRecords_CleansBackupObjects(t *testing.T) {
 	seedS3Config(t, repo)
 	store := newMockObjectStore()
 	svc := newTestBackupService(repo, &mockDumper{}, store)
+	svc.lockCache = deadBackupOwner{dead: true}
 	parts := []BackupPart{
 		{Index: 1, S3Key: "backups/stale/payload.part-000001", SizeBytes: 3},
 		{Index: 2, S3Key: "backups/stale/payload.part-000002", SizeBytes: 3},
@@ -1175,7 +1180,7 @@ func TestBackupService_RecoverStaleRecords_CleansBackupObjects(t *testing.T) {
 	for _, part := range parts {
 		store.objects[part.S3Key] = []byte("abc")
 	}
-	require.NoError(t, svc.saveRecord(context.Background(), &BackupRecord{
+	require.NoError(t, svc.saveRecord(context.Background(), &BackupRecord{OwnerInstance: "dead-peer", RestoreOwnerInstance: "dead-peer",
 		ID:        "stale-parts",
 		Status:    "running",
 		Parts:     parts,
@@ -1200,10 +1205,11 @@ func TestBackupService_RecoverStaleRecords_PreservesKeysWhenCleanupFails(t *test
 	seedS3Config(t, repo)
 	store := newMockObjectStore()
 	svc := newTestBackupService(repo, &mockDumper{}, store)
+	svc.lockCache = deadBackupOwner{dead: true}
 	part := BackupPart{Index: 1, S3Key: "backups/stale-failed/payload.part-000001", SizeBytes: 3}
 	store.objects[part.S3Key] = []byte("abc")
 	store.failDeleteKeys[part.S3Key] = fmt.Errorf("delete failed")
-	require.NoError(t, svc.saveRecord(context.Background(), &BackupRecord{
+	require.NoError(t, svc.saveRecord(context.Background(), &BackupRecord{OwnerInstance: "dead-peer", RestoreOwnerInstance: "dead-peer",
 		ID:        "stale-cleanup-failed",
 		Status:    "running",
 		Parts:     []BackupPart{part},
@@ -1319,4 +1325,44 @@ func TestBackupService_StartRestore_SplitParts(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "completed", final.RestoreStatus)
 	require.Equal(t, dumpContent, dumper.restored)
+}
+
+type deadBackupOwner struct{ dead bool }
+
+func (d deadBackupOwner) TryAcquireLeaderLock(context.Context, string, string, time.Duration) (bool, error) {
+	return true, nil
+}
+func (d deadBackupOwner) ReleaseLeaderLock(context.Context, string, string) error { return nil }
+func (d deadBackupOwner) InstanceDead(context.Context, string) (bool, error)      { return d.dead, nil }
+
+func TestBackupStartupPreservesLiveAndLegacyOwners(t *testing.T) {
+	repo := newMockSettingRepo()
+	svc := newTestBackupService(repo, &mockDumper{}, newMockObjectStore())
+	svc.lockCache = deadBackupOwner{dead: false}
+	for _, owner := range []string{"", "live-peer"} {
+		require.NoError(t, svc.saveRecord(context.Background(), &BackupRecord{ID: "record-" + owner, Status: "running", OwnerInstance: owner}))
+	}
+	svc.recoverStaleRecords()
+	for _, owner := range []string{"", "live-peer"} {
+		record, err := svc.GetBackupRecord(context.Background(), "record-"+owner)
+		require.NoError(t, err)
+		require.Equal(t, "running", record.Status)
+	}
+}
+
+func TestBackupRecordsReadFailureNeverOverwritesHistory(t *testing.T) {
+	for _, corrupt := range []bool{false, true} {
+		repo := newMockSettingRepo()
+		original := `[{"id":"historical","status":"completed"}]`
+		if corrupt {
+			original = `{invalid-json`
+		} else {
+			repo.getValueErr = fmt.Errorf("database unavailable")
+		}
+		repo.data[settingKeyBackupRecords] = original
+		svc := newTestBackupService(repo, &blockingDumper{}, newMockObjectStore())
+		err := svc.saveRecord(context.Background(), &BackupRecord{ID: "new"})
+		require.Error(t, err)
+		require.Equal(t, original, repo.data[settingKeyBackupRecords])
+	}
 }

@@ -119,6 +119,12 @@ func (s *OpenAICodexVersionSyncService) syncedWithinInterval() bool {
 }
 
 func (s *OpenAICodexVersionSyncService) runOnce() {
+	release, acquired := trySharedBackgroundJob(context.Background(), "openai_codex_version_sync_service")
+	if !acquired {
+		return
+	}
+	defer release()
+
 	ctx, cancel := context.WithTimeout(context.Background(), openAICodexVersionSyncTimeout)
 	defer cancel()
 

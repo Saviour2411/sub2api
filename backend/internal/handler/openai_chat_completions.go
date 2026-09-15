@@ -70,6 +70,10 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		return
 	}
 
+	if h.forwardInstanceHTTP(c, apiKey, subject.UserID, body) {
+		return
+	}
+
 	modelResult := gjson.GetBytes(body, "model")
 	if !modelResult.Exists() || modelResult.Type != gjson.String || modelResult.String() == "" {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")

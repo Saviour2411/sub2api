@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/lifecycle"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -39,4 +40,8 @@ func (c *leaderLockCache) TryAcquireLeaderLock(ctx context.Context, key, owner s
 
 func (c *leaderLockCache) ReleaseLeaderLock(ctx context.Context, key, owner string) error {
 	return leaderLockReleaseScript.Run(ctx, c.rdb, []string{leaderLockKeyPrefix + key}, owner).Err()
+}
+
+func (c *leaderLockCache) InstanceDead(ctx context.Context, id string) (bool, error) {
+	return (lifecycle.Registry{Redis: c.rdb}).Dead(ctx, id)
 }

@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/lifecycle"
 	"log/slog"
 	"strings"
 	"time"
@@ -173,5 +174,6 @@ func InitEnt(cfg *config.Config) (*ent.Client, *sql.DB, error) {
 		}
 	}
 
+	lifecycle.Process.SetSharedDB(drv.DB())
 	return client, drv.DB(), nil
 }

@@ -28,13 +28,6 @@ const (
 
 var opsScheduledReportCronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
-var opsScheduledReportReleaseScript = redis.NewScript(`
-if redis.call("GET", KEYS[1]) == ARGV[1] then
-  return redis.call("DEL", KEYS[1])
-end
-return 0
-`)
-
 type OpsScheduledReportService struct {
 	opsService   *OpsService
 	userService  *UserService
@@ -144,6 +137,7 @@ func (s *OpsScheduledReportService) run() {
 }
 
 func (s *OpsScheduledReportService) runOnce() {
+
 	if s == nil || s.opsService == nil || s.emailService == nil {
 		return
 	}
@@ -786,40 +780,7 @@ func buildOpsAccountHealthEmailHTML(title string, start, end time.Time, avail *O
 }
 
 func (s *OpsScheduledReportService) tryAcquireLeaderLock(ctx context.Context) (func(), bool) {
-	if s == nil || !s.distributedLockOn {
-		return nil, true
-	}
-	if s.redisClient == nil {
-		s.warnNoRedisOnce.Do(func() {
-			log.Printf("[OpsScheduledReport] redis not configured; running without distributed lock")
-		})
-		return nil, true
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	key := opsScheduledReportLeaderLockKeyDefault
-	ttl := opsScheduledReportLeaderLockTTLDefault
-	if strings.TrimSpace(key) == "" {
-		key = "ops:scheduled_reports:leader"
-	}
-	if ttl <= 0 {
-		ttl = 5 * time.Minute
-	}
-
-	ok, err := s.redisClient.SetNX(ctx, key, s.instanceID, ttl).Result()
-	if err != nil {
-		// Prefer fail-closed to avoid duplicate report sends when Redis is flaky.
-		log.Printf("[OpsScheduledReport] leader lock SetNX failed; skipping this cycle: %v", err)
-		return nil, false
-	}
-	if !ok {
-		return nil, false
-	}
-	return func() {
-		_, _ = opsScheduledReportReleaseScript.Run(ctx, s.redisClient, []string{key}, s.instanceID).Result()
-	}, true
+	return tryAcquireSingletonLeaderLock(ctx, nil, nil, opsScheduledReportLeaderLockKeyDefault, s.instanceID, opsScheduledReportLeaderLockTTLDefault)
 }
 
 func (s *OpsScheduledReportService) getLastRunAt(ctx context.Context, reportType string) time.Time {

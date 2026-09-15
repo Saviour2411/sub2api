@@ -9,6 +9,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/lifecycle"
 )
 
 const (
@@ -137,6 +139,11 @@ func (s *defaultOpenAIWSStateStore) BindHTTPResponseOwner(ctx context.Context, g
 	ttl = normalizeOpenAIWSTTL(ttl)
 	s.maybeCleanup()
 
+	if a := lifecycle.Process.Affinity(); a != nil {
+		if err := a.BindResponse(ctx, lifecycle.Identity{User: userID, Key: apiKeyID, Group: groupID}, id, ttl); err != nil {
+			return err
+		}
+	}
 	mapKey := openAIWSResponseAccountMapKey(groupID, id)
 	s.responseOwnerMu.Lock()
 	ensureBindingCapacity(s.responseOwners, mapKey, openAIWSStateStoreMaxEntriesPerMap)
@@ -338,6 +345,11 @@ func (s *defaultOpenAIWSStateStore) BindSessionTurnState(groupID int64, sessionH
 		return
 	}
 	ttl = normalizeOpenAIWSTTL(ttl)
+	if a := lifecycle.Process.Affinity(); a != nil {
+		ctx, cancel := withOpenAIWSStateStoreRedisTimeout(context.Background())
+		defer cancel()
+		_ = a.SetMetadata(ctx, key, state, ttl)
+	}
 	s.maybeCleanup()
 
 	s.sessionToTurnStateMu.Lock()
@@ -353,6 +365,12 @@ func (s *defaultOpenAIWSStateStore) GetSessionTurnState(groupID int64, sessionHa
 	key := openAIWSSessionTurnStateKey(groupID, sessionHash)
 	if key == "" {
 		return "", false
+	}
+	if a := lifecycle.Process.Affinity(); a != nil {
+		ctx, cancel := withOpenAIWSStateStoreRedisTimeout(context.Background())
+		defer cancel()
+		value, err := a.GetMetadata(ctx, key)
+		return value, err == nil && value != ""
 	}
 	s.maybeCleanup()
 
@@ -370,6 +388,11 @@ func (s *defaultOpenAIWSStateStore) DeleteSessionTurnState(groupID int64, sessio
 	key := openAIWSSessionTurnStateKey(groupID, sessionHash)
 	if key == "" {
 		return
+	}
+	if a := lifecycle.Process.Affinity(); a != nil {
+		ctx, cancel := withOpenAIWSStateStoreRedisTimeout(context.Background())
+		defer cancel()
+		_ = a.DeleteMetadata(ctx, key)
 	}
 	s.sessionToTurnStateMu.Lock()
 	delete(s.sessionToTurnState, key)

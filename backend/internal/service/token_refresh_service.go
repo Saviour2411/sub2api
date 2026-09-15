@@ -485,6 +485,11 @@ func (s *TokenRefreshService) processRefresh() {
 
 // processRefreshContext executes one bounded, cursor-resumable refresh cycle.
 func (s *TokenRefreshService) processRefreshContext(parent context.Context) {
+	release, acquired := trySharedBackgroundJob(parent, "token_refresh")
+	if !acquired {
+		return
+	}
+	defer release()
 	if parent == nil {
 		parent = context.Background()
 	}
@@ -1524,5 +1529,14 @@ func (s *TokenRefreshService) ensureAntigravityPrivacy(ctx context.Context, acco
 			"account_id", account.ID,
 			"privacy_mode", mode,
 		)
+	}
+}
+
+// Drain 只停止调度，不取消正在刷新或写回的生产者。人工 Stop 语义保持不变。
+func (s *TokenRefreshService) Drain() {
+	s.stopOnce.Do(func() { close(s.stopCh) })
+	s.wg.Wait()
+	if s.runCancel != nil {
+		s.runCancel()
 	}
 }

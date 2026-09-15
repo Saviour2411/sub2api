@@ -26,13 +26,6 @@ const (
 
 var opsCleanupCronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
-var opsCleanupReleaseScript = redis.NewScript(`
-if redis.call("GET", KEYS[1]) == ARGV[1] then
-  return redis.call("DEL", KEYS[1])
-end
-return 0
-`)
-
 // OpsCleanupService periodically deletes old ops data to prevent unbounded DB growth.
 //
 // - Scheduling: 5-field cron spec (minute hour dom month dow).
@@ -59,8 +52,6 @@ type OpsCleanupService struct {
 	started   bool
 	stopped   bool
 	effective opsCleanupEffectiveConfig
-
-	warnNoRedisOnce sync.Once
 }
 
 type opsCleanupEffectiveConfig struct {
@@ -361,44 +352,7 @@ func (s *OpsCleanupService) runCleanupOnce(ctx context.Context) (opsCleanupDelet
 }
 
 func (s *OpsCleanupService) tryAcquireLeaderLock(ctx context.Context) (func(), bool) {
-	if s == nil {
-		return nil, false
-	}
-	// In simple run mode, assume single instance.
-	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
-		return nil, true
-	}
-
-	key := opsCleanupLeaderLockKeyDefault
-	ttl := opsCleanupLeaderLockTTLDefault
-
-	// Prefer Redis leader lock when available, but avoid stampeding the DB when Redis is flaky by
-	// falling back to a DB advisory lock.
-	if s.redisClient != nil {
-		ok, err := s.redisClient.SetNX(ctx, key, s.instanceID, ttl).Result()
-		if err == nil {
-			if !ok {
-				return nil, false
-			}
-			return func() {
-				_, _ = opsCleanupReleaseScript.Run(ctx, s.redisClient, []string{key}, s.instanceID).Result()
-			}, true
-		}
-		// Redis error: fall back to DB advisory lock.
-		s.warnNoRedisOnce.Do(func() {
-			logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] leader lock SetNX failed; falling back to DB advisory lock: %v", err)
-		})
-	} else {
-		s.warnNoRedisOnce.Do(func() {
-			logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] redis not configured; using DB advisory lock")
-		})
-	}
-
-	release, ok := tryAcquireDBAdvisoryLock(ctx, s.db, hashAdvisoryLockID(key))
-	if !ok {
-		return nil, false
-	}
-	return release, true
+	return tryAcquireSingletonLeaderLock(ctx, nil, s.db, opsCleanupLeaderLockKeyDefault, s.instanceID, opsCleanupLeaderLockTTLDefault)
 }
 
 func (s *OpsCleanupService) recordHeartbeatSuccess(runAt time.Time, duration time.Duration, counts opsCleanupDeletedCounts) {

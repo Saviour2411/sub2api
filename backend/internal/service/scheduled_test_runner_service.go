@@ -116,17 +116,19 @@ func (s *ScheduledTestRunnerService) Stop() {
 	}
 	s.stopOnce.Do(func() {
 		if s.cron != nil {
-			ctx := s.cron.Stop()
-			select {
-			case <-ctx.Done():
-			case <-time.After(3 * time.Second):
-				logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] cron stop timed out")
-			}
+			// 停止调度，但等待已经运行的生产者自然完成。
+			<-s.cron.Stop().Done()
 		}
 	})
 }
 
 func (s *ScheduledTestRunnerService) runScheduled() {
+	release, acquired := trySharedBackgroundJob(context.Background(), "scheduled_test_runner_service")
+	if !acquired {
+		return
+	}
+	defer release()
+
 	// Delay 10s so execution lands at ~:10 of each minute instead of :00.
 	time.Sleep(10 * time.Second)
 

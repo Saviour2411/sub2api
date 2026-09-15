@@ -111,6 +111,12 @@ func (r *UpstreamSyncRunner) scanLoop() {
 }
 
 func (r *UpstreamSyncRunner) scan() {
+	release, accepted := trySharedBackgroundJob(context.Background(), "upstream-sync-scan")
+	if !accepted {
+		return
+	}
+	defer release()
+
 	ctx, cancel := context.WithTimeout(r.ctx, 15*time.Second)
 	defer cancel()
 	ids, err := r.service.ListDue(ctx, time.Now(), 200)

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/lifecycle"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/google/uuid"
 )
@@ -136,7 +137,12 @@ func (s *DashboardAggregationService) TriggerBackfill(start, end time.Time) erro
 		}
 	}
 
+	finish, err := lifecycle.Process.Begin(lifecycle.Background)
+	if err != nil {
+		return err
+	}
 	go func() {
+		defer finish()
 		ctx, cancel := context.WithTimeout(context.Background(), defaultDashboardAggregationBackfillTimeout)
 		defer cancel()
 		if err := s.backfillRange(ctx, start, end); err != nil {
@@ -161,7 +167,12 @@ func (s *DashboardAggregationService) TriggerRecomputeRange(start, end time.Time
 		return errors.New("重新计算时间范围无效")
 	}
 
+	finish, err := lifecycle.Process.Begin(lifecycle.Background)
+	if err != nil {
+		return err
+	}
 	go func() {
+		defer finish()
 		const maxRetries = 3
 		for i := 0; i < maxRetries; i++ {
 			ctx, cancel := context.WithTimeout(context.Background(), defaultDashboardAggregationBackfillTimeout)
@@ -182,6 +193,11 @@ func (s *DashboardAggregationService) TriggerRecomputeRange(start, end time.Time
 }
 
 func (s *DashboardAggregationService) recomputeRecentDays() {
+	finish, accepted := lifecycle.Process.BeginBackground()
+	if !accepted {
+		return
+	}
+	defer finish()
 	days := s.cfg.RecomputeDays
 	if days <= 0 {
 		return
@@ -197,7 +213,32 @@ func (s *DashboardAggregationService) recomputeRecentDays() {
 	}
 }
 
+// 请求触发的回填与定时聚合使用同一 PG 锁，排空不会取消已接受的回填。
+func (s *DashboardAggregationService) lockAggregation(ctx context.Context) (func(), error) {
+	db := s.db
+	if db == nil {
+		db = lifecycle.Process.SharedDB()
+	}
+	if db == nil {
+		return func() {}, nil
+	}
+	release, ok, err := tryAcquireDBAdvisoryLockWithError(ctx, db, hashAdvisoryLockID(dashboardAggregationLeaderLockKey))
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, errDashboardAggregationRunning
+	}
+	return release, nil
+}
+
 func (s *DashboardAggregationService) recomputeRange(ctx context.Context, start, end time.Time) error {
+	release, err := s.lockAggregation(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+
 	if !atomic.CompareAndSwapInt32(&s.running, 0, 1) {
 		return errDashboardAggregationRunning
 	}
@@ -303,6 +344,12 @@ func (s *DashboardAggregationService) syncGroupUsageRollups(ctx context.Context,
 }
 
 func (s *DashboardAggregationService) backfillRange(ctx context.Context, start, end time.Time) error {
+	release, err := s.lockAggregation(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+
 	if !atomic.CompareAndSwapInt32(&s.running, 0, 1) {
 		return errDashboardAggregationRunning
 	}

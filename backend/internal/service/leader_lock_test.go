@@ -81,9 +81,8 @@ func TestTryAcquireSingletonLeaderLock_ContendedThenReleased(t *testing.T) {
 func TestTryAcquireSingletonLeaderLock_CacheErrorFallsThrough(t *testing.T) {
 	cache := &fakeLeaderLockCache{acquireErr: context.DeadlineExceeded}
 	release, ok := tryAcquireSingletonLeaderLock(context.Background(), cache, nil, "k", "inst", time.Minute)
-	require.True(t, ok, "cache error with no DB must run ungated, not skip")
-	require.NotNil(t, release)
-	require.NotPanics(t, release)
+	require.False(t, ok, "互斥不可用时不得无锁执行")
+	require.Nil(t, release)
 }
 
 func TestSubscriptionExpiryService_ReminderSkipsScanWhenNotLeader(t *testing.T) {

@@ -104,6 +104,12 @@ func (s *SubscriptionExpiryService) Stop() {
 }
 
 func (s *SubscriptionExpiryService) runOnce() {
+	release, accepted := trySharedBackgroundJob(context.Background(), "subscription-expiry")
+	if !accepted {
+		return
+	}
+	defer release()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

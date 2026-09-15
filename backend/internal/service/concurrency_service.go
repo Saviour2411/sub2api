@@ -2,12 +2,11 @@ package service
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
-	"os"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/lifecycle"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -186,27 +185,15 @@ func (l *OpenAIWSIngressLease) refresh(lastConfirmedAt time.Time) (time.Time, bo
 	return lastConfirmedAt, false
 }
 
-var (
-	requestIDPrefix  = initRequestIDPrefix()
-	requestIDCounter atomic.Uint64
-)
-
-func initRequestIDPrefix() string {
-	b := make([]byte, 8)
-	if _, err := rand.Read(b); err == nil {
-		return "r" + strconv.FormatUint(binary.BigEndian.Uint64(b), 36)
-	}
-	fallback := uint64(time.Now().UnixNano()) ^ (uint64(os.Getpid()) << 16)
-	return "r" + strconv.FormatUint(fallback, 36)
-}
+var requestIDCounter atomic.Uint64
 
 func RequestIDPrefix() string {
-	return requestIDPrefix
+	return lifecycle.Process.ID()
 }
 
 func generateRequestID() string {
 	seq := requestIDCounter.Add(1)
-	return requestIDPrefix + "-" + strconv.FormatUint(seq, 36)
+	return RequestIDPrefix() + "-" + strconv.FormatUint(seq, 36)
 }
 
 func (s *ConcurrencyService) CleanupStaleProcessSlots(ctx context.Context) error {
@@ -726,6 +713,24 @@ func (s *ConcurrencyService) StartSlotCleanupWorker(_ AccountRepository, interva
 		return
 	}
 
+	if renewer, ok := s.cache.(interface{ RefreshOwnedLeases(context.Context) error }); ok {
+		go func() {
+			ticker := time.NewTicker(lifecycle.LeaseInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-lifecycle.Process.Retired():
+					return
+				case <-ticker.C:
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					if err := renewer.RefreshOwnedLeases(ctx); err != nil {
+						logger.LegacyPrintf("service.concurrency", "renew owned leases failed: %v", err)
+					}
+					cancel()
+				}
+			}
+		}()
+	}
 	runCleanup := func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		err := s.cache.CleanupExpiredAccountSlotKeys(cleanupCtx)
@@ -741,8 +746,13 @@ func (s *ConcurrencyService) StartSlotCleanupWorker(_ AccountRepository, interva
 		defer ticker.Stop()
 
 		runCleanup()
-		for range ticker.C {
-			runCleanup()
+		for {
+			select {
+			case <-lifecycle.Process.Retired():
+				return
+			case <-ticker.C:
+				runCleanup()
+			}
 		}
 	}()
 }

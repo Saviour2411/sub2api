@@ -19,6 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/lifecycle"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
@@ -203,6 +204,7 @@ func wrapUsageRecordTaskContext(parent context.Context, task service.UsageRecord
 		return nil
 	}
 	return func(ctx context.Context) {
+		defer lifecycle.Track(lifecycle.Producer)()
 		task(usageRecordContext(parent, ctx))
 	}
 }
@@ -372,6 +374,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 	if len(body) == 0 {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
+		return
+	}
+
+	if h.forwardInstanceHTTP(c, apiKey, subject.UserID, body) {
 		return
 	}
 
@@ -1172,6 +1178,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	if !gjson.ValidBytes(body) {
 		logRequestBodyParseFailure(reqLog, body, nil)
 		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+		return
+	}
+
+	if h.forwardInstanceHTTP(c, apiKey, subject.UserID, body) {
 		return
 	}
 
@@ -2333,28 +2343,41 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	userAgent := strings.TrimSpace(c.GetHeader("User-Agent"))
 	clientLifecycleCtx := c.Request.Context()
 	ctx := clientLifecycleCtx
-	maxIngressConnections := 0
-	if h.cfg != nil {
-		maxIngressConnections = h.cfg.Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey
-	}
-	ingressLease, ingressLeaseAcquired, ingressLeaseErr := h.concurrencyHelper.AcquireOpenAIWSIngressLease(ctx, apiKey.ID, maxIngressConnections)
-	if ingressLeaseErr != nil {
-		reqLog.Error("openai.websocket_ingress_lease_acquire_failed", zap.Error(ingressLeaseErr))
-		h.errorResponse(c, http.StatusServiceUnavailable, "service_unavailable", "WebSocket ingress capacity is temporarily unavailable")
-		return
-	}
-	if !ingressLeaseAcquired {
-		reqLog.Info("openai.websocket_ingress_capacity_rejected", zap.Int("max_ingress_connections_per_api_key", maxIngressConnections))
-		c.Header("Retry-After", "5")
-		h.errorResponse(c, http.StatusTooManyRequests, "rate_limit_error", "Too many open WebSocket connections, please retry later")
-		return
-	}
-	if ingressLease != nil {
-		defer ingressLease.Release()
-		ctx = ingressLease.Context()
-		c.Request = c.Request.WithContext(ctx)
-	}
 
+	// 中转连接的接入租约仅由公网接入实例持有并续约，拥有者不重复领取。
+	forwarded := false
+	if a := lifecycle.Process.Affinity(); a != nil {
+		var authErr error
+		forwarded, authErr = a.AuthenticatedPeer(c.Request, affinityIdentity(apiKey, subject.UserID))
+		if authErr != nil {
+			h.errorResponse(c, 403, "forbidden", "Invalid internal peer")
+			return
+		}
+	}
+	if !forwarded {
+		maxIngressConnections := 0
+		if h.cfg != nil {
+			maxIngressConnections = h.cfg.Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey
+		}
+		ingressLease, ingressLeaseAcquired, ingressLeaseErr := h.concurrencyHelper.AcquireOpenAIWSIngressLease(ctx, apiKey.ID, maxIngressConnections)
+		if ingressLeaseErr != nil {
+			reqLog.Error("openai.websocket_ingress_lease_acquire_failed", zap.Error(ingressLeaseErr))
+			h.errorResponse(c, http.StatusServiceUnavailable, "service_unavailable", "WebSocket ingress capacity is temporarily unavailable")
+			return
+		}
+		if !ingressLeaseAcquired {
+			reqLog.Info("openai.websocket_ingress_capacity_rejected", zap.Int("max_ingress_connections_per_api_key", maxIngressConnections))
+			c.Header("Retry-After", "5")
+			h.errorResponse(c, http.StatusTooManyRequests, "rate_limit_error", "Too many open WebSocket connections, please retry later")
+			return
+		}
+		if ingressLease != nil {
+			defer ingressLease.Release()
+			ctx = ingressLease.Context()
+			c.Request = c.Request.WithContext(ctx)
+		}
+
+	}
 	wsConn, err := coderws.Accept(c.Writer, c.Request, &coderws.AcceptOptions{
 		CompressionMode: coderws.CompressionContextTakeover,
 	})
@@ -2400,6 +2423,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "missing first response.create message")
 		return
 	}
+	if h.forwardInstanceWS(c, apiKey, subject.UserID, wsConn, msgType, firstMessage) {
+		return
+	}
+	stopSessionLease := h.keepInstanceWSSession(c, apiKey, subject.UserID, firstMessage)
+	defer stopSessionLease()
 	firstTurnStartedAt := time.Now()
 	if msgType != coderws.MessageText && msgType != coderws.MessageBinary {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "unsupported websocket message type")
@@ -2501,6 +2529,15 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	wsForwardModel := openAIChannelForwardModel(channelMappingWS, reqModel)
 
 	const firstWSTurn = 1
+	var lifecycleTurnMu sync.Mutex
+	lifecycleTurns := make(map[int]func())
+	defer func() {
+		lifecycleTurnMu.Lock()
+		defer lifecycleTurnMu.Unlock()
+		for _, done := range lifecycleTurns {
+			done()
+		}
+	}()
 	turnReleases := newOpenAIWSTurnReleaseTracker()
 	// 必须尽早注册，确保任何 early return 都能释放已获取的并发槽位。
 	defer turnReleases.releaseAll()
@@ -2889,6 +2926,12 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				return mapping.MappedModel, nil
 			},
 			BeforeTurn: func(turn int) error {
+				lifecycleTurnMu.Lock()
+				if _, exists := lifecycleTurns[turn]; !exists {
+					lifecycleTurns[turn] = lifecycle.Track(lifecycle.WSTurn)
+				}
+				lifecycleTurnMu.Unlock()
+
 				// turn==1 的会话屏蔽已由握手层检查覆盖；连接内 flag 只拦截后续 turn。
 				if cyberBlockedThisConn.Load() {
 					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, cyberSessionBlockedClientMsg, nil)
@@ -2942,6 +2985,25 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				return nil
 			},
 			AfterTurn: func(turn int, result *service.OpenAIForwardResult, turnErr error) {
+				defer func() {
+					lifecycleTurnMu.Lock()
+					done := lifecycleTurns[turn]
+					delete(lifecycleTurns, turn)
+					lifecycleTurnMu.Unlock()
+					if done != nil {
+						done()
+					}
+				}()
+				if result != nil && result.ResponseID != "" {
+					group := int64(0)
+					if apiKey.GroupID != nil {
+						group = *apiKey.GroupID
+					}
+					if err := h.gatewayService.BindOpenAIHTTPResponseOwner(ctx, group, result.ResponseID, subject.UserID, apiKey.ID); err != nil {
+						reqLog.Error("openai.websocket_response_owner_failed", zap.Error(err))
+					}
+				}
+
 				turnStart := getTurnStart(turn)
 				cyberBlockBody := takeCyberTurnBody(turn)
 				// F1: cyber 标记按 turn 生命周期清理——defer 保证任意早返回路径都执行；

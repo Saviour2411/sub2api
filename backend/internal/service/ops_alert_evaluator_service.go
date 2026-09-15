@@ -24,13 +24,6 @@ const (
 	opsAlertEvaluatorSkipLogInterval = 1 * time.Minute
 )
 
-var opsAlertEvaluatorReleaseScript = redis.NewScript(`
-if redis.call("GET", KEYS[1]) == ARGV[1] then
-  return redis.call("DEL", KEYS[1])
-end
-return 0
-`)
-
 type OpsAlertEvaluatorService struct {
 	opsService   *OpsService
 	opsRepo      OpsRepository
@@ -53,8 +46,6 @@ type OpsAlertEvaluatorService struct {
 
 	skipLogMu sync.Mutex
 	skipLogAt time.Time
-
-	warnNoRedisOnce sync.Once
 }
 
 type opsAlertRuleState struct {
@@ -154,6 +145,7 @@ func (s *OpsAlertEvaluatorService) getInterval() time.Duration {
 }
 
 func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
+
 	if s == nil || s.opsRepo == nil {
 		return
 	}
@@ -904,42 +896,11 @@ func isOpsAlertSilenced(now time.Time, rule *OpsAlertRule, event *OpsAlertEvent,
 }
 
 func (s *OpsAlertEvaluatorService) tryAcquireLeaderLock(ctx context.Context, lock OpsDistributedLockSettings) (func(), bool) {
-	if !lock.Enabled {
-		return nil, true
-	}
-	if s.redisClient == nil {
-		s.warnNoRedisOnce.Do(func() {
-			logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] redis not configured; running without distributed lock")
-		})
-		return nil, true
-	}
-	key := strings.TrimSpace(lock.Key)
-	if key == "" {
-		key = opsAlertEvaluatorLeaderLockKey
-	}
-	ttl := time.Duration(lock.TTLSeconds) * time.Second
-	if ttl <= 0 {
-		ttl = opsAlertEvaluatorLeaderLockTTL
-	}
-
-	ok, err := s.redisClient.SetNX(ctx, key, s.instanceID, ttl).Result()
-	if err != nil {
-		// Prefer fail-closed to avoid duplicate evaluators stampeding the DB when Redis is flaky.
-		// Single-node deployments can disable the distributed lock via runtime settings.
-		s.warnNoRedisOnce.Do(func() {
-			logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] leader lock SetNX failed; skipping this cycle: %v", err)
-		})
-		return nil, false
-	}
+	release, ok := tryAcquireSingletonLeaderLock(ctx, nil, nil, opsAlertEvaluatorLeaderLockKey, s.instanceID, opsAlertEvaluatorLeaderLockTTL)
 	if !ok {
-		s.maybeLogSkip(key)
-		return nil, false
+		s.maybeLogSkip(opsAlertEvaluatorLeaderLockKey)
 	}
-	return func() {
-		releaseCtx, releaseCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer releaseCancel()
-		_, _ = opsAlertEvaluatorReleaseScript.Run(releaseCtx, s.redisClient, []string{key}, s.instanceID).Result()
-	}, true
+	return release, ok
 }
 
 func (s *OpsAlertEvaluatorService) maybeLogSkip(key string) {

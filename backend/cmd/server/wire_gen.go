@@ -8,12 +8,14 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
 	"github.com/Wei-Shaw/sub2api/internal/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/lifecycle"
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	"github.com/Wei-Shaw/sub2api/internal/server"
@@ -23,7 +25,6 @@ import (
 	"log"
 	"net/http"
 	"sync"
-	"time"
 )
 
 import (
@@ -373,6 +374,9 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		PromptAudit:   promptService,
 		PluginManager: pluginManager,
 		Cleanup:       v,
+		DB:            db,
+		Redis:         redisClient,
+		Config:        configConfig,
 	}
 	return application, nil
 }
@@ -380,6 +384,9 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 // wire.go:
 
 type Application struct {
+	Config        *config.Config
+	DB            *sql.DB
+	Redis         *redis.Client
 	Server        *http.Server
 	PromptAudit   *securityaudit.PromptService
 	PluginManager *service.PluginManager
@@ -454,9 +461,8 @@ func provideCleanup(
 	promptAudit *securityaudit.PromptService,
 	pluginManager *service.PluginManager,
 ) func() {
-	return func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
+	ctx := context.Background()
+	{
 
 		type cleanupStep struct {
 			name string
@@ -464,7 +470,12 @@ func provideCleanup(
 		}
 
 		parallelSteps := []cleanupStep{
-			{"TemporaryCreditWorker", func() error { temporaryCreditWorker.Stop(); return nil }},
+			{"TemporaryCreditWorker", func() error {
+				if temporaryCreditWorker != nil {
+					temporaryCreditWorker.Stop()
+				}
+				return nil
+			}},
 			{"PluginManager", func() error {
 				if pluginManager != nil {
 					pluginManager.Stop()
@@ -580,7 +591,7 @@ func provideCleanup(
 				return nil
 			}},
 			{"TokenRefreshService", func() error {
-				tokenRefresh.Stop()
+				tokenRefresh.Drain()
 				return nil
 			}},
 			{"AccountExpiryService", func() error {
@@ -756,14 +767,43 @@ func provideCleanup(
 			}
 		}
 
-		runParallel(parallelSteps)
-		runSequential(infraSteps)
-
-		select {
-		case <-ctx.Done():
-			log.Printf("[Cleanup] Warning: cleanup timed out after 10 seconds")
-		default:
-			log.Printf("[Cleanup] All cleanup steps completed")
+		producers := map[string]bool{
+			"TemporaryCreditWorker": true, "OpenAIQuotaAutoResetService": true, "OpsScheduledReportService": true,
+			"OpsCleanupService": true, "TokenRefreshService": true, "AccountExpiryService": true,
+			"CNProviderBalanceCheckService": true, "OpenAICodexVersionSyncService": true, "ProxyExpiryService": true,
+			"SubscriptionExpiryService": true, "UsageCleanupService": true, "IdempotencyCleanupService": true,
+			"BatchImageCleanupService": true, "ScheduledTestRunnerService": true, "BackupService": true,
+			"PaymentOrderExpiryService": true, "ChannelMonitorRunner": true, "UpstreamSyncRunner": true,
+			"UpstreamBillingProbeService": true, "OllamaCloudUsageService": true,
 		}
+		var producerSteps, remainingSteps []cleanupStep
+		var usageStep cleanupStep
+		for _, step := range parallelSteps {
+			fn := step.fn
+			var callErr error
+			once := sync.OnceFunc(func() { callErr = fn() })
+			step.fn = func() error { once(); return callErr }
+			if producers[step.name] {
+				producerSteps = append(producerSteps, step)
+			} else if step.name == "UsageRecordWorkerPool" {
+				usageStep = step
+			} else {
+				remainingSteps = append(remainingSteps, step)
+			}
+		}
+		stopProducers := sync.OnceFunc(func() { runParallel(producerSteps) })
+		return sync.OnceFunc(func() {
+			lifecycle.Process.
+				Drain()
+
+			_ = lifecycle.Process.Wait(context.Background())
+			stopProducers()
+			if usageStep.fn != nil {
+				runSequential([]cleanupStep{usageStep})
+			}
+			runParallel(remainingSteps)
+			runSequential(infraSteps)
+			log.Printf("[Cleanup] All cleanup steps completed")
+		})
 	}
 }

@@ -77,6 +77,12 @@ func (s *IdempotencyCleanupService) runLoop() {
 }
 
 func (s *IdempotencyCleanupService) cleanupOnce() {
+	release, acquired := trySharedBackgroundJob(context.Background(), "idempotency_cleanup_service")
+	if !acquired {
+		return
+	}
+	defer release()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

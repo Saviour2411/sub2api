@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"math/rand/v2"
 	"sync"
@@ -300,6 +301,12 @@ func (r *ChannelMonitorRunner) releaseInFlight(id int64) {
 // runOne 执行单个监控的检测。普通错误只记日志；API key 解密失败会撤销任务。
 // 任务结束时（含 panic recover）必须释放 in-flight 槽。
 func (r *ChannelMonitorRunner) runOne(id int64, name string) {
+	release, acquired := trySharedBackgroundJob(context.Background(), fmt.Sprintf("channel_monitor:%d", id))
+	if !acquired {
+		return
+	}
+	defer release()
+
 	ctx, cancel := context.WithTimeout(context.Background(), monitorRequestTimeout+monitorPingTimeout+monitorRunOneBuffer)
 	defer cancel()
 

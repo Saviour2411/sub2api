@@ -54,6 +54,12 @@ func (w *TemporaryCreditWorker) Stop() {
 
 // 代次唯一约束保障一次性；有界扫描不占用网关用量 worker。
 func (w *TemporaryCreditWorker) runCycle(parent context.Context) {
+	release, accepted := trySharedBackgroundJob(context.Background(), "temporary-credit")
+	if !accepted {
+		return
+	}
+	defer release()
+
 	ctx, cancel := context.WithTimeout(parent, 45*time.Second)
 	defer cancel()
 	for after := int64(0); ctx.Err() == nil; {

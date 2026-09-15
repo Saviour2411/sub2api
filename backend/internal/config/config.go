@@ -65,7 +65,13 @@ const DefaultUpstreamResponseReadMaxBytes int64 = 128 * 1024 * 1024
 // 可通过 gateway.models_list_read_max_bytes 配置项覆盖。
 const DefaultModelsListReadMaxBytes int64 = 8 * 1024 * 1024
 
+type LifecycleConfig struct {
+	Socket string `mapstructure:"socket"`
+	Mode   string `mapstructure:"mode"`
+}
+
 type Config struct {
+	Lifecycle               LifecycleConfig               `mapstructure:"lifecycle"`
 	Server                  ServerConfig                  `mapstructure:"server"`
 	Log                     LogConfig                     `mapstructure:"log"`
 	CORS                    CORSConfig                    `mapstructure:"cors"`
@@ -1975,6 +1981,12 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 		)
 	}
 
+	if cfg.Lifecycle.Mode != "active" && cfg.Lifecycle.Mode != "standby" {
+		return nil, fmt.Errorf("lifecycle.mode must be active or standby")
+	}
+	if cfg.Lifecycle.Mode == "standby" && cfg.Lifecycle.Socket == "" {
+		return nil, fmt.Errorf("standby requires lifecycle.socket")
+	}
 	return &cfg, nil
 }
 
@@ -2025,6 +2037,8 @@ func setDefaults() {
 	viper.SetDefault("log.output.to_stdout", true)
 	viper.SetDefault("log.output.to_file", true)
 	viper.SetDefault("log.output.file_path", "")
+	viper.SetDefault("lifecycle.socket", "")
+	viper.SetDefault("lifecycle.mode", "active")
 	viper.SetDefault("log.rotation.max_size_mb", 100)
 	viper.SetDefault("log.rotation.max_backups", 10)
 	viper.SetDefault("log.rotation.max_age_days", 7)

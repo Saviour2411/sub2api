@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/lifecycle"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -123,6 +124,10 @@ func (w *BatchImageWorker) Run(ctx context.Context) {
 		if err := ctx.Err(); err != nil {
 			return
 		}
+		if !lifecycle.Process.AcceptingBackground() {
+			sleepOrDone(ctx, time.Second)
+			continue
+		}
 		if err := w.RunOnce(ctx); err != nil && ctx.Err() == nil {
 			sleepOrDone(ctx, w.opts.ErrorBackoff)
 		}
@@ -134,6 +139,11 @@ func (w *BatchImageWorker) RunOnce(ctx context.Context) error {
 		return nil
 	}
 
+	done, accepting := lifecycle.Process.BeginBackground()
+	if !accepting {
+		return nil
+	}
+	defer done()
 	reserved, err := w.queue.Reserve(ctx, w.opts.ReserveBlockTimeout)
 	if errors.Is(err, ErrBatchImageQueueEmpty) {
 		return nil
@@ -142,6 +152,8 @@ func (w *BatchImageWorker) RunOnce(ctx context.Context) error {
 		return err
 	}
 
+	// 领取后不再跟随运行循环取消；结算、队列确认与心跳一起自然完成。
+	ctx = context.WithoutCancel(ctx)
 	lock, ok, err := w.queue.TryAcquireJobLock(ctx, reserved.BatchID, w.opts.JobLockTTL)
 	if err != nil {
 		if requeueErr := w.queue.RequeueAfter(ctx, reserved.BatchID, w.opts.LockConflictDelay); requeueErr != nil {

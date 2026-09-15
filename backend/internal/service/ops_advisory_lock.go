@@ -3,8 +3,10 @@ package service
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"hash/fnv"
+	"sync"
 	"time"
 )
 
@@ -12,11 +14,6 @@ func hashAdvisoryLockID(key string) int64 {
 	h := fnv.New64a()
 	_, _ = h.Write([]byte(key))
 	return int64(h.Sum64())
-}
-
-func tryAcquireDBAdvisoryLock(ctx context.Context, db *sql.DB, lockID int64) (func(), bool) {
-	release, acquired, _ := tryAcquireDBAdvisoryLockWithError(ctx, db, lockID)
-	return release, acquired
 }
 
 func tryAcquireDBAdvisoryLockWithError(ctx context.Context, db *sql.DB, lockID int64) (func(), bool, error) {
@@ -42,11 +39,14 @@ func tryAcquireDBAdvisoryLockWithError(ctx context.Context, db *sql.DB, lockID i
 		return nil, false, nil
 	}
 
-	release := func() {
+	release := sync.OnceFunc(func() {
 		unlockCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		_, _ = conn.ExecContext(unlockCtx, "SELECT pg_advisory_unlock($1)", lockID)
+		if _, err := conn.ExecContext(unlockCtx, "SELECT pg_advisory_unlock($1)", lockID); err != nil {
+			// 解锁未确认的会话不能回到连接池，否则下次借用会带着旧锁。
+			_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+		}
 		_ = conn.Close()
-	}
+	})
 	return release, true, nil
 }

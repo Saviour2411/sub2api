@@ -146,12 +146,13 @@ func (s *BatchImageCleanupService) Start() {
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 	s.done = make(chan struct{})
+	done := s.done
 	go func() {
-		defer close(s.done)
+		defer close(done)
 		ticker := time.NewTicker(s.cleanupInterval())
 		defer ticker.Stop()
 		for {
-			_, _ = s.RunOnce(ctx, time.Now())
+			s.runScheduledCleanup(ctx)
 			select {
 			case <-ctx.Done():
 				return
@@ -159,6 +160,16 @@ func (s *BatchImageCleanupService) Start() {
 			}
 		}
 	}()
+}
+
+// 手动删除仍按请求执行；只有定时扫描使用跨实例互斥与排空门禁。
+func (s *BatchImageCleanupService) runScheduledCleanup(ctx context.Context) {
+	release, accepted := trySharedBackgroundJob(ctx, "batch-image-cleanup")
+	if !accepted {
+		return
+	}
+	defer release()
+	_, _ = s.RunOnce(ctx, time.Now())
 }
 
 func (s *BatchImageCleanupService) Stop() {

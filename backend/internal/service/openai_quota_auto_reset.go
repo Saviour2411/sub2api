@@ -206,7 +206,7 @@ func (s *OpenAIQuotaAutoResetService) runWorker() {
 		case <-s.ctx.Done():
 			return
 		case accountID := <-s.queue:
-			ctx, cancel := context.WithTimeout(s.ctx, 50*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 50*time.Second)
 			if err := s.evaluateAccount(ctx, accountID); err != nil && !errors.Is(err, context.Canceled) {
 				slog.Warn("openai_auto_reset_evaluate_failed", "account_id", accountID, "error_code", infraerrors.Reason(err))
 			}
@@ -266,25 +266,9 @@ func (s *OpenAIQuotaAutoResetService) scanEnabledAccounts(ctx context.Context) {
 	}
 }
 
-// Redis 锁异常时允许重复扫描，避免协调设施故障导致所有实例同时停止补偿；
-// 消费唯一性由数据库幂等记录负责，扫描锁只用于削减重复查询。
+// 扫描统一使用 PostgreSQL 互斥；消费端仍保留原有数据库幂等约束。
 func (s *OpenAIQuotaAutoResetService) tryAcquireScanLock(ctx context.Context) (func(), bool) {
-	if s.leaderLock == nil {
-		return func() {}, true
-	}
-	ok, err := s.leaderLock.TryAcquireLeaderLock(ctx, openAIAutoResetLeaderLockKey, s.owner, 55*time.Second)
-	if err != nil {
-		slog.Warn("openai_auto_reset_leader_lock_unavailable", "error", err)
-		return func() {}, true
-	}
-	if !ok {
-		return nil, false
-	}
-	return func() {
-		releaseCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		_ = s.leaderLock.ReleaseLeaderLock(releaseCtx, openAIAutoResetLeaderLockKey, s.owner)
-	}, true
+	return tryAcquireSingletonLeaderLock(ctx, s.leaderLock, nil, openAIAutoResetLeaderLockKey, s.owner, 55*time.Second)
 }
 
 type openAIAutoResetAssessment struct {

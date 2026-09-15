@@ -7,17 +7,22 @@ import (
 	_ "embed"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	_ "github.com/Wei-Shaw/sub2api/ent/runtime"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/lifecycle"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/setup"
@@ -148,10 +153,12 @@ func runMainServer() {
 		BuildType: BuildType,
 	}
 
+	lifecycle.Process.Starting(Version)
 	app, err := initializeApplication(buildInfo)
 	if err != nil {
 		log.Fatalf("Failed to initialize application: %v", err)
 	}
+	cfg = app.Config
 	defer app.Cleanup()
 	if app.PluginManager != nil {
 		if err := app.PluginManager.Start(context.Background()); err != nil {
@@ -168,28 +175,64 @@ func runMainServer() {
 		}
 	}
 
-	// 启动服务器
+	registry := lifecycle.Registry{Redis: app.Redis}
+	var leaseHealthy atomic.Bool
+	leaseHealthy.Store(true)
+	lifecycle.Process.SetProbe(func(ctx context.Context) error {
+		if !leaseHealthy.Load() {
+			return fmt.Errorf("instance lease unavailable")
+		}
+		if err := app.DB.PingContext(ctx); err != nil {
+			return err
+		}
+		return app.Redis.Ping(ctx).Err()
+	})
+	if cfg.Lifecycle.Socket != "" {
+		lifecycle.Process.SetAffinity(&lifecycle.Affinity{Registry: registry, Manager: lifecycle.Process, SocketDir: filepath.Dir(cfg.Lifecycle.Socket), Secret: []byte(cfg.JWT.Secret)})
+	}
+	closeControl, err := lifecycle.Process.Control(cfg.Lifecycle.Socket, app.Server.Handler)
+	if err != nil {
+		log.Fatalf("Failed to initialize lifecycle control: %v", err)
+	}
+	defer closeControl()
+	if cfg.Lifecycle.Socket != "" {
+		instance := lifecycle.Instance{ID: lifecycle.Process.ID(), Socket: cfg.Lifecycle.Socket, Version: Version}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		err = registry.Publish(ctx, instance)
+		cancel()
+		if err != nil {
+			log.Fatalf("Failed to register instance: %v", err)
+		}
+		heartbeatCtx, stopHeartbeat := context.WithCancel(context.Background())
+		// 心跳只能在请求和清理全部完成后停止。
+		defer stopHeartbeat()
+		go registry.Heartbeat(heartbeatCtx, instance, func(err error) { leaseHealthy.Store(err == nil) })
+	}
+	listener, err := net.Listen("tcp", app.Server.Addr)
+	if err != nil {
+		log.Fatalf("Failed to listen: %v", err)
+	}
+	lifecycle.Process.Initialized(cfg.Lifecycle.Mode == "standby")
 	go func() {
-		if err := app.Server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("Failed to start server: %v", err)
+		if err := app.Server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("HTTP serve failed: %v", err)
 		}
 	}()
-
-	log.Printf("Server started on %s", app.Server.Addr)
-
-	// 等待中断信号
+	log.Printf("Server started on %s instance=%s", app.Server.Addr, lifecycle.Process.ID())
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-
-	log.Println("Shutting down server...")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := app.Server.Shutdown(ctx); err != nil {
-		log.Printf("Server forced to shutdown: %v", err)
+	defer signal.Stop(quit)
+	select {
+	case <-quit:
+	case <-lifecycle.Process.Retired():
 	}
-
+	log.Println("Draining server without cancelling active work...")
+	lifecycle.Process.Drain()
+	// Shutdown不等待hijacked连接；生命周期额外等待WS、用量和脱离客户端的工作。
+	httpDone := make(chan struct{})
+	go func() { defer close(httpDone); _ = app.Server.Shutdown(context.Background()) }()
+	_ = lifecycle.Process.Wait(context.Background())
+	<-httpDone
+	app.Cleanup()
 	log.Println("Server exited")
 }

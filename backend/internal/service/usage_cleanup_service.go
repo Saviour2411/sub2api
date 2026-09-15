@@ -105,9 +105,6 @@ func (s *UsageCleanupService) Stop() {
 		return
 	}
 	s.stopOnce.Do(func() {
-		if s.workerCancel != nil {
-			s.workerCancel()
-		}
 		if s.timingWheel != nil {
 			s.timingWheel.Cancel(usageCleanupWorkerName)
 		}
@@ -155,6 +152,11 @@ func (s *UsageCleanupService) CreateTask(ctx context.Context, filters UsageClean
 }
 
 func (s *UsageCleanupService) runOnce() {
+	release, acquired := trySharedBackgroundJob(context.Background(), "usage_cleanup")
+	if !acquired {
+		return
+	}
+	defer release()
 	svc := s
 	if svc == nil {
 		return

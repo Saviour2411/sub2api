@@ -57,6 +57,12 @@ func (s *AccountExpiryService) Stop() {
 }
 
 func (s *AccountExpiryService) runOnce() {
+	release, acquired := trySharedBackgroundJob(context.Background(), "account_expiry_service")
+	if !acquired {
+		return
+	}
+	defer release()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 

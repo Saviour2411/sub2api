@@ -567,24 +567,7 @@ func upstreamBillingProbeLeaderLockKeyAt(now time.Time) string {
 func (s *UpstreamBillingProbeService) tryAcquireLeaderLock(ctx context.Context, key string) (func(), bool, error) {
 	lockCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	if s.lockCache != nil {
-		acquired, err := s.lockCache.TryAcquireLeaderLock(lockCtx, key, s.instanceID, upstreamBillingProbeLeaderLockTTL)
-		if err != nil {
-			return nil, false, err
-		}
-		if !acquired {
-			return nil, false, nil
-		}
-		return func() {
-			releaseCtx, releaseCancel := context.WithTimeout(context.Background(), 2*time.Second)
-			defer releaseCancel()
-			_ = s.lockCache.ReleaseLeaderLock(releaseCtx, key, s.instanceID)
-		}, true, nil
-	}
-	if s.db != nil {
-		return tryAcquireDBAdvisoryLockWithError(lockCtx, s.db, hashAdvisoryLockID(key))
-	}
-	return func() {}, true, nil
+	return tryAcquireSingletonLeaderLockWithError(lockCtx, s.lockCache, s.db, key, s.instanceID, upstreamBillingProbeLeaderLockTTL)
 }
 
 func releaseUpstreamBillingProbeLeaderLock(release func(), releaseAt time.Time) {

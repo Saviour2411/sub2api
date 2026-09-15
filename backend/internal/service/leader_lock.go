@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/lifecycle"
 )
 
 // LeaderLockCache provides cross-instance mutual exclusion for periodic background
@@ -18,51 +20,65 @@ type LeaderLockCache interface {
 	ReleaseLeaderLock(ctx context.Context, key, owner string) error
 }
 
-// tryAcquireSingletonLeaderLock provides best-effort single-flight execution of a
-// periodic background job across multiple instances. It prefers the Redis-backed
-// LeaderLockCache and falls back to a Postgres advisory lock when the cache is
-// unavailable or errors, mirroring the approach used by the Ops background
-// services.
-//
-// Semantics:
-//   - acquired      -> returns a non-nil release func and true; callers should
-//     defer the release once the job finishes.
-//   - held by peer  -> returns (nil, false); callers should skip this cycle.
-//   - no backend    -> when neither the cache nor a DB is configured (e.g. unit
-//     tests, or a single-instance deployment without Redis) it runs without
-//     gating, returning a no-op release and true, so the job is never silently
-//     starved.
-//
-// The TTL is purely a crash-safety bound: callers release the lock as soon as the
-// job completes, so leadership is re-contested every cycle rather than pinned to
-// one instance. The TTL must therefore be larger than the job's worst-case
-// runtime so the lock does not expire mid-run.
+// tryAcquireSingletonLeaderLock 对有数据库的实例始终使用PostgreSQL互斥。
+// Redis-only适配器仅供不带数据库的旧调用/测试使用；故障时不放行任务。
+// 同一共享任务不得在不同实例使用Redis锁与数据库锁两个独立互斥域。
 func tryAcquireSingletonLeaderLock(ctx context.Context, cache LeaderLockCache, db *sql.DB, key, owner string, ttl time.Duration) (func(), bool) {
+	release, ok, _ := tryAcquireSingletonLeaderLockWithError(ctx, cache, db, key, owner, ttl)
+	return release, ok
+}
+
+func tryAcquireSingletonLeaderLockWithError(ctx context.Context, cache LeaderLockCache, db *sql.DB, key, owner string, ttl time.Duration) (func(), bool, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
+	done, accepting := lifecycle.Process.BeginBackground()
+	if !accepting {
+		return nil, false, nil
+	}
+	success := false
+	defer func() {
+		if !success {
+			done()
+		}
+	}()
+	if db == nil {
+		db = lifecycle.Process.SharedDB()
+	}
+	if db != nil {
+		release, ok, err := tryAcquireDBAdvisoryLockWithError(ctx, db, hashAdvisoryLockID(key))
+		if !ok {
+			return nil, false, err
+		}
+		success = true
+		return func() { defer done(); release() }, true, nil
+	}
 	if cache != nil {
 		ok, err := cache.TryAcquireLeaderLock(ctx, key, owner, ttl)
 		if err == nil {
 			if !ok {
-				return nil, false
+				return nil, false, nil
 			}
 			release := func() {
+				defer done()
 				ctx2, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 				defer cancel()
 				_ = cache.ReleaseLeaderLock(ctx2, key, owner)
 			}
-			return release, true
+			success = true
+			return release, true, nil
 		}
-		// Cache error: fall through to the DB advisory lock so a flaky Redis does
-		// not stampede the job across every instance.
-	}
-
-	if db != nil {
-		return tryAcquireDBAdvisoryLock(ctx, db, hashAdvisoryLockID(key))
+		// 未配置数据库的旧接口不在Redis故障时绕过互斥。
+		return nil, false, err
 	}
 
 	// No coordination backend available: run without gating.
-	return func() {}, true
+	success = true
+	return done, true, nil
+}
+
+// 所有共享调度入口使用同一个 PostgreSQL 锁域；请求侧服务不经过此入口。
+func trySharedBackgroundJob(ctx context.Context, key string) (func(), bool) {
+	return tryAcquireSingletonLeaderLock(ctx, nil, lifecycle.Process.SharedDB(), "shared:"+key, lifecycle.Process.ID(), time.Minute)
 }
