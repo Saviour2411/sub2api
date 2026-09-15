@@ -44,6 +44,26 @@ jobs:
         working-directory: backend
         run: make test-integration
 
+  stream-race:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          check-latest: false
+          cache: true
+          cache-dependency-path: backend/go.sum
+      - name: Claude 流安全重试与精确空闲计时竞态检查
+        working-directory: backend
+        env:
+          CGO_ENABLED: '1'
+        run: >-
+          go test -race -tags=unit -count=1
+          -run 'TestAnthropicStreamSafeRetry|TestGatewayService_AnthropicAPIKeyPassthrough_StreamingIdleTimeout'
+          ./internal/service ./internal/handler
+
   frontend:
     runs-on: ubuntu-latest
     steps:

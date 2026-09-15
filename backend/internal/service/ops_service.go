@@ -585,6 +585,16 @@ func sanitizeOpsUpstreamErrors(entry *OpsInsertErrorLogInput) error {
 	sanitized := make([]*OpsUpstreamErrorEvent, 0, len(events))
 	for i, ev := range events {
 		out := *ev
+		if ev.StreamDiagnostic != nil {
+			diagnostic := *ev.StreamDiagnostic
+			diagnostic.RequestID = truncateString(diagnostic.RequestID, 128)
+			diagnostic.ClientRequestID = truncateString(diagnostic.ClientRequestID, 128)
+			diagnostic.LastEventType = boundedAnthropicEventType(diagnostic.LastEventType)
+			diagnostic.FailureKind = truncateString(diagnostic.FailureKind, 64)
+			diagnostic.StopReason = truncateString(diagnostic.StopReason, 64)
+			diagnostic.Decision = truncateString(diagnostic.Decision, 32)
+			out.StreamDiagnostic = &diagnostic
+		}
 		normalizeOpsUpstreamProxyAttribution(&out)
 		// Only boundOpsUpstreamErrors may stamp this; never trust caller input.
 		out.DroppedEarlierAttempts = 0

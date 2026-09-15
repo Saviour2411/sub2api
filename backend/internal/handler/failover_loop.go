@@ -311,18 +311,7 @@ func (s *FailoverState) HandleFailoverError(
 	if !strictFailureUnscheduled {
 		// 账号可能因 503 选号退避在同一用户请求内再次被选中；先暂存最后结果，
 		// 直到请求成功、终止或真正耗尽时再提交一次。
-		event := service.NewAccountFailureStreakEvent(time.Now().UTC())
-		snapshot := service.AccountFailureOutcomeSnapshot{Event: event}
-		if capturer, ok := gatewayService.(FailoverOutcomeSnapshotCapturer); ok {
-			snapshot = capturer.CaptureUpstreamFailureOutcome(ctx, event)
-		}
-		s.PendingOutcomes[accountID] = failoverPendingOutcome{
-			failoverErr: failoverErr,
-			snapshot:    snapshot,
-		}
-		if policy, ok := gatewayService.(FailoverOutcomePolicy); ok {
-			streakManaged = policy.IsUpstreamFailureOutcomeManaged(ctx, accountID, failoverErr)
-		}
+		streakManaged = s.stagePendingFailureOutcome(ctx, gatewayService, accountID, failoverErr)
 	}
 
 	// 同账号重试用尽，执行临时封禁。由连续错误策略管理的状态码在达到
@@ -620,4 +609,31 @@ func sleepWithContext(ctx context.Context, d time.Duration) bool {
 	case <-time.After(d):
 		return true
 	}
+}
+
+// stagePendingFailureOutcome 复用请求内一次最终结果归因，不参与重试次数或换号决策。
+func (s *FailoverState) stagePendingFailureOutcome(ctx context.Context, gatewayService any, accountID int64, failoverErr *service.UpstreamFailoverError) bool {
+	event := service.NewAccountFailureStreakEvent(time.Now().UTC())
+	snapshot := service.AccountFailureOutcomeSnapshot{Event: event}
+	if capturer, ok := gatewayService.(FailoverOutcomeSnapshotCapturer); ok {
+		snapshot = capturer.CaptureUpstreamFailureOutcome(ctx, event)
+	}
+	s.PendingOutcomes[accountID] = failoverPendingOutcome{failoverErr: failoverErr, snapshot: snapshot}
+	if policy, ok := gatewayService.(FailoverOutcomePolicy); ok {
+		return policy.IsUpstreamFailureOutcomeManaged(ctx, accountID, failoverErr)
+	}
+	return false
+}
+
+// RecordSafeStreamHTTPFailure 只接收原有 HTTP failover，普通 EOF／空闲超时不得进入账号状态码策略。
+func (s *FailoverState) RecordSafeStreamHTTPFailure(ctx context.Context, gatewayService TempUnscheduler, accountID int64, err *service.UpstreamFailoverError) {
+	if err == nil || err.FirstTokenTimeout || ctx.Err() != nil || !err.ShouldRetryNextAccount() {
+		return
+	}
+	if strict, ok := gatewayService.(FailoverStrictScheduler); ok && strict.HandleUpstreamFailoverError(ctx, accountID, err) {
+		s.FailedAccountIDs[accountID] = struct{}{}
+		delete(s.PendingOutcomes, accountID)
+		return
+	}
+	s.stagePendingFailureOutcome(ctx, gatewayService, accountID, err)
 }

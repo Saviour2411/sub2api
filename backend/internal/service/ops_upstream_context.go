@@ -379,7 +379,9 @@ func setOpsUpstreamError(c *gin.Context, upstreamStatusCode int, upstreamMessage
 // OpsUpstreamErrorEvent describes one upstream error attempt during a single gateway request.
 // It is stored in ops_error_logs.upstream_errors as a JSON array.
 type OpsUpstreamErrorEvent struct {
-	AtUnixMs int64 `json:"at_unix_ms,omitempty"`
+	// 流故障摘要不包含请求或生成正文，复用现有有界 JSON 存储。
+	StreamDiagnostic *AnthropicStreamDiagnostic `json:"stream_diagnostic,omitempty"`
+	AtUnixMs         int64                      `json:"at_unix_ms,omitempty"`
 
 	// Passthrough 表示本次请求是否命中“原样透传（仅替换认证）”分支。
 	// 该字段用于排障与灰度评估；存入 JSON，不涉及 DB schema 变更。

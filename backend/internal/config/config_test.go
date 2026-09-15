@@ -2649,3 +2649,15 @@ func TestLoad_DefaultGatewayImageStreamConfig(t *testing.T) {
 		t.Fatalf("image stream timeout = %d, want greater than ordinary stream timeout %d", cfg.Gateway.ImageStreamDataIntervalTimeout, cfg.Gateway.StreamDataIntervalTimeout)
 	}
 }
+
+func TestLoad_GatewayStreamTimeoutExampleMatchesDefault(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_STREAM_DATA_INTERVAL_TIMEOUT", "")
+	cfg, err := Load()
+	require.NoError(t, err)
+
+	example := viper.New()
+	example.SetConfigFile(filepath.Join("..", "..", "..", "deploy", "config.example.yaml"))
+	require.NoError(t, example.ReadInConfig())
+	require.Equal(t, cfg.Gateway.StreamDataIntervalTimeout, example.GetInt("gateway.stream_data_interval_timeout"), "流空闲超时的示例值必须与后端缺省一致")
+}

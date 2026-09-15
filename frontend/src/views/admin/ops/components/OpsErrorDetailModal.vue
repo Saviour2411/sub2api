@@ -12,6 +12,16 @@
     </div>
 
     <div v-else class="space-y-6 p-6">
+      <section v-if="streamDiagnostics.length" class="rounded-xl border border-gray-200 p-4 dark:border-dark-700" data-test="anthropic-stream-diagnostics">
+        <h3 class="font-semibold">Claude 流安全重试诊断</h3>
+        <div v-for="(row, index) in streamDiagnostics" :key="index" class="mt-3 space-y-1 border-t border-gray-100 pt-3 text-sm dark:border-dark-700">
+          <p>尝试 {{ row.attempt }} · 账号 {{ row.account }} · {{ row.decision }} · {{ row.reason }} <span v-if="row.recovered">（后续已恢复）</span></p>
+          <p class="break-all font-mono">上游请求 ID：{{ row.upstreamRequestId || '—' }} · 时间：{{ row.time ? new Date(row.time).toISOString() : '—' }}</p>
+          <p>实际上游 HTTP：{{ row.upstreamStatus }} · 客户端 HTTP：{{ row.wireStatus }} · 逻辑错误：{{ row.logicalStatus }}</p>
+          <p>最后完整事件：{{ row.event || '—' }} · 完整终止：{{ row.terminal ? '是' : '否' }} · 已交付内容：{{ row.committed ? '是' : '否' }}</p>
+          <p>前导缓存：{{ row.preludeBytes }} 字节 · 未完成帧：{{ row.pendingFrameBytes }} 字节 · 见过终止标记：{{ row.terminalCandidate ? '是' : '否' }} · 已等待：{{ row.elapsedMs }} ms · 剩余预算：{{ row.remainingMs }} ms · 上游空闲：{{ row.lastReadAgeMs }} ms</p>
+        </div>
+      </section>
       <!-- Summary -->
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
@@ -225,6 +235,7 @@
 </template>
 
 <script setup lang="ts">
+import { parseAnthropicStreamDiagnostics } from '@/utils/anthropicStreamDiagnostic'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -257,6 +268,7 @@ const detail = ref<OpsErrorDetail | null>(null)
 
 const showUpstreamList = computed(() => props.errorType === 'request')
 
+const streamDiagnostics = computed(() => parseAnthropicStreamDiagnostics(detail.value?.upstream_errors))
 const requestId = computed(() => detail.value?.request_id || detail.value?.client_request_id || '')
 
 type DiagnosticPayloadKey = 'client' | 'upstream_message' | 'upstream_detail' | 'upstream_events'

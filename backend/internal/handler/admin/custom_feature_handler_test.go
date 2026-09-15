@@ -204,3 +204,29 @@ func TestCustomFeatureHandler_UpdateGateway_部分更新保留ClaudeCode模拟�
 	require.Equal(t, "false", repo.values[service.SettingKeyGatewayAdditionalFailoverStatusCodesEnabled])
 	require.Equal(t, `[451]`, repo.values[service.SettingKeyGatewayAdditionalFailoverStatusCodes])
 }
+
+func TestCustomFeatureHandler_StreamSafeRetryCompatibilityAndValidation(t *testing.T) {
+	repo := &customFeatureHandlerRepoStub{values: map[string]string{
+		service.SettingKeyGatewayAnthropicStreamSafeRetryEnabled:          "true",
+		service.SettingKeyGatewayAnthropicStreamSafeRetryMaxRetries:       "1",
+		service.SettingKeyGatewayAnthropicStreamSafeRetryTotalWaitSeconds: "240",
+	}}
+	router := newCustomFeatureHandlerRouter(repo)
+	send := func(body string) *httptest.ResponseRecorder {
+		recorder := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/admin/custom-features/gateway", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(recorder, req)
+		return recorder
+	}
+	require.Equal(t, http.StatusOK, send(`{"first_token_timeout_seconds":45}`).Code)
+	require.Equal(t, "true", repo.values[service.SettingKeyGatewayAnthropicStreamSafeRetryEnabled])
+	require.Equal(t, "1", repo.values[service.SettingKeyGatewayAnthropicStreamSafeRetryMaxRetries])
+	require.Equal(t, "240", repo.values[service.SettingKeyGatewayAnthropicStreamSafeRetryTotalWaitSeconds])
+	for _, body := range []string{`{"anthropic_stream_safe_retry_max_retries":6}`, `{"anthropic_stream_safe_retry_max_retries":1.5}`, `{"anthropic_stream_safe_retry_total_wait_seconds":0}`, `{"anthropic_stream_safe_retry_total_wait_seconds":601}`} {
+		require.Equal(t, http.StatusBadRequest, send(body).Code)
+	}
+	require.Equal(t, http.StatusOK, send(`{"anthropic_stream_safe_retry_enabled":false,"anthropic_stream_safe_retry_max_retries":0}`).Code)
+	require.Equal(t, "false", repo.values[service.SettingKeyGatewayAnthropicStreamSafeRetryEnabled])
+	require.Equal(t, "0", repo.values[service.SettingKeyGatewayAnthropicStreamSafeRetryMaxRetries])
+}

@@ -301,20 +301,21 @@ func TestSettingService_UpdateGatewaySettings_NormalizesCachesAndReschedules(t *
 	svc.SetScheduledTestPlanRepository(planRepo)
 
 	updated, err := svc.UpdateGatewaySettings(context.Background(), GatewaySettings{
-		DefaultPoolModeRetryCount:               2,
-		DefaultPoolModeRetryStatusCodes:         []int{503, 429, 503},
-		AdditionalFailoverStatusCodesEnabled:    true,
-		AdditionalFailoverStatusCodes:           []int{451, 409, 451},
-		AutoManagedProbeBackoffMinutes:          []int{1, 3, 10},
-		FirstTokenTimeoutSeconds:                25,
-		FirstTokenTimeoutConsecutiveThreshold:   4,
-		UpstreamErrorStatusCodes:                []int{504, 502, 504},
-		UpstreamErrorConsecutiveThreshold:       8,
-		ImageGroupSuccessRateVisible:            false,
-		AnthropicClaudeCodeMimicryEnabled:       true,
-		AnthropicSamplingParameterFilterEnabled: true,
-		AnthropicSamplingParameterFilterModels:  []string{" claude-opus-4-8 ", "claude-opus-*", "claude-opus-4-8", ""},
-		DisableRechargeBonusForCustomRateUsers:  true,
+		AnthropicStreamSafeRetryTotalWaitSeconds: 300,
+		DefaultPoolModeRetryCount:                2,
+		DefaultPoolModeRetryStatusCodes:          []int{503, 429, 503},
+		AdditionalFailoverStatusCodesEnabled:     true,
+		AdditionalFailoverStatusCodes:            []int{451, 409, 451},
+		AutoManagedProbeBackoffMinutes:           []int{1, 3, 10},
+		FirstTokenTimeoutSeconds:                 25,
+		FirstTokenTimeoutConsecutiveThreshold:    4,
+		UpstreamErrorStatusCodes:                 []int{504, 502, 504},
+		UpstreamErrorConsecutiveThreshold:        8,
+		ImageGroupSuccessRateVisible:             false,
+		AnthropicClaudeCodeMimicryEnabled:        true,
+		AnthropicSamplingParameterFilterEnabled:  true,
+		AnthropicSamplingParameterFilterModels:   []string{" claude-opus-4-8 ", "claude-opus-*", "claude-opus-4-8", ""},
+		DisableRechargeBonusForCustomRateUsers:   true,
 	})
 	require.NoError(t, err)
 	require.Equal(t, []int{429, 503}, updated.DefaultPoolModeRetryStatusCodes)
@@ -400,14 +401,15 @@ func TestSettingService_UpdateGatewaySettings_AcceptsEmptyRetryStatusCodes(t *te
 	repo := &customFeatureSettingsRepoStub{}
 	svc := NewSettingService(repo, &config.Config{})
 	updated, err := svc.UpdateGatewaySettings(context.Background(), GatewaySettings{
-		DefaultPoolModeRetryCount:             0,
-		DefaultPoolModeRetryStatusCodes:       []int{},
-		AutoManagedProbeBackoffMinutes:        []int{5},
-		FirstTokenTimeoutSeconds:              0,
-		FirstTokenTimeoutConsecutiveThreshold: 1,
-		UpstreamErrorStatusCodes:              []int{},
-		UpstreamErrorConsecutiveThreshold:     1,
-		ImageGroupSuccessRateVisible:          true,
+		AnthropicStreamSafeRetryTotalWaitSeconds: 300,
+		DefaultPoolModeRetryCount:                0,
+		DefaultPoolModeRetryStatusCodes:          []int{},
+		AutoManagedProbeBackoffMinutes:           []int{5},
+		FirstTokenTimeoutSeconds:                 0,
+		FirstTokenTimeoutConsecutiveThreshold:    1,
+		UpstreamErrorStatusCodes:                 []int{},
+		UpstreamErrorConsecutiveThreshold:        1,
+		ImageGroupSuccessRateVisible:             true,
 	})
 	require.NoError(t, err)
 	require.Empty(t, updated.DefaultPoolModeRetryStatusCodes)
@@ -419,16 +421,17 @@ func TestSettingService_UpdateGatewaySettings_AcceptsEmptyRetryStatusCodes(t *te
 
 func TestSettingService_UpdateGatewaySettings_RejectsInvalidValues(t *testing.T) {
 	valid := GatewaySettings{
-		DefaultPoolModeRetryCount:             1,
-		DefaultPoolModeRetryStatusCodes:       []int{429},
-		AdditionalFailoverStatusCodesEnabled:  true,
-		AdditionalFailoverStatusCodes:         []int{451},
-		AutoManagedProbeBackoffMinutes:        []int{5, 10},
-		FirstTokenTimeoutSeconds:              60,
-		FirstTokenTimeoutConsecutiveThreshold: 3,
-		UpstreamErrorStatusCodes:              []int{502, 503, 504},
-		UpstreamErrorConsecutiveThreshold:     10,
-		ImageGroupSuccessRateVisible:          true,
+		AnthropicStreamSafeRetryTotalWaitSeconds: 300,
+		DefaultPoolModeRetryCount:                1,
+		DefaultPoolModeRetryStatusCodes:          []int{429},
+		AdditionalFailoverStatusCodesEnabled:     true,
+		AdditionalFailoverStatusCodes:            []int{451},
+		AutoManagedProbeBackoffMinutes:           []int{5, 10},
+		FirstTokenTimeoutSeconds:                 60,
+		FirstTokenTimeoutConsecutiveThreshold:    3,
+		UpstreamErrorStatusCodes:                 []int{502, 503, 504},
+		UpstreamErrorConsecutiveThreshold:        10,
+		ImageGroupSuccessRateVisible:             true,
 	}
 	tests := []struct {
 		name   string
@@ -466,8 +469,9 @@ func TestSettingService_UpdateGatewaySettings_RejectsInvalidValues(t *testing.T)
 
 func TestApplyGatewayPoolModeDefaults_CoversAPIKeyAndBedrock(t *testing.T) {
 	settings := GatewaySettings{
-		DefaultPoolModeRetryCount:       2,
-		DefaultPoolModeRetryStatusCodes: []int{429, 503},
+		AnthropicStreamSafeRetryTotalWaitSeconds: 300,
+		DefaultPoolModeRetryCount:                2,
+		DefaultPoolModeRetryStatusCodes:          []int{429, 503},
 	}
 	for _, accountType := range []string{AccountTypeAPIKey, AccountTypeBedrock} {
 		credentials := ApplyGatewayPoolModeDefaults(accountType, map[string]any{}, settings)

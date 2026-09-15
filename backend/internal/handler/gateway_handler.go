@@ -662,6 +662,18 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		}
 	}()
 
+	// 仅保存最近一次可计量结果；恢复成功则撤销待提交项，终止时按原账号提交一次。
+	var pendingSafeUsage func()
+	defer func() {
+		if retry := service.AnthropicStreamRetryFromGin(c); retry != nil {
+			// 内部预算取消不是客户端断连，恢复父上下文后再让 Ops 中间件记录最终结果。
+			c.Request = c.Request.WithContext(retry.ClientContext())
+			defer retry.Close()
+		}
+		if pendingSafeUsage != nil {
+			pendingSafeUsage()
+		}
+	}()
 	for {
 		fs := NewFailoverState(h.maxAccountSwitches, hasBoundSession)
 		defer fs.FinalizePendingOutcomes(c.Request.Context(), h.gatewayService)
@@ -681,7 +693,27 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				zap.Bool("has_bound_session", hasBoundSession),
 				zap.Int("failed_account_count", len(fs.FailedAccountIDs)),
 			)
-			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), currentAPIKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, parsedReq.MetadataUserID, subject.UserID)
+			var selection *service.AccountSelectionResult
+			safeRetry := service.AnthropicStreamRetryFromGin(c)
+			if safeRetry != nil && safeRetry.Pending() {
+				if stop := safeRetry.Check(); stop != nil {
+					h.finishAnthropicStreamRetry(c, safeRetry, stop)
+					return
+				}
+				selection, err = h.gatewayService.SelectAnthropicStreamRetryAccount(c.Request.Context(), safeRetry, currentAPIKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, parsedReq.MetadataUserID, subject.UserID, fs.SwitchCount < fs.MaxSwitches)
+				if err != nil {
+					h.finishAnthropicStreamRetry(c, safeRetry, err)
+					return
+				}
+				if selection.Account.ID != safeRetry.LastAccountID() {
+					fs.SwitchCount++
+					if hasBoundSession {
+						fs.ForceCacheBilling = true
+					}
+				}
+			} else {
+				selection, err = h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), currentAPIKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, parsedReq.MetadataUserID, subject.UserID)
+			}
 			if err != nil {
 				if len(fs.FailedAccountIDs) == 0 {
 					cls := classifyNoAccountErrorFromGin(c, h.gatewayService, currentAPIKey, reqModel, reqModel, platform)
@@ -933,6 +965,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 			// 提交 usage 记录。成功路径与"流中断但 Forward 已观测到 usage 的部分结果"
 			// 错误路径共用：后者若不入账，上游已计量的请求会完全漏记漏计费（#5148）。
+			usageForceCacheBilling := fs.ForceCacheBilling
 			submitForwardUsage := func(result *service.ForwardResult) {
 				// 捕获请求信息（用于异步记录，避免在 goroutine 中访问 gin.Context）
 				userAgent := c.GetHeader("User-Agent")
@@ -957,7 +990,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 				// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
 				// ForceCacheBilling 提前拍成标量，避免 worker 闭包保活 failover 状态里的响应体。
-				forceCacheBilling := fs.ForceCacheBilling
+				forceCacheBilling := usageForceCacheBilling
 				quotaPlatform := service.QuotaPlatform(c.Request.Context(), currentAPIKey)
 				sessionID := service.ExtractClientSessionID(c)
 				h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
@@ -991,6 +1024,44 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				})
 			}
 
+			if retry := service.AnthropicStreamRetryFromGin(c); retry != nil {
+				if result != nil {
+					pendingSafeUsage = func() { submitForwardUsage(result) }
+				} else if observed := retry.AttemptUsageSnapshot(account.ID); observed != nil {
+					pendingSafeUsage = func() { submitForwardUsage(observed) }
+				}
+				var streamFailure *service.AnthropicStreamFailure
+				var safeFailover *service.UpstreamFailoverError
+				if err != nil && (errors.As(err, &streamFailure) || (retry.Started() && errors.As(err, &safeFailover))) {
+					if safeFailover != nil {
+						if safeFailover.FirstTokenTimeout {
+							fs.FailedAccountIDs[account.ID] = struct{}{}
+						} else {
+							fs.RecordSafeStreamHTTPFailure(retry.ClientContext(), h.gatewayService, account.ID, safeFailover)
+						}
+					}
+					if stop := retry.PrepareRetry(account, err); stop == nil {
+						h.gatewayService.ReleaseAccountSession(context.WithoutCancel(c.Request.Context()), account, sessionKey)
+						delete(sessionSlotAccounts, account.ID)
+						retry.RecordDecision(c.Request.Context(), "retry", "")
+						c.Request = c.Request.WithContext(retry.WaitContext())
+						if !sleepWithContext(c.Request.Context(), sameAccountRetryDelay) {
+							h.finishAnthropicStreamRetry(c, retry, retry.Check())
+							return
+						}
+						continue
+					} else {
+						// 有内容后的故障保持原始分类；记录不重放原因而不覆盖真实流错误。
+						if retry.Committed() {
+							retry.RecordDecision(c.Request.Context(), "stop", "output_committed")
+							h.finishAnthropicStreamRetry(c, retry, err)
+						} else {
+							h.finishAnthropicStreamRetry(c, retry, stop)
+						}
+						return
+					}
+				}
+			}
 			if err != nil {
 				// Beta policy block: return 400 immediately, no failover
 				var betaBlockedErr *service.BetaBlockedError
@@ -1130,6 +1201,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				// 避免上游已产生消耗的请求完全漏记（#5148）。failover 错误恒定 result=nil，
 				// 不会走到这里重复计费。
 				if result != nil {
+					pendingSafeUsage = nil
 					submitForwardUsage(result)
 					// 上游已接受并计量本次会话（流中断），会话槽保持既有语义
 					upstreamServedSession = true
@@ -1172,6 +1244,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					Originator:      c.GetHeader("Originator"),
 					RawResponse:     auditCapture.Bytes(),
 				})
+			}
+			pendingSafeUsage = nil
+			if retry := service.AnthropicStreamRetryFromGin(c); retry != nil && result != nil && !result.ClientDisconnect {
+				retry.MarkRecovered(c.Request.Context())
 			}
 			submitForwardUsage(result)
 			// 转发成功，会话槽保持既有空闲超时语义
@@ -1924,6 +2000,12 @@ func (h *GatewayHandler) calculateSubscriptionRemaining(group *service.Group, su
 
 // handleConcurrencyError handles concurrency-related acquire errors.
 func (h *GatewayHandler) handleConcurrencyError(c *gin.Context, err error, slotType string, streamStarted bool) {
+	if retry := service.AnthropicStreamRetryFromGin(c); retry != nil && !retry.Committed() {
+		if stop := retry.Check(); stop != nil {
+			h.finishAnthropicStreamRetry(c, retry, stop)
+			return
+		}
+	}
 	status, errType, code, message := concurrencyErrorResponse(err, slotType)
 	h.handleStreamingAwareErrorWithCode(c, status, errType, code, message, streamStarted)
 }

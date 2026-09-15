@@ -477,9 +477,9 @@ gateway:
   # Concurrency slot expiration time (minutes)
   # 并发槽位过期时间（分钟）
   concurrency_slot_ttl_minutes: 30
-  # Stream data interval timeout (seconds), 0=disable
-  # 流数据间隔超时（秒），0=禁用
-  stream_data_interval_timeout: 300
+  # 普通流数据间隔超时（秒），0=禁用；默认180，与后端缺省一致。
+  # 本项不限制请求总时长，不应直接按总耗时分位数缩短空闲阈值。
+  stream_data_interval_timeout: 180
   # Stream keepalive interval (seconds), 0=disable
   # 流式 keepalive 间隔（秒），0=禁用
   stream_keepalive_interval: 10

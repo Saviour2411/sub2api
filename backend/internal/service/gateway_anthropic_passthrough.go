@@ -53,7 +53,15 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthrough(
 	})
 }
 
-func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
+func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(ctx context.Context, c *gin.Context, account *Account, input anthropicPassthroughForwardInput) (*ForwardResult, error) {
+	result, err := s.forwardAnthropicAPIKeyPassthroughAttempt(ctx, c, account, input)
+	if retry := AnthropicStreamRetryFromGin(c); retry != nil {
+		retry.RecordAttemptFailure(c, account, err)
+	}
+	return result, err
+}
+
+func (s *GatewayService) forwardAnthropicAPIKeyPassthroughAttempt(
 	ctx context.Context,
 	c *gin.Context,
 	account *Account,
@@ -92,11 +100,19 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 		}
 	}
 
+	var safeRetry *AnthropicStreamRetryState
+	if input.RequestStream {
+		safeRetry = s.anthropicStreamRetry(c, ctx)
+	}
 	var resp *http.Response
 	var firstTokenAttempt *firstTokenAttempt
 	retryStart := time.Now()
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
 		firstTokenAttempt = newFirstTokenAttempt(ctx, c, s.rateLimitService, account, input.RequestModel, input.RequestStream)
+		if safeRetry != nil {
+			StopPreResponseKeepaliveBeforeResponseFromContext(ctx)
+			firstTokenAttempt.useExternalStreamGuard()
+		}
 		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, input.RequestStream)
 		upstreamReq, wireBody, err := s.buildUpstreamRequestAnthropicAPIKeyPassthrough(upstreamCtx, c, account, input.Body, token)
 		releaseUpstreamCtx()
@@ -114,9 +130,29 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 			input.Body = input.Parsed.Body.Bytes()
 		}
 
+		releaseSafeRequest := func() {}
+		if safeRetry != nil {
+			if err := safeRetry.beforeDispatch(account); err != nil {
+				firstTokenAttempt.stopBeforeStreaming()
+				return nil, err
+			}
+			upstreamReq, releaseSafeRequest = safeRetry.bindRequest(upstreamReq)
+		}
 		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
 		if err != nil {
+			releaseSafeRequest()
+		} else if resp != nil && resp.Body != nil {
+			resp.Body = &firstTokenCleanupReadCloser{upstream: resp.Body, cleanup: releaseSafeRequest}
+		} else {
+			releaseSafeRequest()
+		}
+		if err != nil {
 			attemptErr := firstTokenAttempt.finishRequestError(err)
+			if safeRetry != nil {
+				if stop := safeRetry.Check(); stop != nil {
+					return nil, stop
+				}
+			}
 			if isFirstTokenTimeoutFailover(attemptErr) {
 				return nil, attemptErr
 			}
@@ -129,13 +165,16 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 			})
 		}
 
+		if safeRetry != nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			safeRetry.startResponse()
+		}
 		if resp.StatusCode >= 400 {
 			firstTokenAttempt.stopBeforeStreaming(resp)
 		}
 
 		// 透传分支禁止 400 请求体降级重试（该重试会改写请求体）
 		if resp.StatusCode >= 400 && resp.StatusCode != 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) {
-			if attempt < maxRetryAttempts {
+			if attempt < maxRetryAttempts && (safeRetry == nil || !safeRetry.Started()) {
 				elapsed := time.Since(retryStart)
 				if elapsed >= maxRetryElapsed {
 					break
@@ -267,9 +306,28 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	var firstTokenMs *int
 	var clientDisconnect bool
 	if input.RequestStream {
-		firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolSSE)
-		streamResult, streamErr := s.handleStreamingResponseAnthropicAPIKeyPassthrough(ctx, resp, c, account, input.StartTime, input.RequestModel)
+		var streamResult *streamingResult
+		var streamErr error
+		if safeRetry != nil {
+			streamResult, streamErr = s.handleGuardedAnthropicStream(ctx, resp, c, account, input.StartTime, input.RequestModel, safeRetry, firstTokenAttempt)
+		} else {
+			firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolSSE)
+			streamResult, streamErr = s.handleStreamingResponseAnthropicAPIKeyPassthrough(ctx, resp, c, account, input.StartTime, input.RequestModel)
+		}
+		if safeRetry != nil {
+			safeRetry.observeAttemptUsage(partialStreamUsageResult(c, resp, streamResult, input.OriginalModel, input.RequestModel, input.StartTime, streamErr))
+		}
 		err := firstTokenAttempt.finish(streamErr)
+		if safeRetry != nil && !safeRetry.Committed() {
+			if stop := safeRetry.Check(); stop != nil {
+				err = stop
+			}
+			// 不可重放故障必须优先于同时触发的首 Token 超时。
+			var failure *AnthropicStreamFailure
+			if errors.As(streamErr, &failure) && !failure.Replayable {
+				err = streamErr
+			}
+		}
 		if err != nil {
 			// 流中断时保留已观测到的 usage 与错误一起返回，避免上游已计量的请求
 			// 完全漏记漏计费（issue #5148）。
@@ -438,6 +496,8 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 	var firstTokenMs *int
 	clientDisconnected := false
 	sawTerminalEvent := false
+	var terminalFrame strings.Builder
+	terminalFrameOverflow := false
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -482,14 +542,14 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 	if s.cfg != nil && s.cfg.Gateway.StreamDataIntervalTimeout > 0 {
 		streamInterval = time.Duration(s.cfg.Gateway.StreamDataIntervalTimeout) * time.Second
 	}
-	var intervalTicker *time.Ticker
+	var intervalTimer *time.Timer
 	if streamInterval > 0 {
-		intervalTicker = time.NewTicker(streamInterval)
-		defer intervalTicker.Stop()
+		intervalTimer = time.NewTimer(streamInterval)
+		defer intervalTimer.Stop()
 	}
 	var intervalCh <-chan time.Time
-	if intervalTicker != nil {
-		intervalCh = intervalTicker.C
+	if intervalTimer != nil {
+		intervalCh = intervalTimer.C
 	}
 
 	keepaliveInterval := time.Duration(0)
@@ -557,22 +617,28 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 			}
 
 			line := ev.line
+			if terminalFrame.Len()+len(line)+1 <= maxLineSize && !terminalFrameOverflow {
+				_, _ = terminalFrame.WriteString(line)
+				_ = terminalFrame.WriteByte('\n')
+			} else {
+				terminalFrameOverflow = true
+			}
+			if line == "" {
+				if !terminalFrameOverflow {
+					kind, _, _, frameErr := inspectAnthropicFrame([]byte(terminalFrame.String()))
+					sawTerminalEvent = frameErr == nil && kind == anthropicFrameTerminal
+				}
+				terminalFrame.Reset()
+				terminalFrameOverflow = false
+			}
 			if data, ok := extractAnthropicSSEDataLine(line); ok {
 				trimmed := strings.TrimSpace(data)
 				observer.ObserveAnthropic([]byte(trimmed))
-				if anthropicStreamEventIsTerminal("", trimmed) {
-					sawTerminalEvent = true
-				}
 				if firstTokenMs == nil && trimmed != "" && trimmed != "[DONE]" {
 					ms := int(time.Since(startTime).Milliseconds())
 					firstTokenMs = &ms
 				}
 				parseSSEUsagePassthrough(data, usage)
-			} else {
-				trimmed := strings.TrimSpace(line)
-				if strings.HasPrefix(trimmed, "event:") && anthropicStreamEventIsTerminal(strings.TrimSpace(strings.TrimPrefix(trimmed, "event:")), "") {
-					sawTerminalEvent = true
-				}
 			}
 
 			if !clientDisconnected {
@@ -599,7 +665,10 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 
 		case <-intervalCh:
 			lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
-			if time.Since(lastRead) < streamInterval {
+			if remaining := streamInterval - time.Since(lastRead); remaining > 0 {
+				// 本次计时已经触发并被读取，只等待最后一行数据的剩余空闲期限，
+				// 避免按完整周期复查，把180秒阈值拖到接近360秒才超时。
+				intervalTimer.Reset(remaining)
 				continue
 			}
 			if clientDisconnected {

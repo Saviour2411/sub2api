@@ -124,6 +124,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardStreamPreservesBodyAnd
 		"",
 		"data: [DONE]",
 		"",
+		"",
 	}, "\n")
 	upstream := &anthropicHTTPUpstreamRecorder{
 		resp: &http.Response{
@@ -1115,6 +1116,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingStillCollectsUsageAf
 			"",
 			"data: [DONE]",
 			"",
+			"",
 		}, "\n"))),
 	}
 
@@ -1539,6 +1541,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingSendsKeepaliveDuring
 			`data: {"type":"message_delta","usage":{"output_tokens":2}}`,
 			"",
 			"data: [DONE]",
+			"",
 			"",
 		}, "\n")))
 		_ = pw.Close()
