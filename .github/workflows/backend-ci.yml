@@ -23,6 +23,8 @@ jobs:
           /bin/sh deploy/test-caddyfile-cache.sh
           /bin/sh -n deploy/remote-deploy.sh
           /bin/sh deploy/tests/remote-deploy-test.sh
+          PYTHONDONTWRITEBYTECODE=1 python3 deploy/tests/blue-green-test.py
+          PYTHONDONTWRITEBYTECODE=1 python3 deploy/tests/blue-green-evidence-test.py
 
   test:
     runs-on: ubuntu-latest
@@ -110,3 +112,47 @@ jobs:
           version: v2.13
           args: --timeout=30m
           working-directory: backend
+
+  lifecycle-race:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Lifecycle, usage and owner race tests
+        working-directory: backend
+        run: |
+          mkdir -p ../.cache/tmp
+          export TMPDIR="$(pwd)/../.cache/tmp"
+          go test -race -tags=unit ./internal/pkg/lifecycle ./internal/service ./internal/repository ./internal/handler -run 'TestPeer|TestAffinity|TestPublicPeer|TestLongSSE|TestHijacked|TestDetachedProducer|TestControl|TestDrain|TestNewInstance|TestLegacyWaits|TestRenewal|TestUsageRecordWorkerPool_StopRace|TestStoppedKeyed|TestOpenAIResponsesWebSocket_Ingress'
+
+  bluegreen-protocol:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Build real application for isolated deployment test
+        run: |
+          mkdir -p .cache/tmp .analysis_tmp
+          export TMPDIR="$GITHUB_WORKSPACE/.cache/tmp"
+          go -C backend build -o ../.cache/bluegreen-server ./cmd/server
+      - name: Twenty mixed-protocol switches with local mock upstream
+        run: |
+          export TMPDIR="$GITHUB_WORKSPACE/.cache/tmp"
+          python3 deploy/tests/blue-green-integration.py --cycles 20
+      - name: Upload isolated protocol evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: bluegreen-protocol-evidence
+          include-hidden-files: true
+          path: |
+            .analysis_tmp/bluegreen-protocol-result.json
+            .cache/tmp/bg-*/*.log
+          retention-days: 7
