@@ -143,6 +143,8 @@ func deleteJSONPathBytes(body []byte, path string) ([]byte, bool) {
 	return next, true
 }
 
+// normalizeClaudeOAuthSystemBody 按本地策略规范化 system，保留可选缓存清洗与文本透传。
+// 缓存块上限由各出口的 enforceCacheControlLimit 独立兜底。
 func normalizeClaudeOAuthSystemBody(body []byte, opts claudeOAuthNormalizeOptions) ([]byte, bool) {
 	sys := gjson.GetBytes(body, "system")
 	if !sys.Exists() {

@@ -682,6 +682,11 @@ func redeemCodeFromServiceBase(rc *service.RedeemCode) RedeemCode {
 	if (rc.Type == "admin_balance" || rc.Type == "admin_concurrency") && rc.Notes != "" {
 		out.Notes = &rc.Notes
 	}
+	if rc.Type == service.TemporaryCreditType {
+		note := service.TemporaryCreditNote(rc.Value)
+		out.Notes = &note
+		out.Code = ""
+	}
 
 	return out
 }

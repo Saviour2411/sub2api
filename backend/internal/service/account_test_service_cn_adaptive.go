@@ -90,6 +90,7 @@ func (s *AccountTestService) testCNProviderAdaptiveAnthropicConnection(c *gin.Co
 	// base_url 强制 Bearer，其余保持 extra/default 行为。
 	setAnthropicAPIKeyAuthHeader(req.Header, account, authToken, account.GetCNProtocolBaseURL(APIProtocolAnthropic))
 	account.ApplyHeaderOverrides(req.Header)
+	applyOpenCodeSessionHeader(c, account, apiURL, req.Header, payloadBytes)
 
 	resp, err := s.doCNProviderAdaptiveRequest(req, account)
 	if err != nil {
@@ -185,6 +186,7 @@ func (s *AccountTestService) testCNProviderAdaptiveResponsesConnection(c *gin.Co
 	req.Header.Set("Authorization", "Bearer "+authToken)
 	applyOpenAICodexProbeHeaders(req.Header)
 	account.ApplyHeaderOverrides(req.Header)
+	applyOpenCodeSessionHeader(c, account, apiURL, req.Header, payloadBytes)
 
 	resp, err := s.doCNProviderAdaptiveRequest(req, account)
 	if err != nil {
@@ -222,7 +224,7 @@ func (s *AccountTestService) doCNProviderAdaptiveRequest(req *http.Request, acco
 // instead of the provider's own Anthropic-compatible endpoint. The probe uses
 // GetAnthropicProtocolBaseURL (same resolution as real /v1/messages forwarding,
 // including per-platform defaults) and the shared API-key auth header.
-func (s *AccountTestService) testCNProviderAnthropicConnection(c *gin.Context, account *Account, modelID string) error {
+func (s *AccountTestService) testCNProviderAnthropicConnection(c *gin.Context, account *Account, modelID string, prompts ...string) error {
 	ctx := c.Request.Context()
 
 	account, testModelID, err := prepareAccountTestModel(account, modelID)
@@ -251,7 +253,7 @@ func (s *AccountTestService) testCNProviderAnthropicConnection(c *gin.Context, a
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	payload, err := createTestPayload(testModelID)
+	payload, err := createTestPayload(testModelID, firstNonEmptyPrompt(prompts, ""))
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create Anthropic test payload")
 	}
@@ -273,6 +275,7 @@ func (s *AccountTestService) testCNProviderAnthropicConnection(c *gin.Context, a
 	// extra/default 行为。
 	setAnthropicAPIKeyAuthHeader(req.Header, account, authToken, account.GetAnthropicProtocolBaseURL())
 	account.ApplyHeaderOverrides(req.Header)
+	applyOpenCodeSessionHeader(c, account, apiURL, req.Header, payloadBytes)
 
 	resp, err := s.doCNProviderAdaptiveRequest(req, account)
 	if err != nil {

@@ -19,6 +19,12 @@ import { resolveRouteDocumentTitle } from './title'
  * Route definitions with lazy loading
  */
 const routes: RouteRecordRaw[] = [
+  {
+    path: '/balance-query',
+    name: 'BalanceQuery',
+    component: () => import('@/views/public/BalanceQueryView.vue'),
+    meta: { requiresAuth: false, titleKey: 'balanceQuery.title' }
+  },
   // ==================== Setup Routes ====================
   {
     path: '/setup',
@@ -335,7 +341,8 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: false,
       title: 'My Subscriptions',
       titleKey: 'userSubscriptions.title',
-      descriptionKey: 'userSubscriptions.description'
+      descriptionKey: 'userSubscriptions.description',
+      requiresSubscription: true
     }
   },
   {
@@ -813,6 +820,7 @@ const BACKEND_MODE_CALLBACK_PATHS = [
 const BACKEND_MODE_PENDING_AUTH_PATHS = ['/register', '/email-verify']
 
 function isBackendModePublicRouteAllowed(path: string, hasPendingAuthSession: boolean): boolean {
+  if (path === '/balance-query') return true
   if (BACKEND_MODE_ALLOWED_PATHS.some((allowedPath) => path === allowedPath || path.startsWith(allowedPath))) {
     return true
   }
@@ -831,6 +839,13 @@ function isBackendModePublicRouteAllowed(path: string, hasPendingAuthSession: bo
 router.beforeEach(async (to, _from, next) => {
   // 开始导航加载状态
   navigationLoading.startNavigation()
+
+  // 免登录余额页不恢复本机登录凭据，也不受后台模式重定向影响。
+  if (to.name === 'BalanceQuery') {
+    document.title = resolveRouteDocumentTitle(to, 'Sub2API', [])
+    next()
+    return
+  }
 
   const authStore = useAuthStore()
 
@@ -957,7 +972,7 @@ router.beforeEach(async (to, _from, next) => {
   // 公共设置可能尚未加载（App.vue 的 onMounted 异步拉取晚于首次导航，且纯静态部署
   // 无 __APP_CONFIG__ 注入）。此时 cachedPublicSettings 为空会把 payment/risk_control
   // 误判为“未启用”而错误拦截，故这里先确保设置加载完成。
-  if ((to.meta.requiresPayment || to.meta.requiresRiskControl || to.meta.requiresCanvas) && !appStore.publicSettingsLoaded) {
+  if ((to.meta.requiresPayment || to.meta.requiresRiskControl || to.meta.requiresCanvas || to.meta.requiresSubscription) && !appStore.publicSettingsLoaded) {
     try {
       await appStore.fetchPublicSettings()
     } catch (error) {
@@ -989,6 +1004,16 @@ router.beforeEach(async (to, _from, next) => {
     to.meta.requiresCanvas &&
     appStore.publicSettingsLoaded &&
     appStore.cachedPublicSettings?.canvas_enabled === false
+  ) {
+    next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
+    return
+  }
+
+  // 订阅功能是 opt-out 开关：只有显式 false 才拦截「我的订阅」页直达。
+  if (
+    to.meta.requiresSubscription &&
+    appStore.publicSettingsLoaded &&
+    appStore.cachedPublicSettings?.subscription_enabled === false
   ) {
     next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
     return

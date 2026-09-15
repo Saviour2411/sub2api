@@ -22,12 +22,14 @@ func ClearOpenAIRequestBodyRelease(c *gin.Context) {
 		return
 	}
 	c.Set(openAIRequestBodyReleaseKey, nil)
+	c.Set(openCodeInboundBodyContextKey, nil)
 }
 
 func releaseOpenAIRequestBody(c *gin.Context) {
 	if c == nil {
 		return
 	}
+	c.Set(openCodeInboundBodyContextKey, nil)
 	value, ok := c.Get(openAIRequestBodyReleaseKey)
 	if !ok {
 		return

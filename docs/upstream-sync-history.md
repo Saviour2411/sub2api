@@ -3047,3 +3047,740 @@
 
 - 推送本次修复后必须等待最新 PR head 对应 CI 和 Security Scan 成功，再用 merge commit 保留上游祖先关系合入 main；禁止 squash/rebase 或在失败状态绕过检查。最终 PR/合并 SHA 在交付总结记录，避免自引用。
 - 本次不推送任何版本标签、不触发 Release、不部署、不连接远程服务器。剩余 6 项中危、真实业务服务和完整 race 等未验证范围仍需后续关注。
+
+## 2026-09-15 完整本地同步 bdb42e22f
+
+### 固定参数与状态
+
+- 记录时间：2026-09-15T03:27:42.2860993+08:00；状态：固定范围代码已完整集成，可用验证完成，相对同步前无未处理新增失败。最后记录提交后按下述门禁仅快进本地 main；最终目标 SHA 在交付总结报告。
+- 本地目标：`main`；LOCAL_PRE_SYNC_SHA: `098f3d9e5a14278ada575daae0fd871b50898817`。同步前工作树干净，无未完成 Git 操作；跟踪 `origin/main` 为 `bc6946257c0765d14ae7a2883e3552de3141ba2f`，ahead 1 / behind 0 / 无分叉。
+- 上游：`https://github.com/Wei-Shaw/sub2api`，远端 HEAD 确认默认分支 `main`；获取后固定目标，没有扩大到后续更新。
+- UPSTREAM_OLD_SHA: `98d86915becae9fe9491a91ffc6defd5235c8d2b`。
+- UPSTREAM_NEW_SHA: `bdb42e22f81fcb633ff0a060961211dd2bcb515b`。
+- ACTUAL_MERGE_BASE: `98d86915becae9fe9491a91ffc6defd5235c8d2b`，等于旧基线；旧基线属于双方祖先，实际 merge 范围与记录范围相同。
+- LAST_FULLY_INTEGRATED_UPSTREAM_SHA: `bdb42e22f81fcb633ff0a060961211dd2bcb515b`。
+- 策略：在备份后执行 `git merge --no-ff --no-commit bdb42e22f81fcb633ff0a060961211dd2bcb515b`，逐块解决已批准的 24 个冲突并提交，未使用整文件 ours/theirs。
+- 备份分支：`backup/pre-upstream-sync-20260915-014934-098f3d9e5`。同步分支：`sync/upstream-20260915-bdb42e22f`。
+- M1（本次代码合并）：`6454c4f68754a0e79ae6cce549ac616999d0ab57`，两个父提交为 `098f3d9e5a14278ada575daae0fd871b50898817` 和 `bdb42e22f81fcb633ff0a060961211dd2bcb515b`。下表全部 SHA 作为 M1 的祖先纳入，无需 cherry-pick/squash 映射。
+- 固定范围 141 个提交：84 个普通、57 个 merge。Applied 共 141，其中 Applied + Overridden 16；纯 Applied 125；Already Applied / Skipped / Deferred / Conflict 均 0。Overridden 是 Applied 子集，不重复计数；基线图与 patch-id 未发现完整等价重复提交。
+- 上游范围 357 文件（51 新增、306 修改、0 删除），144 与本地覆盖重叠；本地 M1 相对同步前 365 文件，`365 files changed, 15551 insertions(+), 1198 deletions(-)`。最后同步历史提交仅追加本文件，最终统计另含此文件。
+- 版本保持 `0.1.232`。未 push、未创建 PR、未触发发布或部署，未连接远程服务器、操作生产数据库或修改实例配置。
+
+### 冲突与本地边界
+
+- 用户已批准完整 merge 和集中冲突处理方案。24 处文件冲突与预演一致，无新业务取舍；处理范围如下。
+- `backend/internal/handler/openai_gateway_handler.go`
+- `backend/internal/handler/setting_handler.go`
+- `backend/internal/server/api_contract_test.go`
+- `backend/internal/service/account_test_service.go`
+- `backend/internal/service/account_test_service_openai_image_test.go`
+- `backend/internal/service/billing_service.go`
+- `backend/internal/service/domain_constants.go`
+- `backend/internal/service/gateway_claude_oauth_body.go`
+- `backend/internal/service/gateway_count_tokens.go`
+- `backend/internal/service/gateway_forward.go`
+- `backend/internal/service/gemini_messages_compat_service.go`
+- `backend/internal/service/openai_gateway_forward.go`
+- `backend/internal/service/openai_gateway_usage.go`
+- `backend/internal/service/openai_images.go`
+- `backend/internal/service/openai_images_responses.go`
+- `backend/internal/service/setting_public.go`
+- `frontend/src/components/account/CreateAccountModal.vue`
+- `frontend/src/components/layout/__tests__/AppSidebar.spec.ts`
+- `frontend/src/components/user/dashboard/UserDashboardStats.vue`
+- `frontend/src/router/__tests__/feature-access.spec.ts`
+- `frontend/src/router/index.ts`
+- `frontend/src/stores/app.ts`
+- `frontend/src/types/index.ts`
+- `frontend/src/views/user/__tests__/RedeemView.spec.ts`
+
+- WS 接入沿用本地 prepareFirstWSTurnState、逐轮请求模型/映射/定价/Cyber/hash/停调度；组合上游原始请求作用域、常驻读循环、先关闭帧再取消和按账号池唤醒。新连接系数默认 5，未改为请求入口限流。
+- Claude 保留本地可选缓存清洗与 system 文本/模型保留；Gateway、mimicry 与 count_tokens 参数统一，四块缓存上限独立生效。Gemini 带内错误登记与首 Token attempt/finish 组合。
+- 原生 Codex Images 与既有 Responses 图片路径共存；保留交付/断连/部分 usage/端点元数据、RequestSent 禁重放和普通 URL 内联/下载公网防护。账号测试先识别 SSE 错误，不删除旧模型或错误断言。
+- OpenCode 三协议派发和上游错误处理完整接入；本地测试模型稳定选择、显式模型优先、一次映射、自定义提示词、预览请求接口不变。会话仅驻留清洗后的短 ID，2 MiB 请求体不被会话快照留住。
+- 图片缓存计价、DeepSeek 新价与历史 PricingAt 接入；保留严格请求模型计费、缺价拒绝、分组/渠道价格优先、Free Fast 双成本、Fable 无默认三倍、Grok 严格超过 200K 和按用户串行扣费。
+- 新配额卡与本地 CountUp/PulseDot/动效组合；订阅默认启用且与 Canvas、市场、签到、公开余额路由共存。兑换刷新失败成功态与签到记录测试同时保留。
+- 两份生产 Compose 仅同步 compact 默认 gpt-5.5，并保持字节一致。保留 bind mount/回环地址/HTTP upstream、生产资源变量和日志入口、5 秒 usage task、3600 秒持久化响应头超时约束以及 300 秒流间隔示例；不读取真实 .env。
+- 两份新增 238 迁移按完整文件名执行；旧 SQL（含本地 237）未改号、未改写。隔离旧库升级确认全 NULL quota 行清理而零限额/有效限额保留，MiniMax/OpenCode 四个约束与本地余额、授信、链接数据正确；两份迁移再次执行仍通过。
+- 57 个本地能力编号全部保留，对应 21 项清单已在 M1 同时更新 `docs/custom-development-history.md`；纯上游功能未另建 CUST 编号。未覆盖真实业务不声称全部正常。
+
+### 逐提交处置
+
+| 上游完整 SHA | 状态 | 原因与最终内容 | 本地映射 |
+| --- | --- | --- | --- |
+| `1c0932e17302b2ba9b67f6bcc48b913abe552674` | Applied | 按可见目录查询单个模型，复用固定账号与分组准入范围。 按固定目标的最终内容合入。 | M1 |
+| `799e9938fb83dbc3f301757640530369b766df1e` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `a4edda36d53a07a363f467c1d1922eba0dc58ed9` | Applied + Overridden | 调整 Claude system 缓存处理。 本地适配：保留本地可选 system 缓存清洗、原文与模型保留选项；四块缓存上限独立执行。 | M1 |
+| `4adcef4ff4185e802ec4c1d10a016de807c5dd80` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `21323c31f81d361b3a419181f82c896bd6b81b0b` | Applied | 渠道监控拼接上游 base URL 时保留路径。 按固定目标的最终内容合入。 | M1 |
+| `e71d291b39de278b783ac6b31a7acae1209c0c18` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `de76baaa0d24dea5ffff78d57fa10e83ba9f7a0b` | Applied | 调度缓存保存 Anthropic 阈值元数据。 按固定目标的最终内容合入。 | M1 |
+| `685e97a3a626fc1c0a253def0c7e466b542e13d2` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `a0babc93dd17becdb66507e92ede18f5bde38d9c` | Applied | 心跳启动解析完整 envelope。 按固定目标的最终内容合入。 | M1 |
+| `43f9383d40da666588efae1aceac90b41d89483c` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `f180fbb884b15e2b0483672b7d5a7ede0c31feb5` | Applied | 渠道监控聚合桶使用 UTC 锚点。 按固定目标的最终内容合入。 | M1 |
+| `87e01596b705ac25cb3ca2072c96d40697635381` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `8ed48e27a6bc2ec6bfdde30669123c23ae9f7338` | Applied | 安装检查不再硬编码 PostgreSQL 连接参数。 按固定目标的最终内容合入。 | M1 |
+| `264cbbec269b17b2e25bd134d4bad3d4847edcf0` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `4e5632c3e32f9a8a5150c44e8a7f46efe7fc2688` | Applied | 解析 Codex 身份前验证 User-Agent。 按固定目标的最终内容合入。 | M1 |
+| `2493b0dc3112fc6d03e5429d1615542ad60513a3` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `567ea21dc843a28d5ab603bdec2610e1ba549516` | Applied | 管理员支持删除选中的用户。 按固定目标的最终内容合入。 | M1 |
+| `324a47e2b7fa3ea5e4af79e664a987003ae810b2` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `c76db386c066e35ec147645ec05dc4aa9dabaef2` | Applied | 订阅分配搜索排除已删除用户。 按固定目标的最终内容合入。 | M1 |
+| `0be30886a5a60afe25a0c5e4a17d33326eeb6024` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `1d4e0436e49749175435fa431b935e738fa6288a` | Applied | 自定义页面支持隐藏打开按钮。 按固定目标的最终内容合入。 | M1 |
+| `f4dd88b001a719396bfc3667ee99c9e4716494e3` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `266ac9c11b39b181cc4225ab888a72a4ec8e1c60` | Applied | 错误详情优先展示时间与响应。 按固定目标的最终内容合入。 | M1 |
+| `0aac71c6eebe2b89ec6b4e132a72a1ba60031df3` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `fd880839f624366e7d648d7a8de62f6ef69e65a8` | Applied | 费用详情保留八位小数。 按固定目标的最终内容合入。 | M1 |
+| `8efe2fd8cf111fa24293be6ffd1076d22192e8f9` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `26798773cb26ad95bd537877efa2cd94aa5cb20c` | Applied | Apple container 安装支持网页更新。 按固定目标的最终内容合入。 | M1 |
+| `501cc19d0ee71d4fd63020f2230ee71403b44a5f` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `b9d0728687ba815b44f9297c87285cc163d5a335` | Applied | 前端订阅兑换时长上限对齐后端。 按固定目标的最终内容合入。 | M1 |
+| `67d3a896bdd632eeee822fc7496cac74affc12ea` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `58e6e6b325deb09878638c4261539782c454bd82` | Applied | 异步风控处理计数的文案明确统计口径。 按固定目标的最终内容合入。 | M1 |
+| `0116c5a1e126c6578ba8a3d47018c1cafb4e7afa` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `5af7e7438a3993f9db7ac359ffcf973cbb3cfe46` | Applied | 安装测试检查延迟关闭数据库的错误。 按固定目标的最终内容合入。 | M1 |
+| `bae37a00fb676c2586a85985e52c597ac8b9e063` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `a5b07b296011bc376110a4b914ceaf283424203b` | Applied | WS 池常驻读取循环应答上游 ping。 按固定目标的最终内容合入。 | M1 |
+| `bed1e3c3624672ccfee9981e431284687de24271` | Applied | 重试强制使用新连接并放宽轮次预检超时。 按固定目标的最终内容合入。 | M1 |
+| `8f9a9a255b0b392fcb5659aa4906eef4d58067b5` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `06b61ba96f1dffdad0e2387669f1df6cf901f7be` | Applied | 按 Codex 线程标识派生 WS 执行作用域。 按固定目标的最终内容合入。 | M1 |
+| `9e7c2d713c8510fe4a2147a7db424747092a8aed` | Applied | 会话抢占改用执行作用域键。 按固定目标的最终内容合入。 | M1 |
+| `cd1ee1d1ad735888ed63ae72b21ecbe9105ec8a8` | Applied | WS 接入会话状态改用执行作用域键。 按固定目标的最终内容合入。 | M1 |
+| `e4c369bd56305c9984c01cf9eb2bfb6f1cb8da1a` | Applied | HTTP 经 WS 池转发时按执行作用域查询状态。 按固定目标的最终内容合入。 | M1 |
+| `d0ca057ca41add88bc9e5a496493da969816125f` | Applied + Overridden | 抢占先发送带原因的关闭帧，再取消旧上下文。 本地适配：入口组合本地逐轮准入、模型、定价、Cyber、hash 与 WithClient 注册；同线程测试保持旧请求在飞直到收到关闭帧，全部断言保留。 | M1 |
+| `613722eee434c0a62e9397487b3713c16362e18d` | Applied | HTTP 执行作用域从原始请求计算。 按固定目标的最终内容合入。 | M1 |
+| `4543ddc5c172b3d5f72d35de1c357a886b55526c` | Applied | 按 request_kind 隔离 WS 执行作用域。 按固定目标的最终内容合入。 | M1 |
+| `3fb03cdac1d4878a271a3efc111ec8f0a489f1dd` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `b97a798ebcb2571be2f9e08917f4cf10fe322a27` | Applied | 释放放弃的 Grok 媒体槽并保留视频所有权。 按固定目标的最终内容合入。 | M1 |
+| `14029e50aa04e5275de60726037eb9b29ab874b7` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `7e62731863c8f21ca32292e3923860e7f45221e9` | Applied | 减少大型 Responses 图片体的分配，保留本地安全释放时点。 按固定目标的最终内容合入。 | M1 |
+| `88011a6a2e7bf221df7b1950c3c0e16a22028002` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `ab9bd9e8779ca2015d398d3d26513c0c6eb4384f` | Applied + Overridden | 接入 DeepSeek Flash 新价及按 PricingAt 的 Pro 转 Flash 切换。 本地适配：更新本地 DeepSeek 旧价测试，不覆盖分组/渠道自定义价、请求模型准入和历史 PricingAt。 | M1 |
+| `fd300ab6f37ec901668e593eb6b6a1d8067a7d5c` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `e9f5add97ca9e576ebe2d38df488fd23c9044c9f` | Applied | TTFT 请求详情展示首 Token 延迟。 按固定目标的最终内容合入。 | M1 |
+| `b112805ffa8594ab27821b9dcafb057d2c4bf40e` | Applied | 查询匹配测试格式对齐 gofmt。 按固定目标的最终内容合入。 | M1 |
+| `7145484fde802a656e652e6f8e0e14f567437e95` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `27bcec76454f81cbb69aa92b6e1c30c424984888` | Applied | Antigravity 支持 Gemini 3.8 Flash。 按固定目标的最终内容合入。 | M1 |
+| `8ed57b000ce68c407473d4d0fdc18fe9ff63c70b` | Applied | Antigravity 支持 Gemini 3.7 Flash。 按固定目标的最终内容合入。 | M1 |
+| `29a36a10be0eee722c55f753150caff759fe8c66` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `6254aba5e931afbae943baaab5526d128d9d8aaa` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `95a04c8dff6a30227001b48f8dca6bd2ba4a6f99` | Applied | 补充 additional_tools 经 Chat 桥转发的回归测试。 按固定目标的最终内容合入。 | M1 |
+| `df8eceba0c150436835f1b02b74b397df81205ac` | Applied | Chat 桥保留 agent_message 任务正文。 按固定目标的最终内容合入。 | M1 |
+| `310f8b7fa27c44b12724a3a0f7d9858456379f6d` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `8f2cba0c20bbc2c58c21417e0cd7a60dafe21509` | Applied | 显示新版 ChatGPT 套餐名称。 按固定目标的最终内容合入。 | M1 |
+| `623c32e3916aeb138224cab870b2fd4adcb4d82b` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `6feefb7aec553d250c2299b455538c00eb60f4ea` | Applied | 账号模型清单保留 Codex manifest 显示名。 按固定目标的最终内容合入。 | M1 |
+| `642d20b8acc2d2dae977bed73a92cae9e1dff9cc` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `ab3b398b5f9a2800303dbdd8928e2da3f5174981` | Applied | 非法峰值倍率配置返回参数错误。 按固定目标的最终内容合入。 | M1 |
+| `d3bd614ba7d89cb244a7e54b85c166f113ac65a6` | Applied | 峰值倍率校验测试补齐有效基础倍率。 按固定目标的最终内容合入。 | M1 |
+| `75b7dd1e0b019a6782526afea4a9114e1b1ad20d` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `5032d06697930605aaaa5aa8e720c09aeeba112e` | Applied | 模型目录标记 DeepSeek vision 图片输入能力。 按固定目标的最终内容合入。 | M1 |
+| `40cf3f50a6cb074361b3d6961b105a240c350b53` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `8c56eabcdc105e56546ef76c1343f04371e577e9` | Applied | 续费套餐列表允许滚动。 按固定目标的最终内容合入。 | M1 |
+| `9c30951e4aca86c4590a361a06d599b29c06caad` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `4a4b50d807e594a069a69cdeec4385b22731e79a` | Applied + Overridden | 平台 quota 仅存已配置限额，仪表盘按用量与限额合并展示。 本地适配：组合本地 CountUp、PulseDot 与视觉组件；零限额保留、全 NULL 清理并以完整迁移名共存。 | M1 |
+| `2dff7af0f915bbae0cb7871767574a82022e44f3` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `9d475f9edb85edbfa563ddc0802c4e160793ae30` | Applied + Overridden | 新增站点类型与订阅开关，统一用户端入口和文案。 本地适配：订阅缺省启用，与 Canvas、签到、模型市场及公开余额路由的本地规则共存。 | M1 |
+| `dfa83fbe93b89c1dca239ee5581e4d6631175de0` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `242907854d831d2c8ccff50ff0ab897e42fba76e` | Applied + Overridden | 新增 OpenCode 平台及 Zen、GO 账号模式。 本地适配：复用本地确定性测试模型与预览请求接口；无映射使用 glm-5.3，既有平台默认值不变。 | M1 |
+| `7c008bd8c1fa53b0302672919d6b46726b3eaa85` | Applied + Overridden | OpenCode 账号测试应用模型映射。 本地适配：先选择/映射再固定账号测试副本，保留自定义提示词并防止重复映射。 | M1 |
+| `981279c996ada152427fd1a00f44530a8d22718a` | Applied + Overridden | OpenCode 三类协议均写入映射后的上游模型。 本地适配：三协议模型重写与本地单次映射、确定性预选共同执行。 | M1 |
+| `efcc2252e59b4f7134f851652b030d3465802f5a` | Applied + Overridden | 完善 OpenCode 派发、计费、会话与 402 错误处理。 本地适配：只快照经过清洗的会话 ID，不驻留原始大请求；在本地释放点清理，保留严格请求模型定价。 | M1 |
+| `22dffa1bb95b945a5296711bb4367034bdb20771` | Applied | OpenCode 布尔表达式符合 staticcheck。 按固定目标的最终内容合入。 | M1 |
+| `cdb5cfaf6c8cb08612ef552a4458d8d0b5850184` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `c0d51193755c0141fefbbcf4f12e219010d95edd` | Applied + Overridden | OAuth 图片接入原生 Codex Images 转发。 本地适配：保留图片交付标志、客户端断连、部分用量及端点元数据；普通路径 URL 内联与下载防护不变。 | M1 |
+| `eacff0a62988d9bbd63f2e844ae7ebd8a96e184c` | Applied + Overridden | 接入图片缓存定价及相关上游配置。 本地适配：接入图片缓存价，不引入与本地 Grok 严格大于 200K 边界冲突的 inclusive 阈值。 | M1 |
+| `fa565eafb168e78fed4eab9c231c421c57e2d7d7` | Applied | 价格结构新增图片缓存输入字段。 按固定目标的最终内容合入。 | M1 |
+| `e5e04de137a71877c494c499d864aa8c8590faf9` | Applied | 配置与模型测试对齐最终上游能力；本地默认模型不变。 按固定目标的最终内容合入。 | M1 |
+| `5ee436d8a2ec561b5e00e40ef4dbe87a3b38db8c` | Applied | 补齐图片缓存兜底单价。 按固定目标的最终内容合入。 | M1 |
+| `04c45e9dc2bd2959e9d1a3c1b5e072dff9dc6e2a` | Applied + Overridden | 处理原生图片路径与旧模型测试的兼容。 本地适配：不采用删除本地图片模型断言的处理，组合保留旧路径与 direct 路径覆盖。 | M1 |
+| `1067e89fabfd271e03a7c41ab22a7c190cf87934` | Applied + Overridden | 完善图片路由的错误、响应与调用细节。 本地适配：保留直连流式交付/断连归因；账号测试先抽取 SSE 错误再按原生/Responses 路径解析。 | M1 |
+| `23eef9ecc3a9dafe7c078653a980f49f609e1a35` | Applied + Overridden | 恢复上游图片模型回归覆盖。 本地适配：恢复上游覆盖的同时继续保留本地模型与错误归因断言。 | M1 |
+| `4726bdd08b6201d426a80529b79be123a4008d20` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `44bc47a3e38269c178ac56f667fd152f621bda48` | Applied + Overridden | Gemini 原生转发登记 2xx 内的错误信号。 本地适配：新增错误登记参数与本地 Gemini 首 Token attempt 包装、finish 结算组合。 | M1 |
+| `8ea4dc56f0292491af026ce486bd6ed53afc81d3` | Applied | 模型侧 finishReason 不登记为上游失败。 按固定目标的最终内容合入。 | M1 |
+| `6206ce940ea9bca3708c8b005c219a7bd1d12a07` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `213de0797e774dec5f028a82ef4edfea3ff85739` | Applied | 避免重复 Accept-Encoding 请求头。 按固定目标的最终内容合入。 | M1 |
+| `5948988aae5ce873b17a2446c27e11f84e54d4a6` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `781a02aea7867231727abfb827b71c312715297e` | Applied | 临时服务故障不清除登录会话。 按固定目标的最终内容合入。 | M1 |
+| `ba57ea914b01701a8d40fb40793162622bc299de` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `51c5d03888b796bbc0a28ca014f5bfbc18eb4074` | Applied | 订阅分配搜索防抖前清除旧用户选择。 按固定目标的最终内容合入。 | M1 |
+| `d2067668d37e9ea97fc852c5a74a1912c1ea59ac` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `c3b3072a6fae7ae6c686e05df78060c74f284a67` | Applied | EasyPay 上游类型允许包含句点。 按固定目标的最终内容合入。 | M1 |
+| `e67ffda7aed038c1e678ee835d84cf94e9cc06a5` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `489968fd7a54ffac0939e934e5f0149130519ac7` | Applied + Overridden | compact 默认上游模型切换到 gpt-5.5。 本地适配：同步两份本地生产 Compose 和静态夹具；生产 bind mount、资源入口、300 秒示例与持久化超时约束保留。 | M1 |
+| `f78c4b241e4f1fd4fba2129c62892fc34dec635b` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `bb0b50d8bc4e10adfe218a68ab567ee4983d4d11` | Applied | 兑换后刷新失败仍保留成功态，并保留本地签到展示测试。 按固定目标的最终内容合入。 | M1 |
+| `4ff3e6dfb92cb3cb4e3ac2528e5f7f22d64d4449` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `29371b081960b1bcc38da45862a096e39d1d811e` | Applied | WS 每账号连接池系数默认值改为 5。 按固定目标的最终内容合入。 | M1 |
+| `2a4f3d1a7108f5acf5cd80ccaa7bd83ed6361e82` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `7cf90c79d624eb4b9ccc8279e5facf628bc046e2` | Applied | 连接池变化唤醒该账号等待者重新选择连接。 按固定目标的最终内容合入。 | M1 |
+| `3873215908847ead95fe86a7bafcca0adbf79cdf` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `d8326fccfce4ba011f2fc1e148a0181912a9dfd1` | Applied | Claude 会话中保留 output config beta。 按固定目标的最终内容合入。 | M1 |
+| `eaa4083e23a94f99bb1442e5c70560b957e3d957` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `5968fd0ed971372714706e3b907157f432022a51` | Applied | 渠道监控允许 MiniMax。 按固定目标的最终内容合入。 | M1 |
+| `749cd7c3546187c893513bc21af88c1c50bc2eb9` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `9eb120dd40509d17df17bb61ceef22554d9ca45b` | Applied | 隐私与账号检查使用 Firefox 指纹。 按固定目标的最终内容合入。 | M1 |
+| `3a070ec1bf8ce953e228bc54ddc0dfe915f5e193` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `3645ce5f43c6f4c6b5732d05bed1f718fd442810` | Applied | 按身份移除已验证通知邮箱。 按固定目标的最终内容合入。 | M1 |
+| `67845665d6eedbaf8503c22bfc49a0803f013cef` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `5bafffed510c1520bde784456119cc3659480574` | Applied | 代理筛选变化时重置分页。 按固定目标的最终内容合入。 | M1 |
+| `99b93b298547b12ed303ec6e919e058037ba5cdc` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `429d6f04807e244d636a5955fb552e63d4618c50` | Applied | 跨页导出沿用当前用量筛选。 按固定目标的最终内容合入。 | M1 |
+| `f0dd497780acff99b715acb2dfbd52474f0f5778` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `961d9e94f38896c38faf73210a9527d609dc1b5a` | Applied | 代理部分导入成功后刷新列表。 按固定目标的最终内容合入。 | M1 |
+| `329641a86fc6c15a4efa31ba5f90eaf1ed848cfa` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `9b6a49b8e70ae65fff231a27aba2307946aaa965` | Applied | 个人资料展示规范化 API 错误。 按固定目标的最终内容合入。 | M1 |
+| `f2b51e3b24e075cf81c294cab667441ffadad842` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `a65d476f25ddcd5ef961f18b80fc640cb7341ecd` | Applied | 密钥额度重置后同步状态。 按固定目标的最终内容合入。 | M1 |
+| `0a378f3432c4177b5149dd5cf22d14e66d92e92e` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `8e7954438dcae79d5c35b5f910afdb0d5a9d19f8` | Applied | 强制 Fast 策略在省略 service_tier 时同样注入 priority；保留 Free Fast 双成本。 按固定目标的最终内容合入。 | M1 |
+| `a59f0c7fac0e653e9135605068c100d75ed5dc2c` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `1035a4daf0cbcc19b5662670cd6be72fb57851db` | Applied | 运维 Token 请求统计扩展到所有平台。 按固定目标的最终内容合入。 | M1 |
+| `66a10d4939e959172b49b040edebd8e3583b9057` | Applied | 安装模拟数据库清理检查错误。 按固定目标的最终内容合入。 | M1 |
+| `c7ed614240e9f2b2ac14f0bc4a2f48dfa1a86e98` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `195a3313224a7a232370e7aa7a4ed79cf6ad49d7` | Applied | 模型目录保留最大上下文窗口。 按固定目标的最终内容合入。 | M1 |
+| `9383e0b154348b224f64e66985f907f336b00c2e` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+| `956f4672e482bcc42563049741a1b83ce9ad242e` | Applied | 新版 WS ctx_pool 容量计算复用动态开关和类型系数。 按固定目标的最终内容合入。 | M1 |
+| `cf3aca6e3b76d7b9d9b680e8ae59a9268a67e6b7` | Applied | 按 OpenAI WS 模式显示链路提示。 按固定目标的最终内容合入。 | M1 |
+| `5d5b395d0069ce752922ea65e730f7a2c52a421b` | Applied | 完善 OpenAI WS 模式说明。 按固定目标的最终内容合入。 | M1 |
+| `db15ddf07fd70afe5991dc721ce2968d07bb2b97` | Applied | 区分 OpenAI WS 开关与连接模式。 按固定目标的最终内容合入。 | M1 |
+| `76b3f3c7cf1d3fd302310b5ae0aaeaf38d3ed107` | Applied | 精简 OpenAI WS 模式提示。 按固定目标的最终内容合入。 | M1 |
+| `bdb42e22f81fcb633ff0a060961211dd2bcb515b` | Applied | 保留合并祖先关系；功能处置见所含普通提交，后续本地覆盖不改变该提交已集成的事实。 | M1 |
+
+### 验证环境与结果
+
+- 命令均在本仓库或其子目录执行；正式验证脚本将临时配置、缓存、测试数据、构建产物和日志定向到 `output/upstream-sync-20260915-bdb42e22f`，复用仓库内 20260905/20260910 工具缓存。真实 .env、私钥、GitHub Token 和业务凭据不进入测试。一次手动编译未显式指定临时目录，不能保证该次遵循统一目录约束；随后全部验证改用隔离脚本重跑，未执行工作区外清理。
+- Windows Go 1.27.0、Node 20.20.2、pnpm 9.15.9；WSL Ubuntu-24.04 的 Go 1.27.0 和本机 Docker。Linux 集成创建独立 PostgreSQL/Redis 容器；不复用任何现存业务数据库，不处理其他项目容器。
+- Windows 套件入口：`./output/upstream-sync-20260915-bdb42e22f/validate.ps1 -Phase before|after -Suite <backend|frontend|canvas|canvas-build|extra|static|generate|security>`，额外筛选为 `-OnlyLabel cyber-flaky|sync-critical`。各实际子命令/退出码全部见下表，失败记录不覆盖。
+- Linux 入口：`wsl -d Ubuntu-24.04 -u root -- bash /mnt/d/project/sub2api/output/upstream-sync-20260915-bdb42e22f/integration.sh before|after [race|scope-repeat]`；同目录 `posix-spool.sh before|after`、`smoke.sh before|after` 与 `migration-upgrade.sh` 使用仓库内临时数据与有界清理。
+
+| 检查 | 同步前 | 同步后最终结果与边界 |
+| --- | --- | --- |
+| Go 默认、unit、构建 | 默认/构建通过；unit 单个 Cyber 1 秒异步等待失败 | 默认与 unit 全包、build 通过；Cyber 不改代码重复复测通过，重点兼容回归通过 |
+| golangci-lint、生成 | 通过，Ent 320 文件无差异 | 通过；Wire 无受控代码变化 |
+| Vue | 292 文件 2166 用例及 lint/typecheck/build 通过 | 300 文件 2293 用例及冻结安装/lint/typecheck/build 全部通过 |
+| Canvas | 34 用例、类型和构建通过；仅 package.json 格式失败 | 同样 34 用例、类型与构建通过；既有格式问题原样保留 |
+| Linux integration | 唯一 0600 在 Windows 挂载呈现 0777 的失败 | 最终只剩相同挂载权限失败；前后该单项在仓库内 POSIX tmpfs 均通过，无删除断言/跳过 |
+| race | 定向 service/handler 通过 | 同范围通过；WS 两线程关系额外各重复 50 次、race 通过，非全包 race |
+| 隔离启动 | PG/Redis 初始化和健康检查通过 | 最新代码重新构建/初始化/health 通过；旧库升级和 238 重入/本地定制数据断言通过 |
+| 部署静态 | Compose/资源/远程部署 mock/Caddy/语法通过；Apple BSD stat 失败 | 同样通过/同样环境限制，双生产 Compose 字节一致；未执行真实部署脚本 |
+| 依赖安全 | 本轮未做扫描基线 | govulncheck 通过（依赖模块中有 13 项告警，导入包和可达调用均为 0）；前端 audit: 高危 2/严重 0/中危 13/低危 1，Canvas: 高危 0/严重 0/中危 6；原始 audit 均退出 1，现有例外检查均 0，未改依赖/例外 |
+| 浏览器 | 未做同步前浏览器基线 | Edge 隔离 profile 与 mock API 验证 1440px 桌面、390px 移动配额、订阅关闭回退、兑换成功态/签到、Canvas 初始化、公开余额不带登录 Authorization/Cookie；无真实媒体/付款 |
+
+### 失败定位与重测
+
+- 同步前 Cyber 异步快照测试的 1 秒等待偶发失败：未修改业务逻辑，单项 `-count=5` 复测通过；同步后完整 unit 通过。Canvas 仅 `package.json` 格式和 Apple `stat -f '%Lp'` 不支持为既有失败。
+- 初次后端合并编译发现 OpenCode 测试调用缺少本地提示词参数；后续补齐 Anthropic 可选参数、保留旧调用语义。前端未使用的重复 computed 移除，白名单测试属性对齐本地 previewSyncRequest；全部类型和用例重新通过。
+- DeepSeek 新价导致本地旧单价断言不符，只更新该单价，不改定价优先级断言。图片 SSE 错误被 JSON 分支掩盖，改为先抽取上游 SSE 错误；原断言保留后默认/unit 全部通过。
+- compact 静态夹具的 gpt-5.4 默认断言同步到获批的新 gpt-5.5；新测试文件 gofmt 后 lint 通过。一次手动 gofmt 使用了错误工作目录，命令找不到目标且未写入；随后在仓库根按具体文件格式化并复核。
+- 第二轮 Linux 全量集成偶发命中上游新 SameCodexThreadStillPreempts：测试过早放行 A 的完成帧，与异步关闭通知竞争。只让同线程保持假上游请求在飞直到关闭后再放行，不改运行时；关闭码 1013、原因和恰好一次抢占断言全部保留。两线程用例各 `-count=50 -race` 及完整集成重跑，最终无此失败。
+- Windows 挂载权限仅 0600/0777 差异，未把用例关掉；前后 POSIX tmpfs 单项均通过。
+- 安全扫描首次缺少本地 govulncheck 可执行文件，随后使用已有缓存可核验的 v1.7.0 安装到仓库工具目录并通过扫描。audit 原始退出 1 不改写为 0，分别记录 CI 例外解析命令退出 0。
+- 浏览器最初公告夹具返回对象而非数组，修正隔离 mock 后通过；脚本 URL 构造器在 CLI 沙箱不可用，改用已知路径比较后通过。支付 SDK 外部脚本由隔离 CSP 阻止，兑换后 503 为主动注入；这些不是业务验证成功的外部调用。
+- 既有少数单元测试用假 Token 发出 Google 401 请求日志；没有真实凭据或业务写入，但不能声称整个测试过程绝无外部 HTTP 请求。隔离启动禁用外部代理出口，浏览器 CSP 仅允许本地连接。
+
+### 实际验证命令
+
+下表时间保留各记录的原时区（带 Z 为 UTC，其余 +08:00 为北京时间）；所有日期对应本次北京时间 2026-09-15 执行。重测按时间逐次保留。
+
+| 编号 | 阶段/套件/标签 | 开始时间 | 实际命令 | 退出码 |
+| --- | --- | --- | --- | --- |
+| V001 | 同步前/backend/test-default | 2026-09-15T01:53:58.2303703+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test ./... -count=1 -timeout=20m` | 0 |
+| V002 | 同步前/frontend/install | 2026-09-15T01:53:58.5394722+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs install --frozen-lockfile --offline --ignore-scripts` | 0 |
+| V003 | 同步前/canvas/install | 2026-09-15T01:53:58.8622846+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs install --frozen-lockfile --offline --ignore-scripts` | 0 |
+| V004 | 同步前/static/docker-compose-security-test.sh | 2026-09-15T01:53:59.1875490+08:00 | `"C:/Program Files/Git/bin/bash.exe" D:\project\sub2api\deploy\tests\docker-compose-security-test.sh` | 0 |
+| V005 | 同步前/static/docker-compose-gateway-env-test.sh | 2026-09-15T01:53:59.7399255+08:00 | `"C:/Program Files/Git/bin/bash.exe" D:\project\sub2api\deploy\tests\docker-compose-gateway-env-test.sh` | 0 |
+| V006 | 同步前/frontend/lint | 2026-09-15T01:54:02.1824959+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run lint:check` | 0 |
+| V007 | 同步前/canvas/format | 2026-09-15T01:54:02.6051475+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe node_modules/prettier/bin/prettier.cjs --check .` | 1 |
+| V008 | 同步前/canvas/typecheck | 2026-09-15T01:54:13.6880294+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe node_modules/typescript/bin/tsc --noEmit` | 0 |
+| V009 | 同步前/static/docker-runtime-resources-test.sh | 2026-09-15T01:54:32.2996392+08:00 | `"C:/Program Files/Git/bin/bash.exe" D:\project\sub2api\deploy\tests\docker-runtime-resources-test.sh` | 0 |
+| V010 | 同步前/static/remote-deploy-test.sh | 2026-09-15T01:54:32.6827443+08:00 | `"C:/Program Files/Git/bin/bash.exe" D:\project\sub2api\deploy\tests\remote-deploy-test.sh` | 0 |
+| V011 | 同步前/canvas/test | 2026-09-15T01:54:37.5431103+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe node_modules/vitest/vitest.mjs run --maxWorkers=4 --minWorkers=1` | 0 |
+| V012 | 同步前/static/apple-container-test.sh | 2026-09-15T01:54:48.5609324+08:00 | `"C:/Program Files/Git/bin/bash.exe" D:\project\sub2api\deploy\tests\apple-container-test.sh` | 1 |
+| V013 | 同步前/static/caddy-cache | 2026-09-15T01:54:51.7187601+08:00 | `"C:/Program Files/Git/bin/bash.exe" D:\project\sub2api\deploy\test-caddyfile-cache.sh` | 0 |
+| V014 | 同步前/static/apple-syntax | 2026-09-15T01:54:52.9873193+08:00 | `"C:/Program Files/Git/bin/bash.exe" -n D:\project\sub2api\deploy\apple-container.sh` | 0 |
+| V015 | 同步前/static/remote-syntax | 2026-09-15T01:54:53.1275281+08:00 | `"C:/Program Files/Git/bin/bash.exe" -n D:\project\sub2api\deploy\remote-deploy.sh` | 0 |
+| V016 | 同步前/static/diff-check | 2026-09-15T01:54:53.2755118+08:00 | `git diff --check` | 0 |
+| V017 | 同步前/frontend/typecheck | 2026-09-15T01:55:24.5897819+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run typecheck` | 0 |
+| V018 | 同步前/frontend/test | 2026-09-15T01:56:17.0110826+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run test:run --maxWorkers=4 --minWorkers=1` | 0 |
+| V019 | 同步前/extra/golangci-lint | 2026-09-15T01:56:28.4930658+08:00 | `D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\go-tools\bin\golangci-lint.exe run ./... --timeout=30m` | 0 |
+| V020 | 同步前/integration-linux/ | 2026-09-15T01:56:40+08:00 | `go test -tags=integration ./... -count=1 -timeout=25m` | 1 |
+| V021 | 同步前/generate/ent-check | 2026-09-15T01:57:00.1453257+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260915-bdb42e22f\check-ent.mjs before` | 0 |
+| V022 | 同步前/generate/wire | 2026-09-15T01:57:21.0180364+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe generate ./cmd/server` | 0 |
+| V023 | 同步前/backend/test-unit | 2026-09-15T01:58:26.2905405+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test -tags=unit ./... -count=1 -timeout=20m` | 1 |
+| V024 | 同步前/frontend/build | 2026-09-15T02:00:55.1908981+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run build` | 0 |
+| V025 | 同步前/smoke-linux/ | 2026-09-15T02:00:57+08:00 | `smoke.sh before` | 0 |
+| V026 | 同步前/static/docker-compose-security-test.sh | 2026-09-15T02:00:58.9009743+08:00 | `"C:/Program Files/Git/bin/bash.exe" D:\project\sub2api\output\upstream-sync-20260915-bdb42e22f\run-shell.sh D:\project\sub2api\deploy\tests\docker-compose-security-test.sh` | 0 |
+| V027 | 同步前/static/docker-compose-gateway-env-test.sh | 2026-09-15T02:00:59.9511564+08:00 | `"C:/Program Files/Git/bin/bash.exe" D:\project\sub2api\output\upstream-sync-20260915-bdb42e22f\run-shell.sh D:\project\sub2api\deploy\tests\docker-compose-gateway-env-test.sh` | 0 |
+| V028 | 同步前/static/docker-runtime-resources-test.sh | 2026-09-15T02:01:31.8592109+08:00 | `"C:/Program Files/Git/bin/bash.exe" D:\project\sub2api\output\upstream-sync-20260915-bdb42e22f\run-shell.sh D:\project\sub2api\deploy\tests\docker-runtime-resources-test.sh` | 0 |
+| V029 | 同步前/static/remote-deploy-test.sh | 2026-09-15T02:01:32.4443213+08:00 | `"C:/Program Files/Git/bin/bash.exe" D:\project\sub2api\output\upstream-sync-20260915-bdb42e22f\run-shell.sh D:\project\sub2api\deploy\tests\remote-deploy-test.sh` | 0 |
+| V030 | 同步前/static/apple-container-test.sh | 2026-09-15T02:01:46.4201308+08:00 | `"C:/Program Files/Git/bin/bash.exe" D:\project\sub2api\output\upstream-sync-20260915-bdb42e22f\run-shell.sh D:\project\sub2api\deploy\tests\apple-container-test.sh` | 1 |
+| V031 | 同步前/static/caddy-cache | 2026-09-15T02:01:48.6143352+08:00 | `"C:/Program Files/Git/bin/bash.exe" D:\project\sub2api\output\upstream-sync-20260915-bdb42e22f\run-shell.sh D:\project\sub2api\deploy\test-caddyfile-cache.sh` | 0 |
+| V032 | 同步前/static/apple-syntax | 2026-09-15T02:01:49.5771869+08:00 | `"C:/Program Files/Git/bin/bash.exe" -n D:\project\sub2api\deploy\apple-container.sh` | 0 |
+| V033 | 同步前/static/remote-syntax | 2026-09-15T02:01:49.6855421+08:00 | `"C:/Program Files/Git/bin/bash.exe" -n D:\project\sub2api\deploy\remote-deploy.sh` | 0 |
+| V034 | 同步前/static/diff-check | 2026-09-15T02:01:49.8146132+08:00 | `git diff --check` | 0 |
+| V035 | 同步前/backend/build | 2026-09-15T02:04:07.6822287+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe build ./...` | 0 |
+| V036 | 同步前/canvas-build/build | 2026-09-15T02:07:08.8691293+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run build` | 0 |
+| V037 | 同步前/backend/cyber-flaky | 2026-09-15T02:09:54.3206091+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test -tags=unit ./internal/service -run ^TestRecordCyberPolicyEvent_RuntimeSnapshotRefreshFailureKeepsStaleScope$ -count=5 -timeout=2m` | 0 |
+| V038 | 同步前/posix-spool-linux/ | 2026-09-15T02:10:01+08:00 | `TMPDIR=posix-tmp go test -tags=integration ./internal/service -run ^TestOpenAIFirstOutputStageOverflowIsAtomicAndCleanupRemovesSpool$ -count=1 -timeout=5m` | 0 |
+| V039 | 同步前/race-linux/ | 2026-09-15T02:10:02+08:00 | `go test -race -tags=unit ./internal/service ./internal/handler -run OpenAIWS\|GrokMedia\|FirstToken\|TemporaryCredit -count=1 -timeout=20m` | 0 |
+| V040 | 同步后/backend/test-default | 2026-09-15T02:31:08.2798234+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test ./... -count=1 -timeout=20m` | 1 |
+| V041 | 同步后/frontend/install | 2026-09-15T02:31:08.5170472+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs install --frozen-lockfile --offline --ignore-scripts` | 0 |
+| V042 | 同步后/canvas/install | 2026-09-15T02:31:08.7395673+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs install --frozen-lockfile --offline --ignore-scripts` | 0 |
+| V043 | 同步后/frontend/lint | 2026-09-15T02:31:10.7628656+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run lint:check` | 0 |
+| V044 | 同步后/canvas/format | 2026-09-15T02:31:10.8090704+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe node_modules/prettier/bin/prettier.cjs --check .` | 1 |
+| V045 | 同步后/canvas/typecheck | 2026-09-15T02:31:17.2113249+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe node_modules/typescript/bin/tsc --noEmit` | 0 |
+| V046 | 同步后/canvas/test | 2026-09-15T02:31:22.1235345+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe node_modules/vitest/vitest.mjs run --maxWorkers=4 --minWorkers=1` | 0 |
+| V047 | 同步后/backend/test-unit | 2026-09-15T02:31:46.6356904+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test -tags=unit ./... -count=1 -timeout=20m` | 1 |
+| V048 | 同步后/backend/build | 2026-09-15T02:32:09.9423461+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe build ./...` | 1 |
+| V049 | 同步后/frontend/typecheck | 2026-09-15T02:32:19.8491752+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run typecheck` | 2 |
+| V050 | 同步后/frontend/test | 2026-09-15T02:32:44.4442600+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run test:run --maxWorkers=4 --minWorkers=1` | 1 |
+| V051 | 同步后/backend/sync-critical | 2026-09-15T02:33:39.9571320+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test -tags=unit ./internal/service ./internal/handler ./internal/server -run OpenCode\|OpenAI.*Images\|CodexDirectImages\|ClaudeOAuth\|SystemCache\|Billing\|Pricing\|OpenAIWS\|APIContracts\|TemporaryCredit\|BalanceQuery -count=1 -timeout=15m` | 1 |
+| V052 | 同步后/static/docker-compose-security-test.sh | 2026-09-15T02:33:40.2695877+08:00 | `"C:/Program Files/Git/bin/bash.exe" D:\project\sub2api\output\upstream-sync-20260915-bdb42e22f\run-shell.sh D:\project\sub2api\deploy\tests\docker-compose-security-test.sh` | 0 |
+| V053 | 同步后/generate/ent-check | 2026-09-15T02:33:40.5763607+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260915-bdb42e22f\check-ent.mjs after` | 0 |
+| V054 | 同步后/static/docker-compose-gateway-env-test.sh | 2026-09-15T02:33:40.6991300+08:00 | `"C:/Program Files/Git/bin/bash.exe" D:\project\sub2api\output\upstream-sync-20260915-bdb42e22f\run-shell.sh D:\project\sub2api\deploy\tests\docker-compose-gateway-env-test.sh` | 1 |
+| V055 | 同步后/static/docker-runtime-resources-test.sh | 2026-09-15T02:33:41.3514115+08:00 | `"C:/Program Files/Git/bin/bash.exe" D:\project\sub2api\output\upstream-sync-20260915-bdb42e22f\run-shell.sh D:\project\sub2api\deploy\tests\docker-runtime-resources-test.sh` | 0 |
+| V056 | 同步后/static/remote-deploy-test.sh | 2026-09-15T02:33:41.8660644+08:00 | `"C:/Program Files/Git/bin/bash.exe" D:\project\sub2api\output\upstream-sync-20260915-bdb42e22f\run-shell.sh D:\project\sub2api\deploy\tests\remote-deploy-test.sh` | 0 |
+| V057 | 同步后/generate/wire | 2026-09-15T02:33:54.5882348+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe generate ./cmd/server` | 0 |
+| V058 | 同步后/static/apple-container-test.sh | 2026-09-15T02:33:57.3445437+08:00 | `"C:/Program Files/Git/bin/bash.exe" D:\project\sub2api\output\upstream-sync-20260915-bdb42e22f\run-shell.sh D:\project\sub2api\deploy\tests\apple-container-test.sh` | 1 |
+| V059 | 同步后/static/caddy-cache | 2026-09-15T02:33:58.9279324+08:00 | `"C:/Program Files/Git/bin/bash.exe" D:\project\sub2api\output\upstream-sync-20260915-bdb42e22f\run-shell.sh D:\project\sub2api\deploy\test-caddyfile-cache.sh` | 0 |
+| V060 | 同步后/static/apple-syntax | 2026-09-15T02:34:00.1489985+08:00 | `"C:/Program Files/Git/bin/bash.exe" -n D:\project\sub2api\deploy\apple-container.sh` | 0 |
+| V061 | 同步后/static/remote-syntax | 2026-09-15T02:34:00.2726648+08:00 | `"C:/Program Files/Git/bin/bash.exe" -n D:\project\sub2api\deploy\remote-deploy.sh` | 0 |
+| V062 | 同步后/static/diff-check | 2026-09-15T02:34:00.4071091+08:00 | `git diff --check` | 0 |
+| V063 | 同步后/frontend/build | 2026-09-15T02:35:25.5290239+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run build` | 0 |
+| V064 | 同步后/backend/test-default | 2026-09-15T02:37:44.9778261+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test ./... -count=1 -timeout=20m` | 1 |
+| V065 | 同步后/extra/golangci-lint | 2026-09-15T02:37:45.3036076+08:00 | `D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\go-tools\bin\golangci-lint.exe run ./... --timeout=30m` | 1 |
+| V066 | 同步后/integration-linux/ | 2026-09-15T02:37:55+08:00 | `go test -tags=integration ./... -count=1 -timeout=25m` | 1 |
+| V067 | 同步后/frontend/install | 2026-09-15T02:39:11.1974386+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs install --frozen-lockfile --offline --ignore-scripts` | 0 |
+| V068 | 同步后/static/docker-compose-security-test.sh | 2026-09-15T02:39:11.3174215+08:00 | `"C:/Program Files/Git/bin/bash.exe" D:\project\sub2api\output\upstream-sync-20260915-bdb42e22f\run-shell.sh D:\project\sub2api\deploy\tests\docker-compose-security-test.sh` | 0 |
+| V069 | 同步后/static/docker-compose-gateway-env-test.sh | 2026-09-15T02:39:11.9529960+08:00 | `"C:/Program Files/Git/bin/bash.exe" D:\project\sub2api\output\upstream-sync-20260915-bdb42e22f\run-shell.sh D:\project\sub2api\deploy\tests\docker-compose-gateway-env-test.sh` | 0 |
+| V070 | 同步后/frontend/lint | 2026-09-15T02:39:14.1384336+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run lint:check` | 0 |
+| V071 | 同步后/static/docker-runtime-resources-test.sh | 2026-09-15T02:39:44.9749447+08:00 | `"C:/Program Files/Git/bin/bash.exe" D:\project\sub2api\output\upstream-sync-20260915-bdb42e22f\run-shell.sh D:\project\sub2api\deploy\tests\docker-runtime-resources-test.sh` | 0 |
+| V072 | 同步后/static/remote-deploy-test.sh | 2026-09-15T02:39:45.4104304+08:00 | `"C:/Program Files/Git/bin/bash.exe" D:\project\sub2api\output\upstream-sync-20260915-bdb42e22f\run-shell.sh D:\project\sub2api\deploy\tests\remote-deploy-test.sh` | 0 |
+| V073 | 同步后/static/apple-container-test.sh | 2026-09-15T02:39:57.6784238+08:00 | `"C:/Program Files/Git/bin/bash.exe" D:\project\sub2api\output\upstream-sync-20260915-bdb42e22f\run-shell.sh D:\project\sub2api\deploy\tests\apple-container-test.sh` | 1 |
+| V074 | 同步后/static/caddy-cache | 2026-09-15T02:39:59.0332008+08:00 | `"C:/Program Files/Git/bin/bash.exe" D:\project\sub2api\output\upstream-sync-20260915-bdb42e22f\run-shell.sh D:\project\sub2api\deploy\test-caddyfile-cache.sh` | 0 |
+| V075 | 同步后/static/apple-syntax | 2026-09-15T02:39:59.7986853+08:00 | `"C:/Program Files/Git/bin/bash.exe" -n D:\project\sub2api\deploy\apple-container.sh` | 0 |
+| V076 | 同步后/static/remote-syntax | 2026-09-15T02:39:59.8987011+08:00 | `"C:/Program Files/Git/bin/bash.exe" -n D:\project\sub2api\deploy\remote-deploy.sh` | 0 |
+| V077 | 同步后/static/diff-check | 2026-09-15T02:39:59.9980452+08:00 | `git diff --check` | 0 |
+| V078 | 同步后/frontend/typecheck | 2026-09-15T02:40:20.5551469+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run typecheck` | 0 |
+| V079 | 同步后/smoke-linux/ | 2026-09-15T02:40:24+08:00 | `smoke.sh after` | 0 |
+| V080 | 同步后/frontend/test | 2026-09-15T02:41:13.0585477+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run test:run --maxWorkers=4 --minWorkers=1` | 0 |
+| V081 | 同步后/backend/test-unit | 2026-09-15T02:41:37.0853342+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test -tags=unit ./... -count=1 -timeout=20m` | 1 |
+| V082 | 同步后/frontend/build | 2026-09-15T02:45:54.2673130+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run build` | 0 |
+| V083 | 同步后/backend/build | 2026-09-15T02:47:25.3382843+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe build ./...` | 0 |
+| V084 | 同步后/canvas-build/build | 2026-09-15T02:48:55.1409892+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs run build` | 0 |
+| V085 | 同步后/migration-upgrade-linux/ | 2026-09-15T02:49:03+08:00 | `migration-upgrade.sh` | 0 |
+| V086 | 同步后/extra/golangci-lint | 2026-09-15T02:49:28.3979768+08:00 | `D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\go-tools\bin\golangci-lint.exe run ./... --timeout=30m` | 0 |
+| V087 | 同步后/backend/test-default | 2026-09-15T02:49:28.4167938+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test ./... -count=1 -timeout=20m` | 0 |
+| V088 | 同步后/integration-linux/ | 2026-09-15T02:49:29+08:00 | `go test -tags=integration ./... -count=1 -timeout=25m` | 1 |
+| V089 | 同步后/race-linux/ | 2026-09-15T02:49:29+08:00 | `go test -race -tags=unit ./internal/service ./internal/handler -run OpenAIWS\|GrokMedia\|FirstToken\|TemporaryCredit -count=1 -timeout=20m` | 0 |
+| V090 | 同步后/backend/test-unit | 2026-09-15T02:52:39.0604351+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test -tags=unit ./... -count=1 -timeout=20m` | 0 |
+| V091 | 同步后/posix-spool-linux/ | 2026-09-15T02:56:42+08:00 | `TMPDIR=posix-tmp go test -tags=integration ./internal/service -run ^TestOpenAIFirstOutputStageOverflowIsAtomicAndCleanupRemovesSpool$ -count=1 -timeout=5m` | 0 |
+| V092 | 同步后/smoke-linux/ | 2026-09-15T02:57:48+08:00 | `smoke.sh after` | 0 |
+| V093 | 同步后/backend/build | 2026-09-15T02:58:06.4794653+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe build ./...` | 0 |
+| V094 | 同步后/security/govulncheck | 2026-09-15T02:59:06.6292308+08:00 | `D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\go-tools\bin\govulncheck.exe ./...` | 1 |
+| V095 | 同步后/security/frontend-audit | 2026-09-15T02:59:06.7240486+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs audit --prod --audit-level=high --json` | 1 |
+| V096 | 同步后/security/canvas-audit | 2026-09-15T02:59:11.3837248+08:00 | `D:\project\sub2api\output\upstream-sync-20260910-98d86915b\tools\node-v20.20.2-win-x64\node.exe D:\project\sub2api\output\upstream-sync-20260905-ab99d56e9\pnpm-9.15.9\package\bin\pnpm.cjs audit --prod --audit-level=high --json` | 1 |
+| V097 | 同步后/security/install-govulncheck | 2026-09-15T03:03:02.1107968+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe install golang.org/x/vuln/cmd/govulncheck@v1.7.0` | 0 |
+| V098 | 同步后/security/govulncheck | 2026-09-15T03:03:23.6425514+08:00 | `D:\project\sub2api\output\upstream-sync-20260915-bdb42e22f\tools\govulncheck.exe ./...` | 0 |
+| V099 | 同步后/security/frontend-audit-exceptions | 2026-09-15T03:03:36.0474325+08:00 | `wsl.exe -d Ubuntu-24.04 -u root -- python3 /mnt/d/project/sub2api/tools/check_pnpm_audit_exceptions.py --audit /mnt/d/project/sub2api/output/upstream-sync-20260915-bdb42e22f/logs/after-security-frontend-audit-025906723.log --exceptions /mnt/d/project/sub2api/.github/audit-exceptions.yml` | 0 |
+| V100 | 同步后/security/canvas-audit-exceptions | 2026-09-15T03:03:47.9011937+08:00 | `wsl.exe -d Ubuntu-24.04 -u root -- python3 /mnt/d/project/sub2api/tools/check_pnpm_audit_exceptions.py --audit /mnt/d/project/sub2api/output/upstream-sync-20260915-bdb42e22f/logs/after-security-canvas-audit-025911383.log --exceptions /mnt/d/project/sub2api/.github/audit-exceptions.yml` | 0 |
+| V101 | 同步后/backend/sync-critical | 2026-09-15T03:05:29.9134338+08:00 | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test -tags=unit ./internal/service ./internal/handler ./internal/server -run OpenCode\|OpenAI.*Images\|CodexDirectImages\|ClaudeOAuth\|SystemCache\|Billing\|Pricing\|OpenAIWS\|APIContracts\|TemporaryCredit\|BalanceQuery -count=1 -timeout=15m` | 0 |
+| V102 | 同步后/integration-linux/ | 2026-09-15T03:05:43+08:00 | `go test -tags=integration ./... -count=1 -timeout=25m` | 1 |
+| V103 | 同步后/scope-repeat-linux/ | 2026-09-15T03:05:43+08:00 | `go test -race -tags=unit ./internal/service -run TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_(CodexThreadsDoNotPreemptEachOther\|SameCodexThreadStillPreempts)$ -count=50 -timeout=10m` | 0 |
+| V104 | 同步后/browser-mock/ | 2026-09-14T19:21:15.016Z | `node output/upstream-sync-20260915-bdb42e22f/ui-audit.mjs` | 0 |
+| V105 | 同步后/final-audit/staged | 2026-09-14T19:22:47.458Z | `node output/upstream-sync-20260915-bdb42e22f/final-audit.mjs staged` | 0 |
+| V106 | 同步后/final-audit/code | 2026-09-14T19:25:05.627Z | `node output/upstream-sync-20260915-bdb42e22f/final-audit.mjs code` | 0 |
+
+### 文件清单与未验证范围
+
+- 完整改动可复核：`git diff --name-status 098f3d9e5a14278ada575daae0fd871b50898817 6454c4f68754a0e79ae6cce549ac616999d0ab57`。下列是 M1 实际文件状态（A 新增，M 修改）；无删除。
+
+```text
+M	README_CN.md
+M	backend/ent/channelmonitor/channelmonitor.go
+M	backend/ent/channelmonitorrequesttemplate/channelmonitorrequesttemplate.go
+M	backend/ent/migrate/schema.go
+M	backend/ent/schema/channel_monitor.go
+M	backend/ent/schema/channel_monitor_request_template.go
+M	backend/ent/schema/user_platform_quota.go
+M	backend/internal/config/config.go
+M	backend/internal/config/config_test.go
+M	backend/internal/domain/channel_monitor_quota.go
+M	backend/internal/domain/constants.go
+M	backend/internal/domain/constants_test.go
+M	backend/internal/handler/admin/account_handler.go
+M	backend/internal/handler/admin/channel_handler.go
+M	backend/internal/handler/admin/channel_monitor_handler.go
+M	backend/internal/handler/admin/group_handler.go
+M	backend/internal/handler/admin/group_handler_platform_test.go
+M	backend/internal/handler/admin/ops_dashboard_handler.go
+M	backend/internal/handler/admin/setting_handler.go
+M	backend/internal/handler/admin/setting_handler_audit.go
+M	backend/internal/handler/admin/setting_handler_partial_payload_test.go
+M	backend/internal/handler/admin/setting_handler_update.go
+M	backend/internal/handler/admin/user_handler.go
+M	backend/internal/handler/admin/user_platform_quota_admin_test.go
+M	backend/internal/handler/dto/settings.go
+M	backend/internal/handler/endpoint.go
+M	backend/internal/handler/endpoint_test.go
+M	backend/internal/handler/gateway_handler.go
+A	backend/internal/handler/gateway_models_retrieve_test.go
+M	backend/internal/handler/gateway_models_test.go
+M	backend/internal/handler/grok_media.go
+A	backend/internal/handler/grok_media_slots_test.go
+M	backend/internal/handler/openai_automation_bootstrap_test.go
+M	backend/internal/handler/openai_gateway_cn_dispatch_test.go
+M	backend/internal/handler/openai_gateway_handler.go
+M	backend/internal/handler/openai_images_failover_test.go
+M	backend/internal/handler/openai_models_handler.go
+M	backend/internal/handler/ops_error_logger.go
+M	backend/internal/handler/ops_error_logger_test.go
+M	backend/internal/handler/setting_handler.go
+M	backend/internal/model/error_passthrough_rule.go
+M	backend/internal/model/error_passthrough_rule_test.go
+M	backend/internal/payment/provider/easypay_refund_test.go
+M	backend/internal/pkg/antigravity/claude_types.go
+M	backend/internal/pkg/antigravity/claude_types_test.go
+M	backend/internal/pkg/apicompat/chatcompletions_responses_bridge.go
+A	backend/internal/pkg/apicompat/chatcompletions_responses_bridge_additional_tools_test.go
+A	backend/internal/pkg/apicompat/chatcompletions_responses_bridge_agent_message_test.go
+M	backend/internal/pkg/claude/constants.go
+M	backend/internal/pkg/httputil/body.go
+A	backend/internal/pkg/httputil/body_memory_test.go
+M	backend/internal/pkg/openai/request.go
+A	backend/internal/pkg/openai/request_ua_validation_test.go
+M	backend/internal/repository/account_repo_integration_test.go
+M	backend/internal/repository/channel_monitor_v2_aggregation.go
+M	backend/internal/repository/channel_monitor_v2_repo.go
+M	backend/internal/repository/channel_monitor_v2_repo_test.go
+M	backend/internal/repository/ops_repo_openai_token_stats.go
+M	backend/internal/repository/ops_repo_openai_token_stats_test.go
+M	backend/internal/repository/ops_repo_request_details.go
+A	backend/internal/repository/ops_repo_request_details_test.go
+M	backend/internal/repository/req_client_pool.go
+M	backend/internal/repository/req_client_pool_test.go
+M	backend/internal/repository/scheduler_cache.go
+A	backend/internal/repository/scheduler_threshold_cache_unit_test.go
+M	backend/internal/repository/user_platform_quota_repo.go
+M	backend/internal/repository/user_platform_quota_repo_integration_test.go
+M	backend/internal/repository/user_platform_quota_upsert_test.go
+M	backend/internal/server/api_contract_test.go
+M	backend/internal/server/middleware/admin_auth.go
+M	backend/internal/server/middleware/jwt_auth.go
+M	backend/internal/server/middleware/jwt_auth_test.go
+M	backend/internal/server/routes/gateway.go
+M	backend/internal/server/routes/gateway_models_pinned_test.go
+M	backend/internal/service/account.go
+M	backend/internal/service/account_header_override.go
+M	backend/internal/service/account_header_override_test.go
+M	backend/internal/service/account_scheduling_threshold_eval.go
+M	backend/internal/service/account_service.go
+M	backend/internal/service/account_stats_pricing_test.go
+M	backend/internal/service/account_test_models.go
+M	backend/internal/service/account_test_models_test.go
+M	backend/internal/service/account_test_service.go
+M	backend/internal/service/account_test_service_cn_adaptive.go
+M	backend/internal/service/account_test_service_openai_image_test.go
+A	backend/internal/service/account_test_service_opencode_go_test.go
+M	backend/internal/service/admin_account.go
+M	backend/internal/service/admin_group.go
+M	backend/internal/service/admin_service_group_test.go
+M	backend/internal/service/auth_email_oauth_auto_test.go
+M	backend/internal/service/auth_oauth_email_flow_test.go
+M	backend/internal/service/auth_service.go
+M	backend/internal/service/auth_service_platform_quota_test.go
+M	backend/internal/service/auth_service_register_test.go
+M	backend/internal/service/billing_cache_service.go
+M	backend/internal/service/billing_context_schedule.go
+M	backend/internal/service/billing_service.go
+M	backend/internal/service/billing_service_test.go
+M	backend/internal/service/channel_monitor_checker.go
+M	backend/internal/service/channel_monitor_const.go
+A	backend/internal/service/channel_monitor_endpoint_test.go
+M	backend/internal/service/channel_monitor_quota_fetcher.go
+M	backend/internal/service/channel_monitor_validate.go
+M	backend/internal/service/channel_service.go
+M	backend/internal/service/channel_service_test.go
+M	backend/internal/service/cn_provider_quota_service.go
+M	backend/internal/service/cn_providers_test.go
+M	backend/internal/service/composite_platform.go
+M	backend/internal/service/composite_platform_test.go
+M	backend/internal/service/deepseek_pricing_test.go
+M	backend/internal/service/domain_constants.go
+A	backend/internal/service/gateway_accept_encoding_test.go
+M	backend/internal/service/gateway_claude_oauth_body.go
+M	backend/internal/service/gateway_context_management_test.go
+M	backend/internal/service/gateway_count_tokens.go
+M	backend/internal/service/gateway_forward.go
+A	backend/internal/service/gateway_mid_conversation_output_config_test.go
+M	backend/internal/service/gateway_record_usage_test.go
+M	backend/internal/service/gateway_request.go
+A	backend/internal/service/gateway_system_cache_control_test.go
+M	backend/internal/service/gemini_image_output_accounting_test.go
+M	backend/internal/service/gemini_messages_compat_service.go
+M	backend/internal/service/gemini_messages_compat_service_test.go
+A	backend/internal/service/gemini_native_response_signal_test.go
+A	backend/internal/service/gemini_response_signal.go
+A	backend/internal/service/gemini_response_signal_test.go
+M	backend/internal/service/grok_media.go
+A	backend/internal/service/grok_media_selection_test.go
+M	backend/internal/service/header_util.go
+M	backend/internal/service/image_output_accounting.go
+M	backend/internal/service/openai_account_scheduler.go
+A	backend/internal/service/openai_codex_context_window_test.go
+M	backend/internal/service/openai_codex_identity.go
+M	backend/internal/service/openai_codex_model_metadata.go
+M	backend/internal/service/openai_codex_models_service.go
+M	backend/internal/service/openai_codex_models_service_test.go
+M	backend/internal/service/openai_fast_policy_test.go
+M	backend/internal/service/openai_fast_policy_ws_test.go
+M	backend/internal/service/openai_gateway_cc_pipeline.go
+M	backend/internal/service/openai_gateway_chat_completions.go
+M	backend/internal/service/openai_gateway_chat_completions_anthropic_native.go
+M	backend/internal/service/openai_gateway_cn_fixes_test.go
+M	backend/internal/service/openai_gateway_count_tokens.go
+M	backend/internal/service/openai_gateway_forward.go
+M	backend/internal/service/openai_gateway_messages.go
+M	backend/internal/service/openai_gateway_messages_anthropic_native.go
+A	backend/internal/service/openai_gateway_opencode_mapping_test.go
+M	backend/internal/service/openai_gateway_passthrough.go
+M	backend/internal/service/openai_gateway_record_usage_test.go
+M	backend/internal/service/openai_gateway_request_body.go
+M	backend/internal/service/openai_gateway_response_handling.go
+M	backend/internal/service/openai_gateway_responses_anthropic_native.go
+M	backend/internal/service/openai_gateway_scheduling.go
+M	backend/internal/service/openai_gateway_service.go
+M	backend/internal/service/openai_gateway_usage.go
+M	backend/internal/service/openai_gpt56_max_test.go
+M	backend/internal/service/openai_images.go
+M	backend/internal/service/openai_images_actual_size_test.go
+A	backend/internal/service/openai_images_direct.go
+A	backend/internal/service/openai_images_direct_payload_test.go
+A	backend/internal/service/openai_images_direct_test.go
+M	backend/internal/service/openai_images_json_keepalive_test.go
+M	backend/internal/service/openai_images_responses.go
+M	backend/internal/service/openai_images_test.go
+A	backend/internal/service/openai_large_request_memory_test.go
+A	backend/internal/service/openai_large_request_rewrite_bench_test.go
+M	backend/internal/service/openai_messages_dispatch.go
+M	backend/internal/service/openai_models_list.go
+M	backend/internal/service/openai_models_list_test.go
+M	backend/internal/service/openai_opencode_session.go
+M	backend/internal/service/openai_opencode_session_test.go
+A	backend/internal/service/openai_privacy_cf_challenge_test.go
+M	backend/internal/service/openai_privacy_service.go
+M	backend/internal/service/openai_request_body_release.go
+A	backend/internal/service/openai_request_raw_input.go
+M	backend/internal/service/openai_responses_ingress_compat.go
+M	backend/internal/service/openai_responses_item_id.go
+M	backend/internal/service/openai_setup_token_compat_test.go
+A	backend/internal/service/openai_ua_validation_test.go
+M	backend/internal/service/openai_ws_client.go
+A	backend/internal/service/openai_ws_execution_scope.go
+A	backend/internal/service/openai_ws_execution_scope_test.go
+M	backend/internal/service/openai_ws_forwarder_ingress.go
+A	backend/internal/service/openai_ws_forwarder_ingress_execution_scope_test.go
+A	backend/internal/service/openai_ws_forwarder_ingress_retry_test.go
+M	backend/internal/service/openai_ws_forwarder_logutil.go
+M	backend/internal/service/openai_ws_forwarder_success_test.go
+M	backend/internal/service/openai_ws_forwarder_v2.go
+A	backend/internal/service/openai_ws_forwarder_v2_execution_scope_test.go
+M	backend/internal/service/openai_ws_pool.go
+A	backend/internal/service/openai_ws_pool_reader_loop_test.go
+M	backend/internal/service/openai_ws_pool_test.go
+M	backend/internal/service/openai_ws_session_preemption.go
+M	backend/internal/service/openai_ws_session_preemption_test.go
+A	backend/internal/service/opencode_go.go
+A	backend/internal/service/opencode_go_test.go
+M	backend/internal/service/ops_request_details.go
+M	backend/internal/service/ops_upstream_context.go
+M	backend/internal/service/payment_config_providers.go
+M	backend/internal/service/payment_config_providers_test.go
+M	backend/internal/service/pricing_service.go
+M	backend/internal/service/pricing_service_test.go
+M	backend/internal/service/ratelimit_cn_providers.go
+M	backend/internal/service/ratelimit_service.go
+M	backend/internal/service/ratelimit_service_openai_image_test.go
+M	backend/internal/service/scheduler_snapshot_bulk_event_test.go
+M	backend/internal/service/scheduler_snapshot_service.go
+M	backend/internal/service/setting_features.go
+M	backend/internal/service/setting_parse.go
+M	backend/internal/service/setting_public.go
+M	backend/internal/service/setting_service.go
+M	backend/internal/service/setting_service_public_test.go
+M	backend/internal/service/setting_update.go
+M	backend/internal/service/settings_view.go
+M	backend/internal/service/upstream_billing_probe.go
+M	backend/internal/service/upstream_billing_probe_multiplatform_test.go
+M	backend/internal/service/upstream_models.go
+M	backend/internal/service/user_platform_quota_flusher.go
+M	backend/internal/service/user_platform_quota_port.go
+M	backend/internal/setup/setup.go
+M	backend/internal/setup/setup_test.go
+A	backend/migrations/238_opencode_go_platform.sql
+A	backend/migrations/238_purge_unlimited_user_platform_quotas.sql
+A	backend/migrations/opencode_go_platform_migration_test.go
+A	backend/migrations/user_platform_quota_purge_unlimited_migration_test.go
+M	backend/resources/model-pricing/model_prices_and_context_window.json
+M	deploy/.env.example
+M	deploy/APPLE_CONTAINER.md
+M	deploy/README.md
+M	deploy/apple-container.sh
+M	deploy/config.example.yaml
+M	deploy/docker-compose.dev.yml
+M	deploy/docker-compose.local.yml
+M	deploy/docker-compose.standalone.yml
+M	deploy/docker-compose.sub2api.yml
+M	deploy/docker-compose.yml
+M	deploy/tests/apple-container-test.sh
+M	deploy/tests/docker-compose-gateway-env-test.sh
+M	deploy/tests/fixtures/bin/container
+M	docs/custom-development-history.md
+M	frontend/src/App.vue
+M	frontend/src/__tests__/integration/proxy-data-import.spec.ts
+M	frontend/src/api/__tests__/client.spec.ts
+M	frontend/src/api/admin/accounts.ts
+M	frontend/src/api/admin/channelMonitor.ts
+M	frontend/src/api/admin/cnProviders.ts
+M	frontend/src/api/admin/ops.ts
+M	frontend/src/api/admin/settings.ts
+M	frontend/src/api/client.ts
+M	frontend/src/components/account/AccountUsageCell.vue
+M	frontend/src/components/account/BulkEditAccountModal.vue
+M	frontend/src/components/account/CNProviderQuotaCell.vue
+M	frontend/src/components/account/CreateAccountModal.vue
+M	frontend/src/components/account/EditAccountModal.vue
+M	frontend/src/components/account/ModelWhitelistSelector.vue
+A	frontend/src/components/account/OpenCodeGoProtocolRulesEditor.vue
+M	frontend/src/components/account/__tests__/CreateAccountModal.spec.ts
+M	frontend/src/components/account/__tests__/EditAccountModal.spec.ts
+M	frontend/src/components/account/__tests__/ModelWhitelistSelector.spec.ts
+M	frontend/src/components/account/__tests__/credentialsBuilder.spec.ts
+M	frontend/src/components/account/credentialsBuilder.ts
+M	frontend/src/components/admin/monitor/MonitorFiltersBar.vue
+M	frontend/src/components/admin/monitor/MonitorFormDialog.vue
+M	frontend/src/components/admin/monitor/MonitorTemplateManagerDialog.vue
+M	frontend/src/components/admin/proxy/ImportDataModal.vue
+M	frontend/src/components/admin/usage/UsageTable.vue
+M	frontend/src/components/admin/usage/__tests__/UsageTable.spec.ts
+M	frontend/src/components/admin/user/UserPlatformQuotaModal.vue
+M	frontend/src/components/admin/user/__tests__/UserPlatformQuotaModal.spec.ts
+M	frontend/src/components/common/PlatformIcon.vue
+M	frontend/src/components/common/PlatformTypeBadge.vue
+M	frontend/src/components/common/SubscriptionProgressMini.vue
+A	frontend/src/components/common/__tests__/PlatformTypeBadge.openaiPlans.spec.ts
+M	frontend/src/components/keys/UseKeyModal.vue
+M	frontend/src/components/layout/AppHeader.vue
+M	frontend/src/components/layout/AppSidebar.vue
+M	frontend/src/components/layout/__tests__/AppSidebar.spec.ts
+M	frontend/src/components/payment/PaymentProviderDialog.vue
+M	frontend/src/components/payment/__tests__/PaymentProviderDialog.spec.ts
+M	frontend/src/components/user/dashboard/UserDashboardStats.vue
+A	frontend/src/components/user/dashboard/__tests__/UserDashboardStats.spec.ts
+M	frontend/src/components/user/monitor/MonitorCard.vue
+M	frontend/src/components/user/monitor/ProviderIcon.vue
+M	frontend/src/components/user/profile/ProfileBalanceNotifyCard.vue
+M	frontend/src/components/user/profile/ProfileEditForm.vue
+M	frontend/src/components/user/profile/ProfilePasswordForm.vue
+A	frontend/src/components/user/profile/__tests__/ProfileBalanceNotifyCard.spec.ts
+A	frontend/src/components/user/profile/__tests__/ProfileEditForm.spec.ts
+M	frontend/src/components/user/profile/__tests__/ProfilePasswordForm.spec.ts
+M	frontend/src/composables/useChannelMonitorFormat.ts
+M	frontend/src/composables/useModelWhitelist.ts
+M	frontend/src/constants/__tests__/platforms.spec.ts
+M	frontend/src/constants/channelMonitor.ts
+M	frontend/src/constants/platforms.ts
+M	frontend/src/i18n/__tests__/openaiFastPolicyLocales.spec.ts
+M	frontend/src/i18n/__tests__/wsModeLocaleDesc.spec.ts
+M	frontend/src/i18n/locales/en/admin/accounts.ts
+M	frontend/src/i18n/locales/en/admin/channels.ts
+M	frontend/src/i18n/locales/en/admin/ops.ts
+M	frontend/src/i18n/locales/en/admin/overview.ts
+M	frontend/src/i18n/locales/en/admin/settings.ts
+M	frontend/src/i18n/locales/en/common.ts
+M	frontend/src/i18n/locales/en/dashboard.ts
+M	frontend/src/i18n/locales/en/landing.ts
+M	frontend/src/i18n/locales/en/misc.ts
+M	frontend/src/i18n/locales/zh/admin/accounts.ts
+M	frontend/src/i18n/locales/zh/admin/channels.ts
+M	frontend/src/i18n/locales/zh/admin/ops.ts
+M	frontend/src/i18n/locales/zh/admin/overview.ts
+M	frontend/src/i18n/locales/zh/admin/settings.ts
+M	frontend/src/i18n/locales/zh/common.ts
+M	frontend/src/i18n/locales/zh/dashboard.ts
+M	frontend/src/i18n/locales/zh/landing.ts
+M	frontend/src/i18n/locales/zh/misc.ts
+M	frontend/src/router/__tests__/feature-access.spec.ts
+M	frontend/src/router/__tests__/title.spec.ts
+M	frontend/src/router/index.ts
+M	frontend/src/router/meta.d.ts
+M	frontend/src/router/title.ts
+M	frontend/src/stores/__tests__/app.spec.ts
+M	frontend/src/stores/app.ts
+M	frontend/src/types/index.ts
+M	frontend/src/utils/__tests__/accountTestModels.spec.ts
+A	frontend/src/utils/__tests__/featureFlags.spec.ts
+M	frontend/src/utils/__tests__/openaiWsMode.spec.ts
+A	frontend/src/utils/__tests__/siteBillingMode.spec.ts
+M	frontend/src/utils/accountTestModels.ts
+M	frontend/src/utils/featureFlags.ts
+M	frontend/src/utils/openaiWsMode.ts
+A	frontend/src/utils/planType.ts
+M	frontend/src/utils/platformColors.ts
+A	frontend/src/utils/siteBillingMode.ts
+M	frontend/src/views/KeyUsageView.vue
+M	frontend/src/views/__tests__/KeyUsageView.spec.ts
+M	frontend/src/views/admin/ChannelsView.vue
+M	frontend/src/views/admin/GroupsView.vue
+M	frontend/src/views/admin/ProxiesView.vue
+M	frontend/src/views/admin/RedeemView.vue
+M	frontend/src/views/admin/SettingsView.vue
+M	frontend/src/views/admin/SubscriptionsView.vue
+M	frontend/src/views/admin/UsersView.vue
+M	frontend/src/views/admin/__tests__/GroupsView.compositePlatforms.spec.ts
+A	frontend/src/views/admin/__tests__/ProxiesView.filters.spec.ts
+M	frontend/src/views/admin/__tests__/SettingsView.spec.ts
+M	frontend/src/views/admin/__tests__/SubscriptionsView.userUsageLink.spec.ts
+M	frontend/src/views/admin/__tests__/UsersView.spec.ts
+M	frontend/src/views/admin/__tests__/channelPlatformOptions.spec.ts
+M	frontend/src/views/admin/ops/OpsDashboard.vue
+M	frontend/src/views/admin/ops/components/OpsDashboardHeader.vue
+M	frontend/src/views/admin/ops/components/OpsErrorDetailsModal.vue
+M	frontend/src/views/admin/ops/components/OpsErrorLogTable.vue
+M	frontend/src/views/admin/ops/components/OpsRequestDetailsModal.vue
+M	frontend/src/views/admin/ops/components/__tests__/OpsErrorLogTable.spec.ts
+M	frontend/src/views/admin/ops/components/__tests__/OpsOpenAITokenStatsCard.spec.ts
+A	frontend/src/views/admin/ops/components/__tests__/OpsRequestDetailsModal.spec.ts
+M	frontend/src/views/user/CustomPageView.vue
+M	frontend/src/views/user/KeysView.vue
+M	frontend/src/views/user/PaymentView.vue
+M	frontend/src/views/user/RedeemView.vue
+M	frontend/src/views/user/UsageView.vue
+M	frontend/src/views/user/__tests__/CustomPageView.spec.ts
+M	frontend/src/views/user/__tests__/KeysView.spec.ts
+M	frontend/src/views/user/__tests__/PaymentView.spec.ts
+M	frontend/src/views/user/__tests__/RedeemView.spec.ts
+M	frontend/src/views/user/__tests__/UsageView.spec.ts
+```
+
+- 未验证：真实上游 OpenCode/Claude/Gemini/Codex Images/WS、真实插件 transport、支付与第三方回调、邮件/短信、实际媒体生成、完整浏览器业务端到端、全包 race、峰值负载、Apple 专有容器以及生产应用/数据库行为。新默认值与第三方实际价格/模型可用性仅按固定上游代码集成和本地测试，未使用真实账号在线校验。
+- 剩余依赖告警、Canvas 既有格式与平台专属验证欠缺继续保留，不新增安全例外或降低 CI 门禁。Go 软内存和数据库资源叠加风险并未经过本次峰值压测。
+- 本次临时日志和独立浏览器截图保留在仓库忽略目录，不纳入提交；本次 mock 浏览器/服务、隔离启动进程与容器、POSIX 临时挂载已关闭/清理，不删除其他工作资料。
+- 最终门禁：确认两份台账、逐提交处置、版本、旧迁移、57 编号、双 Compose、冲突/秘密特征及工作树；确认 main 仍等于 LOCAL_PRE_SYNC_SHA 后仅执行 `git switch main` 与 `git merge --ff-only sync/upstream-20260915-bdb42e22f`。记录提交自身及最终 main SHA 只在最终总结中报告，不写入本记录产生自引用。
+- 收尾只读复核：stash 数量 0；没有实际 submodule 或 Git LFS 文件；未配置自定义 hooksPath，默认 hooks 目录没有启用的非 sample Hook。隔离容器标签查询为空、测试应用进程查询为空，POSIX 临时挂载不存在。
+
+## 2026-09-15 追加授权发布 v0.1.233
+
+- 本条追加于上述本地同步完成之后，不改写当时未推送、未访问生产或部署的历史事实。用户新增授权为：任务未完成则继续，已完成则提交代码，通过 CI 后更新 tag 自动部署。
+- 上游固定范围仍为 `98d86915becae9fe9491a91ffc6defd5235c8d2b..bdb42e22f81fcb633ff0a060961211dd2bcb515b`，141 个提交处置不变；LAST_FULLY_INTEGRATED_UPSTREAM_SHA: `bdb42e22f81fcb633ff0a060961211dd2bcb515b`。本条没有新增上游代码或扩大范围。
+- 合并提交 `6454c4f68754a0e79ae6cce549ac616999d0ab57`，本地同步记录与发布候选 `148cd9afab8b0bf4b8dbc3ba00c8b4cd8b96cce5`。候选相对同步前共 366 文件变化；先推送 main，等待固定 SHA 的 CI `34888272480` 与 Security Scan `34888272483` 全部成功，再于 03:54:48 创建并推送 `v0.1.233`。
+- 新标签对象 `f6d9b40d68e3cb6a12c5fc8aa22fac1ffb4aeae2` 指向该候选；没有复用或改写旧标签。tag CI `34889754413`、安全扫描 `34889754535` 也全部通过；没有增加安全例外或关闭检查。Linux 集成和 macOS 脚本 CI 通过，补充了本地平台验证边界，但不代表真实 Apple 专有容器能力已验收。
+- Release `34889754841` 的五项必要任务全部成功，实际生产部署步骤于 04:07:57 成功，未被跳过。镜像 `saviour2411/sub2api:0.1.233` 的 OCI revision 与候选完全一致。自动版本回写提交 `2b9db482350d72ce37c1f4f76e62d8c74df06a52` 仅更新 VERSION，本地通过 fetch 与 ff-only 接收。
+- 生产只读验收于 04:10:48 通过：双 Compose 与 config 哈希不变、三项数据 bind mount 正确、仅回环监听、3600 秒通用响应头超时及 5 秒用量任务保留、既有资源值不变。PostgreSQL/Redis 容器 ID 与启动时间未变；3 份相对上一生产标签新增 SQL 的执行记录和按运行器规则计算的校验和一致。公网健康检查为 200/ok。
+- 关停观察发现 HTTP 强制关停，随后全部清理完成；观察期间没有清理失败、清理超时或用量任务丢弃告警。不能宣称零中断、全部账单完整或所有真实业务无回归；未执行账单补写、生产迁移重跑或旧库回退。
+- 生产机没有 YAML 依赖，验收改为本地既有解析器处理内存管道后脱敏。首次迁移哈希检查因验收脚本未按运行器去除首尾空白而拒绝，修正脚本后全部匹配；部署中一次健康尚未就绪的采样被拒绝，部署完成后重测成功。生产配置和迁移文件未为通过验收而改变。
+- 两份台账同步补记；详细运维结果见 `docs/operations/2026-09-15-v0.1.233-release.md`，脱敏证据保留在仓库忽略目录 `output/release-20260915-bdb42e22f/`。备份与同步分支保留原位置；本次追加记录提交自身 SHA 仅在交付总结报告。

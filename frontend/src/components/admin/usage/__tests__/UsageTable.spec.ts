@@ -92,6 +92,7 @@ const DataTableStub = {
         <slot name="cell-reasoning_effort" :row="row" :value="row.reasoning_effort" />
         <slot name="cell-billing_mode" :row="row" />
         <slot name="cell-tokens" :row="row" />
+        <slot name="cell-latency" :row="row" />
         <slot name="cell-cost" :row="row" />
         <slot name="cell-request_id" :row="row" />
         <slot name="cell-upstream_request_id" :row="row" />
@@ -129,6 +130,15 @@ const baseImageRow = {
 }
 
 describe('admin UsageTable tooltip', () => {
+  it('在总耗时下方显示输出速率', () => {
+    const wrapper = mount(UsageTable, {
+      props: { data: [{ ...baseImageRow, image_count: 0, billing_mode: 'token', request_type: 'stream', stream: true, output_tokens: 1000, duration_ms: 12000, first_token_ms: 2000 }] as any, columns: [] },
+      global: { stubs: { DataTable: DataTableStub } }
+    })
+    expect(wrapper.get('[data-test="output-rate"]').text()).toBe('100.00 tk/s')
+    expect(wrapper.text().indexOf('usage.latencyDuration')).toBeLessThan(wrapper.text().indexOf('100.00 tk/s'))
+    wrapper.unmount()
+  })
   beforeEach(() => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       x: 0,
@@ -273,6 +283,53 @@ describe('admin UsageTable tooltip', () => {
     expect(text).toContain('$5.0000 / 1M tokens')
     expect(text).toContain('$30.0000 / 1M tokens')
     expect(text).toContain('$0.069568')
+  })
+
+  it.each(['token', 'image', 'per_request'])('keeps eight decimal places in %s cost details', async (billingMode) => {
+    const row = {
+      ...baseImageRow,
+      billing_mode: billingMode,
+      image_count: billingMode === 'image' ? 2 : 0,
+      input_cost: 0.00000001,
+      image_input_cost: 0.00000002,
+      output_cost: 0.00000003,
+      image_output_cost: 0.00000004,
+      cache_creation_cost: 0.00000005,
+      cache_read_cost: 0.00000006,
+      total_cost: 0.00000022,
+      actual_cost: 0.00000042,
+      account_stats_cost: 0.00000012,
+      account_rate_multiplier: 1.5,
+    }
+    const wrapper = mount(UsageTable, {
+      props: { data: [row], loading: false, columns: [] },
+      global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+    })
+    const triggers = wrapper.findAll('.group.relative')
+    await triggers[triggers.length - 1].trigger('mouseenter')
+    const amounts = wrapper.get('.fixed').findAll('span').map(span => span.text())
+    expect(amounts).toEqual(expect.arrayContaining([
+      '$0.00000001', '$0.00000002', '$0.00000003', '$0.00000004',
+      '$0.00000005', '$0.00000006', '$0.00000022', '$0.00000042', '$0.00000018',
+    ]))
+    if (billingMode === 'image') expect(amounts).toContain('$0.00000011')
+    wrapper.unmount()
+  })
+
+  it('uses eight decimal places for missing cost values', async () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{ ...baseImageRow, billing_mode: 'per_request', image_count: 0, total_cost: undefined, actual_cost: undefined }],
+        loading: false,
+        columns: [],
+      },
+      global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+    })
+    const triggers = wrapper.findAll('.group.relative')
+    await triggers[triggers.length - 1].trigger('mouseenter')
+    const amounts = wrapper.get('.fixed').findAll('span').map(span => span.text()).filter(text => text.startsWith('$'))
+    expect(amounts).toEqual(['$0.00000000', '$0.00000000', '$0.00000000', '$0.00000000'])
+    wrapper.unmount()
   })
 
   it('shows requested and upstream models separately for admin rows', () => {

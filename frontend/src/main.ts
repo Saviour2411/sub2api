@@ -1,4 +1,5 @@
-import { createApp } from 'vue'
+import { createApp, h } from 'vue'
+import { RouterView } from 'vue-router'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
@@ -51,20 +52,22 @@ async function bootstrap() {
   initThemeClass()
   initIOSViewportZoomFix()
 
-  const app = createApp(App)
+  // 专属查询入口不挂载登录态应用，避免恢复会话、公告和订阅轮询。
+  const balanceQueryOnly = /^\/balance-query\/?$/.test(window.location.pathname)
+  const app = createApp(balanceQueryOnly ? { render: () => h(RouterView) } : App)
   const pinia = createPinia()
   app.use(pinia)
 
   // Initialize settings from injected config BEFORE mounting (prevents flash)
   // This must happen after pinia is installed but before router and i18n
   const appStore = useAppStore()
-  appStore.initFromInjectedConfig()
+  if (!balanceQueryOnly) appStore.initFromInjectedConfig()
 
   // Set document title immediately after config is loaded
   if (appStore.siteName && appStore.siteName !== 'Sub2API') {
     document.title = `${appStore.siteName} - AI API Gateway`
   }
-  updateFavicon(appStore.siteLogo)
+  if (!balanceQueryOnly) updateFavicon(appStore.siteLogo)
 
   await initI18n()
 

@@ -910,6 +910,8 @@ var ProviderSet = wire.NewSet(
 	NewAliyunCaptchaService,
 	NewSubscriptionService,
 	NewDailyCheckinService,
+	NewUserCustomizationService,
+	ProvideTemporaryCreditWorker,
 	wire.Bind(new(DefaultSubscriptionAssigner), new(*SubscriptionService)),
 	ProvideConcurrencyService,
 	ProvideUserMessageQueueService,
@@ -969,6 +971,13 @@ func ProvideUserPlatformQuotaUsageFlusher(cfg *config.Config, cache BillingCache
 	svc := NewUserPlatformQuotaUsageFlusher(cfg, cache, quotaRepo, tw)
 	svc.Start()
 	return svc
+}
+
+// ProvideTemporaryCreditWorker 创建独立的一次性授信后台任务。
+func ProvideTemporaryCreditWorker(repo UserCustomizationRepository, cache *BillingCacheService) *TemporaryCreditWorker {
+	w := NewTemporaryCreditWorker(repo, cache)
+	w.Start()
+	return w
 }
 
 // ProvidePaymentConfigService wraps NewPaymentConfigService to accept the named

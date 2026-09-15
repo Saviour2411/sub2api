@@ -143,6 +143,11 @@ func SecurityHeaders(cfg config.CSPConfig, getFrameSrcOrigins func() []string) g
 			c.Header("X-Frame-Options", "DENY")
 		}
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
+		if strings.TrimSuffix(c.Request.URL.Path, "/") == "/balance-query" {
+			c.Header("Referrer-Policy", "no-referrer")
+			c.Header("Cache-Control", "no-store, private")
+			c.Header("X-Robots-Tag", "noindex, nofollow, noarchive")
+		}
 		if isAPIRoutePath(c) {
 			c.Next()
 			return

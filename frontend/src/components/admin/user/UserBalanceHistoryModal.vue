@@ -201,6 +201,7 @@ const typeOptions = computed(() => [
   { value: 'balance', label: t('admin.users.typeBalance') },
   { value: 'affiliate_balance', label: t('admin.users.typeAffiliateBalance') },
   { value: 'admin_balance', label: t('admin.users.typeAdminBalance') },
+  { value: 'temporary_credit', label: t('userCustomization.temporaryCredit') },
   { value: 'concurrency', label: t('admin.users.typeConcurrency') },
   { value: 'admin_concurrency', label: t('admin.users.typeAdminConcurrency') },
   { value: 'subscription', label: t('admin.users.typeSubscription') }
@@ -236,13 +237,14 @@ const loadHistory = async (page: number) => {
 }
 
 // Helper: check if admin type
-const isAdminType = (type: string) => type === 'admin_balance' || type === 'admin_concurrency'
+const isAdminType = (type: string) => type === 'admin_balance' || type === 'admin_concurrency' || type === 'temporary_credit'
 
 // Helper: check if balance type (includes admin_balance)
 const isBalanceType = (type: string) =>
   type === 'balance' ||
   type === 'admin_balance' ||
   type === 'affiliate_balance' ||
+  type === 'temporary_credit' ||
   type === 'daily_checkin_balance'
 
 // Helper: check if subscription type
@@ -297,6 +299,8 @@ const getValueColor = (item: BalanceHistoryItem) => {
 // Item title
 const getItemTitle = (item: BalanceHistoryItem) => {
   switch (item.type) {
+    case 'temporary_credit':
+      return t('userCustomization.temporaryCredit')
     case 'balance':
       return t('redeem.balanceAddedRedeem')
     case 'affiliate_balance':

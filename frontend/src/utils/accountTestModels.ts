@@ -8,10 +8,11 @@ const defaultModels: Record<string, string> = {
   anthropic: 'claude-opus-5',
   gemini: 'gemini-3.8-flash',
   grok: 'grok-4.6',
+  opencode_go: 'glm-5.3',
   antigravity: 'claude-opus-5'
 }
 
-const cnPlatforms = new Set(['kimi', 'zhipu', 'deepseek', 'minimax'])
+const cnPlatforms = new Set(['kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go'])
 
 export function pickAccountTestDefaultModel(account: TestAccount, models: TestModel[]): string {
   if (cnPlatforms.has(account.platform)) return models[0]?.id || ''

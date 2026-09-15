@@ -1,5 +1,27 @@
 export default {
+  userCustomization: {
+    title: 'User customizations', paymentMethods: 'Shared payment instructions', methodKey: 'Name, e.g. Binance ID', methodValue: 'Payment details',
+    noPaymentMethods: 'No payment instructions configured', moveUp: 'Move up', moveDown: 'Move down', search: 'Search username or user ID',
+    user: 'User', queryLink: 'Query link', autoCredit: 'Automatic credit', noUsers: 'No users', totalUsers: '{count} users',
+    linkActive: 'Enabled', linkDisabled: 'Disabled', noLink: 'Not generated', copyLink: 'Copy query link', generateLink: 'Generate link',
+    disableLink: 'Disable', enableLink: 'Enable', resetLink: 'Reset link', configure: 'Credit settings',
+    threshold: 'Balance threshold', amount: 'One-time credit amount', used: 'Used this cycle', ready: 'Ready', off: 'Disabled',
+    restoreCredit: 'Restore automatic credit', temporaryCredit: 'Temporary credit',
+    restoreConfirm: 'Restore one credit for {user} (ID {id})? Add {amount} when the balance is below {threshold}. An already-low balance can receive credit at the next background check.',
+    resetLinkConfirm: 'Reset the query link for {user} (ID {id})? The old link will stop working immediately. Credit status will not change.',
+    loadFailed: 'Unable to load. Please retry.', invalidMethods: 'Complete each payment name and payment detail',
+    saved: 'Saved', saveFailed: 'Unable to save. Check the settings and retry.', operationFailed: 'The operation did not complete. User status has been refreshed; check it before retrying.',
+    copied: 'Query link copied', copyFailed: 'Copy failed. Check clipboard permissions.'
+  },
+  balanceQuery: {
+    title: 'Balance inquiry', balance: 'Current balance', refresh: 'Refresh balance', paymentMethods: 'Payment instructions', history: 'Recharge history',
+    empty: 'No recharge records', time: 'Time', amount: 'Credited amount', note: 'Note',
+    unavailable: 'This query link is unavailable', rateLimited: 'Too many queries. Please retry later.', serviceUnavailable: 'Balance inquiry is temporarily unavailable. Please retry later.',
+    retryAfter: 'Retry in {seconds} seconds', copy: 'Copy payment details', copied: 'Copied', copyFailed: 'Copy failed. Check clipboard permissions.'
+  },
   common: {
+    previous: 'Previous page',
+    retry: 'Retry',
     apply: 'Apply',
     clear: 'Clear',
     creating: 'Creating...',

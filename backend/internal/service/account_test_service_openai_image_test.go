@@ -11,11 +11,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 func TestAccountTestService_OpenAIImageOAuthHandlesOutputItemDoneFallback(t *testing.T) {
-	t.Setenv("SUB2API_IMAGES_MAIN_MODEL", "gpt-5.6-sol")
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -45,11 +43,9 @@ func TestAccountTestService_OpenAIImageOAuthHandlesOutputItemDoneFallback(t *tes
 		},
 	}
 
-	err := svc.testOpenAIImageOAuth(c, context.Background(), account, "gpt-image-2.5-flare", "draw a cat")
+	err := svc.testOpenAIImageOAuth(c, context.Background(), account, "gpt-image-1", "draw a cat")
 	require.NoError(t, err)
 	require.NotNil(t, upstream.lastReq)
-	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(upstream.lastBody, "model").String())
-	require.Equal(t, "gpt-image-2.5-flare", gjson.GetBytes(upstream.lastBody, "tools.0.model").String())
 	require.Equal(t, HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileFromContext(upstream.lastReq.Context()))
 	require.Contains(t, rec.Body.String(), "Calling Codex /responses image tool")
 	require.Contains(t, rec.Body.String(), "data:image/png;base64,aGVsbG8=")

@@ -100,6 +100,11 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 				return err
 			}
 		}
+
+		// 注入后的 system、messages 与 tools 断点总数仍须满足上游四块上限。
+		if err := replaceBody(enforceCacheControlLimit(body)); err != nil {
+			return err
+		}
 	}
 	if shouldMimicClaudeCode && account.Type == AccountTypeAPIKey {
 		mappedModel := account.GetMappedModel(reqModel)

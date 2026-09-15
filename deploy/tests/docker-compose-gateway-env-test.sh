@@ -24,7 +24,7 @@ check_common_defaults() {
     check_compose_default "$compose_file" "$key" "$value"
   done <<'EOF'
 GATEWAY_FORCE_CODEX_CLI false
-GATEWAY_OPENAI_COMPACT_MODEL gpt-5.4
+GATEWAY_OPENAI_COMPACT_MODEL gpt-5.5
 GATEWAY_OPENAI_RESPONSE_HEADER_TIMEOUT 0
 GATEWAY_OPENAI_WS_FORCE_HTTP false
 GATEWAY_OPENAI_HTTP2_ENABLED true

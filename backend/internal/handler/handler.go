@@ -71,6 +71,7 @@ type Handlers struct {
 	BatchImage       *BatchImageHandler
 	DailyCheckin     *DailyCheckinHandler
 	ModelMarketplace *ModelMarketplaceHandler
+	BalanceQuery     *BalanceQueryHandler
 }
 
 // BuildInfo contains build-time information
