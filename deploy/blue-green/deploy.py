@@ -46,6 +46,12 @@ def bytes_value(value):
     return int(match[1]) * {None: 1, "B": 1, "KiB": 1024, "MiB": 1024**2, "GiB": 1024**3}[match[2]]
 
 
+def require_matching_runtime(slot, expected, actual_entries):
+    actual = dict(item.split("=", 1) for item in actual_entries if "=" in item)
+    for name in ("DATABASE_MAX_OPEN_CONNS", "GOMEMLIMIT", "JWT_SECRET", "TOTP_ENCRYPTION_KEY"):
+        require(actual.get(name) == expected.get(name), f"{slot} 的实际运行参数 {name} 与批准清单不一致；不按新清单推算旧实例资源")
+
+
 class Deployment:
     def __init__(self, directory):
         self.directory = Path(directory).resolve()
@@ -111,13 +117,19 @@ class Deployment:
         service = compose["services"]["sub2api"]
         env = service["environment"]
         require(len(env.get("JWT_SECRET", "")) >= 32 and re.fullmatch(r"[a-fA-F0-9]{64}",env.get("TOTP_ENCRYPTION_KEY", "")), "蓝绿必须显式配置共享 JWT/TOTP 密钥；不自动改写生产参数")
+        for slot in self.state["slots"]:
+            running = self.inspect("sub2api-"+slot)
+            require_matching_runtime(slot, env, running["Config"]["Env"])
         pool = int(env["DATABASE_MAX_OPEN_CONNS"])
+        database_reserve = int(self.config["database_reserve"])
+        require(database_reserve >= 0, "数据库维护预留不能为负数")
         pg = compose["services"]["postgres"]["environment"]
         capacity = int(self.run("docker", "exec", "sub2api-postgres", "psql", "-U", pg.get("POSTGRES_USER", "postgres"), "-d", pg.get("POSTGRES_DB", "sub2api"), "-Atc", "SHOW max_connections").stdout.strip())
-        require(pool > 0 and 2 * pool + int(self.config["database_reserve"]) <= capacity, "双实例数据库连接池加维护预留超过容量")
+        require(pool > 0 and 2 * pool + database_reserve <= capacity, "双实例数据库连接池加维护预留超过容量")
         memory = bytes_value(env["GOMEMLIMIT"])
         meminfo = dict((line.split(':')[0], int(line.split()[1])*1024) for line in Path("/proc/meminfo").read_text().splitlines())
         reserve = int(self.config["memory_reserve_bytes"])
+        require(memory > 0 and reserve > 0, "应用内存与数据库/系统维护预留必须为正数")
         require(2 * memory + reserve <= meminfo["MemTotal"], "双实例内存总预算不足；不自动修改生产参数")
         if needs_capacity:
             require(memory + reserve <= meminfo["MemAvailable"], "候选启动所需的可用内存不足")

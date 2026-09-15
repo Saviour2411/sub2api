@@ -207,6 +207,15 @@ class BlueGreenTests(unittest.TestCase):
         self.assertFalse(any(call[:2] == ("nginx", "-s") for call in self.deployment.calls))
         self.assertNotIn(("control", "blue", "drain"), self.deployment.calls)
 
+    def test_candidate_budget_cannot_hide_larger_running_pool(self):
+        expected = {"DATABASE_MAX_OPEN_CONNS":"192", "GOMEMLIMIT":"1GiB", "JWT_SECRET":"shared", "TOTP_ENCRYPTION_KEY":"shared-key"}
+        entries = [key+"="+value for key,value in expected.items()]
+        bg.require_matching_runtime("blue", expected, entries)
+        for key, value in (("DATABASE_MAX_OPEN_CONNS", "512"), ("GOMEMLIMIT", "10GiB"), ("JWT_SECRET", "different"), ("TOTP_ENCRYPTION_KEY", "different")):
+            actual = dict(expected, **{key:value})
+            with self.assertRaisesRegex(bg.Refused, key):
+                bg.require_matching_runtime("blue", expected, [key+"="+value for key,value in actual.items()])
+
     def test_budget_parsing_requires_explicit_limit(self):
         self.assertEqual(3*1024**3,bg.bytes_value("3GiB"))
         for value in ("off","80%","-1","",None):
