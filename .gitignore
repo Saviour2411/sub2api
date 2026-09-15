@@ -139,6 +139,9 @@ docs/*
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
 !docs/custom-development-history.md
+!docs/operations/
+docs/operations/*
+!docs/operations/graceful-blue-green-deploy.md
 !docs/ASYNC_IMAGE_TASKS.md
 !docs/BATCH_IMAGE_MVP.md
 !docs/COMPOSITE_GROUPS.md

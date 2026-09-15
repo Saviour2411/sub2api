@@ -9,6 +9,12 @@
 
 上游提交的逐项处置继续记录在 `docs/upstream-sync-history.md`。本文件不重复上游提交清单，只记录本地能力及其演进。
 
+## 生命周期与蓝绿实施进度（2026-09-15，未发布）
+
+功能分支 `codex/graceful-blue-green-deploy` 已合入远端主线 `09523d260`，保留主线 Claude 流安全重试、诊断与安全依赖更新，没有文本冲突。实现应用排空、用量停止兜底、多实例并发状态、Unix socket 会话转发、可逆排空与退役凭据；备份记录改为跨实例互斥保存。Release 已改接固定 SHA/digest 的蓝绿执行器，并保留首次迁移、资源与数据库兼容性门禁。
+
+本轮新增 Linux 实际应用 + Nginx/PG/Redis 的 20 轮混合协议切流门禁，与 Python 编排状态机测试分别报告。server1 只读 SSH 多次在握手阶段超时，尚未重新核验生产基线，未执行生产迁移。用户已追加授权 CI 通过后发布，但不会以此绕过未知的旧实例排空或资源预算。实现、测试覆盖与首次迁移条件见 `docs/operations/graceful-blue-green-deploy.md`。此段仍为未生产交付的进度记录，不计入已交付能力族统计。
+
 ## 当前基线
 
 - 生产部署核验（2026-09-15）：`0.1.234` 已在固定候选 CI 与安全扫描通过后自动部署至 `216.152.153.86:22748`，镜像 revision 为 `cfd9afa871def9ebd457bb95fb4c2e8b4b02b34f`，包含 Claude 透传流收尾修复。配置、挂载及数据库/Redis 容器保持不变；旧容器退出时观察到 HTTP 强制关停及 `usage_record.task_dropped`（`reason=stopped`）告警，不宣称零中断或账单完整。详情见 `docs/operations/2026-09-15-v0.1.234-release.md`；上一版本与迁移、资源调整记录保留。
