@@ -56,7 +56,8 @@ func TestHijackedWSBlocksRetirementAfterHandlerReturns(t *testing.T) {
 	m := New("ws")
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	server := httptest.NewServer(m.HTTP(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handlerReturned := make(chan struct{})
+	trackedHandler := m.HTTP(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := websocket.Accept(w, r, nil)
 		if err != nil {
 			return
@@ -73,13 +74,25 @@ func TestHijackedWSBlocksRetirementAfterHandlerReturns(t *testing.T) {
 				}
 			}
 		}()
-	})))
+	}))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		trackedHandler.ServeHTTP(w, r)
+		close(handlerReturned)
+	}))
 	defer server.Close()
 	client, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http"), nil)
 	require.NoError(t, err)
 	defer func() { _ = client.CloseNow() }()
+	// 握手响应可能先于服务端 Hijack 返回；等待中间件退出，而不是靠调度时序断言。
+	select {
+	case <-handlerReturned:
+	case <-ctx.Done():
+		t.Fatal("WebSocket handler 未按时返回")
+	}
 	m.Drain()
-	require.Equal(t, int64(1), m.Snapshot().Work[WS])
+	snapshot := m.Snapshot()
+	require.Zero(t, snapshot.Work[HTTP])
+	require.Equal(t, int64(1), snapshot.Work[WS])
 	require.ErrorIs(t, m.Seal(), ErrBusy)
 	require.NoError(t, client.Write(ctx, websocket.MessageText, []byte("still-alive")))
 	_, body, err := client.Read(ctx)
