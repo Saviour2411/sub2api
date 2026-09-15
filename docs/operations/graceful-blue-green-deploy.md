@@ -77,6 +77,13 @@
 - 合并 `09523d260` 后已重跑全量 Go unit/integration、定向 race 和 lint；任何后续补丁以固定提交的 CI/Security Scan 结果为准。
 - 本地测试结果不等于固定提交的远端 CI/Security Scan。测试原始日志留在项目内 `.analysis_tmp/bluegreen-*.log`，不是生产测量报告。
 
+### CI 迭代与只读生产预检
+
+- `9165ee1b9` 的功能分支 CI/Security Scan 已全部通过，并已快进到远端 main；生产仍未部署。
+- 首轮 CI 的 WS 测试曾在客户端握手返回后、服务端 Hijack 完成前读取计数。测试改为明确等待整个中间件返回，再断言 HTTP 为零、WS 为一并阻止退役；保留活连接收发与自然关闭断言，不增加固定 sleep。修复后本地 1,000 次定向 race 与生命周期包 10 轮 race 均通过。
+- 手动工作流 `Blue-green production preflight (read-only)` 使用同一生产部署互斥与既有 SSH 凭据，从 GitHub runner 对固定 server1 执行 `preflight.py`。只查询容器/容量/审批文件是否存在，不写远端文件、不输出完整环境或密钥、不改资源、不切流、不停容器。
+- 预检成功仅表示读到了白名单诊断，不会创建 `config.json/state.json` 或批准首次迁移；环境预算缺失时标为未知，不猜测默认值。
+
 ## 首次从 v0.1.234 迁移：先通过独立门禁
 
 旧版没有统一生命周期、会话归属和退役凭据，任何工具都不能以 `/health=200` 或等待时间推断它已排空。

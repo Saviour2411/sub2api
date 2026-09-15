@@ -1,0 +1,55 @@
+name: Blue-green production preflight (read-only)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    concurrency:
+      group: sub2api-production-deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v6
+      - name: Prepare project-local credentials
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          test -n "$DEPLOY_SSH_KEY"
+          mkdir -p .cache/deployment/ssh
+          chmod 700 .cache/deployment/ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > .cache/deployment/ssh/key
+          chmod 600 .cache/deployment/ssh/key
+          touch .cache/deployment/ssh/known_hosts
+      - name: Read fixed server1 baseline without changing production
+        run: |
+          # 目标和诊断命令固定；脚本通过标准输入执行，不写远端文件。
+          ssh -i .cache/deployment/ssh/key -o BatchMode=yes -o ConnectTimeout=20 \
+            -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=.cache/deployment/ssh/known_hosts \
+            -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -p 22748 root@216.152.153.86 \
+            'python3 -' < deploy/blue-green/preflight.py > .cache/deployment/preflight.json
+      - name: Summarize diagnostic (not deployment approval)
+        if: always()
+        run: |
+          if [ -s .cache/deployment/preflight.json ]; then
+            printf '## 生产只读诊断（不代表获准迁移）\n```json\n' >> "$GITHUB_STEP_SUMMARY"
+            cat .cache/deployment/preflight.json >> "$GITHUB_STEP_SUMMARY"
+            printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload allowlisted diagnostic
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: blue-green-preflight-${{ github.run_id }}
+          path: .cache/deployment/preflight.json
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Remove SSH credentials
+        if: always()
+        run: rm -f .cache/deployment/ssh/key

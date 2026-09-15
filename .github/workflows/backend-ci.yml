@@ -25,6 +25,7 @@ jobs:
           /bin/sh deploy/tests/remote-deploy-test.sh
           PYTHONDONTWRITEBYTECODE=1 python3 deploy/tests/blue-green-test.py
           PYTHONDONTWRITEBYTECODE=1 python3 deploy/tests/blue-green-evidence-test.py
+          PYTHONDONTWRITEBYTECODE=1 python3 deploy/tests/blue-green-preflight-test.py
 
   test:
     runs-on: ubuntu-latest

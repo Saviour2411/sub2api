@@ -15,6 +15,8 @@
 
 本轮新增 Linux 实际应用 + Nginx/PG/Redis 的 20 轮混合协议切流门禁，与 Python 编排状态机测试分别报告。server1 只读 SSH 多次在握手阶段超时，尚未重新核验生产基线，未执行生产迁移。用户已追加授权 CI 通过后发布，但不会以此绕过未知的旧实例排空或资源预算。实现、测试覆盖与首次迁移条件见 `docs/operations/graceful-blue-green-deploy.md`。此段仍为未生产交付的进度记录，不计入已交付能力族统计。
 
+CI 迭代：修复 WS 验收测试在握手与服务端 Hijack 之间的同步竞态，改用 handler 返回屏障并断言 HTTP 已结束而 WS 仍在。新增仅手动触发的生产只读 Actions 预检，固定 server1、共享发布互斥、仅输出容器/资源白名单；不改变生产、不替代首次迁移审定。
+
 ## 当前基线
 
 - 生产部署核验（2026-09-15）：`0.1.234` 已在固定候选 CI 与安全扫描通过后自动部署至 `216.152.153.86:22748`，镜像 revision 为 `cfd9afa871def9ebd457bb95fb4c2e8b4b02b34f`，包含 Claude 透传流收尾修复。配置、挂载及数据库/Redis 容器保持不变；旧容器退出时观察到 HTTP 强制关停及 `usage_record.task_dropped`（`reason=stopped`）告警，不宣称零中断或账单完整。详情见 `docs/operations/2026-09-15-v0.1.234-release.md`；上一版本与迁移、资源调整记录保留。
