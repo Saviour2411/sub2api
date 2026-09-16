@@ -58,14 +58,14 @@ jobs:
           check-latest: false
           cache: true
           cache-dependency-path: backend/go.sum
-      - name: Claude 流安全重试与精确空闲计时竞态检查
+      - name: Claude 流重试、空闲计时与压缩响应关闭竞态检查
         working-directory: backend
         env:
           CGO_ENABLED: '1'
         run: >-
           go test -race -tags=unit -count=1
-          -run 'TestAnthropicStreamSafeRetry|TestGatewayService_AnthropicAPIKeyPassthrough_StreamingIdleTimeout'
-          ./internal/service ./internal/handler
+          -run 'TestAnthropicStreamSafeRetry|TestGatewayService_AnthropicAPIKeyPassthrough_StreamingIdleTimeout|TestDecompressResponseBodyStreamClose|TestDecompressedBodyClose'
+          ./internal/service ./internal/handler ./internal/repository
 
   frontend:
     runs-on: ubuntu-latest
