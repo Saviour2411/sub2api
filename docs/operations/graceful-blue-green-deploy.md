@@ -146,6 +146,6 @@ python3 deploy/blue-green/deploy.py --directory "$DEPLOY_DIR" --rollback --windo
 - 首次共存期间新实例暂停共享后台任务，继续由旧版负责，避免 Redis/PG 两种历史互斥方式并行执行；请求和每实例本地服务仍运行。
 - 首次切流后保留旧容器及合法续接，记录 `drain_pending / legacy_unverifiable`，不自动杀死没有生命周期凭据的旧版。后续若该旧槽仍保留则安全拒绝复用；不能把首次切流完成误报成旧版退役完成。
 - GitHub macOS runner 仅执行脚本测试；实际发布仍是 GitHub Ubuntu runner SSH 到固定 server1，不依赖本机在线。Release 采集切流耗时和双入口无付费健康探针错误，作为观测证据而非所有客户请求零错误的证明。
-- CI 除原 20 轮协议切换外，增加构建实际 v0.1.234 二进制的首次续接测试，覆盖旧长 SSE、旧 WS、新入口同会话 WS、入口限额不重复、旧 response 续接及逐笔用量。
+- CI 除原 20 轮协议切换外，增加构建实际 v0.1.234 二进制的首次续接测试，覆盖旧长 SSE、旧 WS、新入口同会话 WS、入口限额不重复、旧 response 续接及逐笔用量。旧版只为 HTTP 响应登记 HTTP 续接身份：HTTP 续接使用真实旧 HTTP response，WS 续接使用旧 WS response；不为通过测试放宽旧版鉴权。首次迁移场景使用 60 秒测试 TTL，正常 20 轮仍为 5 秒，不修改生产 TTL。
 
 以上为本轮候选实现说明，具体 tag/生产结果以本轮执行后的交付证据为准。

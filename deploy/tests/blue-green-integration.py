@@ -171,8 +171,11 @@ class ClientWS:
         while self.stream.readline() != b"\r\n":
             pass
 
-    def turn(self, name):
-        write_frame(self.stream, {"type":"response.create", "model":"gpt-5.1", "input":name, "prompt_cache_key":self.session, "stream":True}, mask=True)
+    def turn(self, name, previous=None):
+        payload = {"type":"response.create", "model":"gpt-5.1", "input":name, "prompt_cache_key":self.session, "stream":True}
+        if previous:
+            payload["previous_response_id"] = previous
+        write_frame(self.stream, payload, mask=True)
         message = b""
         while True:
             first, body = read_frame(self.stream)
@@ -257,6 +260,9 @@ def main():
         env["LIFECYCLE_LEGACY"] = str(legacy).lower()
         if legacy or old:
             env["GATEWAY_OPENAI_WS_MAX_INGRESS_CONNECTIONS_PER_API_KEY"] = "2"
+            # 首次迁移保留旧版，不测试过期；避免启动时间消耗测试专用的 5 秒 TTL。
+            env["GATEWAY_OPENAI_WS_STICKY_SESSION_TTL_SECONDS"] = "60"
+            env["GATEWAY_OPENAI_WS_STICKY_RESPONSE_ID_TTL_SECONDS"] = "60"
         process = subprocess.Popen([str(Path(args.legacy_binary if old else args.binary).resolve())], cwd=folder, env=env, stdout=log, stderr=subprocess.STDOUT)
         processes[slot] = process
         def started():
@@ -289,7 +295,10 @@ def main():
         headers = ["-H", "Authorization: Bearer "+api_key, "-H", "Content-Type: application/json"]
         if session:
             headers += ["-H", "session_id: "+session]
-        result = command("curl", "-kfsS", "--http2", "--max-time", "75", "-w", "\n%{http_version}", *headers, "--data", json.dumps(payload), f"https://127.0.0.1:{proxy_port}/v1/responses")
+        try:
+            result = command("curl", "-ksS", "--fail-with-body", "--http2", "--max-time", "75", "-w", "\n%{http_version}", *headers, "--data", json.dumps(payload), f"https://127.0.0.1:{proxy_port}/v1/responses")
+        except subprocess.CalledProcessError as error:
+            raise AssertionError(f"流式请求 {name} 失败: {error.output}") from error
         assert result.endswith("\n2"), "没有使用 HTTP/2"
         assert '"response.completed"' in result, result[:1000]
         return result
@@ -403,6 +412,10 @@ def main():
             eventually(lambda: (folder/"legacy.sock").exists())
             ws = ClientWS(proxy_port,api_key,"legacy-session")
             previous = ws.turn("legacy-before")
+            # v0.1.234 只给 HTTP 响应登记 HTTP 续接身份，不能用旧 WS 响应冒充 HTTP 归属。
+            http_before = stream("legacy-http-before")
+            http_previous = next(json.loads(line[6:])["response"]["id"] for line in http_before.splitlines()
+                                 if line.startswith("data: ") and json.loads(line[6:]).get("type") == "response.completed")
             hold = "legacy-long-stream"
             Upstream.holds[hold] = (threading.Event(),threading.Event())
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
@@ -410,14 +423,14 @@ def main():
                 assert Upstream.holds[hold][0].wait(20)
                 start("green",legacy=True)
                 latency = switch("green")
-                ws.turn("legacy-still-connected")
+                previous = ws.turn("legacy-still-connected",previous=previous)
                 forwarded = ClientWS(direct_port,api_key,"legacy-session")
-                forwarded.turn("legacy-forwarded")
+                forwarded.turn("legacy-forwarded",previous=previous)
                 # 上限 2：仍活着的旧 WS + 新入口续接只能占两份，不能中转侧再多占一份。
                 leases = command("docker","exec",tag+"-redis","redis-cli","--scan","--pattern","concurrency:openai_ws_ingress:api_key:*").splitlines()
                 assert len(leases) == 1
                 assert command("docker","exec",tag+"-redis","redis-cli","ZCARD",leases[0]) == "2"
-                stream("legacy-response-continuation",previous=previous)
+                stream("legacy-response-continuation",previous=http_previous)
                 stream("first-new-instance")
                 forwarded.close()
                 ws.close()
