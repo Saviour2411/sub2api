@@ -321,6 +321,9 @@ def main():
         (folder/"nginx.conf").write_text('''events {}\nhttp { include /test/upstream.conf; map $http_upgrade $upgrade_connection { default upgrade; '' close; } server { listen 8443 ssl; listen 8444 ssl; http2 on; ssl_certificate /test/tls.crt; ssl_certificate_key /test/tls.key; location / { proxy_pass http://app; proxy_http_version 1.1; proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection $upgrade_connection; proxy_buffering off; proxy_request_buffering off; proxy_read_timeout 90s; proxy_next_upstream off; } } }\n''')
         proxy_port = docker("nginx:1.28-alpine", "nginx", 8443, "-p", "127.0.0.1::8444", "--add-host", "host.docker.internal:host-gateway", "-v", str(folder)+":/test:rw", "-v", str(folder/"nginx.conf")+":/etc/nginx/nginx.conf:ro")
         direct_port = int(command("docker", "port", tag+"-nginx", "8444/tcp").rsplit(":", 1)[1])
+        for entrance_port in (proxy_port,direct_port):
+            eventually(lambda: command("curl","-kfsS","--noproxy","*","--http2","--max-time","3",
+                                       f"https://127.0.0.1:{entrance_port}/health"))
         stream("warmup")
         health_stop, health_errors, health_count = threading.Event(), [], [0]
         def health_traffic():

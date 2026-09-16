@@ -34,6 +34,8 @@
 
 ## 待完成验证
 
+补强提交的首轮 CI 在隔离 Nginx 初次 warmup 时出现 TLS `SSL_ERROR_SYSCALL`，尚未开始任何切流。测试启动顺序修正为：Docker 返回端口后，先轮询双入口无付费 `/health` 至 TLS 就绪，再发送一次 warmup 生成请求；不重放生成，不放宽切流及用量断言。
+
 - 功能分支 CI 与 Security Scan 全部通过并合入 `main`。
 - 创建下一 annotated tag，验证旧版退出码为 0、两个异常计数均为 0。
 - 验证 `sub2api` 消失、`sub2api-blue` 在 18080 启动、两入口切到 blue，green 自然排空后删除。
