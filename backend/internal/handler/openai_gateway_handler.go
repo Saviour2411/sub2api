@@ -2354,12 +2354,15 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			return
 		}
 	}
+	var ingressLease *service.OpenAIWSIngressLease
 	if !forwarded {
 		maxIngressConnections := 0
 		if h.cfg != nil {
 			maxIngressConnections = h.cfg.Gateway.OpenAIWS.MaxIngressConnectionsPerAPIKey
 		}
-		ingressLease, ingressLeaseAcquired, ingressLeaseErr := h.concurrencyHelper.AcquireOpenAIWSIngressLease(ctx, apiKey.ID, maxIngressConnections)
+		var ingressLeaseAcquired bool
+		var ingressLeaseErr error
+		ingressLease, ingressLeaseAcquired, ingressLeaseErr = h.concurrencyHelper.AcquireOpenAIWSIngressLease(ctx, apiKey.ID, maxIngressConnections)
 		if ingressLeaseErr != nil {
 			reqLog.Error("openai.websocket_ingress_lease_acquire_failed", zap.Error(ingressLeaseErr))
 			h.errorResponse(c, http.StatusServiceUnavailable, "service_unavailable", "WebSocket ingress capacity is temporarily unavailable")
@@ -2423,7 +2426,13 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "missing first response.create message")
 		return
 	}
-	if h.forwardInstanceWS(c, apiKey, subject.UserID, wsConn, msgType, firstMessage) {
+	if h.forwardInstanceWS(c, apiKey, subject.UserID, wsConn, msgType, firstMessage, func() {
+		// 旧版不识别新私有协议；交接接入租约，不能在旧实例再占一次。
+		if ingressLease != nil {
+			ingressLease.Release()
+		}
+		c.Request = c.Request.WithContext(clientLifecycleCtx)
+	}) {
 		return
 	}
 	stopSessionLease := h.keepInstanceWSSession(c, apiKey, subject.UserID, firstMessage)

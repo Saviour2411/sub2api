@@ -73,7 +73,7 @@ func (h *OpenAIGatewayHandler) keepInstanceWSSession(c *gin.Context, key *servic
 
 // WS 首帧只用于归属解析；中转实例不领取并发租约、不调度账号，也不执行计费。
 // 每条消息原样转发一次，不重试生成请求、不缓存完整会话。
-func (h *OpenAIGatewayHandler) forwardInstanceWS(c *gin.Context, key *service.APIKey, user int64, client *coderws.Conn, kind coderws.MessageType, first []byte) bool {
+func (h *OpenAIGatewayHandler) forwardInstanceWS(c *gin.Context, key *service.APIKey, user int64, client *coderws.Conn, kind coderws.MessageType, first []byte, beforeLegacy func()) bool {
 	owner, err := h.instanceOwner(c, key, user, first)
 	if err != nil {
 		closeOpenAIClientWS(client, coderws.StatusTryAgainLater, "Session ownership is unavailable")
@@ -81,6 +81,9 @@ func (h *OpenAIGatewayHandler) forwardInstanceWS(c *gin.Context, key *service.AP
 	}
 	if owner == lifecycle.Process.ID() {
 		return false
+	}
+	if owner == lifecycle.LegacyOwner {
+		beforeLegacy()
 	}
 	req, transport, err := lifecycle.Process.Affinity().PeerRequest(c.Request, affinityIdentity(key, user), owner)
 	if err != nil {

@@ -20,6 +20,8 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+const LegacyOwner = "legacy-v0.1.234"
+
 const peerHeader = "X-Sub2api-Peer"
 const peerRemoteHeader = "X-Sub2api-Peer-Remote"
 const peerForwardedHeader = "X-Sub2api-Peer-Forwarded"
@@ -31,6 +33,7 @@ type verifiedPeerIdentityKey struct{}
 // Affinity 只登记可认证的会话归属，连接仍留在拥有它的实例。
 // 两个槽共享受保护的 Unix socket 目录，不允许 Redis 记录任意 TCP 目标。
 type Affinity struct {
+	Legacy    bool
 	Registry  Registry
 	Manager   *Manager
 	SocketDir string
@@ -58,6 +61,33 @@ func (a *Affinity) Select(ctx context.Context, i Identity, session, previous str
 			return "", err
 		}
 		owner = v
+	}
+	if a.Legacy && owner == "" {
+		if session != "" {
+			known, err := a.Registry.Redis.Get(ctx, affinityKey(i, "session", session)).Result()
+			if err != nil && err != redis.Nil {
+				return "", err
+			}
+			owner = known
+		}
+		if owner == "" && previous != "" {
+			// 旧版没有新归属记录，交回旧服务，由它再次验证 response 的用户/API Key 归属。
+			owner = LegacyOwner
+		}
+		if owner == "" && session != "" {
+			exists, err := a.Registry.Redis.Exists(ctx, fmt.Sprintf("sticky_session:%d:%s", i.Group, session)).Result()
+			if err != nil {
+				return "", err
+			}
+			if exists != 0 {
+				owner = LegacyOwner
+			}
+		}
+		if owner == LegacyOwner && session != "" {
+			if err := a.Registry.Redis.SetNX(ctx, affinityKey(i, "session", session), owner, ttl).Err(); err != nil {
+				return "", err
+			}
+		}
 	}
 	if owner != "" && owner != a.Manager.ID() {
 		return owner, nil
@@ -194,14 +224,29 @@ func (a *Affinity) PeerRequest(r *http.Request, i Identity, owner string) (*http
 	if r.Header.Get(peerHeader) != "" {
 		return nil, nil, errors.New("禁止内部转发循环")
 	}
-	target, err := a.target(r.Context(), owner)
-	if err != nil {
-		return nil, nil, err
+	if i.User <= 0 || i.Key <= 0 {
+		return nil, nil, errors.New("会话身份无效")
+	}
+	var target Instance
+	if owner == LegacyOwner && a.Legacy {
+		target = Instance{ID: LegacyOwner, Socket: filepath.Join(a.SocketDir, "legacy.sock")}
+	} else {
+		var err error
+		target, err = a.target(r.Context(), owner)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	request := r.Clone(r.Context())
 	request.URL = &url.URL{Scheme: "http", Host: "peer", Path: r.URL.Path, RawPath: r.URL.RawPath, RawQuery: r.URL.RawQuery}
 	request.RequestURI = ""
-	request.GetBody = nil // 无论任何方法，禁止重放已发送的请求。
+	request.GetBody = nil
+	if owner == LegacyOwner {
+		for _, name := range []string{peerHeader, peerRemoteHeader, peerForwardedHeader, peerRealIPHeader} {
+			request.Header.Del(name)
+		}
+		return request, a.transport(target.Socket), nil
+	}
 	expires := strconv.FormatInt(time.Now().Add(30*time.Second).Unix(), 10)
 	request.Header.Set(peerRemoteHeader, r.RemoteAddr)
 	request.Header.Set(peerForwardedHeader, r.Header.Get("X-Forwarded-For"))
@@ -220,6 +265,11 @@ func (a *Affinity) Forward(w http.ResponseWriter, r *http.Request, i Identity, o
 			p.Out.URL = request.URL
 			p.Out.Host = request.Host
 			p.Out.GetBody = nil
+			if owner == LegacyOwner {
+				for _, name := range []string{"X-Forwarded-For", "X-Real-Ip", "X-Forwarded-Proto"} {
+					p.Out.Header.Set(name, request.Header.Get(name))
+				}
+			}
 			for _, name := range []string{peerHeader, peerRemoteHeader, peerForwardedHeader, peerRealIPHeader} {
 				p.Out.Header.Set(name, request.Header.Get(name))
 			}

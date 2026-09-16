@@ -138,3 +138,57 @@ func TestAffinityKeepSessionRenewsOnlyLiveConnectionOwner(t *testing.T) {
 	server.FastForward(ttl)
 	require.False(t, server.Exists(key), "连接关闭后沿原 TTL 到期，不再续约")
 }
+
+func TestAffinityLegacyContinuationAndSharedJobs(t *testing.T) {
+	a, _ := affinityPair(t)
+	a.Legacy = true
+	id := Identity{User: 1, Key: 2, Group: 3}
+	ctx := context.Background()
+	require.NoError(t, a.Registry.Redis.Set(ctx, "sticky_session:3:old-session", "42", time.Hour).Err())
+	for _, pair := range [][2]string{{"old-session", ""}, {"", "old-response"}} {
+		owner, err := a.Select(ctx, id, pair[0], pair[1], time.Hour)
+		require.NoError(t, err)
+		require.Equal(t, LegacyOwner, owner)
+	}
+	owner, err := a.Select(ctx, id, "new-session", "", time.Hour)
+	require.NoError(t, err)
+	require.Equal(t, a.Manager.ID(), owner)
+	require.NoError(t, a.Registry.Redis.Set(ctx, "sticky_session:3:new-session", "42", time.Hour).Err())
+	owner, err = a.Select(ctx, id, "new-session", "", time.Hour)
+	require.NoError(t, err)
+	require.Equal(t, a.Manager.ID(), owner, "新归属优先，不因自身产生 sticky 记录回到旧版")
+	require.NoError(t, a.BindResponse(ctx, id, "new-response", time.Hour))
+	owner, err = a.Select(ctx, id, "", "new-response", time.Hour)
+	require.NoError(t, err)
+	require.Equal(t, a.Manager.ID(), owner)
+	a.Manager.SetLegacyCoexistence(true)
+	_, allowed := a.Manager.BeginBackground()
+	require.False(t, allowed)
+	done, err := a.Manager.Begin(HTTP)
+	require.NoError(t, err, "只暂停共享任务，不暂停客户请求")
+	done()
+	a.Manager.SetLegacyCoexistence(false)
+	end, allowed := a.Manager.BeginBackground()
+	require.True(t, allowed)
+	end()
+}
+
+func TestAffinityLegacyPrivateTargetPreservesAuthWithoutReplay(t *testing.T) {
+	a, _ := affinityPair(t)
+	id := Identity{User: 1, Key: 2, Group: 3}
+	req := httptest.NewRequest(http.MethodPost, "http://direct.example/v1/responses", strings.NewReader("request"))
+	req.Header.Set("Authorization", "Bearer test-only-key")
+	_, _, err := a.PeerRequest(req, id, LegacyOwner)
+	require.Error(t, err, "非首次共存不得启用旧版目标")
+	a.Legacy = true
+	peer, transport, err := a.PeerRequest(req, id, LegacyOwner)
+	require.NoError(t, err)
+	defer transport.CloseIdleConnections()
+	require.Nil(t, peer.GetBody)
+	require.Equal(t, "Bearer test-only-key", peer.Header.Get("Authorization"))
+	require.Empty(t, peer.Header.Get(peerHeader), "旧版必须使用原 API Key 自行鉴权")
+	require.True(t, transport.DisableKeepAlives)
+	req.Header.Set(peerHeader, "forged")
+	_, _, err = a.PeerRequest(req, id, LegacyOwner)
+	require.Error(t, err, "拒绝转发循环和公网伪造内部请求")
+}

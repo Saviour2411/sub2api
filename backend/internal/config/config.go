@@ -66,6 +66,7 @@ const DefaultUpstreamResponseReadMaxBytes int64 = 128 * 1024 * 1024
 const DefaultModelsListReadMaxBytes int64 = 8 * 1024 * 1024
 
 type LifecycleConfig struct {
+	Legacy bool   `mapstructure:"legacy"`
 	Socket string `mapstructure:"socket"`
 	Mode   string `mapstructure:"mode"`
 }
@@ -2039,6 +2040,7 @@ func setDefaults() {
 	viper.SetDefault("log.output.file_path", "")
 	viper.SetDefault("lifecycle.socket", "")
 	viper.SetDefault("lifecycle.mode", "active")
+	viper.SetDefault("lifecycle.legacy", false)
 	viper.SetDefault("log.rotation.max_size_mb", 100)
 	viper.SetDefault("log.rotation.max_backups", 10)
 	viper.SetDefault("log.rotation.max_age_days", 7)

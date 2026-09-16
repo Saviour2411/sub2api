@@ -55,6 +55,7 @@ type Manager struct {
 	id, version string
 	state       State
 	sealed      bool
+	legacy      bool
 	work        map[string]int64
 	leases      map[string]time.Time
 	changed     chan struct{}
@@ -115,7 +116,7 @@ func (m *Manager) Activate(ctx context.Context) error {
 func (m *Manager) AcceptingBackground() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.state == Active && !m.sealed
+	return m.state == Active && !m.sealed && !m.legacy
 }
 
 // Begin 仅在退役原子封闭后拒绝；draining 仍允许旧连接和会话续接。
@@ -246,7 +247,7 @@ func (m *Manager) SharedDB() *sql.DB      { m.mu.Lock(); defer m.mu.Unlock(); re
 // BeginBackground 将状态检查与生产者计数放在同一临界区，封住排空竞态。
 func (m *Manager) BeginBackground() (func(), bool) {
 	m.mu.Lock()
-	if m.state != Active || m.sealed {
+	if m.state != Active || m.sealed || m.legacy {
 		m.mu.Unlock()
 		return nil, false
 	}
@@ -254,4 +255,11 @@ func (m *Manager) BeginBackground() (func(), bool) {
 	m.notify()
 	m.mu.Unlock()
 	return sync.OnceFunc(func() { m.mu.Lock(); m.work[Background]--; m.notify(); m.mu.Unlock() }), true
+}
+
+// SetLegacyCoexistence 首次共存时共享定时任务仍由旧版负责，避免两个互斥域重复执行。
+func (m *Manager) SetLegacyCoexistence(enabled bool) {
+	m.mu.Lock()
+	m.legacy = enabled
+	m.mu.Unlock()
 }

@@ -153,6 +153,7 @@ func runMainServer() {
 		BuildType: BuildType,
 	}
 
+	lifecycle.Process.SetLegacyCoexistence(cfg.Lifecycle.Legacy)
 	lifecycle.Process.Starting(Version)
 	app, err := initializeApplication(buildInfo)
 	if err != nil {
@@ -188,7 +189,7 @@ func runMainServer() {
 		return app.Redis.Ping(ctx).Err()
 	})
 	if cfg.Lifecycle.Socket != "" {
-		lifecycle.Process.SetAffinity(&lifecycle.Affinity{Registry: registry, Manager: lifecycle.Process, SocketDir: filepath.Dir(cfg.Lifecycle.Socket), Secret: []byte(cfg.JWT.Secret)})
+		lifecycle.Process.SetAffinity(&lifecycle.Affinity{Registry: registry, Manager: lifecycle.Process, SocketDir: filepath.Dir(cfg.Lifecycle.Socket), Legacy: cfg.Lifecycle.Legacy, Secret: []byte(cfg.JWT.Secret)})
 	}
 	closeControl, err := lifecycle.Process.Control(cfg.Lifecycle.Socket, app.Server.Handler)
 	if err != nil {
