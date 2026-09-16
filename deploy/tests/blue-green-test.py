@@ -254,6 +254,16 @@ class BlueGreenTests(unittest.TestCase):
             self.assertTrue(d.state_path.is_file())
         self.assertFalse(any(c[:2] in (("docker","stop"),("docker","compose")) for c in d.calls))
 
+    def test_resume_ignores_new_ci_run_but_not_image_or_baseline(self):
+        release = self.release(1)
+        self.deployment.busy.add("blue")
+        self.deployment.deploy(release,window=0)
+        retry = dict(release, checks={"backend-ci.yml":{"run_id":999}})
+        self.deployment.deploy(retry,window=0)
+        self.assertEqual("green",self.deployment.routed)
+        for key in ("sha","image","compatible_from"):
+            self.assertFalse(bg.same_release(retry,dict(release,**{key:"different"})))
+
     def test_actual_resources_allow_overcommit_but_reject_real_pressure(self):
         sample = {"maximum":600, "reserved":3, "used":30, "memory_available":100*1024**3}
         bg.resource_check(sample,{})

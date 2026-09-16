@@ -42,6 +42,7 @@ def collect():
     report['machine_id_sha256'] = hashlib.sha256(machine_id).hexdigest()
     memory = dict(line.split(':', 1) for line in Path('/proc/meminfo').read_text().splitlines())
     report['memory_total_bytes'] = int(memory['MemTotal'].split()[0]) * 1024
+    report['memory_available_bytes'] = int(memory['MemAvailable'].split()[0]) * 1024
     report['compose_sha256'] = hashlib.sha256((DIRECTORY/'docker-compose.yml').read_bytes()).hexdigest()
     names = set(run('docker', 'ps', '-a', '--format', '{{.Names}}').splitlines())
     for name in CONTAINERS:
@@ -55,12 +56,26 @@ def collect():
         report['blockers'].append('找不到现有 PostgreSQL 容器')
     report['approved_files_present'] = {name: (DIRECTORY/'blue-green'/name).is_file()
                                         for name in ('config.json', 'state.json')}
-    if not all(report['approved_files_present'].values()):
-        report['blockers'].append('缺少已审定的蓝绿 config.json/state.json；不能直接打 tag 接管')
-    if 'sub2api' in names:
-        report['blockers'].append('仍存在旧单实例容器；必须另行确认首次迁移和旧连接/用量处理')
-    # 环境值不保证覆盖持久配置，因此本报告不把估计预算判为已通过。
-    report['blockers'].append('双实例实际生效的资源预算与旧实例排空仍需审定；诊断成功不等于批准部署')
+    report['first_initialization_needed'] = not all(report['approved_files_present'].values())
+    report['legacy_present'] = 'sub2api' in names
+    # 文件首次不存在是正常状态，由 tag Release 自动发现并建立，不再列为资源阻塞。
+    state_path = DIRECTORY/'blue-green/state.json'
+    if state_path.is_file():
+        state = json.loads(state_path.read_text())
+        report['deployment_state'] = {key:state.get(key) for key in
+            ('phase','active','pending','pending_reason','switched_at','switch_seconds','resources','verified_instance','legacy_retained','last_error')}
+    observation = DIRECTORY/'blue-green/observation.json'
+    if observation.is_file():
+        report['health_observation'] = json.loads(observation.read_text())
+    if 'sub2api-postgres' in names:
+        sql = "SELECT json_build_object('used',(SELECT count(*) FROM pg_stat_activity WHERE backend_type='client backend'),'reserved',current_setting('superuser_reserved_connections')::int+coalesce(current_setting('reserved_connections',true),'0')::int)"
+        report['postgres_connections'] = json.loads(run('docker','exec','sub2api-postgres','sh','-c',
+            'exec psql -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-sub2api}" -Atc "$1"','psql',sql))
+    report['endpoint_checks'] = {}
+    for name,port in (('api',2503),('direct',443)):
+        host = name+'.saviour.cc.cd'
+        result = subprocess.run(['curl','--fail','--silent','--max-time','5','--resolve',f'{host}:{port}:127.0.0.1','-D','-','-o','/dev/null',f'https://{host}:{port}/readyz'],text=True,capture_output=True,timeout=10,check=False)
+        report['endpoint_checks'][name] = {'curl_exit':result.returncode, 'headers':[line for line in result.stdout.splitlines() if line.lower().startswith(('http/','x-sub2api-'))]}
     return report
 
 

@@ -56,6 +56,12 @@ def require_matching_runtime(slot, expected, actual_entries):
         require(actual.get(name) == expected.get(name), f"{slot} 的实际运行参数 {name} 与批准清单不一致；不按新清单推算旧实例资源")
 
 
+def same_release(left, right):
+    # 重跑时 CI run/attempt 可能变化；恢复身份只由不可变镜像、提交及迁移基线决定。
+    return all(left.get(key) == right.get(key) for key in
+               ("sha","image","compatible_from","migration_class","rollback_compatible"))
+
+
 def resource_check(sample, config):
     free = sample["maximum"] - sample["reserved"] - sample["used"]
     db_min = int(config.get("database_free_min",32))
@@ -431,9 +437,9 @@ class Deployment:
         require(not self.state.get("rollback") or self.state["phase"] == "stable", "回滚未完成，先用 --rollback 恢复，不改变当前流量")
         # 未排空槽优先处理；即使本次发布不同镜像，也不允许覆盖正在服务的旧实例。
         if self.state.get("pending"):
-            same_release = self.state.get("release") == release
-            if not self.drain(window if same_release else 0):
-                require(same_release, "旧槽仍有工作，本次部署未改变当前流量")
+            same = same_release(self.state.get("release", {}), release)
+            if not self.drain(window if same else 0):
+                require(same, "旧槽仍有工作，本次部署未改变当前流量")
                 return
         if self.state["slots"][self.state["active"]]["sha"] == release["sha"] and self.state["phase"] == "stable":
             require(self.state["slots"][self.state["active"]]["image"] == release["image"], "同一提交的镜像摘要发生变化")
@@ -441,7 +447,7 @@ class Deployment:
         active = self.state["active"]
         slot = "green" if active == "blue" else "blue"
         current_release = self.state.get("release", {})
-        require(self.state["phase"] == "stable" or current_release == release, "另一个发布未完成，必须先恢复同一发布")
+        require(self.state["phase"] == "stable" or same_release(current_release, release), "另一个发布未完成，必须先恢复同一发布")
         existing = self.inspect("sub2api-"+slot)
         compose = self.preflight(release, needs_capacity=existing is None)
         if self.state["phase"] == "stable":
