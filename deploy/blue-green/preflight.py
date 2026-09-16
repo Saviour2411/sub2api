@@ -35,6 +35,14 @@ def container_summary(data):
     }
 
 
+def endpoint_command(name, port):
+    host = name+'.saviour.cc.cd'
+    # 只信任服务器既有 Origin 证书，不关闭 TLS 校验或修改系统 CA。
+    origin = ['--cacert','/root/cert/saviour.cc.cd/saviour.cc.cd.pem'] if name == 'api' else []
+    return ['curl','--fail','--silent','--max-time','5','--noproxy','*',*origin,
+            '--resolve',f'{host}:{port}:127.0.0.1','-D','-','-o','/dev/null',f'https://{host}:{port}/readyz']
+
+
 def collect():
     report = {'captured_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
               'read_only': True, 'deployment_approved': False, 'containers': [], 'blockers': []}
@@ -73,8 +81,7 @@ def collect():
             'exec psql -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-sub2api}" -Atc "$1"','psql',sql))
     report['endpoint_checks'] = {}
     for name,port in (('api',2503),('direct',443)):
-        host = name+'.saviour.cc.cd'
-        result = subprocess.run(['curl','--fail','--silent','--max-time','5','--resolve',f'{host}:{port}:127.0.0.1','-D','-','-o','/dev/null',f'https://{host}:{port}/readyz'],text=True,capture_output=True,timeout=10,check=False)
+        result = subprocess.run(endpoint_command(name,port),text=True,capture_output=True,timeout=10,check=False)
         report['endpoint_checks'][name] = {'curl_exit':result.returncode, 'headers':[line for line in result.stdout.splitlines() if line.lower().startswith(('http/','x-sub2api-'))]}
     return report
 

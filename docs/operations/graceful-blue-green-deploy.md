@@ -148,4 +148,6 @@ python3 deploy/blue-green/deploy.py --directory "$DEPLOY_DIR" --rollback --windo
 - GitHub macOS runner 仅执行脚本测试；实际发布仍是 GitHub Ubuntu runner SSH 到固定 server1，不依赖本机在线。Release 采集切流耗时和双入口无付费健康探针错误，作为观测证据而非所有客户请求零错误的证明。
 - CI 除原 20 轮协议切换外，增加构建实际 v0.1.234 二进制的首次续接测试，覆盖旧长 SSE、旧 WS、新入口同会话 WS、入口限额不重复、旧 response 续接及逐笔用量。旧版只为 HTTP 响应登记 HTTP 续接身份：HTTP 续接使用真实旧 HTTP response，WS 续接使用旧 WS response；不为通过测试放宽旧版鉴权。首次迁移场景使用 60 秒测试 TTL，正常 20 轮仍为 5 秒，不修改生产 TTL。
 
+只读预检 run `35049556996`（2026-09-16 02:51:09 UTC）：PG 实际客户端连接 12/600（保留 3），MemAvailable=230716719104 字节；生产上限仍为 512 / 216181080064B，首次 config/state 均未建立。该次探针发现 API 使用 Cloudflare Origin 证书，默认系统 CA 返回 curl 60。修正后的回环探针仅对 API 显式使用服务器现有 `/root/cert/saviour.cc.cd/saviour.cc.cd.pem` 作为信任证书，保留域名、有效期验证，禁用环境代理；不使用 `-k`，不改系统 CA 或生产证书。
+
 以上为本轮候选实现说明，具体 tag/生产结果以本轮执行后的交付证据为准。

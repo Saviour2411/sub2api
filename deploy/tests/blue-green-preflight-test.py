@@ -22,6 +22,15 @@ class PreflightTests(unittest.TestCase):
         self.assertNotIn('do-not-publish', json.dumps(result))
         self.assertNotIn('secret', json.dumps(result))
 
+    def test_origin_probe_uses_existing_certificate_without_insecure(self):
+        api = preflight.endpoint_command('api',2503)
+        self.assertIn('--cacert',api)
+        self.assertIn('/root/cert/saviour.cc.cd/saviour.cc.cd.pem',api)
+        self.assertIn('api.saviour.cc.cd:2503:127.0.0.1',api)
+        self.assertNotIn('--insecure',api)
+        self.assertNotIn('-k',api)
+        self.assertNotIn('--cacert',preflight.endpoint_command('direct',443))
+
     def test_missing_budget_is_unknown_not_assumed(self):
         data = {'Name': '/sub2api', 'State': {'Status': 'running'}, 'Image': 'x',
                 'Config': {}, 'HostConfig': {}, 'NetworkSettings': {}}

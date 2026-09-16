@@ -19,6 +19,12 @@ NGINX_ROOT = Path("/etc/nginx")
 VHOSTS = {"api": ("api.saviour.cc.cd", 2503), "direct": ("direct.saviour.cc.cd", 443)}
 
 
+def probe_tls(host):
+    # 回环访问绕过 CDN，显式信任 Nginx 已配置的 Origin 证书；仍校验域名、有效期及证书。
+    origin = ["--cacert", "/root/cert/saviour.cc.cd/saviour.cc.cd.pem"] if host == VHOSTS["api"][0] else []
+    return ["--noproxy", "*", *origin]
+
+
 class Refused(RuntimeError):
     pass
 
@@ -113,7 +119,7 @@ class Deployment:
         require("worker_shutdown_timeout" not in full, "Nginx 不得强制终止旧 worker")
         require("/etc/nginx/conf.d/*.conf" in full, "Nginx 未加载 conf.d")
         for host,port in VHOSTS.values():
-            self.run("curl", "--fail", "--silent", "--max-time", "5", "--resolve", f"{host}:{port}:127.0.0.1", f"https://{host}:{port}/health")
+            self.run("curl", "--fail", "--silent", "--max-time", "5", "--resolve", f"{host}:{port}:127.0.0.1", *probe_tls(host), f"https://{host}:{port}/health")
         journal = self.root/"bootstrap.json"
         if journal.exists():
             saved = json.loads(journal.read_text())
@@ -280,7 +286,7 @@ class Deployment:
 
     def probe(self, expected):
         for probe in self.config["probes"]:
-            result = self.run("curl", "--fail", "--silent", "--show-error", "--max-time", "5", "--http1.1", "-H", "Connection: close", "--resolve", probe["resolve"], "-D", "-", (probe["url"].replace("/readyz", "/health") if expected == "legacy-v0.1.234" else probe["url"]), check=False)
+            result = self.run("curl", "--fail", "--silent", "--show-error", "--max-time", "5", "--http1.1", "-H", "Connection: close", "--resolve", probe["resolve"], *probe_tls(probe["resolve"].split(":",1)[0]), "-D", "-", (probe["url"].replace("/readyz", "/health") if expected == "legacy-v0.1.234" else probe["url"]), check=False)
             header = "x-sub2api-slot: blue" if expected == "legacy-v0.1.234" else "x-sub2api-instance: " + expected
             if result.returncode != 0 or header.lower() not in result.stdout.lower():
                 return False
@@ -494,7 +500,7 @@ class HealthObserver:
     def observe(self):
         while not self.stop.is_set():
             for name,(host,port) in VHOSTS.items():
-                result = subprocess.run(["curl","--silent","--show-error","--max-time","3","--http2","--resolve",f"{host}:{port}:127.0.0.1","-o","/dev/null","-w","%{http_code}",f"https://{host}:{port}/health"],capture_output=True,text=True)
+                result = subprocess.run(["curl","--silent","--show-error","--max-time","3","--http2","--resolve",f"{host}:{port}:127.0.0.1",*probe_tls(host),"-o","/dev/null","-w","%{http_code}",f"https://{host}:{port}/health"],capture_output=True,text=True)
                 sample = self.results[name]
                 sample["requests"] += 1
                 if result.returncode or result.stdout != "200":

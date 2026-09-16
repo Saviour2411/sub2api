@@ -297,6 +297,26 @@ class BlueGreenTests(unittest.TestCase):
         self.assertIn("proxy_next_upstream off",rendered)
         self.assertNotIn("18081",rendered)
 
+    def test_loopback_probes_trust_existing_origin_certificate(self):
+        d = self.deployment
+        d.config["probes"] = [{"url":f"https://{host}:{port}/readyz", "resolve":f"{host}:{port}:127.0.0.1"} for host,port in bg.VHOSTS.values()]
+        bg.Deployment.probe(d,"old")
+        self.assertIn("--cacert",d.calls[-1])
+        self.assertNotIn("--insecure",d.calls[-1])
+        self.assertIn("--noproxy",d.calls[-1])
+        observer = bg.HealthObserver()
+        calls = []
+        def run(args, **kwargs):
+            calls.append(args)
+            observer.stop.set()
+            return subprocess.CompletedProcess(args,0,stdout="200",stderr="")
+        with patch.object(bg.subprocess,"run",side_effect=run):
+            observer.observe()
+        self.assertEqual(2,len(calls))
+        self.assertIn("--cacert",calls[0])
+        self.assertNotIn("--cacert",calls[1])
+        self.assertTrue(all("--insecure" not in c and "-k" not in c for c in calls))
+
     def test_budget_parsing_requires_explicit_limit(self):
         self.assertEqual(3*1024**3,bg.bytes_value("3GiB"))
         for value in ("off","80%","-1","",None):
