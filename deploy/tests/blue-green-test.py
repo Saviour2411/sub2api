@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -23,6 +24,7 @@ class FakeDeployment(bg.Deployment):
         self.calls = []
         self.fail = None
         self.busy = set()
+        self.legacy_gate_ready = False
         self.routed = self.state["active"]
         self.states = {slot: {"state":"active", "instance_id":entry["instance_id"], "version":"test"} for slot,entry in self.state["slots"].items()}
         self.containers = {"sub2api-"+slot: {"Id":entry["container_id"], "Config":{"Image":entry["image"]}} for slot,entry in self.state["slots"].items()}
@@ -76,6 +78,27 @@ class FakeDeployment(bg.Deployment):
     def preflight(self, release, needs_capacity=True):
         self.calls.append(("preflight",release["sha"]))
         return {}
+
+    def pull_release_image(self, release):
+        self.calls.append(("pull",release["sha"]))
+
+    def wait_legacy_retire_gate(self, window, quiet_seconds):
+        self.calls.append(("legacy_gate",window,quiet_seconds))
+        if not self.legacy_gate_ready:
+            raise bg.Refused("旧版退役门禁未通过：quiet_window")
+        return {"eligible":True}
+
+    def retire_legacy_for_release(self, release):
+        self.calls.append(("legacy_retire",release["sha"]))
+        old = self.state["pending"]
+        slots = dict(self.state["slots"])
+        del slots[old]
+        self.containers.pop("sub2api-"+old,None)
+        self.state.update(slots=slots,pending=None,phase="stable",pending_reason=None,legacy_retained=False,
+                          legacy_retired_at=time.time(),legacy_retire_operation=None,
+                          prepared_release=release,
+                          legacy_retire_result={"release_sha":release["sha"],"usage_drop_count":0,"forced_shutdown_count":0,"clean":True})
+        Path(self.config["upstream_file"]).write_text(self.proxy_config(self.state["active"],include_legacy=False))
 
     def render(self, slot, release, compose):
         return self.root/(slot+".json")
@@ -283,19 +306,142 @@ class BlueGreenTests(unittest.TestCase):
         self.assertFalse(any(c[:2] == ("docker","stop") for c in self.deployment.calls))
         starts = sum(c[:2] == ("docker","compose") for c in self.deployment.calls)
         self.deployment.deploy(release,window=0)
-        with self.assertRaisesRegex(bg.Refused,"旧槽仍有工作"):
+        with self.assertRaisesRegex(bg.Refused,"旧版退役门禁未通过"):
             self.deployment.deploy(self.release(2),window=0)
         self.assertEqual(starts,sum(c[:2] == ("docker","compose") for c in self.deployment.calls))
         self.assertEqual("green",self.deployment.routed)
+
+    def test_next_release_retires_legacy_then_reuses_blue(self):
+        self.deployment.state["slots"]["blue"]["legacy"] = True
+        first = self.release(1)
+        self.deployment.deploy(first,window=0)
+        self.deployment.legacy_gate_ready = True
+        second = self.release(2)
+        self.deployment.deploy(second,window=0,legacy_quiet=0)
+        self.assertEqual("blue",self.deployment.state["active"])
+        self.assertEqual("stable",self.deployment.state["phase"])
+        self.assertNotIn("legacy",json.dumps(self.deployment.state["slots"]))
+        pull = self.deployment.calls.index(("pull",second["sha"]))
+        retire = self.deployment.calls.index(("legacy_retire",second["sha"]))
+        start = next(i for i,c in enumerate(self.deployment.calls) if i > retire and c[:2] == ("docker","compose"))
+        self.assertLess(pull,retire)
+        self.assertLess(retire,start)
+        self.assertEqual(1,self.deployment.calls.count(("pull",second["sha"])))
+        self.assertIn(("legacy_gate",1200,0),self.deployment.calls)
+        self.assertNotIn("18081",Path(self.deployment.config["upstream_file"]).read_text())
+
+    def test_legacy_gate_requires_unchanged_log_and_quiet_window(self):
+        sample = {"access_log_marker":[1,2,3,4],"blockers":[]}
+        report = bg.update_legacy_gate({},sample,10,100)
+        self.assertFalse(report["eligible"])
+        self.assertEqual(100,report["first_clear_at"])
+        report = bg.update_legacy_gate(report,sample,10,109)
+        self.assertFalse(report["eligible"])
+        report = bg.update_legacy_gate(report,sample,10,110)
+        self.assertTrue(report["eligible"])
+        changed = dict(sample,access_log_marker=[1,2,4,5])
+        report = bg.update_legacy_gate(report,changed,10,111)
+        self.assertFalse(report["eligible"])
+        self.assertIsNone(report["first_clear_at"])
+        blocked = dict(changed,blockers=["legacy_tcp_connections"])
+        report = bg.update_legacy_gate(report,blocked,10,112)
+        self.assertFalse(report["eligible"])
+
+    def test_legacy_gate_resets_when_active_instance_changes(self):
+        path = self.deployment.root/"legacy-retire.json"
+        path.write_text(json.dumps({"eligible":True,"first_clear_at":1,"access_log_marker":[1,2,3,4],
+                                    "legacy_container_id":"legacy","switched_at":10,"active_slot":"green",
+                                    "active_instance_id":"replaced"}))
+        sample = {"schema":1,"legacy_container_id":"legacy","switched_at":10,"active_slot":"green",
+                  "active_instance_id":"current","access_log_marker":[1,2,3,4],"blockers":[]}
+        with patch.object(self.deployment,"ensure_legacy_observer"), patch.object(self.deployment,"legacy_gate_sample",return_value=sample):
+            with self.assertRaisesRegex(bg.Refused,"quiet_window"):
+                bg.Deployment.wait_legacy_retire_gate(self.deployment,0,10)
+        report = json.loads(path.read_text())
+        self.assertEqual("current",report["active_instance_id"])
+        self.assertFalse(report["eligible"])
+        self.assertIsNotNone(report["first_clear_at"])
+
+    def test_legacy_retire_recovery_uses_persisted_gate_and_local_image(self):
+        self.deployment.state["slots"]["blue"]["legacy"] = True
+        first = self.release(1)
+        self.deployment.deploy(first,window=0)
+        second = self.release(2)
+        old = self.deployment.state["pending"]
+        active = self.deployment.state["active"]
+        operation = {"release":second,"legacy_container_id":self.deployment.state["slots"][old]["container_id"],
+                     "active_slot":active,"active_instance_id":self.deployment.state["slots"][active]["instance_id"],
+                     "image_prepared":True,"gate":{"eligible":True}}
+        self.deployment.state.update(legacy_retire_operation=operation,
+                                     legacy_retire_result={"release_sha":second["sha"],"exit_code":0,"usage_drop_count":0,
+                                                           "forced_shutdown_count":0,"clean":True})
+        with patch.object(self.deployment,"verify_release_image") as verify_image, \
+             patch.object(self.deployment,"legacy_connection_counts",return_value={"tcp_18080":0,"legacy_unix":0}), \
+             patch.object(self.deployment,"probe",return_value=True):
+            result = bg.Deployment.retire_legacy_for_release(self.deployment,second)
+        verify_image.assert_called_once_with(second)
+        self.assertTrue(result["clean"])
+        self.assertIsNone(self.deployment.state["pending"])
+        self.assertNotIn(old,self.deployment.state["slots"])
+        self.assertEqual(second,self.deployment.state["prepared_release"])
+
+    def test_legacy_retire_rejects_stale_gate_before_sealing(self):
+        self.deployment.state["slots"]["blue"]["legacy"] = True
+        first = self.release(1)
+        self.deployment.deploy(first,window=0)
+        second = self.release(2)
+        old = self.deployment.state["pending"]
+        active = self.deployment.state["active"]
+        marker = [1,2,3,4]
+        report = {"eligible":True,"legacy_container_id":self.deployment.state["slots"][old]["container_id"],
+                  "switched_at":self.deployment.state["switched_at"],"active_slot":active,
+                  "active_instance_id":"stale","access_log_marker":marker}
+        (self.deployment.root/"legacy-retire.json").write_text(json.dumps(report))
+        sample = dict(report,active_instance_id=self.deployment.state["slots"][active]["instance_id"],blockers=[])
+        before = Path(self.deployment.config["upstream_file"]).read_text()
+        with patch.object(self.deployment,"legacy_gate_sample",return_value=sample):
+            with self.assertRaisesRegex(bg.Refused,"实例身份"):
+                bg.Deployment.retire_legacy_for_release(self.deployment,second)
+        self.assertEqual(before,Path(self.deployment.config["upstream_file"]).read_text())
+
+    def test_recovered_release_does_not_pull_after_legacy_retirement(self):
+        self.deployment.state["slots"]["blue"]["legacy"] = True
+        first = self.release(1)
+        self.deployment.deploy(first,window=0)
+        second = self.release(2)
+        self.deployment.state["legacy_retire_operation"] = {"release":second}
+        self.deployment.calls.clear()
+        self.deployment.deploy(second,window=0)
+        self.assertNotIn(("pull",second["sha"]),self.deployment.calls)
+        self.assertEqual("blue",self.deployment.state["active"])
+
+    def test_prepared_release_survives_post_retirement_restart(self):
+        self.deployment.state["slots"]["blue"]["legacy"] = True
+        first = self.release(1)
+        self.deployment.deploy(first,window=0)
+        second = self.release(2)
+        old = self.deployment.state.pop("pending")
+        del self.deployment.state["slots"][old]
+        self.deployment.containers.pop("sub2api-"+old,None)
+        self.deployment.state.update(phase="stable",prepared_release=second)
+        self.deployment.calls.clear()
+        with patch.object(self.deployment,"verify_release_image") as verify_image:
+            self.deployment.deploy(second,window=0)
+        verify_image.assert_called_once_with(second)
+        self.assertNotIn(("pull",second["sha"]),self.deployment.calls)
+        self.assertEqual("blue",self.deployment.state["active"])
 
     def test_legacy_proxy_is_fixed_private_and_disables_retries(self):
         self.deployment.state["slots"]["blue"]["legacy"] = True
         rendered = self.deployment.proxy_config("green")
         self.assertIn("server 127.0.0.1:18082",rendered)
         self.assertIn("listen unix:",rendered)
+        self.assertIn("sub2api-legacy.access.log",rendered)
+        self.assertIn("sub2api-legacy.access.log combined",rendered)
         self.assertIn("proxy_pass http://127.0.0.1:18080",rendered)
         self.assertIn("proxy_next_upstream off",rendered)
         self.assertNotIn("18081",rendered)
+        self.assertNotIn("legacy.sock",self.deployment.proxy_config("green",include_legacy=False))
 
     def test_loopback_probes_trust_existing_origin_certificate(self):
         d = self.deployment

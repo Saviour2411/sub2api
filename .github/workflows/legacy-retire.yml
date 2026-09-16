@@ -1,0 +1,89 @@
+name: Legacy retirement production gate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  observe-legacy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    concurrency:
+      group: sub2api-production-deploy
+      cancel-in-progress: false
+    steps:
+      - name: Require main branch workflow
+        run: test "$GITHUB_REF" = "refs/heads/main"
+
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Check fixed production target
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || vars.DEPLOY_HOST || '216.152.153.86' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER || vars.DEPLOY_USER || 'root' }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || vars.DEPLOY_PORT || '22748' }}
+          DEPLOY_DIR: ${{ secrets.DEPLOY_DIR || vars.DEPLOY_DIR || '/root/proj/sub2api/deploy' }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          test -n "$DEPLOY_SSH_KEY"
+          test "$DEPLOY_HOST" = "216.152.153.86"
+          test "$DEPLOY_USER" = "root"
+          test "$DEPLOY_PORT" = "22748"
+          test "$DEPLOY_DIR" = "/root/proj/sub2api/deploy"
+          mkdir -p .cache/deployment/ssh
+          chmod 700 .cache/deployment/ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > .cache/deployment/ssh/key
+          chmod 600 .cache/deployment/ssh/key
+          touch .cache/deployment/ssh/known_hosts
+
+      - name: Observe legacy customer paths for fifteen quiet minutes
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || vars.DEPLOY_HOST || '216.152.153.86' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER || vars.DEPLOY_USER || 'root' }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || vars.DEPLOY_PORT || '22748' }}
+          DEPLOY_DIR: ${{ secrets.DEPLOY_DIR || vars.DEPLOY_DIR || '/root/proj/sub2api/deploy' }}
+        run: |
+          set +e
+          ssh -i .cache/deployment/ssh/key -o BatchMode=yes -o ConnectTimeout=20 \
+            -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=.cache/deployment/ssh/known_hosts \
+            -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "python3 - --directory '$DEPLOY_DIR' --legacy-retire-check --legacy-window 1200 --legacy-quiet 900" \
+            < deploy/blue-green/deploy.py > .cache/deployment/legacy-retire-command.json
+          STATUS=$?
+          set -e
+          ssh -i .cache/deployment/ssh/key -o BatchMode=yes -o ConnectTimeout=20 \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile=.cache/deployment/ssh/known_hosts \
+            -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cat '$DEPLOY_DIR/blue-green/legacy-retire.json'" > .cache/deployment/legacy-retire.json || true
+          exit "$STATUS"
+
+      - name: Summarize gate evidence
+        if: always()
+        run: |
+          if [ -s .cache/deployment/legacy-retire.json ]; then
+            printf '## Legacy retirement gate\n```json\n' >> "$GITHUB_STEP_SUMMARY"
+            cat .cache/deployment/legacy-retire.json >> "$GITHUB_STEP_SUMMARY"
+            printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          printf '\n此工作流只建立静默门禁凭据，不停止旧容器；实际退役仅由下一次固定 tag 发布在候选镜像已准备后执行。\n' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload gate evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: legacy-retire-gate-${{ github.run_id }}
+          path: |
+            .cache/deployment/legacy-retire.json
+            .cache/deployment/legacy-retire-command.json
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Remove SSH credentials
+        if: always()
+        run: rm -f .cache/deployment/ssh/key

@@ -445,7 +445,7 @@ jobs:
           REMOTE="$DEPLOY_DIR/blue-green/releases/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           # 不使用旧的原地重启脚本，也不以 300 秒 SSH 超时终止排空观察。
           ssh -i .cache/deployment/ssh/key -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=.cache/deployment/ssh/known_hosts -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
-            "python3 '$REMOTE/deploy.py' --directory '$DEPLOY_DIR' --release '$REMOTE/release.json' --window 900"
+            "python3 '$REMOTE/deploy.py' --directory '$DEPLOY_DIR' --release '$REMOTE/release.json' --window 900 --legacy-window 1200 --legacy-quiet 900"
 
       - name: Collect deployment state without secrets
         if: always()
@@ -466,7 +466,7 @@ jobs:
           with open('.cache/deployment/result.json') as stream:
               state = json.load(stream)
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
-              summary.write('## 蓝绿部署状态\n```json\n'+json.dumps({k:state.get(k) for k in ('phase','generation','active','pending','pending_reason','switch_seconds','switched_at','drained_at','resources','last_error')},ensure_ascii=False,indent=2)+'\n```\n')
+              summary.write('## 蓝绿部署状态\n```json\n'+json.dumps({k:state.get(k) for k in ('phase','generation','active','pending','pending_reason','switch_seconds','switched_at','drained_at','legacy_retired_at','legacy_retire_result','resources','last_error')},ensure_ascii=False,indent=2)+'\n```\n')
               if state.get('pending'):
                   summary.write('**旧实例仍保留，尚未完成退役；下一次发布不得覆盖其槽位。**\n')
               if os.path.getsize('.cache/deployment/observation.json'):
@@ -486,6 +486,21 @@ jobs:
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 30
+
+      - name: Verify legacy retirement outcome
+        if: always()
+        env:
+          RELEASE_SHA: ${{ steps.version.outputs.sha }}
+        run: |
+          test -s .cache/deployment/result.json || exit 0
+          python3 - <<'PYCODE'
+          import json, os
+          with open('.cache/deployment/result.json') as stream:
+              state = json.load(stream)
+          result = state.get('legacy_retire_result')
+          if result is not None and result.get('release_sha') == os.environ['RELEASE_SHA'] and result.get('clean') is not True:
+              raise SystemExit('旧版已退役，但检测到 stopped 用量丢弃或强制关停；发布证据不合格')
+          PYCODE
 
       - name: Remove SSH credentials
         if: always()

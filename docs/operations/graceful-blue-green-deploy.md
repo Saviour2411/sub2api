@@ -1,8 +1,8 @@
-# 正确排空、多实例与蓝绿发布（生产迁移待门禁）
+# 正确排空、多实例与蓝绿发布
 
 > 2026-09-15，功能分支 `codex/graceful-blue-green-deploy`，已合入主线基线 `09523d260`。
 > 用户追加授权在 CI 通过后通过 tag/Actions 部署；授权不等于绕过首次迁移、资源预算或旧连接排空门禁。
-> **尚未生产部署，也未创建发布标签。** 本机 SSH 多次在 banner 握手阶段超时；改用只读 Actions 后，在 2026-09-15 21:28:03 UTC 重新读取了 server1 基线。确认首次迁移状态缺失且现有资源参数不能直接双开。本地/CI 隔离测试数据不是生产升级耗时。
+> `v0.1.235` 已于 2026-09-16 完成首次自动迁移并切到 `green/18082`；旧 v0.1.234 仍保留于 `blue/18080`。下一阶段通过独立 legacy-retire 门禁完成一次性旧版退役，然后恢复固定双槽循环。
 
 ## 已落地的实现
 
@@ -54,6 +54,8 @@
 11. Release 已改接该执行器，不再调用 `remote-deploy.sh`。上传采用发布唯一目录；不覆盖活动 Compose，不将缺少部署密钥报告为部署成功。
 12. `evidence.py` 通过 GitHub Actions API 验证固定 SHA 的 CI/Security Scan 以及未跳过的必要 job，包括真实协议切流 job；镜像固定 digest，运行时再次校验 OCI revision。自动路径只接受 `backend/migrations` 与 `backend/ent/schema` 无变化，出现变化就拒绝，不能把迁移串行锁当作兼容证明。
 13. 备份记录数组的读改写使用 PG advisory lock；存储读取失败或历史记录损坏时拒绝覆盖。请求触发的异步备份/恢复与仪表盘回填也计入生命周期。
+14. 下一 tag 遇到保留的 v0.1.234 时，先拉取并核验固定摘要镜像，再自动观察 legacy-retire 门禁最长 1200 秒、要求专属客户路径连续静默 900 秒；通过后复用 `blue/18080`，以后固定在 18080 与 18082 之间循环。
+15. 独立 `Legacy retirement production gate` 工作流可提前建立静默凭据，但不会停止容器。Release 不依赖它：没有预热凭据时也会自行完成观察；已有凭据仍需重新核对旧容器、切流时间、活动槽和活动实例身份。
 
 ## 生产仍需满足的门禁和已知边界
 
@@ -157,3 +159,11 @@ python3 deploy/blue-green/deploy.py --directory "$DEPLOY_DIR" --rollback --windo
 - 新流量进入 `green`；连续健康探针 API/direct 各 42 次、零错误。部署后只读 run `35052231141` 确认两个入口均返回同一新实例及 `X-Sub2api-Slot: green`。
 - `config.json/state.json` 已由首次迁移自动创建。连接池 512、GOMEMLIMIT 216181080064B 未降低，PG/Redis 和数据挂载未重建。
 - 旧 v0.1.234 保留为 `drain_pending / legacy_unverifiable`，没有强停或宣称已排空；旧槽清理前下一次发布将安全拒绝复用。完整证据及边界见 `docs/operations/2026-09-16-v0.1.235-blue-green-release.md`。
+
+## 2026-09-16 旧版退役门禁与循环复用修正
+
+- legacy-retire 凭据绑定旧容器 ID、首次切流时间、活动槽和活动实例 ID；访问日志变化、实例变化、连接或 Redis 归属重新出现都会重置静默计时。
+- 退役中断恢复复用已经核验的本地候选镜像，不在旧版停止后重新执行网络拉取。旧容器停止结果记录退出码、stopped 用量丢弃和强制关停次数；异常时先恢复服务，再由 Release 证据门禁标记失败。
+- server1 于 12:21:27 完成只观察短采样：切流后 3602 秒、旧 worker/18080 客户连接/legacy socket/Redis legacy affinity 均为 0，门禁无 blocker。旧版 9 条外连只作后台任务观测，不作为客户连接硬门禁。
+- 专属 legacy access log 使用 Nginx 内置 `combined` 格式，避免 `conf.d` 解析顺序依赖其他站点定义。首次发现 unknown log format 时运行中的 Nginx 未 reload；磁盘配置已立即修复，随后 `nginx -t`、reload 和双入口健康检查成功。
+- 详细实现、只观察证据和待完成 tag 验证见 `docs/operations/2026-09-16-legacy-retire-gate.md`。

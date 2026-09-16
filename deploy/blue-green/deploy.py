@@ -15,6 +15,9 @@ import threading
 
 SLOTS = {"blue": 18080, "green": 18082}
 LEGACY_SHA = "cfd9afa871def9ebd457bb95fb4c2e8b4b02b34f"
+LEGACY_OWNER = "legacy-v0.1.234"
+LEGACY_DEFAULT_TTL = 3600
+LEGACY_ACCESS_LOG = Path("/var/log/nginx/sub2api-legacy.access.log")
 NGINX_ROOT = Path("/etc/nginx")
 VHOSTS = {"api": ("api.saviour.cc.cd", 2503), "direct": ("direct.saviour.cc.cd", 443)}
 
@@ -75,6 +78,23 @@ def resource_check(sample, config):
     require(db_min > 0 and mem_min > 0, "实际余量阈值必须为正，不关闭资源保护")
     require(free >= db_min, f"数据库实际可用连接 {free} 低于发布余量 {db_min}，保留当前流量")
     require(sample["memory_available"] >= mem_min, "实际可用内存不足，保留当前流量")
+
+
+def update_legacy_gate(previous, sample, quiet_seconds, now):
+    report = dict(previous or {})
+    previous_marker = report.get("access_log_marker")
+    same_marker = previous_marker is None or previous_marker == sample["access_log_marker"]
+    clear = not sample["blockers"] and same_marker
+    first_clear = report.get("first_clear_at") if clear else None
+    if clear and first_clear is None:
+        first_clear = now
+    report.update(sample)
+    report["first_clear_at"] = first_clear
+    report["quiet_seconds"] = quiet_seconds
+    report["quiet_elapsed"] = max(0, now-first_clear) if first_clear is not None else 0
+    report["eligible"] = clear and report["quiet_elapsed"] >= quiet_seconds
+    report["observed_at"] = now
+    return report
 
 
 class Deployment:
@@ -166,18 +186,20 @@ class Deployment:
     def transform_vhost(self, original):
         return original.replace("proxy_pass http://127.0.0.1:18080;", "proxy_pass http://sub2api_active;\n        add_header X-Sub2api-Slot $sub2api_slot always;")
 
-    def proxy_config(self, slot):
+    def proxy_config(self, slot, include_legacy=None):
         text = "# API/direct 共用，由蓝绿发布器管理\nupstream sub2api_active { server 127.0.0.1:%d; }\n" % SLOTS[slot]
         text += "map $upstream_addr $sub2api_slot { default unknown; 127.0.0.1:18080 blue; 127.0.0.1:18082 green; }\n"
-        if any(s.get("legacy") for s in self.state["slots"].values()):
+        if include_legacy is None:
+            include_legacy = any(s.get("legacy") for s in self.state["slots"].values())
+        if include_legacy:
             # 固定 Unix 私有通道，仅应用 uid 可穿过 0700 父目录；旧实例仍自行鉴权和计费。
-            text += ("server { listen unix:%s; server_name legacy; client_max_body_size 256m; client_header_buffer_size 16k; large_client_header_buffers 8 32k; location / {\n"
+            text += ("server { listen unix:%s; server_name legacy; access_log %s combined; client_max_body_size 256m; client_header_buffer_size 16k; large_client_header_buffers 8 32k; location / {\n"
                      "proxy_pass http://127.0.0.1:18080; proxy_http_version 1.1;\n"
                      "proxy_set_header Host $http_host; proxy_set_header X-Real-IP $http_x_real_ip;\n"
                      "proxy_set_header X-Forwarded-For $http_x_forwarded_for; proxy_set_header X-Forwarded-Proto https;\n"
                      "proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection $connection_upgrade;\n"
                      "proxy_request_buffering off; proxy_buffering off; proxy_next_upstream off;\n"
-                     "proxy_read_timeout 3600s; proxy_send_timeout 3600s; } }\n") % (self.root/"run/legacy.sock")
+                     "proxy_read_timeout 3600s; proxy_send_timeout 3600s; } }\n") % (self.root/"run/legacy.sock", LEGACY_ACCESS_LOG)
         return text
 
     def resources(self):
@@ -313,6 +335,197 @@ class Deployment:
         current = self.nginx_workers()
         return any(current.get(pid) == tick for pid,tick in self.state.get("old_workers",{}).items())
 
+    def legacy_environment_ttl(self):
+        values = [LEGACY_DEFAULT_TTL, 3600]
+        for name in ("sub2api", self.container_name(self.state["active"])):
+            data = self.inspect(name)
+            if not data:
+                continue
+            env = dict(item.split("=",1) for item in data["Config"].get("Env",[]) if "=" in item)
+            for key in ("GATEWAY_OPENAI_WS_STICKY_SESSION_TTL_SECONDS", "GATEWAY_OPENAI_WS_STICKY_RESPONSE_ID_TTL_SECONDS"):
+                value = env.get(key, "")
+                if value.isdigit() and int(value) > 0:
+                    values.append(int(value))
+        return max(values)
+
+    def legacy_affinity(self):
+        script = """local cursor='0'; local count=0; local minttl=-1; local maxttl=-1; repeat local result=redis.call('SCAN',cursor,'MATCH',ARGV[1],'COUNT',1000); cursor=result[1]; for _,key in ipairs(result[2]) do if redis.call('GET',key)==ARGV[2] then local ttl=redis.call('PTTL',key); count=count+1; if minttl<0 or ttl<minttl then minttl=ttl end; if ttl>maxttl then maxttl=ttl end end end until cursor=='0'; return {count,minttl,maxttl}"""
+        result = self.run("docker","exec","sub2api-redis","redis-cli","--raw","EVAL",script,"0","lifecycle:affinity:*",LEGACY_OWNER)
+        values = [line for line in result.stdout.splitlines() if re.fullmatch(r"-?[0-9]+",line)]
+        require(len(values) == 3, "无法统计旧版会话归属，禁止退役")
+        return {"count":int(values[0]), "min_ttl_ms":int(values[1]), "max_ttl_ms":int(values[2])}
+
+    def legacy_access_marker(self):
+        try:
+            stat = LEGACY_ACCESS_LOG.stat()
+            return [stat.st_dev,stat.st_ino,stat.st_size,stat.st_mtime_ns]
+        except FileNotFoundError:
+            return [0,0,0,0]
+
+    def legacy_connection_counts(self):
+        tcp = self.run("ss","-Htan","state","established","( sport = :18080 or dport = :18080 )")
+        unix = self.run("ss","-Hxa","state","connected")
+        return {"tcp_18080":len(tcp.stdout.splitlines()), "legacy_unix":sum(str(self.root/"run/legacy.sock") in line for line in unix.stdout.splitlines())}
+
+    def legacy_external_connections(self):
+        old = self.inspect("sub2api")
+        if not old or not old["State"].get("Running"):
+            return 0
+        result = self.run("nsenter","-t",str(old["State"]["Pid"]),"-n","ss","-Htan","state","established",check=False)
+        if result.returncode:
+            return None
+        count = 0
+        for line in result.stdout.splitlines():
+            columns = line.split()
+            if len(columns) < 4:
+                continue
+            def port(value):
+                try:
+                    return int(value.rsplit(":",1)[1])
+                except ValueError:
+                    return -1
+            local_port, peer_port = port(columns[2]), port(columns[3])
+            if local_port != 8080 and peer_port not in (5432,6379):
+                count += 1
+        return count
+
+    def ensure_legacy_observer(self):
+        old = self.state.get("pending")
+        require(old and self.state["slots"][old].get("legacy"), "当前没有待退役旧版")
+        LEGACY_ACCESS_LOG.touch(exist_ok=True)
+        proxy = Path(self.config["upstream_file"])
+        expected = self.proxy_config(self.state["active"], include_legacy=True)
+        if proxy.read_text() != expected:
+            atomic_write(proxy, expected)
+            self.run("nginx","-t")
+            self.run("nginx","-s","reload")
+            require(self.probe(self.state["slots"][self.state["active"]]["instance_id"]), "增加旧版专属观测日志后双入口验证失败")
+
+    def legacy_gate_sample(self):
+        old = self.state.get("pending")
+        require(old and self.state["slots"][old].get("legacy"), "当前没有待退役旧版")
+        info = self.state["slots"][old]
+        container = self.inspect("sub2api")
+        require(container and container["Id"] == info["container_id"] and container["State"]["Running"], "旧版容器身份或状态变化")
+        now = time.time()
+        minimum_age = self.legacy_environment_ttl()
+        age = now-float(self.state.get("switched_at",0))
+        current_workers = self.nginx_workers()
+        old_workers = sum(current_workers.get(pid) == tick for pid,tick in self.state.get("old_workers",{}).items())
+        connections = self.legacy_connection_counts()
+        affinity = self.legacy_affinity()
+        blockers = []
+        if age < minimum_age:
+            blockers.append("sticky_ttl_not_elapsed")
+        if old_workers:
+            blockers.append("pre_switch_nginx_workers")
+        if connections["tcp_18080"]:
+            blockers.append("legacy_tcp_connections")
+        if connections["legacy_unix"]:
+            blockers.append("legacy_unix_connections")
+        if affinity["count"]:
+            blockers.append("legacy_affinity")
+        return {"schema":1,"legacy_container_id":info["container_id"],"switched_at":self.state.get("switched_at"),
+                "active_slot":self.state["active"],"active_instance_id":self.state["slots"][self.state["active"]]["instance_id"],
+                "minimum_age_seconds":minimum_age,"age_seconds":age,"old_workers_present":old_workers,
+                **connections,"legacy_affinity":affinity,"old_external_connections":self.legacy_external_connections(),
+                "access_log_marker":self.legacy_access_marker(),"blockers":blockers}
+
+    def wait_legacy_retire_gate(self, window, quiet_seconds):
+        require(window >= 0 and quiet_seconds >= 0, "旧版退役观察参数不能为负数")
+        self.ensure_legacy_observer()
+        path = self.root/"legacy-retire.json"
+        previous = json.loads(path.read_text()) if path.is_file() else {}
+        sample = self.legacy_gate_sample()
+        identity_keys = ("legacy_container_id","switched_at","active_slot","active_instance_id")
+        if previous and any(previous.get(key) != sample[key] for key in identity_keys):
+            previous = {}
+        deadline = time.monotonic()+window
+        while True:
+            report = update_legacy_gate(previous,sample,quiet_seconds,time.time())
+            atomic_write(path,json.dumps(report,ensure_ascii=False,indent=2)+"\n")
+            if report["eligible"]:
+                return report
+            if time.monotonic() >= deadline:
+                reasons = report["blockers"] or ["quiet_window"]
+                raise Refused("旧版退役门禁未通过："+",".join(reasons))
+            previous = report
+            time.sleep(min(5,max(0.1,deadline-time.monotonic())))
+            sample = self.legacy_gate_sample()
+
+    def pull_release_image(self, release):
+        self.run("docker","pull",release["image"])
+        self.verify_release_image(release)
+
+    def verify_release_image(self, release):
+        image = json.loads(self.run("docker","image","inspect",release["image"]).stdout)[0]
+        require(image["Config"].get("Labels",{}).get("org.opencontainers.image.revision") == release["sha"], "镜像 revision 与已验收提交不一致")
+
+    def retire_legacy_for_release(self, release):
+        old = self.state.get("pending")
+        require(old and self.state["slots"][old].get("legacy"), "没有可执行的一次性旧版退役")
+        operation = self.state.get("legacy_retire_operation")
+        if operation:
+            require(same_release(operation["release"],release), "另一个旧版退役发布尚未恢复")
+            report = operation["gate"]
+        else:
+            report = json.loads((self.root/"legacy-retire.json").read_text())
+            require(report.get("eligible") is True, "旧版退役门禁没有形成可复核凭据")
+            fresh = self.legacy_gate_sample()
+            identity_keys = ("legacy_container_id","switched_at","active_slot","active_instance_id")
+            require(not fresh["blockers"] and fresh["access_log_marker"] == report.get("access_log_marker")
+                    and all(fresh[key] == report.get(key) for key in identity_keys), "旧版退役凭据形成后实例身份或客户活动发生变化")
+            self.verify_release_image(release)
+            operation = {"release":release,"legacy_container_id":self.state["slots"][old]["container_id"],
+                         "active_slot":self.state["active"],"active_instance_id":self.state["slots"][self.state["active"]]["instance_id"],
+                         "image_prepared":True,"gate":report}
+            self.save(phase="legacy_retiring",legacy_retire_operation=operation)
+        require(report.get("eligible") is True, "旧版退役门禁没有形成可复核凭据")
+        require(operation.get("image_prepared") is True, "候选镜像尚未准备，禁止退役旧版")
+        require(operation.get("legacy_container_id") == self.state["slots"][old]["container_id"], "旧版容器身份变化")
+        require(operation.get("active_slot") == self.state["active"]
+                and operation.get("active_instance_id") == self.state["slots"][self.state["active"]]["instance_id"], "活动实例身份变化")
+        self.verify_release_image(release)
+        active = self.state["active"]
+        proxy = Path(self.config["upstream_file"])
+        expected = self.proxy_config(active,include_legacy=False)
+        if proxy.read_text() != expected:
+            atomic_write(proxy,expected)
+            self.run("nginx","-t")
+            self.run("nginx","-s","reload")
+            require(self.probe(self.state["slots"][active]["instance_id"]), "封闭旧版入口后活动实例验证失败")
+            self.save(legacy_sealed_at=time.time())
+        connections = self.legacy_connection_counts()
+        require(not connections["tcp_18080"] and not connections["legacy_unix"], "封闭旧版入口后仍有连接，保留旧容器")
+        container = self.inspect("sub2api")
+        stop_started = self.state.get("legacy_stop_started_at")
+        if container and container["State"]["Running"]:
+            require(container["Id"] == operation["legacy_container_id"], "旧版容器身份改变，拒绝停止")
+            stop_started = time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime())
+            self.save(legacy_stop_started_at=stop_started)
+            self.run("docker","stop","--timeout","-1","sub2api")
+            container = self.inspect("sub2api")
+        result = self.state.get("legacy_retire_result")
+        if container:
+            require(container["Id"] == operation["legacy_container_id"] and not container["State"]["Running"], "旧版容器未正常停止")
+            require(container["State"].get("ExitCode") == 0, "旧版容器退出码非零，不删除退役凭据")
+            logged = self.run("docker","logs","--since",stop_started,"sub2api",check=False) if stop_started else None
+            logs = (logged.stdout+logged.stderr) if logged else ""
+            usage_drop_count = logs.count("usage_record.task_dropped")
+            forced_shutdown_count = logs.count("Server forced to shutdown")
+            result = {"release_sha":release["sha"],"exit_code":container["State"].get("ExitCode"),"usage_drop_count":usage_drop_count,
+                      "forced_shutdown_count":forced_shutdown_count,"clean":usage_drop_count == 0 and forced_shutdown_count == 0,
+                      "completed_at":time.time()}
+            self.save(legacy_retire_result=result)
+            self.run("docker","rm","sub2api")
+        require(result is not None, "旧版已移除但退役结果缺失，拒绝猜测")
+        (self.root/"run/legacy.sock").unlink(missing_ok=True)
+        slots = dict(self.state["slots"]); del slots[old]
+        self.save(slots=slots,pending=None,phase="stable",pending_reason=None,legacy_retained=False,
+                  old_workers={},legacy_retired_at=time.time(),legacy_retire_operation=None,
+                  prepared_release=release,last_error=None)
+        return result
+
     def switch(self, slot):
         instance = self.control(slot)
         expected = self.state["slots"][slot]["instance_id"]
@@ -398,7 +611,7 @@ class Deployment:
             self.run("docker", "stop", "--timeout", "-1", "sub2api-"+old)
             self.run("docker", "rm", "sub2api-"+old)
         slots = dict(self.state["slots"]); del slots[old]
-        self.save(slots=slots, pending=None, phase="stable", drained_at=time.time(), last_error=None)
+        self.save(slots=slots, pending=None, phase="stable", drained_at=time.time(), prepared_release=None, last_error=None)
 
     def drain(self, window):
         old = self.state.get("pending")
@@ -437,14 +650,33 @@ class Deployment:
                 return False
             time.sleep(1)
 
-    def deploy(self, release, window=900):
+    def deploy(self, release, window=900, legacy_window=1200, legacy_quiet=900):
         if self.config is None:
             self.initialize(release)
         require(not self.state.get("rollback") or self.state["phase"] == "stable", "回滚未完成，先用 --rollback 恢复，不改变当前流量")
+        prepared_compose = None
+        prepared_image = False
+        prepared_release = self.state.get("prepared_release")
+        if prepared_release and same_release(prepared_release,release):
+            self.verify_release_image(release)
+            prepared_image = True
+        operation = self.state.get("legacy_retire_operation")
+        if operation and self.state.get("pending"):
+            require(same_release(operation["release"],release), "必须先恢复同一旧版退役发布")
+            self.retire_legacy_for_release(release)
+            prepared_image = True
         # 未排空槽优先处理；即使本次发布不同镜像，也不允许覆盖正在服务的旧实例。
         if self.state.get("pending"):
             same = same_release(self.state.get("release", {}), release)
-            if not self.drain(window if same else 0):
+            if self.state["slots"][self.state["pending"]].get("legacy") and not same:
+                prepared_compose = self.preflight(release,needs_capacity=True)
+                self.pull_release_image(release)
+                self.save(prepared_release=release)
+                prepared_image = True
+                self.wait_legacy_retire_gate(legacy_window,legacy_quiet)
+                prepared_compose = self.preflight(release,needs_capacity=True)
+                self.retire_legacy_for_release(release)
+            elif not self.drain(window if same else 0):
                 require(same, "旧槽仍有工作，本次部署未改变当前流量")
                 return
         if self.state["slots"][self.state["active"]]["sha"] == release["sha"] and self.state["phase"] == "stable":
@@ -455,15 +687,14 @@ class Deployment:
         current_release = self.state.get("release", {})
         require(self.state["phase"] == "stable" or same_release(current_release, release), "另一个发布未完成，必须先恢复同一发布")
         existing = self.inspect("sub2api-"+slot)
-        compose = self.preflight(release, needs_capacity=existing is None)
+        compose = prepared_compose or self.preflight(release, needs_capacity=existing is None)
         if self.state["phase"] == "stable":
             require(existing is None and slot not in self.state["slots"], "候选槽被占用")
             self.save(phase="preparing", generation=self.state.get("generation",0)+1, release=release, rollback=None)
         if existing is None:
             path = self.render(slot, release, compose)
-            self.run("docker", "pull", release["image"])
-            image = json.loads(self.run("docker", "image", "inspect", release["image"]).stdout)[0]
-            require(image["Config"].get("Labels",{}).get("org.opencontainers.image.revision") == release["sha"], "镜像 revision 与已验收提交不一致")
+            if not prepared_image:
+                self.pull_release_image(release)
             self.run("docker", "compose", "-p", "sub2api-bg-"+slot, "-f", str(path), "up", "-d", "--no-build", "--no-deps", slot)
         else:
             require(existing["Config"]["Image"] == release["image"], "槽位镜像与发布不一致；拒绝重建")
@@ -505,7 +736,7 @@ class HealthObserver:
                 sample["requests"] += 1
                 if result.returncode or result.stdout != "200":
                     sample["errors"].append({"at":time.time(),"curl_exit":result.returncode,"status":result.stdout})
-            self.stop.wait(0.2)
+            self.stop.wait(1)
 
     def finish(self):
         self.stop.set()
@@ -520,7 +751,10 @@ def main():
     action.add_argument("--release", help="固定 SHA、digest、CI 及迁移兼容性验收记录")
     action.add_argument("--snapshot", action="store_true", help="只读已有状态或旧单实例基线")
     action.add_argument("--rollback", action="store_true", help="回切尚未退役的保留实例并排空新实例")
+    action.add_argument("--legacy-retire-check", action="store_true", help="观察一次性旧版退役门禁，不停止容器")
     parser.add_argument("--window", type=int, default=900, help="排空观察秒数；超时保留旧实例")
+    parser.add_argument("--legacy-window", type=int, default=1200, help="旧版退役门禁最长观察秒数")
+    parser.add_argument("--legacy-quiet", type=int, default=900, help="旧版客户路径持续静默秒数")
     args = parser.parse_args()
     root = Path(args.directory).resolve()/"blue-green"
     if args.snapshot:
@@ -534,6 +768,10 @@ def main():
         except BlockingIOError as error:
             raise Refused("已有服务器发布正在执行，不自动取消它") from error
         deployment = Deployment(args.directory)
+        if args.legacy_retire_check:
+            report = deployment.wait_legacy_retire_gate(args.legacy_window,args.legacy_quiet)
+            print(json.dumps(report,ensure_ascii=False))
+            return
         observer = HealthObserver()
         observer.thread.start()
         try:
@@ -541,7 +779,7 @@ def main():
             if args.rollback:
                 deployment.rollback(args.window)
             else:
-                deployment.deploy(json.loads(Path(args.release).read_text()), args.window)
+                deployment.deploy(json.loads(Path(args.release).read_text()), args.window, args.legacy_window, args.legacy_quiet)
         except Exception as error:
             if (root/"config.json").is_file():
                 deployment.save(last_error=str(error))
