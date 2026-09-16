@@ -330,7 +330,7 @@ jobs:
     needs: [release]
     if: ${{ needs.release.result == 'success' && (github.event_name == 'push' || github.event.inputs.deploy_production == 'true') && github.event.inputs.simple_release != 'true' && vars.SIMPLE_RELEASE != 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     environment: production
     permissions:
       contents: read
@@ -445,7 +445,7 @@ jobs:
           REMOTE="$DEPLOY_DIR/blue-green/releases/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           # 不使用旧的原地重启脚本，也不以 300 秒 SSH 超时终止排空观察。
           ssh -i .cache/deployment/ssh/key -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=.cache/deployment/ssh/known_hosts -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
-            "python3 '$REMOTE/deploy.py' --directory '$DEPLOY_DIR' --release '$REMOTE/release.json' --window 900 --legacy-window 1200 --legacy-quiet 900"
+            "python3 '$REMOTE/deploy.py' --directory '$DEPLOY_DIR' --release '$REMOTE/release.json' --window 3600 --force-after-window --legacy-window 1200 --legacy-quiet 900"
 
       - name: Collect deployment state without secrets
         if: always()
@@ -466,7 +466,10 @@ jobs:
           with open('.cache/deployment/result.json') as stream:
               state = json.load(stream)
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
-              summary.write('## 蓝绿部署状态\n```json\n'+json.dumps({k:state.get(k) for k in ('phase','generation','active','pending','pending_reason','switch_seconds','switched_at','drained_at','legacy_retired_at','legacy_retire_result','resources','last_error')},ensure_ascii=False,indent=2)+'\n```\n')
+              summary.write('## 蓝绿部署状态\n```json\n'+json.dumps({k:state.get(k) for k in ('phase','generation','active','pending','pending_reason','switch_seconds','switched_at','drain_started_at','drained_at','retired_at','forced_retire_result','legacy_retired_at','legacy_retire_result','resources','last_error')},ensure_ascii=False,indent=2)+'\n```\n')
+              forced = state.get('forced_retire_result')
+              if forced and forced.get('release_sha') == state.get('release',{}).get('sha'):
+                  summary.write('**本次发生强制退役，旧请求可能中断；请检查退出码、用量风险及关停日志，不得视为零错误验收。**\n')
               if state.get('pending'):
                   summary.write('**旧实例仍保留，尚未完成退役；下一次发布不得覆盖其槽位。**\n')
               if os.path.getsize('.cache/deployment/observation.json'):

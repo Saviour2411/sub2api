@@ -142,6 +142,8 @@ docs/*
 !docs/operations/
 docs/operations/*
 !docs/operations/graceful-blue-green-deploy.md
+!docs/operations/2026-09-16-nginx-worker-balance.md
+!docs/operations/2026-09-16-hourly-forced-retirement.md
 !docs/ASYNC_IMAGE_TASKS.md
 !docs/BATCH_IMAGE_MVP.md
 !docs/COMPOSITE_GROUPS.md

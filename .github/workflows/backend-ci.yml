@@ -151,6 +151,10 @@ jobs:
         run: |
           export TMPDIR="$GITHUB_WORKSPACE/.cache/tmp"
           python3 deploy/tests/blue-green-integration.py --cycles 20 --legacy-binary .cache/bluegreen-legacy-server
+      - name: Forced retirement with isolated Docker and Redis
+        run: |
+          export TMPDIR="$GITHUB_WORKSPACE/.cache/tmp"
+          PYTHONDONTWRITEBYTECODE=1 python3 deploy/tests/blue-green-force-integration.py
       - name: Upload isolated protocol evidence
         if: always()
         uses: actions/upload-artifact@v7

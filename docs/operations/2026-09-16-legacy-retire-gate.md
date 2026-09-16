@@ -76,3 +76,5 @@ Release run `35061507913` 由 tag 自动触发，复用之前未完成的退役�
 - 同类告警在本次切流前已存在。只读统计当天仍保留的 error.log、API error.log、direct error.log：切流前分别 67/72/2332 条同类告警；该计数是日志行而非唯一失败请求数，前后窗口长度不同，不据此比较错误率。
 - 当时生产 Nginx 为 `worker_processes auto`、`worker_connections 4096`、`worker_rlimit_nofile 65535`。应用两个本地 `/health` 为 200，内存和磁盘有余量；随后双公网入口回环探针也恢复为 200。证据指向既有代理连接容量瓶颈，但不足以承诺所有客户请求都未受影响。
 - 本轮不擅自改变全局 Nginx 并发参数。legacy 退役验收通过、发布成功与整体零错误目标分开记录；全局代理容量及连接分配需独立审定和验证。
+
+后续用户已独立授权代理调整：2026-09-16 15:50:27 平滑加载 `worker_connections=16384`、`multi_accept=off`，双入口新连接分配恢复，跨重载714次健康探针零失败。原发布中的失败样本不删除、不改判，详情见 `docs/operations/2026-09-16-nginx-worker-balance.md`。

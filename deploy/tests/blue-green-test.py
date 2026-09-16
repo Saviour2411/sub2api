@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import socket
 import subprocess
 import sys
 import tempfile
@@ -35,6 +36,8 @@ class FakeDeployment(bg.Deployment):
             raise bg.Refused("注入失败")
         if args[:3] == ("docker","image","inspect"):
             output = json.dumps([{"Config":{"Labels":{"org.opencontainers.image.revision": self.state["release"]["sha"]}}}])
+        elif args[:5] == ("docker","exec","sub2api-redis","redis-cli","--raw"):
+            output = "0\n5\n" if args[5] == "EVAL" else "1\n"
         elif args == ("nginx","-T"):
             output = "include /etc/nginx/conf.d/*.conf;"
         else:
@@ -45,8 +48,12 @@ class FakeDeployment(bg.Deployment):
             self.states[slot] = {"state":"standby","instance_id":"instance-"+self.state["release"]["sha"],"version":"test"}
         if args[:3] == ("nginx","-s","reload"):
             self.routed = "blue" if "server 127.0.0.1:18080; }" in Path(self.config["upstream_file"]).read_text().split("\n")[1 if Path(self.config["upstream_file"]).read_text().startswith("#") else 0] else "green"
-        if args[:2] == ("docker","rm"):
-            del self.containers[args[-1]]
+        if args[:2] in (("docker","stop"),("docker","rm")):
+            name = next(name for name,entry in self.containers.items() if name == args[-1] or entry["Id"] == args[-1])
+            if args[1] == "rm":
+                del self.containers[name]
+            else:
+                self.containers[name]["State"] = {"Running":False,"ExitCode":0 if args[3] == "-1" else 137}
         return subprocess.CompletedProcess(args,0,stdout=output,stderr="")
 
     def inspect(self, container):
@@ -71,6 +78,10 @@ class FakeDeployment(bg.Deployment):
 
     def machine_id(self):
         return "test-machine"
+
+    def mount(self, container, source, destination):
+        self.calls.append(("mount",container,str(source),destination))
+        bg.require(container in self.containers, "挂载容器不存在")
 
     def resources(self):
         return {}
@@ -162,6 +173,204 @@ class BlueGreenTests(unittest.TestCase):
         self.deployment.busy.clear()
         self.deployment.deploy(first,window=0)
         self.assertEqual("stable",self.deployment.state["phase"])
+
+    def prepare_forced_retirement(self):
+        deployment = self.deployment
+        deployment.busy.add("blue")
+        deployment.deploy(self.release(1),window=0)
+        deployment.force_after_window = True
+        deployment.config["machine_id"] = "test-machine"
+        deployment.state["drain_started_at"] = time.time()-3601
+        for container in deployment.containers.values():
+            container["State"] = {"Running":True,"ExitCode":0}
+        deployment.states["blue"].update(work={"http":3,"sse":2,"usage_pending":1},session_leases=4)
+        return deployment
+
+    def test_expired_drain_forces_only_pending_identity_and_clears_socket(self):
+        deployment = self.prepare_forced_retirement()
+        listener = socket.socket(socket.AF_UNIX)
+        listener.bind(str(deployment.root/"run/blue.sock"))
+        listener.close()
+        deployment.drain(3600)
+        self.assertEqual("stable",deployment.state["phase"])
+        self.assertEqual("green",deployment.state["active"])
+        self.assertIsNone(deployment.state["pending"])
+        self.assertFalse((deployment.root/"run/blue.sock").exists())
+        self.assertNotIn("sub2api-blue",deployment.containers)
+        self.assertIn(("docker","stop","-t","60","old-container"),deployment.calls)
+        result = deployment.state["forced_retire_result"]
+        self.assertEqual(137,result["exit_code"])
+        self.assertTrue(result["usage_loss_unknown"])
+        self.assertFalse(result["clean_exit"])
+        self.assertEqual(5,result["affinity_removed"])
+        self.assertNotIn("drained_at",deployment.state)
+        self.assertNotIn(("control","blue","retire"),deployment.calls)
+
+    def test_hour_window_still_allows_natural_retirement(self):
+        deployment = self.prepare_forced_retirement()
+        deployment.state["drain_started_at"] = time.time()-60
+        with patch.object(bg.time,"sleep",side_effect=lambda _: deployment.busy.clear()):
+            deployment.drain(3600)
+        self.assertEqual("stable",deployment.state["phase"])
+        self.assertNotIn("forced_retire_result",deployment.state)
+        self.assertIn(("docker","stop","-t","-1","sub2api-blue"),deployment.calls)
+
+    def test_forced_retirement_refuses_unhealthy_active(self):
+        deployment = self.prepare_forced_retirement()
+        deployment.fail = ("candidate_probe",)
+        with self.assertRaisesRegex(bg.Refused,"双入口未就绪"):
+            deployment.drain(3600)
+        self.assertFalse(any(call[:2] == ("docker","stop") for call in deployment.calls))
+        self.assertEqual("green",deployment.state["active"])
+
+    def test_unreachable_old_control_can_be_forced_after_deadline(self):
+        deployment = self.prepare_forced_retirement()
+        deployment.fail = ("control","blue","state")
+        deployment.drain(3600)
+        self.assertEqual("stable",deployment.state["phase"])
+        self.assertTrue(deployment.state["forced_retire_result"]["before"]["work_unknown"])
+
+    def test_old_control_failure_before_deadline_does_not_force_early(self):
+        deployment = self.prepare_forced_retirement()
+        deployment.state["drain_started_at"] = time.time()-60
+        deployment.fail = ("control","blue","state")
+        def recovered(_):
+            deployment.fail = None
+            deployment.busy.clear()
+        with patch.object(bg.time,"sleep",side_effect=recovered):
+            deployment.drain(3600)
+        self.assertNotIn("forced_retire_result",deployment.state)
+
+    def test_forced_retirement_refuses_replaced_old_container(self):
+        deployment = self.prepare_forced_retirement()
+        deployment.containers["sub2api-blue"]["Id"] = "unrelated"
+        with self.assertRaisesRegex(bg.Refused,"旧容器身份"):
+            deployment.drain(3600)
+        self.assertFalse(any(call[:2] == ("docker","stop") for call in deployment.calls))
+
+    def test_forced_retirement_refuses_active_slot(self):
+        deployment = self.prepare_forced_retirement()
+        deployment.state["pending"] = "green"
+        with self.assertRaisesRegex(bg.Refused,"非活动旧槽"):
+            deployment.force_retire_pending()
+
+    def test_forced_retirement_resumes_stop_without_resetting_grace(self):
+        deployment = self.prepare_forced_retirement()
+        deployment.fail = ("docker","stop")
+        with self.assertRaises(bg.Refused):
+            deployment.drain(3600)
+        self.assertEqual("force_retiring",deployment.state["phase"])
+        deployment.state["forced_retire_operation"]["stop_started_at"] -= 100
+        deployment.fail = None
+        deployment.drain(3600)
+        self.assertIn(("docker","stop","-t","0","old-container"),deployment.calls)
+        self.assertEqual("stable",deployment.state["phase"])
+
+    def test_failed_affinity_cleanup_preserves_evidence_and_retries(self):
+        deployment = self.prepare_forced_retirement()
+        with patch.object(deployment,"clear_retired_affinity",side_effect=bg.Refused("redis unavailable")):
+            with self.assertRaisesRegex(bg.Refused,"redis unavailable"):
+                deployment.drain(3600)
+        self.assertEqual("force_retiring",deployment.state["phase"])
+        self.assertFalse(deployment.containers["sub2api-blue"]["State"]["Running"])
+        self.assertIn("forced_retire_result",deployment.state)
+        deployment.drain(3600)
+        self.assertEqual(1,sum(call[:2] == ("docker","stop") for call in deployment.calls))
+        self.assertEqual("stable",deployment.state["phase"])
+
+    def test_old_nginx_workers_block_reuse_but_are_not_killed(self):
+        deployment = self.prepare_forced_retirement()
+        with patch.object(deployment,"old_workers_present",return_value=True):
+            with self.assertRaisesRegex(bg.Refused,"旧代理 worker"):
+                deployment.drain(3600)
+        self.assertEqual("force_retiring",deployment.state["phase"])
+        self.assertIn("blue",deployment.state["slots"])
+        self.assertFalse(any(call[0] in ("kill","pkill") for call in deployment.calls))
+        deployment.drain(3600)
+        self.assertEqual("stable",deployment.state["phase"])
+
+    def test_next_release_reuses_forced_retired_slot(self):
+        deployment = self.prepare_forced_retirement()
+        deployment.deploy(self.release(2),window=3600)
+        self.assertEqual("blue",deployment.state["active"])
+        self.assertEqual("stable",deployment.state["phase"])
+        self.assertIn("sub2api-blue",deployment.containers)
+
+    def test_forced_retirement_requires_original_drain_timestamp(self):
+        deployment = self.prepare_forced_retirement()
+        deployment.state.pop("drain_started_at")
+        deployment.state.pop("switched_at")
+        with self.assertRaisesRegex(bg.Refused,"起始时间"):
+            deployment.drain(3600)
+
+    def test_force_resume_refuses_changed_active_identity(self):
+        deployment = self.prepare_forced_retirement()
+        deployment.fail = ("docker","stop")
+        with self.assertRaises(bg.Refused):
+            deployment.drain(3600)
+        deployment.fail = None
+        deployment.state["forced_retire_operation"]["active_instance_id"] = "different"
+        with self.assertRaisesRegex(bg.Refused,"恢复身份"):
+            deployment.drain(3600)
+        self.assertTrue(deployment.containers["sub2api-blue"]["State"]["Running"])
+
+    def test_affinity_cleanup_timeout_checkpoints_cursor_and_count(self):
+        deployment = self.prepare_forced_retirement()
+        deployment.state["forced_retire_result"] = {"instance_id":"old","affinity_removed":2}
+        reply = subprocess.CompletedProcess([],0,stdout="17\n3\n",stderr="")
+        with patch.object(deployment,"run",return_value=reply), patch.object(bg.time,"monotonic",side_effect=[0,61]):
+            with self.assertRaisesRegex(bg.Refused,"已保存游标"):
+                deployment.clear_retired_affinity("old")
+        self.assertEqual("17",deployment.state["forced_retire_result"]["affinity_cursor"])
+        self.assertEqual(5,deployment.state["forced_retire_result"]["affinity_removed"])
+        deployment.clear_retired_affinity("old")
+        scan = next(call for call in deployment.calls if call[:5] == ("docker","exec","sub2api-redis","redis-cli","--raw") and call[5] == "EVAL")
+        self.assertEqual(("17","old"),scan[-2:])
+
+    def test_forced_retirement_preserves_cleanup_count_across_resume(self):
+        deployment = self.prepare_forced_retirement()
+        with patch.object(deployment,"clear_retired_affinity",return_value=7), patch.object(deployment,"old_workers_present",return_value=True):
+            with self.assertRaises(bg.Refused):
+                deployment.drain(3600)
+        first_stop = deployment.state["forced_retire_result"]["stopped_at"]
+        with patch.object(deployment,"clear_retired_affinity",return_value=2):
+            deployment.drain(3600)
+        self.assertEqual(9,deployment.state["forced_retire_result"]["affinity_removed"])
+        self.assertEqual(first_stop,deployment.state["forced_retire_result"]["stopped_at"])
+
+    def test_failed_log_capture_never_claims_clean_force_exit(self):
+        deployment = self.prepare_forced_retirement()
+        original_run = deployment.run
+        def execute(*args, **kwargs):
+            if args[:2] == ("docker","logs"):
+                return subprocess.CompletedProcess(args,1,stdout="",stderr="logs unavailable")
+            return original_run(*args,**kwargs)
+        with patch.object(deployment,"run",side_effect=execute):
+            deployment.drain(3600)
+        self.assertFalse(deployment.state["forced_retire_result"]["logs_verified"])
+        self.assertFalse(deployment.state["forced_retire_result"]["clean_exit"])
+        self.assertTrue(deployment.state["forced_retire_result"]["usage_loss_unknown"])
+
+    def test_forced_retirement_resumes_after_container_removal(self):
+        deployment = self.prepare_forced_retirement()
+        original_run = deployment.run
+        def execute(*args, **kwargs):
+            result = original_run(*args,**kwargs)
+            if args[:2] == ("docker","rm"):
+                raise bg.Refused("removed before interruption")
+            return result
+        with patch.object(deployment,"run",side_effect=execute):
+            with self.assertRaisesRegex(bg.Refused,"interruption"):
+                deployment.drain(3600)
+        self.assertNotIn("sub2api-blue",deployment.containers)
+        self.assertEqual("force_retiring",deployment.state["phase"])
+        deployment.drain(3600)
+        self.assertEqual("stable",deployment.state["phase"])
+
+    def test_release_enables_hour_deadline_with_sufficient_job_timeout(self):
+        workflow = (ROOT/".github/workflows/release.yml").read_text()
+        self.assertIn("--window 3600 --force-after-window",workflow)
+        self.assertIn("timeout-minutes: 120",workflow.split("  deploy-production:",1)[1])
 
     def test_nginx_failure_never_drains_old_instance(self):
         self.deployment.fail = ("nginx","-t")

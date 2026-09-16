@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""双槽发布执行器。支持首次初始化；旧版无退役凭据时保留，不强停。"""
+"""双槽发布执行器。默认观察一小时；显式强制策略允许超时退役并记录中断风险。"""
 import argparse
 import copy
 import fcntl
@@ -20,6 +20,7 @@ LEGACY_DEFAULT_TTL = 3600
 LEGACY_ACCESS_LOG = Path("/var/log/nginx/sub2api-legacy.access.log")
 NGINX_ROOT = Path("/etc/nginx")
 VHOSTS = {"api": ("api.saviour.cc.cd", 2503), "direct": ("direct.saviour.cc.cd", 443)}
+FORCED_STOP_GRACE = 60
 
 
 def probe_tls(host):
@@ -106,6 +107,7 @@ class Deployment:
         self.root = self.directory / "blue-green"
         self.state_path = self.root / "state.json"
         self.config = None
+        self.force_after_window = False
         if self.state_path.is_file():
             self.config = json.loads((self.root / "config.json").read_text())
             self.state = json.loads(self.state_path.read_text())
@@ -575,9 +577,9 @@ class Deployment:
                 self.run("nginx", "-s", "reload")
                 raise
         old = self.state["active"]
-        self.save(active=slot, pending=old, phase="switched", switched_at=time.time(), switch_seconds=time.monotonic()-switch_started, verified_instance=expected)
+        self.save(active=slot, pending=old, phase="switched", switched_at=time.time(), drain_started_at=time.time(), switch_seconds=time.monotonic()-switch_started, verified_instance=expected)
 
-    def rollback(self, window=900):
+    def rollback(self, window=3600):
         # 只能回到尚未封闭接入的保留实例；不是重新创建旧镜像。
         if self.state.get("rollback"):
             operation = self.state["rollback"]
@@ -613,8 +615,105 @@ class Deployment:
             while not self.probe(expected):
                 require(time.monotonic() < deadline, "回滚切流未确认，保留两个实例")
                 time.sleep(0.1)
-        self.save(active=target, pending=previous, phase="draining", rollback_at=time.time(), verified_instance=expected)
+        self.save(active=target, pending=previous, phase="draining", rollback_at=time.time(), drain_started_at=time.time(), verified_instance=expected)
         self.drain(window)
+
+    def clear_retired_affinity(self, instance_id):
+        script = "local result=redis.call('SCAN',ARGV[1],'MATCH','lifecycle:affinity:*','COUNT',1000); local removed=0; for _,key in ipairs(result[2]) do if redis.call('GET',key)==ARGV[2] then removed=removed+redis.call('DEL',key) end end; return {result[1],removed}"
+        checkpoint = self.state.get("forced_retire_result",{})
+        require(checkpoint.get("instance_id") == instance_id, "归属清理缺少对应实例的关停凭据")
+        cursor, removed = checkpoint.get("affinity_cursor","0"), 0
+        deadline = time.monotonic()+60
+        while True:
+            output = self.run("docker","exec","sub2api-redis","redis-cli","--raw","EVAL",script,"0",cursor,instance_id).stdout.splitlines()
+            require(len(output) == 2 and all(value.isdigit() for value in output), "旧实例归属清理失败，保留待退役状态")
+            cursor = output[0]
+            removed += int(output[1])
+            if cursor == "0":
+                break
+            if time.monotonic() >= deadline:
+                self.save(forced_retire_result=dict(checkpoint,affinity_cursor=cursor,affinity_removed=checkpoint.get("affinity_removed",0)+removed))
+                raise Refused("旧实例归属清理超时，已保存游标，可重跑继续处理")
+            time.sleep(0.005)
+        output = self.run("docker","exec","sub2api-redis","redis-cli","--raw","DEL","lifecycle:live:"+instance_id).stdout.strip()
+        require(output in ("0", "1"), "旧实例存活租约清理失败")
+        return removed
+
+    def force_retire_pending(self):
+        old, active = self.state.get("pending"), self.state["active"]
+        require(old in SLOTS and old != active, "强制退役必须指向非活动旧槽")
+        require(self.state["phase"] in ("switched","draining","drain_pending","force_retiring"), "当前发布阶段不允许强制退役")
+        previous, serving = self.state["slots"][old], self.state["slots"][active]
+        require(not previous.get("legacy"), "无生命周期的首次旧版仍须使用独立 legacy 门禁")
+        require(self.machine_id() == self.config["machine_id"], "强制退役目标机器不匹配")
+        instance = self.control(active)
+        require(instance["instance_id"] == serving["instance_id"] and instance["state"] == "active"
+                and not instance.get("sealed"), "活动实例身份或状态不匹配，禁止强制退役")
+        self.control(active,"check")
+        container = self.inspect("sub2api-"+active)
+        require(container and container["Id"] == serving["container_id"], "活动容器身份不匹配")
+        require(self.candidate_probe(active,serving["instance_id"]) and self.probe(serving["instance_id"]), "活动双入口未就绪，禁止强制退役")
+        container = self.inspect("sub2api-"+old)
+        operation = self.state.get("forced_retire_operation")
+        if operation is None:
+            require(container and container["Id"] == previous["container_id"], "旧容器身份不匹配")
+            self.mount("sub2api-"+old,self.directory/"data","/app/data")
+            try:
+                snapshot = self.control(old)
+            except Refused:
+                snapshot = {"state":"unavailable","work_unknown":True}
+            else:
+                require(snapshot["instance_id"] == previous["instance_id"] and snapshot["state"] in ("draining", "drained"), "旧实例未进入排空，禁止强制退役")
+            operation = {"slot":old,"instance_id":previous["instance_id"],"container_id":previous["container_id"],
+                         "active":active,"active_instance_id":serving["instance_id"],"active_container_id":serving["container_id"],
+                         "release_sha":getattr(self,"execution_release_sha",None) or self.state.get("release",{}).get("sha"),"started_at":time.time(),"before":snapshot,
+                         "reason":"drain_deadline_exceeded","stop_grace_seconds":FORCED_STOP_GRACE}
+            self.save(phase="force_retiring",forced_retire_operation=operation)
+        require(operation["slot"] == old and operation["instance_id"] == previous["instance_id"]
+                and operation["container_id"] == previous["container_id"] and operation["active"] == active
+                and operation["active_instance_id"] == serving["instance_id"] and operation["active_container_id"] == serving["container_id"], "强制退役恢复身份发生变化")
+        result = self.state.get("forced_retire_result")
+        if container is not None:
+            require(container["Id"] == operation["container_id"], "旧容器已被替换，禁止停止")
+            if container["State"]["Running"]:
+                if "stop_started_at" not in operation:
+                    operation = dict(operation,stop_started_at=time.time())
+                    self.save(forced_retire_operation=operation)
+                remaining = max(0,FORCED_STOP_GRACE-int(time.time()-operation["stop_started_at"]))
+                self.run("docker","stop","-t",str(remaining),operation["container_id"])
+                container = self.inspect("sub2api-"+old)
+            require(container and container["Id"] == operation["container_id"] and not container["State"]["Running"], "旧实例尚未停止，不能清理归属")
+            since = time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime(operation["started_at"]))
+            logged = self.run("docker","logs","--since",since,operation["container_id"],check=False)
+            logs = logged.stdout+logged.stderr
+            if not (result and result.get("instance_id") == previous["instance_id"] and result.get("started_at") == operation["started_at"] and "stopped_at" in result):
+                result = dict(operation,exit_code=container["State"].get("ExitCode"),oom_killed=container["State"].get("OOMKilled",False),
+                              logs_verified=logged.returncode == 0,usage_drop_count=logs.count("usage_record.task_dropped"),
+                              forced_shutdown_count=logs.count("Server forced to shutdown"),forced=True,stopped_at=time.time())
+                result["clean_exit"] = result["exit_code"] == 0 and result["logs_verified"] and result["usage_drop_count"] == 0 and result["forced_shutdown_count"] == 0
+                result["usage_loss_unknown"] = not result["clean_exit"]
+                self.save(forced_retire_result=result)
+        else:
+            require(result and result.get("instance_id") == previous["instance_id"] and "stopped_at" in result, "旧容器缺失且无强制关停取证记录")
+        removed = self.clear_retired_affinity(previous["instance_id"])
+        result = dict(result,affinity_removed=result.get("affinity_removed",0)+removed,affinity_cursor="0")
+        self.save(forced_retire_result=result)
+        require(not self.old_workers_present(), "旧实例已停止，但旧代理 worker 尚未退出；禁止复用槽位，不强杀其他站点连接")
+        require(self.probe(serving["instance_id"]), "旧实例停止后活动入口检查失败，保留退役状态")
+        container = self.inspect("sub2api-"+old)
+        if container is not None:
+            require(container["Id"] == operation["container_id"] and not container["State"]["Running"], "旧容器状态改变，拒绝删除")
+            self.run("docker","rm",operation["container_id"])
+        socket = self.root/"run"/(old+".sock")
+        if socket.is_socket():
+            socket.unlink()
+        require(not socket.exists(), "旧socket路径类型异常，拒绝复用")
+        slots = dict(self.state["slots"])
+        del slots[old]
+        result = dict(result,completed_at=time.time())
+        self.save(slots=slots,pending=None,phase="stable",forced_retire_result=result,forced_retire_operation=None,
+                  pending_reason=None,retired_at=time.time(),prepared_release=None,last_error=None)
+        print("::warning::旧实例已按超时强制策略回收；可能中断旧请求，不代表无损退役或用量完整",file=sys.stderr)
 
     def finish_retirement(self, old, expected):
         receipt_path = self.root/"run"/(old+".sock.retired")
@@ -634,6 +733,9 @@ class Deployment:
         old = self.state.get("pending")
         if not old:
             return True
+        if self.state["phase"] == "force_retiring":
+            self.force_retire_pending()
+            return True
         if self.state["slots"][old].get("legacy"):
             self.control(old, "check")
             self.save(phase="drain_pending", pending_reason="legacy_unverifiable", legacy_retained=True)
@@ -643,9 +745,21 @@ class Deployment:
         if self.state["phase"] == "retiring":
             self.finish_retirement(old,expected)
             return True
-        deadline = time.monotonic()+window
+        started = self.state.get("drain_started_at",self.state.get("rollback_at",self.state.get("switched_at")))
+        if self.force_after_window:
+            require(isinstance(started,(int,float)) and started > 0, "缺少排空起始时间，不能推断强制退役期限")
+        deadline = time.monotonic()+max(0,window-(time.time()-started)) if self.force_after_window else time.monotonic()+window
         while True:
-            state = self.control(old)
+            try:
+                state = self.control(old)
+            except Refused:
+                if not self.force_after_window:
+                    raise
+                if time.monotonic() >= deadline:
+                    self.force_retire_pending()
+                    return True
+                time.sleep(1)
+                continue
             require(state["instance_id"] == expected, "旧实例身份改变，拒绝退役")
             if state["state"] == "active":
                 self.control(old, "drain")
@@ -662,12 +776,16 @@ class Deployment:
                 self.finish_retirement(old,expected)
                 return True
             if time.monotonic() >= deadline:
+                if self.force_after_window:
+                    self.force_retire_pending()
+                    return True
                 self.save(phase="drain_pending")
                 print("::warning::旧实例/旧代理 worker 尚未排空，保留容器；禁止复用槽位", file=sys.stderr)
                 return False
             time.sleep(1)
 
-    def deploy(self, release, window=900, legacy_window=1200, legacy_quiet=900):
+    def deploy(self, release, window=3600, legacy_window=1200, legacy_quiet=900):
+        self.execution_release_sha = release["sha"]
         if self.config is None:
             self.initialize(release)
         require(not self.state.get("rollback") or self.state["phase"] == "stable", "回滚未完成，先用 --rollback 恢复，不改变当前流量")
@@ -700,7 +818,7 @@ class Deployment:
                 self.wait_legacy_retire_gate(legacy_window,legacy_quiet)
                 prepared_compose = self.preflight(release,needs_capacity=True)
                 self.retire_legacy_for_release(release)
-            elif not self.drain(window if same else 0):
+            elif not self.drain(window if same or self.force_after_window else 0):
                 require(same, "旧槽仍有工作，本次部署未改变当前流量")
                 return
         if self.state["slots"][self.state["active"]]["sha"] == release["sha"] and self.state["phase"] == "stable":
@@ -776,7 +894,9 @@ def main():
     action.add_argument("--snapshot", action="store_true", help="只读已有状态或旧单实例基线")
     action.add_argument("--rollback", action="store_true", help="回切尚未退役的保留实例并排空新实例")
     action.add_argument("--legacy-retire-check", action="store_true", help="观察一次性旧版退役门禁，不停止容器")
-    parser.add_argument("--window", type=int, default=900, help="排空观察秒数；超时保留旧实例")
+    action.add_argument("--retire-pending", action="store_true", help="仅处理已切流的待退役槽，不发布或切流")
+    parser.add_argument("--window", type=int, default=3600, help="排空观察秒数；强制策略按首次切流时间累计")
+    parser.add_argument("--force-after-window", action="store_true", help="观察超时后强制停止旧实例，可能中断请求及用量收尾")
     parser.add_argument("--legacy-window", type=int, default=1200, help="旧版退役门禁最长观察秒数")
     parser.add_argument("--legacy-quiet", type=int, default=900, help="旧版客户路径持续静默秒数")
     args = parser.parse_args()
@@ -792,6 +912,7 @@ def main():
         except BlockingIOError as error:
             raise Refused("已有服务器发布正在执行，不自动取消它") from error
         deployment = Deployment(args.directory)
+        deployment.force_after_window = args.force_after_window
         if args.legacy_retire_check:
             report = deployment.wait_legacy_retire_gate(args.legacy_window,args.legacy_quiet)
             print(json.dumps(report,ensure_ascii=False))
@@ -800,7 +921,9 @@ def main():
         observer.thread.start()
         try:
             require(args.window >= 0, "观察窗口不能为负数")
-            if args.rollback:
+            if args.retire_pending:
+                deployment.drain(args.window)
+            elif args.rollback:
                 deployment.rollback(args.window)
             else:
                 deployment.deploy(json.loads(Path(args.release).read_text()), args.window, args.legacy_window, args.legacy_quiet)
