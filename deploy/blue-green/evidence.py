@@ -70,7 +70,7 @@ def main():
         runs = get("/actions/workflows/"+workflow+"/runs?"+urllib.parse.urlencode({"head_sha": args.sha, "event": "push", "per_page": 100}))["workflow_runs"]
         checks[workflow] = checked_run(runs, args.sha, required, lambda run: get(f'/actions/runs/{run["id"]}/attempts/{run.get("run_attempt", 1)}/jobs?per_page=100')["jobs"])
     state = json.loads(Path(args.state).read_text())
-    require(state.get("schema") == 1 and state.get("active") in ("blue", "green"), "未完成首次迁移，拒绝生成普通蓝绿发布记录")
+    require(state.get("schema") == 1 and state.get("active") in ("blue", "green"), "活动实例基线无效")
     base = state["slots"][state["active"]]["sha"]
     # SSH 重试必须复用同一份记录；已经切流时沿用该发布的原始兼容基线。
     prior = state.get("release", {})

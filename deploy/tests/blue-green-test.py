@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[2]
@@ -32,6 +33,8 @@ class FakeDeployment(bg.Deployment):
             raise bg.Refused("注入失败")
         if args[:3] == ("docker","image","inspect"):
             output = json.dumps([{"Config":{"Labels":{"org.opencontainers.image.revision": self.state["release"]["sha"]}}}])
+        elif args == ("nginx","-T"):
+            output = "include /etc/nginx/conf.d/*.conf;"
         else:
             output = ""
         if args[:2] == ("docker","compose"):
@@ -39,7 +42,7 @@ class FakeDeployment(bg.Deployment):
             self.containers["sub2api-"+slot] = {"Id":"container-"+self.state["release"]["sha"],"Config":{"Image":self.state["release"]["image"]}}
             self.states[slot] = {"state":"standby","instance_id":"instance-"+self.state["release"]["sha"],"version":"test"}
         if args[:3] == ("nginx","-s","reload"):
-            self.routed = "blue" if "18080" in Path(self.config["upstream_file"]).read_text() else "green"
+            self.routed = "blue" if "server 127.0.0.1:18080; }" in Path(self.config["upstream_file"]).read_text().split("\n")[1 if Path(self.config["upstream_file"]).read_text().startswith("#") else 0] else "green"
         if args[:2] == ("docker","rm"):
             del self.containers[args[-1]]
         return subprocess.CompletedProcess(args,0,stdout=output,stderr="")
@@ -63,6 +66,12 @@ class FakeDeployment(bg.Deployment):
         if action == "synthetic":
             return "event: complete\ndata: ok\n\n"
         return dict(state) if action == "state" else ""
+
+    def machine_id(self):
+        return "test-machine"
+
+    def resources(self):
+        return {}
 
     def preflight(self, release, needs_capacity=True):
         self.calls.append(("preflight",release["sha"]))
@@ -102,7 +111,7 @@ class BlueGreenTests(unittest.TestCase):
 
     def test_missing_migration_state_refuses_adoption(self):
         self.deployment.state_path.unlink()
-        with self.assertRaisesRegex(bg.Refused,"首次迁移"):
+        with self.assertRaisesRegex(bg.Refused,"首次初始化"):
             bg.Deployment(self.directory)
 
     def test_twenty_state_machine_cycles(self):
@@ -215,6 +224,68 @@ class BlueGreenTests(unittest.TestCase):
             actual = dict(expected, **{key:value})
             with self.assertRaisesRegex(bg.Refused, key):
                 bg.require_matching_runtime("blue", expected, [key+"="+value for key,value in actual.items()])
+
+    def test_bootstrap_creates_files_and_is_recoverable(self):
+        d = self.deployment
+        d.state["slots"]["blue"]["legacy"] = True
+        d.state["slots"]["blue"]["sha"] = bg.LEGACY_SHA
+        d.config = None
+        (self.directory/"docker-compose.yml").write_text("test-compose")
+        (self.directory/"docker-compose.sub2api.yml").write_text("test-compose")
+        nginx = self.directory/"nginx"
+        (nginx/"conf.d").mkdir(parents=True)
+        (nginx/"sites-enabled").mkdir()
+        for host,port in bg.VHOSTS.values():
+            (nginx/"sites-enabled"/("sub2api-"+host)).write_text(f"server {{ listen {port} ssl; server_name {host}; location / {{ proxy_pass http://127.0.0.1:18080; }} }}")
+        release = self.release(1)
+        with patch.object(bg,"NGINX_ROOT",nginx), patch.object(bg.os,"chown"):
+            d.initialize(release)
+            self.assertTrue(d.state_path.is_file())
+            self.assertTrue((d.root/"config.json").is_file())
+            self.assertTrue((d.root/"bootstrap.json").is_file())
+            self.assertIn("legacy.sock",Path(d.config["upstream_file"]).read_text())
+            self.assertEqual("blue",d.routed,"初始化 reload 不能提前切流")
+            # 模拟配置已转换但状态落盘前中断；从 journal 恢复，不猜测或重建旧实例。
+            saved = json.loads((d.root/"bootstrap.json").read_text())
+            d.state = saved["state"]
+            d.state_path.unlink()
+            d.config = None
+            d.initialize(release)
+            self.assertTrue(d.state_path.is_file())
+        self.assertFalse(any(c[:2] in (("docker","stop"),("docker","compose")) for c in d.calls))
+
+    def test_actual_resources_allow_overcommit_but_reject_real_pressure(self):
+        sample = {"maximum":600, "reserved":3, "used":30, "memory_available":100*1024**3}
+        bg.resource_check(sample,{})
+        with self.assertRaisesRegex(bg.Refused,"实际可用连接"):
+            bg.resource_check(dict(sample,used=580),{})
+        with self.assertRaisesRegex(bg.Refused,"实际可用内存"):
+            bg.resource_check(dict(sample,memory_available=512*1024**2),{})
+        with self.assertRaisesRegex(bg.Refused,"阈值"):
+            bg.resource_check(sample,{"database_free_min":0})
+
+    def test_first_legacy_deployment_keeps_old_and_rejects_next(self):
+        self.deployment.state["slots"]["blue"]["legacy"] = True
+        release = self.release(1)
+        self.deployment.deploy(release,window=0)
+        self.assertEqual("green",self.deployment.state["active"])
+        self.assertEqual("legacy_unverifiable",self.deployment.state["pending_reason"])
+        self.assertFalse(any(c[:2] == ("docker","stop") for c in self.deployment.calls))
+        starts = sum(c[:2] == ("docker","compose") for c in self.deployment.calls)
+        self.deployment.deploy(release,window=0)
+        with self.assertRaisesRegex(bg.Refused,"旧槽仍有工作"):
+            self.deployment.deploy(self.release(2),window=0)
+        self.assertEqual(starts,sum(c[:2] == ("docker","compose") for c in self.deployment.calls))
+        self.assertEqual("green",self.deployment.routed)
+
+    def test_legacy_proxy_is_fixed_private_and_disables_retries(self):
+        self.deployment.state["slots"]["blue"]["legacy"] = True
+        rendered = self.deployment.proxy_config("green")
+        self.assertIn("server 127.0.0.1:18082",rendered)
+        self.assertIn("listen unix:",rendered)
+        self.assertIn("proxy_pass http://127.0.0.1:18080",rendered)
+        self.assertIn("proxy_next_upstream off",rendered)
+        self.assertNotIn("18081",rendered)
 
     def test_budget_parsing_requires_explicit_limit(self):
         self.assertEqual(3*1024**3,bg.bytes_value("3GiB"))

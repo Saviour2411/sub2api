@@ -400,7 +400,7 @@ jobs:
           chmod 600 .cache/deployment/ssh/key
           touch .cache/deployment/ssh/known_hosts
 
-      - name: Read approved deployment state
+      - name: Read deployment state or discover legacy baseline
         env:
           DEPLOY_HOST: ${{ steps.deploy_config.outputs.host }}
           DEPLOY_USER: ${{ steps.deploy_config.outputs.user }}
@@ -408,7 +408,7 @@ jobs:
           DEPLOY_DIR: ${{ steps.deploy_config.outputs.dir }}
         run: |
           ssh -i .cache/deployment/ssh/key -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=.cache/deployment/ssh/known_hosts -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
-            "test -f '$DEPLOY_DIR/blue-green/config.json' && cat '$DEPLOY_DIR/blue-green/state.json'" > .cache/deployment/state.json
+            "python3 - --directory '$DEPLOY_DIR' --snapshot" < deploy/blue-green/deploy.py > .cache/deployment/state.json
 
       - name: Bind successful CI and migration baseline to digest
         env:
@@ -458,15 +458,19 @@ jobs:
           if [ ! -f .cache/deployment/ssh/key ]; then exit 0; fi
           ssh -i .cache/deployment/ssh/key -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=.cache/deployment/ssh/known_hosts -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
             "cat '$DEPLOY_DIR/blue-green/state.json'" > .cache/deployment/result.json || true
+          ssh -i .cache/deployment/ssh/key -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=.cache/deployment/ssh/known_hosts -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cat '$DEPLOY_DIR/blue-green/observation.json'" > .cache/deployment/observation.json || true
           if [ -s .cache/deployment/result.json ]; then
             python3 - <<'PYCODE'
           import json, os
           with open('.cache/deployment/result.json') as stream:
               state = json.load(stream)
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
-              summary.write('## 蓝绿部署状态\n```json\n'+json.dumps({k:state.get(k) for k in ('phase','generation','active','pending','switched_at','drained_at','last_error')},ensure_ascii=False,indent=2)+'\n```\n')
+              summary.write('## 蓝绿部署状态\n```json\n'+json.dumps({k:state.get(k) for k in ('phase','generation','active','pending','pending_reason','switch_seconds','switched_at','drained_at','resources','last_error')},ensure_ascii=False,indent=2)+'\n```\n')
               if state.get('pending'):
                   summary.write('**旧实例仍保留，尚未完成退役；下一次发布不得覆盖其槽位。**\n')
+              if os.path.getsize('.cache/deployment/observation.json'):
+                  summary.write('## 双入口连续健康检查\n```json\n'+open('.cache/deployment/observation.json').read()+'\n```\n')
           PYCODE
           fi
 
@@ -478,6 +482,7 @@ jobs:
           path: |
             .cache/deployment/release.json
             .cache/deployment/result.json
+            .cache/deployment/observation.json
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 30

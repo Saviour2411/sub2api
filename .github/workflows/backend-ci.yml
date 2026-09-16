@@ -143,10 +143,14 @@ jobs:
           mkdir -p .cache/tmp .analysis_tmp
           export TMPDIR="$GITHUB_WORKSPACE/.cache/tmp"
           go -C backend build -o ../.cache/bluegreen-server ./cmd/server
+          git fetch --no-tags --depth=1 origin cfd9afa871def9ebd457bb95fb4c2e8b4b02b34f
+          mkdir -p .cache/legacy-source
+          git archive cfd9afa871def9ebd457bb95fb4c2e8b4b02b34f backend | tar -x -C .cache/legacy-source
+          go -C .cache/legacy-source/backend build -o ../../bluegreen-legacy-server ./cmd/server
       - name: Twenty mixed-protocol switches with local mock upstream
         run: |
           export TMPDIR="$GITHUB_WORKSPACE/.cache/tmp"
-          python3 deploy/tests/blue-green-integration.py --cycles 20
+          python3 deploy/tests/blue-green-integration.py --cycles 20 --legacy-binary .cache/bluegreen-legacy-server
       - name: Upload isolated protocol evidence
         if: always()
         uses: actions/upload-artifact@v7

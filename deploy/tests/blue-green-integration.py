@@ -205,6 +205,7 @@ class ClientWS:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", default=str(ROOT/".cache/bluegreen-server"))
+    parser.add_argument("--legacy-binary", help="使用实际 v0.1.234 构建验证首次续接")
     parser.add_argument("--cycles", type=int, default=20)
     args = parser.parse_args()
     cache = ROOT/".cache/tmp"
@@ -249,22 +250,31 @@ def main():
         except urllib.error.HTTPError as error:
             raise AssertionError(error.read().decode()) from error
 
-    def start(slot):
+    def start(slot, legacy=False, old=False):
         log = (folder/(slot+"-"+uuid.uuid4().hex[:5]+".log")).open("w")
         logs.append(log)
         env = dict(os.environ, AUTO_SETUP="true", DATA_DIR=str(data), SERVER_HOST="0.0.0.0", SERVER_PORT=str(ports[slot]), DATABASE_HOST="127.0.0.1", DATABASE_PORT=str(pg_port), DATABASE_USER="test", DATABASE_PASSWORD="test-only-password", DATABASE_DBNAME="test", DATABASE_SSLMODE="disable", DATABASE_MAX_OPEN_CONNS="20", DATABASE_MAX_IDLE_CONNS="5", REDIS_HOST="127.0.0.1", REDIS_PORT=str(redis_port), ADMIN_EMAIL="test@example.test", ADMIN_PASSWORD="test-only-Password-123!", JWT_SECRET="test-only-jwt-secret-012345678901234567890123456789", TOTP_ENCRYPTION_KEY="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", GOMEMLIMIT="512MiB", LIFECYCLE_MODE="standby", LIFECYCLE_SOCKET=str(folder/(slot+".sock")), GATEWAY_OPENAI_WS_ENABLED="true", GATEWAY_OPENAI_WS_APIKEY_ENABLED="true", GATEWAY_OPENAI_WS_RESPONSES_WEBSOCKETS_V2="true", GATEWAY_OPENAI_WS_MODE_ROUTER_V2_ENABLED="true", GATEWAY_OPENAI_WS_STICKY_SESSION_TTL_SECONDS="5", GATEWAY_OPENAI_WS_STICKY_RESPONSE_ID_TTL_SECONDS="5", TZ="UTC")
-        process = subprocess.Popen([str(Path(args.binary).resolve())], cwd=folder, env=env, stdout=log, stderr=subprocess.STDOUT)
+        env["LIFECYCLE_LEGACY"] = str(legacy).lower()
+        if legacy or old:
+            env["GATEWAY_OPENAI_WS_MAX_INGRESS_CONNECTIONS_PER_API_KEY"] = "2"
+        process = subprocess.Popen([str(Path(args.legacy_binary if old else args.binary).resolve())], cwd=folder, env=env, stdout=log, stderr=subprocess.STDOUT)
         processes[slot] = process
         def started():
             assert process.poll() is None, f"候选启动失败，详见 {log.name}"
+            if old:
+                return json.loads(command("curl","-fsS","--max-time","2",f"http://127.0.0.1:{ports[slot]}/health"))["status"] == "ok"
             return control(slot)["state"] == "standby"
         eventually(started, 90)
+        if old:
+            return
         control(slot, "check")
         assert "event: complete" in command("curl", "-fsS", "--unix-socket", str(folder/(slot+".sock")), "http://local/synthetic")
 
+    legacy_proxy = ""
+
     def switch(slot):
         control(slot, "activate")
-        (folder/"upstream.conf").write_text(f"upstream app {{ server host.docker.internal:{ports[slot]}; }}\n")
+        (folder/"upstream.conf").write_text(f"upstream app {{ server host.docker.internal:{ports[slot]}; }}\n"+legacy_proxy)
         command("docker", "exec", tag+"-nginx", "nginx", "-t")
         begin = time.monotonic()
         command("docker", "exec", tag+"-nginx", "nginx", "-s", "reload")
@@ -300,7 +310,7 @@ def main():
         command("openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", str(folder/"tls.key"), "-out", str(folder/"tls.crt"), "-days", "1", "-subj", "/CN=localhost")
         (folder/"upstream.conf").write_text(f"upstream app {{ server host.docker.internal:{ports['blue']}; }}\n")
         (folder/"nginx.conf").write_text('''events {}\nhttp { include /test/upstream.conf; map $http_upgrade $upgrade_connection { default upgrade; '' close; } server { listen 8443 ssl; listen 8444 ssl; http2 on; ssl_certificate /test/tls.crt; ssl_certificate_key /test/tls.key; location / { proxy_pass http://app; proxy_http_version 1.1; proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection $upgrade_connection; proxy_buffering off; proxy_request_buffering off; proxy_read_timeout 90s; proxy_next_upstream off; } } }\n''')
-        proxy_port = docker("nginx:1.28-alpine", "nginx", 8443, "-p", "127.0.0.1::8444", "--add-host", "host.docker.internal:host-gateway", "-v", str(folder)+":/test:ro", "-v", str(folder/"nginx.conf")+":/etc/nginx/nginx.conf:ro")
+        proxy_port = docker("nginx:1.28-alpine", "nginx", 8443, "-p", "127.0.0.1::8444", "--add-host", "host.docker.internal:host-gateway", "-v", str(folder)+":/test:rw", "-v", str(folder/"nginx.conf")+":/etc/nginx/nginx.conf:ro")
         direct_port = int(command("docker", "port", tag+"-nginx", "8444/tcp").rsplit(":", 1)[1])
         stream("warmup")
         health_stop, health_errors, health_count = threading.Event(), [], [0]
@@ -382,7 +392,45 @@ def main():
         control(active, "retire")
         assert processes[active].wait(timeout=30) == 0
         assert max(sample["switch_seconds"] for sample in samples) < 2, samples
-        report = {"sha":command("git", "rev-parse", "HEAD", cwd=ROOT), "cycles":args.cycles, "upstream_requests":expected, "usage_rows":expected, "ordinary_requests":health_count[0], "ordinary_errors":health_errors, "samples":samples}
+        legacy_result = None
+        if args.legacy_binary:
+            start("blue",old=True)
+            legacy_proxy = (f"server {{ listen unix:/test/legacy.sock; location / {{ proxy_pass http://host.docker.internal:{ports['blue']}; "
+                            "proxy_http_version 1.1; proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection $upgrade_connection; "
+                            "proxy_buffering off; proxy_request_buffering off; proxy_next_upstream off; proxy_read_timeout 90s; } }\n")
+            (folder/"upstream.conf").write_text(f"upstream app {{ server host.docker.internal:{ports['blue']}; }}\n"+legacy_proxy)
+            command("docker","exec",tag+"-nginx","nginx","-s","reload")
+            eventually(lambda: (folder/"legacy.sock").exists())
+            ws = ClientWS(proxy_port,api_key,"legacy-session")
+            previous = ws.turn("legacy-before")
+            hold = "legacy-long-stream"
+            Upstream.holds[hold] = (threading.Event(),threading.Event())
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                pending_stream = pool.submit(stream,hold)
+                assert Upstream.holds[hold][0].wait(20)
+                start("green",legacy=True)
+                latency = switch("green")
+                ws.turn("legacy-still-connected")
+                forwarded = ClientWS(direct_port,api_key,"legacy-session")
+                forwarded.turn("legacy-forwarded")
+                # 上限 2：仍活着的旧 WS + 新入口续接只能占两份，不能中转侧再多占一份。
+                leases = command("docker","exec",tag+"-redis","redis-cli","--scan","--pattern","concurrency:openai_ws_ingress:api_key:*").splitlines()
+                assert len(leases) == 1
+                assert command("docker","exec",tag+"-redis","redis-cli","ZCARD",leases[0]) == "2"
+                stream("legacy-response-continuation",previous=previous)
+                stream("first-new-instance")
+                forwarded.close()
+                ws.close()
+                Upstream.holds[hold][1].set()
+                pending_stream.result(timeout=20)
+            assert processes["blue"].poll() is None, "旧版必须保留，不伪装已排空"
+            expected = sum(Upstream.seen.values())
+            eventually(lambda: int(pg("SELECT count(*) FROM usage_logs")) == expected)
+            assert all(n == 1 for n in Upstream.seen.values())
+            assert pg("SELECT count(*) FROM usage_logs WHERE input_tokens<>7 OR output_tokens<>3 OR total_cost<=0") == "0"
+            legacy_result = {"switch_seconds":latency,"old_retained":True,"ingress_lease_count":2,"usage_rows":expected}
+            print("实际旧版首次迁移协议验证："+json.dumps(legacy_result),flush=True)
+        report = {"sha":command("git", "rev-parse", "HEAD", cwd=ROOT), "cycles":args.cycles, "upstream_requests":expected, "usage_rows":expected, "ordinary_requests":health_count[0], "ordinary_errors":health_errors, "samples":samples, "legacy":legacy_result}
         (ROOT/".analysis_tmp").mkdir(exist_ok=True)
         (ROOT/".analysis_tmp/bluegreen-protocol-result.json").write_text(json.dumps(report, indent=2)+"\n")
         print("真实应用协议切流和逐笔用量回归通过", flush=True)
