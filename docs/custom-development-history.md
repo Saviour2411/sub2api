@@ -23,7 +23,7 @@ CI 迭代：修复 WS 验收测试在握手与服务端 Hijack 之间的同步�
 
 `v0.1.235` 于 2026-09-16 通过 Release run `35050536184` 自动首次迁移：活动实例切到 `green`，切流确认 1.148 秒，API/direct 连续健康探针各 42 次且零错误；旧 v0.1.234 因无生命周期凭据保留为 `drain_pending / legacy_unverifiable`，没有被强停。部署后只读 run `35052231141` 确认新实例 revision 为 `961fd4160a94fdd61328ca99c6b13b9267b9ed38`，两个入口均返回同一新实例和 `green` 槽标识，连接池 512、GOMEMLIMIT 216181080064B 未降低。详见 `docs/operations/2026-09-16-v0.1.235-blue-green-release.md`。
 
-## 旧版退役门禁与固定双槽循环（2026-09-16，待下一 tag 验证）
+## 旧版退役门禁与固定双槽循环（2026-09-16，v0.1.237 已切流）
 
 为保证下一 tag 仍可直接由 GitHub Actions 自动发布，增加一次性 legacy-retire 门禁和独立手动观察工作流。Release 自身可在无预热凭据时等待最长 1200 秒并验证 900 秒客户路径静默；候选镜像必须先准备，凭据绑定旧容器及当前活动实例，中断恢复不得在旧版停止后重新拉镜像。退役完成后复用 `blue/18080`，后续只在 18080/18082 循环，不新增端口。server1 短采样已确认 TTL、旧 worker、客户连接、legacy socket 和 Redis 归属均满足；正式停止结果、异常日志计数和下一 tag 切换仍待 CI 及生产发布验证。详见 `docs/operations/2026-09-16-legacy-retire-gate.md`。
 
@@ -33,13 +33,17 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 
 `v0.1.236` 首次部署迭代：production Docker CLI 26.1.5 不支持 `stop --timeout`，退役在发送停止信号前安全失败，旧容器与 green 均健康、未切流。修正为兼容的 `stop -t -1`（仍无限等待），并允许后续通过完整预检且镜像已准备的新 tag 接续尚未启动候选的 legacy 退役操作；候选存在或预检失败则保留原发布身份与流量。
 
+生产验证：独立门禁 run `35057663303` 完成 901.6 秒静默；固定提交 `004cc47a2` 的完整 CI/Security 全绿后发布 `v0.1.237`。Release run `35061507913` 自动恢复退役：v0.1.234 退出码 0、用量丢弃 0、强制关停 0，111.84 秒等待后台任务后删除旧容器；blue 复用 18080，双入口切流确认 1.179 秒。green v0.1.235 仍按真实工作与会话自然排空，不能强占；下一发布候选固定为 green/18082。详情及边界见 `docs/operations/2026-09-16-legacy-retire-gate.md`。
+
+验收边界：Release 最终成功，状态为 `drain_pending / active=blue / pending=green`；API/direct 各 977 次健康探针分别有 7/6 次 TLS 或 HTTP 500 异常，集中在切流约 15 分钟后。Nginx 同时记录 `4096 worker_connections are not enough`，切流前亦有同类告警。未宣称整体零错误、未强制回收 green、未擅自更改全局 Nginx 并发参数。
+
 ## 当前基线
 
-- 生产部署核验（2026-09-16）：`0.1.235` 已自动首次蓝绿迁移至 server1；新 revision `961fd4160a94fdd61328ca99c6b13b9267b9ed38` 在 green 槽接收新流量，旧 v0.1.234 安全保留供既有连接/会话续接。资源上限、PG/Redis 和持久挂载保持不变；旧槽清理前后续发布会安全拒绝复用。详情见 `docs/operations/2026-09-16-v0.1.235-blue-green-release.md`。
+- 生产部署核验（2026-09-16）：`0.1.237`、revision `004cc47a2090a35b7cc94a6463e97273b86562fb` 在 blue/18080 接收新流量；v0.1.234 已正常退役，v0.1.235 green 按真实工作自然排空。资源上限、PG/Redis 和持久挂载保持不变。详情见 `docs/operations/2026-09-16-legacy-retire-gate.md`。
 - 上一版生产记录（2026-09-15）：v0.1.234 原地部署时观察到 HTTP 强制关停及 `usage_record.task_dropped`（`reason=stopped`）告警；本次生命周期与蓝绿修正的目标即消除计划发布中的这类问题。历史证据保留于 `docs/operations/2026-09-15-v0.1.234-release.md`。
 
 - 基线日期：2026-09-16
-- 本地版本：`0.1.235`（正确排空、多实例安全和首次蓝绿迁移已发布；旧版仍保留，尚未完成常规双槽循环）
+- 本地版本：`0.1.237`（legacy 旧版已退役，18080 已成功复用；正常保留槽仍遵守自然排空门禁）
 - 本地同步前代码基线提交：`098f3d9e5a14278ada575daae0fd871b50898817`；本轮合并提交见 `docs/upstream-sync-history.md` 的 2026-09-15 记录
 - 已完整集成的上游提交：`bdb42e22f81fcb633ff0a060961211dd2bcb515b`
 - 本次同步范围：`98d86915b..bdb42e22f`，141 个上游提交，57 项本地能力族编号及实现均保留；可用验证与未覆盖范围见本轮记录

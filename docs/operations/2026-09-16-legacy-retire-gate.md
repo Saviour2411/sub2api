@@ -1,6 +1,6 @@
 # 2026-09-16 旧版退役门禁与双槽循环验证
 
-本文时间除特别说明外均为北京时间（UTC+8）。本记录先描述代码与只观察验证；实际旧版停止、下一 tag 切换及最终结果在发布后继续补记。
+本文时间除特别说明外均为北京时间（UTC+8）。本记录包含独立门禁、失败发布的安全恢复，以及 v0.1.237 通过 Actions 退役 v0.1.234 并复用 18080 的生产证据。
 
 ## 目标
 
@@ -32,7 +32,7 @@
 
 首次试运行发现 `sub2api_gateway` 日志格式定义在后加载的站点文件，`conf.d` 引用会使 `nginx -t` 报 unknown log format。运行中的 Nginx 未 reload，客户流量未受影响；磁盘配置立即改为内置 `combined`，`nginx -t`、reload 和 API/direct 健康检查均成功。代码已同步使用 `combined` 并增加回归断言。
 
-## 待完成验证
+## CI 与发布迭代
 
 独立门禁 run `35057663303` 已于 13:13:43 成功，实际连续静默 901.6 秒，全部客户路径计数为 0。`3793f691c` 的 CI `35058399290`、Security `35058399264` 全通过后创建 `v0.1.236`，Release `35059222782` 成功发布镜像，但生产 Docker CLI 26.1.5 拒绝 `docker stop --timeout`；旧版没有收到停止信号，state 保持 `legacy_retiring / active=green / pending=blue`，两个应用健康，API/direct 均为 200。
 
@@ -40,7 +40,39 @@
 
 补强提交的首轮 CI 在隔离 Nginx 初次 warmup 时出现 TLS `SSL_ERROR_SYSCALL`，尚未开始任何切流。测试启动顺序修正为：Docker 返回端口后，先轮询双入口无付费 `/health` 至 TLS 就绪，再发送一次 warmup 生成请求；不重放生成，不放宽切流及用量断言。
 
-- 功能分支 CI 与 Security Scan 全部通过并合入 `main`。
-- 创建下一 annotated tag，验证旧版退出码为 0、两个异常计数均为 0。
-- 验证 `sub2api` 消失、`sub2api-blue` 在 18080 启动、两入口切到 blue，green 自然排空后删除。
-- 最终状态必须为 `stable / active=blue / pending=null`；再确认下一发布目标为 `green/18082`。
+最终候选 `004cc47a2090a35b7cc94a6463e97273b86562fb` 的 CI run `35060652262`、Security run `35060652452` 均通过后快进主线并创建 annotated tag `v0.1.237`；标签 CI run `35061508019`、Security run `35061507906` 也通过。状态机 30 项、发布证据 2 项、预检 3 项通过，Linux 真实应用 20 轮混合协议门禁保留。
+
+## v0.1.237 生产结果
+
+Release run `35061507913` 由 tag 自动触发，复用之前未完成的退役操作，没有本机执行停容器或切流命令。
+
+该 run 于 14:27:52 完成，`deploy-production` 为 14:10:29–14:27:51（17 分 22 秒）且全部步骤成功；这证明发布执行及 legacy 退役门禁通过，不等于客户流量整体零错误。
+
+| 事件 | 北京时间／耗时 | 结果 |
+| --- | --- | --- |
+| 旧 v0.1.234 收到正常停止信号 | 14:10:52 | 客户路径静默门禁已通过；无强杀倒计时 |
+| 旧容器完成退役并删除 | 14:12:43.841；111.84 秒 | 等待后台监控任务自然收尾，exit code 0 |
+| 候选接流确认 | 14:12:47.022 | 新版 blue 复用 18080；旧版退役至确认新流量 3.18 秒 |
+| Nginx 切流确认 | 1.179 秒 | API/direct 同时返回同一 blue 实例，HTTP/2 200 |
+
+- `legacy_retire_result`：`exit_code=0`、`usage_drop_count=0`、`forced_shutdown_count=0`、`logs_verified=true`、`clean=true`。旧 `sub2api` 容器已不存在，legacy Unix 入口已移除。
+- 当前镜像固定为 `saviour2411/sub2api@sha256:a7f5df1d863247d54aed3c658b2bc666a48870353f5bb0f66fa3b0e8d3f0657c`，运行 revision 与候选 SHA 一致。
+- blue 的 `LIFECYCLE_LEGACY=false`，共享后台任务已恢复；green 仍为旧版共存模式，不与 blue 重复执行共享任务。
+- blue/green 的连接池均保持 512，GOMEMLIMIT 均保持 216181080064B。PostgreSQL、Redis、持久挂载及计费规则未修改。
+- 旧版关停的 111.84 秒不是客户停机时间：此期间 green 持续接单；新 blue 完成就绪后才切流。
+
+## 正常双槽排空边界
+
+首次 legacy 阻塞已解除，但 green v0.1.235 的真实 SSE、断连排空工作和会话租约仍需自然结束。不能把 v0.1.234 成功退役等同于所有保留实例都已退役。
+
+15 分钟观察结束后的实际状态为 `phase=drain_pending / active=blue / pending=green / last_error=null`，不是 `stable`。green 的请求、SSE 和会话租约尚未归零，已按要求保留，没有停止容器或缩短 TTL。
+
+下一次候选固定使用 `green/18082`，没有 18081 或第三槽。执行新发布前先检查 green：已排空则自动回收、复用；尚有工作则安全拒绝，不改变 blue 流量。不为发布缩短会话 TTL，也不强杀连接。因此“每个 tag 自动执行部署流程”不等于“旧会话永不结束时仍能无限次立即切换两个槽位”。
+
+## 健康观测异常：零错误验收未通过
+
+- 整个服务器执行窗口内 API/direct 各探测 977 次，API 7 次异常（5 次 TLS、2 次 HTTP 500），direct 6 次异常（4 次 TLS、2 次 HTTP 500）。没有删除或重试这些失败样本。
+- 异常集中在 14:27:33–14:27:43，距 14:12:47 切流约 15 分钟。对应 Nginx 日志为 worker `913781` 的 `4096 worker_connections are not enough`，包含 `while connecting to upstream`。
+- 同类告警在本次切流前已存在。只读统计当天仍保留的 error.log、API error.log、direct error.log：切流前分别 67/72/2332 条同类告警；该计数是日志行而非唯一失败请求数，前后窗口长度不同，不据此比较错误率。
+- 当时生产 Nginx 为 `worker_processes auto`、`worker_connections 4096`、`worker_rlimit_nofile 65535`。应用两个本地 `/health` 为 200，内存和磁盘有余量；随后双公网入口回环探针也恢复为 200。证据指向既有代理连接容量瓶颈，但不足以承诺所有客户请求都未受影响。
+- 本轮不擅自改变全局 Nginx 并发参数。legacy 退役验收通过、发布成功与整体零错误目标分开记录；全局代理容量及连接分配需独立审定和验证。

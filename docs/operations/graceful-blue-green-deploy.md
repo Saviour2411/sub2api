@@ -2,7 +2,7 @@
 
 > 2026-09-15，功能分支 `codex/graceful-blue-green-deploy`，已合入主线基线 `09523d260`。
 > 用户追加授权在 CI 通过后通过 tag/Actions 部署；授权不等于绕过首次迁移、资源预算或旧连接排空门禁。
-> `v0.1.235` 已于 2026-09-16 完成首次自动迁移并切到 `green/18082`；旧 v0.1.234 仍保留于 `blue/18080`。下一阶段通过独立 legacy-retire 门禁完成一次性旧版退役，然后恢复固定双槽循环。
+> `v0.1.237` 已于 2026-09-16 通过 tag/Actions 退役旧 v0.1.234 并复用 `blue/18080`；切流确认 1.179 秒。green v0.1.235 仍自然排空，下一候选固定为 `green/18082`，不新增端口。
 
 ## 已落地的实现
 
@@ -167,3 +167,12 @@ python3 deploy/blue-green/deploy.py --directory "$DEPLOY_DIR" --rollback --windo
 - server1 于 12:21:27 完成只观察短采样：切流后 3602 秒、旧 worker/18080 客户连接/legacy socket/Redis legacy affinity 均为 0，门禁无 blocker。旧版 9 条外连只作后台任务观测，不作为客户连接硬门禁。
 - 专属 legacy access log 使用 Nginx 内置 `combined` 格式，避免 `conf.d` 解析顺序依赖其他站点定义。首次发现 unknown log format 时运行中的 Nginx 未 reload；磁盘配置已立即修复，随后 `nginx -t`、reload 和双入口健康检查成功。
 - 详细实现、只观察证据和待完成 tag 验证见 `docs/operations/2026-09-16-legacy-retire-gate.md`。
+
+## v0.1.237 生产退役与固定端口复用
+
+- 独立门禁 `35057663303` 通过 901.6 秒静默；v0.1.236 暴露生产 Docker 26.1.5 不支持 `--timeout` 后安全失败，未停止客户实例。修复使用 `docker stop -t -1`，保留无限等待语义与原发布审计。
+- v0.1.237 Release `35061507913` 自动接续：v0.1.234 于 14:12:43 完成退役，exit 0、用量丢弃/强制关停均 0；blue/18080 接替 green，双入口切流确认 1.179 秒。
+- 旧版关停等后台收尾 111.84 秒，期间 green 正常服务。blue 以非 legacy 模式运行，共享任务恢复；连接池 512 和 GOMEMLIMIT 不变。
+- 下一 tag 只复用 green/18082。若 green 仍有客户工作或会话，则保留并拒绝覆盖；自动发布不等于绕过自然排空，也不等于可以在两个槽位内无限保留旧实例。
+- Release 最终成功，但状态为 `drain_pending` 而非 `stable`。双入口健康探针各 977 次，API/direct 分别出现 7/6 次 TLS 或 500 异常；同时段 Nginx 报 `4096 worker_connections are not enough`，且发布前已有同类告警。legacy 退役通过不等于整体零错误验收通过；本轮未改全局 Nginx 容量。
+- 完整证据和正常排空边界见 `docs/operations/2026-09-16-legacy-retire-gate.md`。
