@@ -82,6 +82,9 @@ def resource_check(sample, config):
 
 def update_legacy_gate(previous, sample, quiet_seconds, now):
     report = dict(previous or {})
+    identity_keys = ("legacy_container_id","switched_at","active_slot","active_instance_id")
+    if any(report.get(key) != sample.get(key) for key in identity_keys):
+        report = {}
     previous_marker = report.get("access_log_marker")
     same_marker = previous_marker is None or previous_marker == sample["access_log_marker"]
     clear = not sample["blockers"] and same_marker
@@ -392,14 +395,22 @@ class Deployment:
     def ensure_legacy_observer(self):
         old = self.state.get("pending")
         require(old and self.state["slots"][old].get("legacy"), "当前没有待退役旧版")
-        LEGACY_ACCESS_LOG.touch(exist_ok=True)
+        with LEGACY_ACCESS_LOG.open("a"):
+            pass
         proxy = Path(self.config["upstream_file"])
+        previous = proxy.read_text()
         expected = self.proxy_config(self.state["active"], include_legacy=True)
-        if proxy.read_text() != expected:
+        if previous != expected:
             atomic_write(proxy, expected)
+        try:
             self.run("nginx","-t")
             self.run("nginx","-s","reload")
             require(self.probe(self.state["slots"][self.state["active"]]["instance_id"]), "增加旧版专属观测日志后双入口验证失败")
+        except Exception:
+            atomic_write(proxy,previous)
+            self.run("nginx","-t")
+            self.run("nginx","-s","reload")
+            raise
 
     def legacy_gate_sample(self):
         old = self.state.get("pending")
@@ -491,10 +502,14 @@ class Deployment:
         expected = self.proxy_config(active,include_legacy=False)
         if proxy.read_text() != expected:
             atomic_write(proxy,expected)
-            self.run("nginx","-t")
-            self.run("nginx","-s","reload")
-            require(self.probe(self.state["slots"][active]["instance_id"]), "封闭旧版入口后活动实例验证失败")
-            self.save(legacy_sealed_at=time.time())
+        self.run("nginx","-t")
+        self.run("nginx","-s","reload")
+        require(self.probe(self.state["slots"][active]["instance_id"]), "封闭旧版入口后活动实例验证失败")
+        deadline = time.monotonic()+30
+        while str(self.root/"run/legacy.sock") in self.run("ss","-Hxl").stdout:
+            require(time.monotonic() < deadline, "旧版 Unix 入口仍在监听，保留旧容器")
+            time.sleep(0.1)
+        self.save(legacy_sealed_at=time.time())
         connections = self.legacy_connection_counts()
         require(not connections["tcp_18080"] and not connections["legacy_unix"], "封闭旧版入口后仍有连接，保留旧容器")
         container = self.inspect("sub2api")
@@ -511,10 +526,12 @@ class Deployment:
             require(container["State"].get("ExitCode") == 0, "旧版容器退出码非零，不删除退役凭据")
             logged = self.run("docker","logs","--since",stop_started,"sub2api",check=False) if stop_started else None
             logs = (logged.stdout+logged.stderr) if logged else ""
+            logs_verified = logged is not None and logged.returncode == 0
             usage_drop_count = logs.count("usage_record.task_dropped")
             forced_shutdown_count = logs.count("Server forced to shutdown")
             result = {"release_sha":release["sha"],"exit_code":container["State"].get("ExitCode"),"usage_drop_count":usage_drop_count,
-                      "forced_shutdown_count":forced_shutdown_count,"clean":usage_drop_count == 0 and forced_shutdown_count == 0,
+                      "forced_shutdown_count":forced_shutdown_count,"logs_verified":logs_verified,
+                      "clean":logs_verified and usage_drop_count == 0 and forced_shutdown_count == 0,
                       "completed_at":time.time()}
             self.save(legacy_retire_result=result)
             self.run("docker","rm","sub2api")

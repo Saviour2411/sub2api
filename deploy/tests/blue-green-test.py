@@ -384,6 +384,65 @@ class BlueGreenTests(unittest.TestCase):
         self.assertIsNone(self.deployment.state["pending"])
         self.assertNotIn(old,self.deployment.state["slots"])
         self.assertEqual(second,self.deployment.state["prepared_release"])
+        self.assertIn(("nginx","-s","reload"),self.deployment.calls)
+        self.assertIn(("ss","-Hxl"),self.deployment.calls)
+
+    def test_legacy_observer_preserves_log_marker_on_rerun(self):
+        deployment = self.deployment
+        deployment.state["slots"]["blue"]["legacy"] = True
+        deployment.deploy(self.release(1),window=0)
+        logfile = deployment.root/"legacy.access.log"
+        logfile.write_text("")
+        with patch.object(bg,"LEGACY_ACCESS_LOG",logfile):
+            before = deployment.legacy_access_marker()
+            bg.Deployment.ensure_legacy_observer(deployment)
+            bg.Deployment.ensure_legacy_observer(deployment)
+            self.assertEqual(before,deployment.legacy_access_marker())
+
+    def test_legacy_observer_restores_proxy_after_invalid_configuration(self):
+        deployment = self.deployment
+        deployment.state["slots"]["blue"]["legacy"] = True
+        deployment.deploy(self.release(1),window=0)
+        proxy = Path(deployment.config["upstream_file"])
+        before = proxy.read_text()
+        original_run = deployment.run
+        def invalid_once(*args, **kwargs):
+            if args == ("nginx","-t") and proxy.read_text() != before:
+                raise bg.Refused("invalid configuration")
+            return original_run(*args,**kwargs)
+        with patch.object(bg,"LEGACY_ACCESS_LOG",deployment.root/"legacy.access.log"), \
+             patch.object(deployment,"run",side_effect=invalid_once):
+            with self.assertRaisesRegex(bg.Refused,"invalid configuration"):
+                bg.Deployment.ensure_legacy_observer(deployment)
+        self.assertEqual(before,proxy.read_text())
+
+    def test_legacy_retirement_cannot_claim_clean_when_logs_unavailable(self):
+        deployment = self.deployment
+        deployment.state["slots"]["blue"]["legacy"] = True
+        deployment.deploy(self.release(1),window=0)
+        release = self.release(2)
+        old = deployment.state["pending"]
+        active = deployment.state["active"]
+        container = deployment.containers.pop("sub2api-"+old)
+        container["State"] = {"Running":False,"ExitCode":0}
+        deployment.containers["sub2api"] = container
+        deployment.state.update(legacy_stop_started_at="2026-09-16T04:00:00Z",legacy_retire_operation={
+            "release":release,"legacy_container_id":container["Id"],"active_slot":active,
+            "active_instance_id":deployment.state["slots"][active]["instance_id"],
+            "image_prepared":True,"gate":{"eligible":True}})
+        original_run = deployment.run
+        def unavailable_logs(*args, **kwargs):
+            if args[:2] == ("docker","logs"):
+                return subprocess.CompletedProcess(args,1,stdout="",stderr="logs unavailable")
+            return original_run(*args,**kwargs)
+        with patch.object(deployment,"verify_release_image"), \
+             patch.object(deployment,"legacy_connection_counts",return_value={"tcp_18080":0,"legacy_unix":0}), \
+             patch.object(deployment,"run",side_effect=unavailable_logs):
+            result = bg.Deployment.retire_legacy_for_release(deployment,release)
+        self.assertFalse(result["clean"])
+        self.assertFalse(result["logs_verified"])
+        self.assertEqual(release["sha"],result["release_sha"])
+        self.assertIsNone(deployment.state["pending"])
 
     def test_legacy_retire_rejects_stale_gate_before_sealing(self):
         self.deployment.state["slots"]["blue"]["legacy"] = True
