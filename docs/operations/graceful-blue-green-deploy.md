@@ -150,4 +150,10 @@ python3 deploy/blue-green/deploy.py --directory "$DEPLOY_DIR" --rollback --windo
 
 只读预检 run `35049556996`（2026-09-16 02:51:09 UTC）：PG 实际客户端连接 12/600（保留 3），MemAvailable=230716719104 字节；生产上限仍为 512 / 216181080064B，首次 config/state 均未建立。该次探针发现 API 使用 Cloudflare Origin 证书，默认系统 CA 返回 curl 60。修正后的回环探针仅对 API 显式使用服务器现有 `/root/cert/saviour.cc.cd/saviour.cc.cd.pem` 作为信任证书，保留域名、有效期验证，禁用环境代理；不使用 `-k`，不改系统 CA 或生产证书。
 
-以上为本轮候选实现说明，具体 tag/生产结果以本轮执行后的交付证据为准。
+## 2026-09-16 首次生产迁移结果
+
+- 新 tag `v0.1.235` 指向固定提交 `961fd4160a94fdd61328ca99c6b13b9267b9ed38`；CI run `35049749030` 和 Security Scan run `35049748922` 全部成功。
+- Release run `35050536184` 自动完成镜像发布和首次生产迁移。生产部署任务耗时 27 秒，其中服务器蓝绿执行步骤 11 秒；Nginx reload 到 API/direct 双入口确认新实例耗时 1.148 秒。
+- 新流量进入 `green`；连续健康探针 API/direct 各 42 次、零错误。部署后只读 run `35052231141` 确认两个入口均返回同一新实例及 `X-Sub2api-Slot: green`。
+- `config.json/state.json` 已由首次迁移自动创建。连接池 512、GOMEMLIMIT 216181080064B 未降低，PG/Redis 和数据挂载未重建。
+- 旧 v0.1.234 保留为 `drain_pending / legacy_unverifiable`，没有强停或宣称已排空；旧槽清理前下一次发布将安全拒绝复用。完整证据及边界见 `docs/operations/2026-09-16-v0.1.235-blue-green-release.md`。
