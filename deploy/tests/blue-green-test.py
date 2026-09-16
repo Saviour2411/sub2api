@@ -147,7 +147,7 @@ class BlueGreenTests(unittest.TestCase):
             self.assertEqual(calls,self.deployment.calls,"同一发布不重复启动/切流")
         stops = [call for call in self.deployment.calls if call[:2] == ("docker","stop")]
         self.assertEqual(20,len(stops))
-        self.assertTrue(all(call[2:4] == ("--timeout","-1") for call in stops))
+        self.assertTrue(all(call[2:4] == ("-t","-1") for call in stops))
 
     def test_busy_old_slot_is_retained_and_next_release_refused(self):
         self.deployment.busy.add("blue")
