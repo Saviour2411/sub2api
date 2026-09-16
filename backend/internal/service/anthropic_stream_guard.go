@@ -101,6 +101,7 @@ func restoreAnthropicHeader(header, snapshot http.Header) {
 
 // handleGuardedAnthropicStream 单层缓存前导帧，直接读取上游，保持每一行的真实空闲计时。
 func (s *GatewayService) handleGuardedAnthropicStream(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, start time.Time, model string, retry *AnthropicStreamRetryState, first *firstTokenAttempt) (result *streamingResult, retErr error) {
+	responseStarted := time.Now()
 	retry.startResponse()
 	headerSnapshot := c.Writer.Header().Clone()
 	writeAnthropicPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -221,6 +222,16 @@ func (s *GatewayService) handleGuardedAnthropicStream(ctx context.Context, resp 
 		pingCh = pingTimer.C
 		defer pingTimer.Stop()
 	}
+	contentTimeout := time.Duration(retry.settings.AnthropicStreamSafeRetryFirstContentTimeoutSeconds) * time.Second
+	var contentTimer *time.Timer
+	var contentCh <-chan time.Time
+	var contentDeadline time.Time
+	if contentTimeout > 0 {
+		contentDeadline = responseStarted.Add(contentTimeout)
+		contentTimer = time.NewTimer(time.Until(contentDeadline))
+		contentCh = contentTimer.C
+		defer contentTimer.Stop()
+	}
 	cancelCh := retry.WaitContext().Done()
 	writeFrame := func(b []byte) {
 		if result.clientDisconnect || len(b) == 0 {
@@ -234,7 +245,7 @@ func (s *GatewayService) handleGuardedAnthropicStream(ctx context.Context, resp 
 		c.Writer.Flush()
 	}
 	failure := func(kind string, cause error, replayable bool) error {
-		if err := retry.Check(); err != nil && !retry.Committed() {
+		if err := retry.Check(); err != nil && (!retry.Committed() || retry.ClientContext().Err() != nil) {
 			return err
 		}
 		if isOpenAIRequestSentPluginError(cause) {
@@ -243,7 +254,12 @@ func (s *GatewayService) handleGuardedAnthropicStream(ctx context.Context, resp 
 		return &AnthropicStreamFailure{Kind: kind, Cause: cause, Replayable: replayable && !retry.Committed() && !result.clientDisconnect}
 	}
 	for {
+		if !contentDeadline.IsZero() && !time.Now().Before(contentDeadline) {
+			return result, failure("first_content_timeout", nil, true)
+		}
 		select {
+		case <-contentCh:
+			return result, failure("first_content_timeout", nil, true)
 		case <-cancelCh:
 			if !retry.Committed() {
 				return result, retry.Check()
@@ -321,6 +337,30 @@ func (s *GatewayService) handleGuardedAnthropicStream(ctx context.Context, resp 
 			if kind == anthropicFrameError {
 				return result, failure("upstream_error_event", nil, false)
 			}
+			if contentTimeout > 0 && !retry.Committed() && kind == anthropicFrameContent {
+				switch typ {
+				case "content_block_delta":
+					delta := gjson.Get(payload, "delta")
+					switch delta.Get("type").String() {
+					case "text_delta":
+						if text := delta.Get("text"); text.Type == gjson.String && strings.TrimSpace(text.String()) == "" {
+							kind = anthropicFramePrelude
+						}
+					case "thinking_delta":
+						if thinking := delta.Get("thinking"); thinking.Type == gjson.String && strings.TrimSpace(thinking.String()) == "" {
+							kind = anthropicFramePrelude
+						}
+					}
+				case "content_block_start":
+					block := gjson.Get(payload, "content_block")
+					blockType := block.Get("type").String()
+					if (blockType == "text" || blockType == "thinking") && strings.TrimSpace(block.Get("text").String()) == "" && strings.TrimSpace(block.Get("thinking").String()) == "" && block.Get("signature").String() == "" {
+						kind = anthropicFramePrelude
+					}
+				case "content_block_stop":
+					kind = anthropicFramePrelude
+				}
+			}
 			if !retry.Committed() && kind == anthropicFramePrelude {
 				_, _ = prelude.Write(frame.Bytes())
 				d.PreludeBytes = prelude.Len()
@@ -328,14 +368,27 @@ func (s *GatewayService) handleGuardedAnthropicStream(ctx context.Context, resp 
 				continue
 			}
 			// 安全重放资格和首 Token 语义各自独立。指定分组的纯空白不能解除首 Token 守卫。
-			strict := first != nil && first.strictOutput
+			strict := contentTimeout > 0 || (first != nil && first.strictOutput)
 			meaningful := isMeaningfulFirstTokenJSON([]byte(payload), strict)
 			if typ == "content_block_start" {
 				block := gjson.Get(payload, "content_block")
 				meaningful = meaningful || firstTokenTextMeaningful(block.Get("text").String(), strict) || firstTokenTextMeaningful(block.Get("thinking").String(), strict)
 			}
+			if typ == "message_start" {
+				for _, block := range gjson.Get(payload, "message.content").Array() {
+					meaningful = meaningful || firstTokenTextMeaningful(block.Get("text").String(), strict) || firstTokenTextMeaningful(block.Get("thinking").String(), strict)
+					if block.Get("type").String() == "tool_use" {
+						meaningful = meaningful || firstTokenFunctionCallMeaningful(block)
+					}
+				}
+			}
 			if first != nil && first.currentState() == firstTokenAttemptTimedOut {
 				return result, errFirstTokenAttemptTimedOut
+			}
+			if contentTimer != nil && (meaningful || kind == anthropicFrameTerminal) {
+				contentTimer.Stop()
+				contentCh = nil
+				contentDeadline = time.Time{}
 			}
 			if !retry.Committed() {
 				if err := retry.commit(); err != nil {

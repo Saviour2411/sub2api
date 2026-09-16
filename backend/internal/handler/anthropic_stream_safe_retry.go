@@ -49,6 +49,9 @@ func (h *GatewayHandler) finishAnthropicStreamRetry(c *gin.Context, retry *servi
 	if reason == "idle_timeout" {
 		message = "等待上游流数据超时"
 	}
+	if reason == "first_content_timeout" {
+		message = "等待上游有效内容超时"
+	}
 	// HTTP 200 与逻辑错误分开记录，禁止把本地流故障作为账号 HTTP 状态故障。
 	h.handleStreamingAwareErrorWithCode(c, status, "upstream_error", "anthropic_stream_"+reason, message, c.Writer.Written())
 }

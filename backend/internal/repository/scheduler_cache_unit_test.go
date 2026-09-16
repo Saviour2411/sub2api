@@ -23,6 +23,36 @@ func newSchedulerCacheUnit(t *testing.T) *schedulerCache {
 	return cache
 }
 
+func TestAnthropicStreamSafeRetrySchedulerProjection(t *testing.T) {
+	ctx := context.Background()
+	cache := newSchedulerCacheUnit(t)
+	bucket := service.SchedulerBucket{GroupID: 45, Platform: service.PlatformAnthropic, Mode: service.SchedulerModeSingle}
+	account := service.Account{
+		ID: 742, Platform: service.PlatformAnthropic, Type: service.AccountTypeAPIKey,
+		Status: service.StatusActive, Schedulable: true,
+		Credentials: map[string]any{"pool_mode": true, "pool_mode_retry_count": 10, "access_token": "not-in-projection"},
+		Extra:       map[string]any{"anthropic_passthrough": true},
+	}
+	token, err := cache.CaptureBucketWriteToken(ctx, bucket)
+	require.NoError(t, err)
+	require.NoError(t, cache.SetSnapshot(ctx, bucket, token, []service.Account{account}))
+	snapshot, hit, err := cache.GetSnapshot(ctx, bucket)
+	require.NoError(t, err)
+	require.True(t, hit)
+	require.Len(t, snapshot, 1)
+	require.True(t, snapshot[0].IsAnthropicAPIKeyPassthroughEnabled())
+	require.Equal(t, 10, snapshot[0].GetPoolModeRetryCount())
+	require.NotContains(t, snapshot[0].Credentials, "access_token")
+	account.Credentials["pool_mode_retry_count"] = 0
+	account.Extra["anthropic_passthrough"] = false
+	require.NoError(t, cache.SetAccount(ctx, &account))
+	snapshot, hit, err = cache.GetSnapshot(ctx, bucket)
+	require.NoError(t, err)
+	require.True(t, hit)
+	require.False(t, snapshot[0].IsAnthropicAPIKeyPassthroughEnabled())
+	require.Zero(t, snapshot[0].GetPoolModeRetryCount())
+}
+
 func newSchedulerCacheUnitWithRedis(t *testing.T) (*schedulerCache, *miniredis.Miniredis) {
 	t.Helper()
 	mr := miniredis.RunT(t)

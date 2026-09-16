@@ -30,6 +30,8 @@ func (e *AnthropicStreamFailure) Error() string {
 		return "stream usage incomplete: missing terminal event"
 	case "idle_timeout":
 		return "stream data interval timeout"
+	case "first_content_timeout":
+		return "等待上游有效内容超时"
 	case "budget_exhausted":
 		return "流安全重试总等待预算已耗尽"
 	case "retries_exhausted":
@@ -48,7 +50,7 @@ func (e *AnthropicStreamFailure) Error() string {
 }
 func (e *AnthropicStreamFailure) Unwrap() error { return e.Cause }
 func (e *AnthropicStreamFailure) ClientStatus() int {
-	if e.Kind == "idle_timeout" || e.Kind == "budget_exhausted" {
+	if e.Kind == "idle_timeout" || e.Kind == "budget_exhausted" || e.Kind == "first_content_timeout" {
 		return http.StatusGatewayTimeout
 	}
 	return http.StatusBadGateway
@@ -377,9 +379,31 @@ func (s *GatewayService) SelectAnthropicStreamRetryAccount(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
+	ineligible := make(map[int64]struct{})
+	for index := range accounts {
+		candidate := &accounts[index]
+		if candidate.Platform != PlatformAnthropic || candidate.Type != AccountTypeAPIKey {
+			continue
+		}
+		_, hasPassthrough := candidate.Extra["anthropic_passthrough"]
+		_, hasPoolMode := candidate.Credentials["pool_mode"]
+		_, hasRetryCount := candidate.Credentials["pool_mode_retry_count"]
+		if hasPassthrough && hasPoolMode && hasRetryCount {
+			continue
+		}
+		hydrated, hydrateErr := s.hydrateSelectedAccount(ctx, candidate)
+		if hydrateErr != nil || hydrated == nil {
+			ineligible[candidate.ID] = struct{}{}
+			continue
+		}
+		accounts[index] = *hydrated
+	}
 	selectCandidate := func(same bool) (*AccountSelectionResult, error) {
 		blocked := make(map[int64]struct{}, len(excluded)+len(accounts))
 		for id := range excluded {
+			blocked[id] = struct{}{}
+		}
+		for id := range ineligible {
 			blocked[id] = struct{}{}
 		}
 		for _, a := range accounts {

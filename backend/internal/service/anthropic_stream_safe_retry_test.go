@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -171,6 +172,7 @@ func TestAnthropicStreamSafeRetryPreciseIdleAndTotalBudget(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				s, c, w, r := newSafeRetryTest(t)
 				defer r.Close()
+				r.settings.AnthropicStreamSafeRetryFirstContentTimeoutSeconds = 0
 				require.NoError(t, r.beforeDispatch(safeRetryAccount(740)))
 				pr, pw := io.Pipe()
 				defer func() { _ = pw.Close() }()
@@ -285,15 +287,35 @@ func TestAnthropicStreamSafeRetrySettings(t *testing.T) {
 	require.False(t, defaults.AnthropicStreamSafeRetryEnabled)
 	require.Equal(t, 2, defaults.AnthropicStreamSafeRetryMaxRetries)
 	require.Equal(t, 300, defaults.AnthropicStreamSafeRetryTotalWaitSeconds)
+	require.Equal(t, 180, defaults.AnthropicStreamSafeRetryFirstContentTimeoutSeconds)
 	for _, n := range []int{-1, 6} {
 		bad := defaults
 		bad.AnthropicStreamSafeRetryMaxRetries = n
 		require.Error(t, validateGatewaySettings(&bad))
 	}
-	for _, n := range []int{0, 601} {
+	for _, n := range []int{0, 3601} {
 		bad := defaults
 		bad.AnthropicStreamSafeRetryTotalWaitSeconds = n
 		require.Error(t, validateGatewaySettings(&bad))
+	}
+	for _, seconds := range []int{1, 600, 601, 3600} {
+		settings := defaults
+		settings.AnthropicStreamSafeRetryTotalWaitSeconds = seconds
+		require.NoError(t, validateGatewaySettings(&settings))
+		parsed := parseGatewaySettings(map[string]string{SettingKeyGatewayAnthropicStreamSafeRetryTotalWaitSeconds: fmt.Sprint(seconds)})
+		require.Equal(t, seconds, parsed.AnthropicStreamSafeRetryTotalWaitSeconds)
+	}
+	for _, seconds := range []int{0, 1, 180, 3600} {
+		settings := defaults
+		settings.AnthropicStreamSafeRetryFirstContentTimeoutSeconds = seconds
+		require.NoError(t, validateGatewaySettings(&settings))
+		parsed := parseGatewaySettings(map[string]string{SettingKeyGatewayAnthropicStreamSafeRetryFirstContentTimeoutSeconds: fmt.Sprint(seconds)})
+		require.Equal(t, seconds, parsed.AnthropicStreamSafeRetryFirstContentTimeoutSeconds)
+	}
+	for _, seconds := range []int{-1, 3601} {
+		settings := defaults
+		settings.AnthropicStreamSafeRetryFirstContentTimeoutSeconds = seconds
+		require.Error(t, validateGatewaySettings(&settings))
 	}
 	settings := parseGatewaySettings(map[string]string{SettingKeyGatewayAnthropicStreamSafeRetryEnabled: "true", SettingKeyGatewayAnthropicStreamSafeRetryMaxRetries: "1", SettingKeyGatewayAnthropicStreamSafeRetryTotalWaitSeconds: "240"})
 	require.True(t, settings.AnthropicStreamSafeRetryEnabled)
@@ -306,6 +328,7 @@ func TestAnthropicStreamSafeRetrySettings(t *testing.T) {
 	loaded, err := svc.GetGatewaySettings(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, updated.AnthropicStreamSafeRetryMaxRetries, loaded.AnthropicStreamSafeRetryMaxRetries)
+	require.Equal(t, updated.AnthropicStreamSafeRetryFirstContentTimeoutSeconds, loaded.AnthropicStreamSafeRetryFirstContentTimeoutSeconds)
 	require.True(t, svc.GetGatewayRuntime(context.Background()).AnthropicStreamSafeRetryEnabled)
 	require.True(t, errors.Is((&AnthropicStreamFailure{Cause: io.ErrUnexpectedEOF}).Unwrap(), io.ErrUnexpectedEOF))
 }
@@ -396,6 +419,7 @@ func TestAnthropicStreamSafeRetryBudgetCancelsRetryResponseHeaders(t *testing.T)
 	synctest.Test(t, func(t *testing.T) {
 		s, c, _, r := newSafeRetryTest(t)
 		defer r.Close()
+		r.settings.AnthropicStreamSafeRetryFirstContentTimeoutSeconds = 0
 		settings := NewSettingService(&safeRetrySettingsRepo{customFeatureSettingsRepoStub{values: map[string]string{SettingKeyGatewayFirstTokenTimeoutSeconds: "0"}}}, s.cfg)
 		s.rateLimitService = &RateLimitService{settingService: settings}
 		pr, pw := io.Pipe()
@@ -463,7 +487,7 @@ func TestAnthropicStreamSafeRetryScopedWhitespaceDoesNotDisableFirstTokenGuard(t
 		_, err := io.WriteString(pw, safeStart+whitespace)
 		require.NoError(t, err)
 		synctest.Wait()
-		require.True(t, r.Committed(), "空白已经写出后也禁止重放")
+		require.False(t, r.Committed(), "纯空白应保留在安全前导缓存中")
 		require.Equal(t, firstTokenAttemptWaiting, first.currentState(), "指定分组纯空白不能冒充首有效输出")
 		time.Sleep(45 * time.Second)
 		synctest.Wait()
@@ -472,9 +496,9 @@ func TestAnthropicStreamSafeRetryScopedWhitespaceDoesNotDisableFirstTokenGuard(t
 			var failover *UpstreamFailoverError
 			require.ErrorAs(t, err, &failover)
 			require.True(t, failover.FirstTokenTimeout)
-			require.Error(t, r.PrepareRetry(a, err))
+			require.NoError(t, r.PrepareRetry(a, err))
 		default:
-			t.Fatal("首Token超时未结束已提交空白的响应")
+			t.Fatal("首Token超时未结束前导等待")
 		}
 	})
 }

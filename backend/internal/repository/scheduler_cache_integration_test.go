@@ -138,6 +138,28 @@ func TestSchedulerCacheRetireAndReopenFencesOldEpochIntegration(t *testing.T) {
 	require.Equal(t, account.ID, snapshot[0].ID)
 }
 
+func TestAnthropicStreamSafeRetrySchedulerRedisIntegration(t *testing.T) {
+	ctx := context.Background()
+	cache := NewSchedulerCache(testRedis(t))
+	bucket := service.SchedulerBucket{GroupID: 45, Platform: service.PlatformAnthropic, Mode: service.SchedulerModeSingle}
+	account := service.Account{
+		ID: 742, Platform: service.PlatformAnthropic, Type: service.AccountTypeAPIKey,
+		Status: service.StatusActive, Schedulable: true,
+		Credentials: map[string]any{"pool_mode": true, "pool_mode_retry_count": 10, "access_token": "private"},
+		Extra:       map[string]any{"anthropic_passthrough": true},
+	}
+	token, err := cache.CaptureBucketWriteToken(ctx, bucket)
+	require.NoError(t, err)
+	require.NoError(t, cache.SetSnapshot(ctx, bucket, token, []service.Account{account}))
+	snapshot, hit, err := cache.GetSnapshot(ctx, bucket)
+	require.NoError(t, err)
+	require.True(t, hit)
+	require.Len(t, snapshot, 1)
+	require.True(t, snapshot[0].IsAnthropicAPIKeyPassthroughEnabled())
+	require.Equal(t, 10, snapshot[0].GetPoolModeRetryCount())
+	require.NotContains(t, snapshot[0].Credentials, "access_token")
+}
+
 func TestSchedulerCacheGroupLifecycleLeaseOwnerAndTTLIntegration(t *testing.T) {
 	ctx := context.Background()
 	rdb := testRedis(t)

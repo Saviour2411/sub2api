@@ -954,9 +954,9 @@ func filterSchedulerCredentials(credentials map[string]any) map[string]any {
 	if len(credentials) == 0 {
 		return nil
 	}
-	// Candidate-list admission evaluates the account override before hydrating
-	// the full account. Dropping it silently falls back to the platform threshold.
-	keys := []string{"model_mapping", "compact_model_mapping", "api_key", "project_id", "oauth_type", "plan_type", "account_scheduling_threshold"}
+	// Candidate-list admission evaluates account overrides before hydrating the
+	// full account. Dropping them silently changes passthrough and retry policy.
+	keys := []string{"model_mapping", "compact_model_mapping", "api_key", "project_id", "oauth_type", "plan_type", "account_scheduling_threshold", "pool_mode", "pool_mode_retry_count"}
 	filtered := make(map[string]any)
 	for _, key := range keys {
 		if value, ok := credentials[key]; ok && value != nil {
@@ -974,7 +974,7 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		return nil
 	}
 	keys := []string{
-		// Anthropic shared-window and Fable-only threshold checks run on this
+		// Anthropic passthrough/shared-window and Fable-only threshold checks run on this
 		// projection. UpdateExtra refreshes both payloads without a bucket rebuild.
 		"session_window_utilization",
 		"passive_usage_7d_utilization",
@@ -1014,6 +1014,7 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		// 裁掉它们，透传账号在选号阶段会退回按(常为过期的)白名单判定并被误判为
 		// model_not_supported —— 转发阶段却仍按透传工作，表现为"单独测账号能通、
 		// 走网关报 no available accounts"。
+		"anthropic_passthrough",
 		"openai_passthrough",
 		"openai_oauth_passthrough",
 		"codex_fingerprint_mode",

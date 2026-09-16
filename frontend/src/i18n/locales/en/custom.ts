@@ -396,12 +396,13 @@ export default {
         minutes: 'minutes',
         saved: 'Gateway settings saved',
         streamSafeRetry: {
-          title: 'Claude 透传流安全重试',
-          description: '仅适用于 Claude API Key 透传流。默认关闭；尚未交付有效内容时，有限重试空流、EOF 和流空闲超时。',
-          maxRetries: '额外重试次数（0–5）',
-          budget: '总等待预算（秒，1–600）',
-          hint: '预算从首次成功流响应头到达开始，跨尝试累计，不是请求总时长。先原账号、再换号，无替代账号时允许原号使用剩余次数。已交付文本、思考或工具调用后禁止重放。预算短于流空闲超时时可能没有重试机会；0次表示不重发，启用后的前导保护和预算仍生效。',
-          validation: '额外重试次数须为0–5的整数，总等待预算须为1–600秒的整数。'
+          title: 'Claude passthrough stream safe retry',
+          description: 'Applies only to Claude API key passthrough streams. Disabled by default. Retries empty streams, EOF, idle timeouts and first-content timeouts only before output is committed.',
+          maxRetries: 'Additional retries (0–5)',
+          budget: 'Total waiting budget (seconds, 1–3600)',
+          firstContentTimeout: 'First-content timeout (seconds, 0–3600)',
+          hint: 'First-content timeout defaults to 180 seconds; 0 disables it. Each attempt starts timing after successful stream response headers. Heartbeats and whitespace do not reset it; text, thinking and tool calls count as content. The total budget starts at the first successful stream headers and is shared across attempts, not reset on retry or applied to the full generation. Try the original account, then another eligible account, falling back to the original account when allowed. Never replay committed output. Zero retries still keeps prelude protection and timeouts active.',
+          validation: 'Additional retries must be an integer from 0 to 5, the total budget from 1 to 3600 seconds, and first-content timeout from 0 to 3600 seconds (0 disables it).'
         },
         anthropicClaudeCodeMimicry: {
           title: 'Anthropic Claude Code Upstream Mimicry',

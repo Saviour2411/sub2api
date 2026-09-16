@@ -28,7 +28,7 @@ const reasons: Record<string, string> = {
   prelude_overflow: '缓存超限', idle_timeout: '上游流空闲超时', empty_stream: '空流',
   missing_terminal: '缺终止事件', truncated_event: '事件不完整', invalid_json: '事件JSON无效',
   invalid_event: '事件无效', event_type_mismatch: '事件类型不一致', upstream_error_event: '上游错误事件',
-  stream_read_error: '上游流读取失败', first_token_timeout: '首 Token 超时'
+  stream_read_error: '上游流读取失败', first_token_timeout: '首 Token 超时', first_content_timeout: '首有效内容超时'
 }
 export function parseAnthropicStreamDiagnostics(raw?: string): AnthropicStreamDiagnosticRow[] {
   if (!raw) return []

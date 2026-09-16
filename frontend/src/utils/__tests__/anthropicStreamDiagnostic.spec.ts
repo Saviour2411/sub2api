@@ -16,4 +16,13 @@ describe('Claude 流诊断解析', () => {
   it('兼容旧事件、空值和非法JSON', () => {
     for (const raw of [undefined, '', 'null', '{}', '[{}]', '{bad}']) expect(parseAnthropicStreamDiagnostics(raw)).toEqual([])
   })
+  it('区分首有效内容超时与流空闲超时', () => {
+    const rows = parseAnthropicStreamDiagnostics(JSON.stringify([{
+      stream_diagnostic: { failure_kind: 'first_content_timeout', decision: 'retry', logical_status: 504 }
+    }, {
+      stream_diagnostic: { failure_kind: 'idle_timeout', decision: 'stop', logical_status: 504 }
+    }]))
+    expect(rows[0]).toMatchObject({ reason: '首有效内容超时', decision: '继续重试', logicalStatus: 504 })
+    expect(rows[1]).toMatchObject({ reason: '上游流空闲超时', decision: '停止重试' })
+  })
 })

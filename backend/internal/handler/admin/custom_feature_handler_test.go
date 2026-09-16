@@ -207,9 +207,10 @@ func TestCustomFeatureHandler_UpdateGateway_部分更新保留ClaudeCode模拟�
 
 func TestCustomFeatureHandler_StreamSafeRetryCompatibilityAndValidation(t *testing.T) {
 	repo := &customFeatureHandlerRepoStub{values: map[string]string{
-		service.SettingKeyGatewayAnthropicStreamSafeRetryEnabled:          "true",
-		service.SettingKeyGatewayAnthropicStreamSafeRetryMaxRetries:       "1",
-		service.SettingKeyGatewayAnthropicStreamSafeRetryTotalWaitSeconds: "240",
+		service.SettingKeyGatewayAnthropicStreamSafeRetryEnabled:                    "true",
+		service.SettingKeyGatewayAnthropicStreamSafeRetryMaxRetries:                 "1",
+		service.SettingKeyGatewayAnthropicStreamSafeRetryTotalWaitSeconds:           "240",
+		service.SettingKeyGatewayAnthropicStreamSafeRetryFirstContentTimeoutSeconds: "180",
 	}}
 	router := newCustomFeatureHandlerRouter(repo)
 	send := func(body string) *httptest.ResponseRecorder {
@@ -223,7 +224,12 @@ func TestCustomFeatureHandler_StreamSafeRetryCompatibilityAndValidation(t *testi
 	require.Equal(t, "true", repo.values[service.SettingKeyGatewayAnthropicStreamSafeRetryEnabled])
 	require.Equal(t, "1", repo.values[service.SettingKeyGatewayAnthropicStreamSafeRetryMaxRetries])
 	require.Equal(t, "240", repo.values[service.SettingKeyGatewayAnthropicStreamSafeRetryTotalWaitSeconds])
-	for _, body := range []string{`{"anthropic_stream_safe_retry_max_retries":6}`, `{"anthropic_stream_safe_retry_max_retries":1.5}`, `{"anthropic_stream_safe_retry_total_wait_seconds":0}`, `{"anthropic_stream_safe_retry_total_wait_seconds":601}`} {
+	require.Equal(t, "180", repo.values[service.SettingKeyGatewayAnthropicStreamSafeRetryFirstContentTimeoutSeconds])
+	require.Equal(t, http.StatusOK, send(`{"anthropic_stream_safe_retry_first_content_timeout_seconds":0,"anthropic_stream_safe_retry_total_wait_seconds":3600}`).Code)
+	require.Equal(t, http.StatusOK, send(`{"first_token_timeout_seconds":45}`).Code)
+	require.Equal(t, "0", repo.values[service.SettingKeyGatewayAnthropicStreamSafeRetryFirstContentTimeoutSeconds])
+	require.Equal(t, "3600", repo.values[service.SettingKeyGatewayAnthropicStreamSafeRetryTotalWaitSeconds])
+	for _, body := range []string{`{"anthropic_stream_safe_retry_max_retries":6}`, `{"anthropic_stream_safe_retry_max_retries":1.5}`, `{"anthropic_stream_safe_retry_total_wait_seconds":0}`, `{"anthropic_stream_safe_retry_total_wait_seconds":3601}`, `{"anthropic_stream_safe_retry_first_content_timeout_seconds":-1}`, `{"anthropic_stream_safe_retry_first_content_timeout_seconds":3601}`, `{"anthropic_stream_safe_retry_first_content_timeout_seconds":1.5}`} {
 		require.Equal(t, http.StatusBadRequest, send(body).Code)
 	}
 	require.Equal(t, http.StatusOK, send(`{"anthropic_stream_safe_retry_enabled":false,"anthropic_stream_safe_retry_max_retries":0}`).Code)

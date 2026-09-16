@@ -11,6 +11,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
@@ -53,9 +55,11 @@ func (r *safeHandlerUsageRepo) Create(_ context.Context, log *service.UsageLog) 
 
 type safeHandlerUpstream struct {
 	service.HTTPUpstream
-	bodies   []string
-	accounts []int64
-	requests [][]byte
+	bodies       []string
+	accounts     []int64
+	requests     [][]byte
+	responseBody func(*http.Request, int) io.ReadCloser
+	runRequest   func(func())
 }
 
 func (u *safeHandlerUpstream) DoWithTLS(req *http.Request, _ string, accountID int64, _ int, _ *tlsfingerprint.Profile) (*http.Response, error) {
@@ -70,10 +74,14 @@ func (u *safeHandlerUpstream) DoWithTLS(req *http.Request, _ string, accountID i
 	if i >= len(u.bodies) {
 		return nil, fmt.Errorf("超出预期上游调用次数")
 	}
-	return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}, "X-Request-Id": {fmt.Sprintf("upstream-%d", i)}}, Body: io.NopCloser(strings.NewReader(u.bodies[i]))}, nil
+	responseBody := io.NopCloser(strings.NewReader(u.bodies[i]))
+	if u.responseBody != nil {
+		responseBody = u.responseBody(req, i)
+	}
+	return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}, "X-Request-Id": {fmt.Sprintf("upstream-%d", i)}}, Body: responseBody}, nil
 }
 
-func runSafeHandlerFixture(t *testing.T, upstream *safeHandlerUpstream, oneAccount bool) (*httptest.ResponseRecorder, *safeHandlerUsageRepo) {
+func runSafeHandlerFixture(t *testing.T, upstream *safeHandlerUpstream, oneAccount bool, inspect ...func(*gin.Context)) (*httptest.ResponseRecorder, *safeHandlerUsageRepo) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	groupID := int64(41)
@@ -113,7 +121,17 @@ func runSafeHandlerFixture(t *testing.T, upstream *safeHandlerUpstream, oneAccou
 	key := &service.APIKey{ID: 1, UserID: 2, GroupID: &groupID, Status: service.StatusActive, User: &service.User{ID: 2, Concurrency: 10, Balance: 100}, Group: group}
 	c.Set(string(middleware.ContextKeyAPIKey), key)
 	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 2, Concurrency: 10})
-	h.Messages(c)
+	run := func() {
+		h.Messages(c)
+		for _, observe := range inspect {
+			observe(c)
+		}
+	}
+	if upstream.runRequest != nil {
+		upstream.runRequest(run)
+	} else {
+		run()
+	}
 	require.NoError(t, c.Request.Context().Err(), "内部预算清理不能冒充客户端取消")
 	require.False(t, disabled.Schedulable)
 	return w, usages
@@ -155,6 +173,59 @@ func TestAnthropicStreamSafeRetryHandlerExhaustionRetainsLatestUsage(t *testing.
 		require.Equal(t, int64(740), usage.logs[0].AccountID)
 		require.Equal(t, 7, usage.logs[0].InputTokens)
 	}(t)
+}
+
+func TestAnthropicStreamSafeRetryHandlerFirstContentRecovery(t *testing.T) {
+	upstream := &safeHandlerUpstream{bodies: []string{"", safeHandlerPrelude + safeHandlerOutput + safeHandlerStop}}
+	upstream.responseBody = func(request *http.Request, attempt int) io.ReadCloser {
+		if attempt != 0 {
+			return io.NopCloser(strings.NewReader(upstream.bodies[attempt]))
+		}
+		reader, writer := io.Pipe()
+		go func() {
+			defer writer.Close()
+			if _, err := io.WriteString(writer, strings.Replace(safeHandlerPrelude, "7", "99", 1)); err != nil {
+				return
+			}
+			ticker := time.NewTicker(30 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-request.Context().Done():
+					return
+				case <-ticker.C:
+					if _, err := io.WriteString(writer, ": heartbeat\n\n"); err != nil {
+						return
+					}
+				}
+			}
+		}()
+		return reader
+	}
+	upstream.runRequest = func(run func()) {
+		synctest.Test(t, func(t *testing.T) {
+			started := time.Now()
+			run()
+			require.Equal(t, 180*time.Second+sameAccountRetryDelay, time.Since(started))
+		})
+	}
+	writer, usage := runSafeHandlerFixture(t, upstream, true, func(ginContext *gin.Context) {
+		events := ginContext.MustGet(service.OpsUpstreamErrorsKey).([]*service.OpsUpstreamErrorEvent)
+		require.Len(t, events, 1)
+		require.Equal(t, "first_content_timeout", events[0].StreamDiagnostic.FailureKind)
+		require.True(t, events[0].StreamDiagnostic.Recovered)
+		var final service.AnthropicStreamDiagnostic
+		service.AnthropicStreamRetryFromGin(ginContext).Diagnostic(&final)
+		require.Equal(t, 2, final.Attempt)
+	})
+	require.Equal(t, []int64{740, 740}, upstream.accounts)
+	require.Equal(t, http.StatusOK, writer.Code)
+	require.Equal(t, 1, strings.Count(writer.Body.String(), "event: message_start"))
+	require.NotContains(t, writer.Body.String(), "99")
+	require.NotContains(t, writer.Body.String(), "heartbeat")
+	require.Len(t, usage.logs, 1)
+	require.Equal(t, 7, usage.logs[0].InputTokens)
+	require.Equal(t, 3, usage.logs[0].OutputTokens)
 }
 func TestAnthropicStreamSafeRetryHandlerPartialContentNeverRegenerates(t *testing.T) {
 	func(t *testing.T) {

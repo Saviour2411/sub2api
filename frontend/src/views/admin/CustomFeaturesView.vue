@@ -203,7 +203,11 @@
               </div>
               <div>
                 <label class="input-label" for="gateway-stream-safe-budget">{{ t('admin.customFeatures.gateway.streamSafeRetry.budget') }}</label>
-                <input id="gateway-stream-safe-budget" v-model.number="gateway.anthropic_stream_safe_retry_total_wait_seconds" data-test="gateway-stream-safe-retry-budget" class="input" type="number" min="1" max="600" step="1" />
+                <input id="gateway-stream-safe-budget" v-model.number="gateway.anthropic_stream_safe_retry_total_wait_seconds" data-test="gateway-stream-safe-retry-budget" class="input" type="number" min="1" max="3600" step="1" />
+              </div>
+              <div>
+                <label class="input-label" for="gateway-stream-safe-content-timeout">{{ t('admin.customFeatures.gateway.streamSafeRetry.firstContentTimeout') }}</label>
+                <input id="gateway-stream-safe-content-timeout" v-model.number="gateway.anthropic_stream_safe_retry_first_content_timeout_seconds" data-test="gateway-stream-safe-retry-first-content-timeout" class="input" type="number" min="0" max="3600" step="1" />
               </div>
             </div>
             <p class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.customFeatures.gateway.streamSafeRetry.hint') }}</p>
@@ -926,6 +930,7 @@ const gateway = reactive<GatewaySettings>({
   anthropic_stream_safe_retry_enabled: false,
   anthropic_stream_safe_retry_max_retries: 2,
   anthropic_stream_safe_retry_total_wait_seconds: 300,
+  anthropic_stream_safe_retry_first_content_timeout_seconds: 180,
   default_pool_mode_retry_count: 1,
   default_pool_mode_retry_status_codes: [401, 403, 429, 502, 503, 504],
   additional_failover_status_codes_enabled: false,
@@ -1004,6 +1009,7 @@ function cloneGateway(settings?: Partial<GatewaySettings>): GatewaySettings {
     anthropic_stream_safe_retry_enabled: settings?.anthropic_stream_safe_retry_enabled ?? false,
     anthropic_stream_safe_retry_max_retries: settings?.anthropic_stream_safe_retry_max_retries ?? 2,
     anthropic_stream_safe_retry_total_wait_seconds: settings?.anthropic_stream_safe_retry_total_wait_seconds ?? 300,
+    anthropic_stream_safe_retry_first_content_timeout_seconds: settings?.anthropic_stream_safe_retry_first_content_timeout_seconds ?? 180,
     first_token_timeout_seconds: settings?.first_token_timeout_seconds ?? 60,
     first_token_timeout_scope: settings?.first_token_timeout_scope ?? 'all',
     first_token_timeout_group_ids: [...(settings?.first_token_timeout_group_ids ?? [])],
@@ -1111,7 +1117,8 @@ function gatewayValidationError(
 function validateGateway(): GatewayValidationResult {
   const retries = Number(gateway.anthropic_stream_safe_retry_max_retries)
   const budget = Number(gateway.anthropic_stream_safe_retry_total_wait_seconds)
-  if (!Number.isInteger(retries) || retries < 0 || retries > 5 || !Number.isInteger(budget) || budget < 1 || budget > 600) {
+  const contentTimeout = Number(gateway.anthropic_stream_safe_retry_first_content_timeout_seconds)
+  if (!Number.isInteger(retries) || retries < 0 || retries > 5 || !Number.isInteger(budget) || budget < 1 || budget > 3600 || !Number.isInteger(contentTimeout) || contentTimeout < 0 || contentTimeout > 3600) {
     return gatewayValidationError(t('admin.customFeatures.gateway.streamSafeRetry.validation'))
   }
   const retryCount = gateway.default_pool_mode_retry_count
@@ -1264,6 +1271,7 @@ async function saveGateway() {
       anthropic_stream_safe_retry_enabled: gateway.anthropic_stream_safe_retry_enabled,
       anthropic_stream_safe_retry_max_retries: Number(gateway.anthropic_stream_safe_retry_max_retries),
       anthropic_stream_safe_retry_total_wait_seconds: Number(gateway.anthropic_stream_safe_retry_total_wait_seconds),
+      anthropic_stream_safe_retry_first_content_timeout_seconds: Number(gateway.anthropic_stream_safe_retry_first_content_timeout_seconds),
       first_token_timeout_seconds: Number(gateway.first_token_timeout_seconds),
       first_token_timeout_scope: gateway.first_token_timeout_scope,
       first_token_timeout_group_ids: [...new Set(gateway.first_token_timeout_group_ids)],

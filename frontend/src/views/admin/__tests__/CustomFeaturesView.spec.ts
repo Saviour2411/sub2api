@@ -129,6 +129,7 @@ function settingsFixture(): CustomFeatureSettings {
       anthropic_stream_safe_retry_enabled: false,
       anthropic_stream_safe_retry_max_retries: 2,
       anthropic_stream_safe_retry_total_wait_seconds: 300,
+      anthropic_stream_safe_retry_first_content_timeout_seconds: 180,
       default_pool_mode_retry_count: 1,
       default_pool_mode_retry_status_codes: [401, 403, 429, 502, 503, 504],
       additional_failover_status_codes_enabled: false,
@@ -247,6 +248,7 @@ describe('admin CustomFeaturesView', () => {
       anthropic_stream_safe_retry_enabled: false,
       anthropic_stream_safe_retry_max_retries: 2,
       anthropic_stream_safe_retry_total_wait_seconds: 300,
+      anthropic_stream_safe_retry_first_content_timeout_seconds: 180,
       default_pool_mode_retry_count: 1,
       default_pool_mode_retry_status_codes: [401, 429, 504],
       additional_failover_status_codes_enabled: true,
@@ -282,6 +284,7 @@ describe('admin CustomFeaturesView', () => {
       anthropic_stream_safe_retry_enabled: true,
       anthropic_stream_safe_retry_max_retries: 1,
       anthropic_stream_safe_retry_total_wait_seconds: 240,
+      anthropic_stream_safe_retry_first_content_timeout_seconds: 180,
       default_pool_mode_retry_count: 1,
     }))
   })
@@ -290,7 +293,7 @@ describe('admin CustomFeaturesView', () => {
     const wrapper = mountView()
     await flushPromises()
     await wrapper.get('[data-test="custom-feature-tab-gateway"]').trigger('click')
-    for (const [count, budget] of [[6, 300], [-1, 300], [1.5, 300], [2, 0], [2, 601]]) {
+    for (const [count, budget] of [[6, 300], [-1, 300], [1.5, 300], [2, 0], [2, 3601]]) {
       await wrapper.get('[data-test="gateway-stream-safe-retry-max-retries"]').setValue(count)
       await wrapper.get('[data-test="gateway-stream-safe-retry-budget"]').setValue(budget)
       await wrapper.get('[data-test="gateway-form"]').trigger('submit')
@@ -299,12 +302,51 @@ describe('admin CustomFeaturesView', () => {
     expect(showError).toHaveBeenCalledWith('admin.customFeatures.gateway.streamSafeRetry.validation')
   })
 
+  it('支持一小时总预算并保留显式关闭的首有效内容超时', async () => {
+    const settings = settingsFixture()
+    settings.gateway.anthropic_stream_safe_retry_first_content_timeout_seconds = 0
+    getSettings.mockResolvedValueOnce(settings)
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="custom-feature-tab-gateway"]').trigger('click')
+    expect(wrapper.get<HTMLInputElement>('[data-test="gateway-stream-safe-retry-first-content-timeout"]').element.value).toBe('0')
+    for (const budget of [1, 600, 601, 3600]) {
+      await wrapper.get('[data-test="gateway-stream-safe-retry-budget"]').setValue(budget)
+      await wrapper.get('[data-test="gateway-form"]').trigger('submit')
+      await flushPromises()
+      expect(updateGateway).toHaveBeenLastCalledWith(expect.objectContaining({
+        anthropic_stream_safe_retry_total_wait_seconds: budget,
+        anthropic_stream_safe_retry_first_content_timeout_seconds: 0,
+      }))
+    }
+  })
+
+  it('校验首有效内容超时的范围和整数限制', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="custom-feature-tab-gateway"]').trigger('click')
+    for (const seconds of [-1, 1.5, 3601]) {
+      await wrapper.get('[data-test="gateway-stream-safe-retry-first-content-timeout"]').setValue(seconds)
+      await wrapper.get('[data-test="gateway-form"]').trigger('submit')
+    }
+    expect(updateGateway).not.toHaveBeenCalled()
+    for (const seconds of [0, 180, 3600]) {
+      await wrapper.get('[data-test="gateway-stream-safe-retry-first-content-timeout"]').setValue(seconds)
+      await wrapper.get('[data-test="gateway-form"]').trigger('submit')
+      await flushPromises()
+      expect(updateGateway).toHaveBeenLastCalledWith(expect.objectContaining({
+        anthropic_stream_safe_retry_first_content_timeout_seconds: seconds,
+      }))
+    }
+  })
+
   it('旧版响应缺失新字段时使用安全默认值', async () => {
     const legacySettings = settingsFixture()
     const legacyGateway: Partial<GatewaySettings> = { ...legacySettings.gateway }
     delete legacyGateway.anthropic_stream_safe_retry_enabled
     delete legacyGateway.anthropic_stream_safe_retry_max_retries
     delete legacyGateway.anthropic_stream_safe_retry_total_wait_seconds
+    delete legacyGateway.anthropic_stream_safe_retry_first_content_timeout_seconds
     delete legacyGateway.first_token_timeout_scope
     delete legacyGateway.first_token_timeout_group_ids
     delete legacyGateway.first_token_timeout_consecutive_threshold
@@ -326,6 +368,7 @@ describe('admin CustomFeaturesView', () => {
     await wrapper.get('[data-test="custom-feature-tab-gateway"]').trigger('click')
 
     expect(wrapper.get<HTMLInputElement>('[data-test="gateway-first-token-scope-all"]').element.checked).toBe(true)
+    expect(wrapper.get<HTMLInputElement>('[data-test="gateway-stream-safe-retry-first-content-timeout"]').element.value).toBe('180')
     expect(
       wrapper.get<HTMLInputElement>('[data-test="gateway-first-token-consecutive-threshold"]')
         .element.value
@@ -380,6 +423,7 @@ describe('admin CustomFeaturesView', () => {
       anthropic_stream_safe_retry_enabled: false,
       anthropic_stream_safe_retry_max_retries: 2,
       anthropic_stream_safe_retry_total_wait_seconds: 300,
+      anthropic_stream_safe_retry_first_content_timeout_seconds: 180,
       default_pool_mode_retry_count: 1,
     }))
     expect(wrapper.get<HTMLInputElement>('[data-test="gateway-first-token-group-1"]').element.checked).toBe(true)
