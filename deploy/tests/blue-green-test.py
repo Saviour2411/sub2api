@@ -490,6 +490,42 @@ class BlueGreenTests(unittest.TestCase):
         self.assertNotIn(("pull",second["sha"]),self.deployment.calls)
         self.assertEqual("blue",self.deployment.state["active"])
 
+    def test_next_tag_can_resume_legacy_retirement_before_candidate_exists(self):
+        deployment = self.deployment
+        deployment.state["slots"]["blue"]["legacy"] = True
+        deployment.deploy(self.release(1),window=0)
+        interrupted = self.release(2)
+        replacement = self.release(3)
+        deployment.state.update(phase="legacy_retiring",legacy_retire_operation={"release":interrupted})
+        deployment.containers.pop("sub2api-blue",None)
+        deployment.calls.clear()
+        deployment.deploy(replacement,window=0)
+        preflight = deployment.calls.index(("preflight",replacement["sha"]))
+        pulled = deployment.calls.index(("pull",replacement["sha"]))
+        retired = deployment.calls.index(("legacy_retire",replacement["sha"]))
+        self.assertLess(preflight,pulled)
+        self.assertLess(pulled,retired)
+        self.assertEqual("blue",deployment.state["active"])
+        self.assertEqual("stable",deployment.state["phase"])
+
+    def test_failed_replacement_preflight_preserves_original_retirement(self):
+        deployment = self.deployment
+        deployment.state["slots"]["blue"]["legacy"] = True
+        deployment.deploy(self.release(1),window=0)
+        interrupted = self.release(2)
+        deployment.state.update(phase="legacy_retiring",legacy_retire_operation={"release":interrupted})
+        deployment.containers.pop("sub2api-blue",None)
+        with patch.object(deployment,"preflight",side_effect=bg.Refused("preflight rejected")):
+            with self.assertRaisesRegex(bg.Refused,"preflight rejected"):
+                deployment.deploy(self.release(3),window=0)
+        self.assertEqual(interrupted,deployment.state["legacy_retire_operation"]["release"])
+        self.assertEqual("green",deployment.routed)
+
+    def test_stop_uses_compatible_infinite_timeout_option(self):
+        self.deployment.deploy(self.release(1),window=0)
+        stops = [call for call in self.deployment.calls if call[:2] == ("docker","stop")]
+        self.assertEqual([("docker","stop","-t","-1","sub2api-blue")],stops)
+
     def test_legacy_proxy_is_fixed_private_and_disables_retries(self):
         self.deployment.state["slots"]["blue"]["legacy"] = True
         rendered = self.deployment.proxy_config("green")

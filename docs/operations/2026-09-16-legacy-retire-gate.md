@@ -34,6 +34,10 @@
 
 ## 待完成验证
 
+独立门禁 run `35057663303` 已于 13:13:43 成功，实际连续静默 901.6 秒，全部客户路径计数为 0。`3793f691c` 的 CI `35058399290`、Security `35058399264` 全通过后创建 `v0.1.236`，Release `35059222782` 成功发布镜像，但生产 Docker CLI 26.1.5 拒绝 `docker stop --timeout`；旧版没有收到停止信号，state 保持 `legacy_retiring / active=green / pending=blue`，两个应用健康，API/direct 均为 200。
+
+迭代修正使用兼容短参数 `docker stop -t -1`，不改变无限等待语义。仅在 legacy 退役阶段且候选容器尚未创建时，允许后续 tag 先通过完整预检和固定镜像准备，再接续原容器/活动实例绑定的操作；保留原发布身份用于审计。不移动失败标签，不手工停止应用，不升级生产 Docker。
+
 补强提交的首轮 CI 在隔离 Nginx 初次 warmup 时出现 TLS `SSL_ERROR_SYSCALL`，尚未开始任何切流。测试启动顺序修正为：Docker 返回端口后，先轮询双入口无付费 `/health` 至 TLS 就绪，再发送一次 warmup 生成请求；不重放生成，不放宽切流及用量断言。
 
 - 功能分支 CI 与 Security Scan 全部通过并合入 `main`。

@@ -518,7 +518,7 @@ class Deployment:
             require(container["Id"] == operation["legacy_container_id"], "旧版容器身份改变，拒绝停止")
             stop_started = time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime())
             self.save(legacy_stop_started_at=stop_started)
-            self.run("docker","stop","--timeout","-1","sub2api")
+            self.run("docker","stop","-t","-1","sub2api")
             container = self.inspect("sub2api")
         result = self.state.get("legacy_retire_result")
         if container:
@@ -625,7 +625,7 @@ class Deployment:
         if container is not None:
             require(container["Id"] == self.state["slots"][old]["container_id"], "容器身份改变，拒绝停止")
             # 正常退役退出码为零，on-failure 不会重启它。
-            self.run("docker", "stop", "--timeout", "-1", "sub2api-"+old)
+            self.run("docker", "stop", "-t", "-1", "sub2api-"+old)
             self.run("docker", "rm", "sub2api-"+old)
         slots = dict(self.state["slots"]); del slots[old]
         self.save(slots=slots, pending=None, phase="stable", drained_at=time.time(), prepared_release=None, last_error=None)
@@ -679,7 +679,14 @@ class Deployment:
             prepared_image = True
         operation = self.state.get("legacy_retire_operation")
         if operation and self.state.get("pending"):
-            require(same_release(operation["release"],release), "必须先恢复同一旧版退役发布")
+            if not same_release(operation["release"],release):
+                old = self.state["pending"]
+                require(self.state["phase"] == "legacy_retiring" and self.state["slots"][old].get("legacy")
+                        and self.inspect("sub2api-"+old) is None, "候选已经启动，必须先恢复原发布")
+                prepared_compose = self.preflight(release,needs_capacity=True)
+                self.pull_release_image(release)
+                operation = dict(operation,release=release,initiated_release=operation.get("initiated_release",operation["release"]))
+                self.save(legacy_retire_operation=operation,prepared_release=release)
             self.retire_legacy_for_release(release)
             prepared_image = True
         # 未排空槽优先处理；即使本次发布不同镜像，也不允许覆盖正在服务的旧实例。
