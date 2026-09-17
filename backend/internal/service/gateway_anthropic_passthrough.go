@@ -130,21 +130,24 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughAttempt(
 			input.Body = input.Parsed.Body.Bytes()
 		}
 
-		releaseSafeRequest := func() {}
+		releaseRequest := func() {}
 		if safeRetry != nil {
 			if err := safeRetry.beforeDispatch(account); err != nil {
 				firstTokenAttempt.stopBeforeStreaming()
 				return nil, err
 			}
-			upstreamReq, releaseSafeRequest = safeRetry.bindRequest(upstreamReq)
+			upstreamReq, releaseRequest = safeRetry.bindRequest(upstreamReq)
+		} else if input.RequestStream {
+			requestCtx, cancel := context.WithCancel(upstreamReq.Context())
+			upstreamReq, releaseRequest = upstreamReq.WithContext(requestCtx), cancel
 		}
 		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
 		if err != nil {
-			releaseSafeRequest()
+			releaseRequest()
 		} else if resp != nil && resp.Body != nil {
-			resp.Body = &firstTokenCleanupReadCloser{upstream: resp.Body, cleanup: releaseSafeRequest}
+			resp.Body = &firstTokenCleanupReadCloser{upstream: resp.Body, cleanup: releaseRequest}
 		} else {
-			releaseSafeRequest()
+			releaseRequest()
 		}
 		if err != nil {
 			attemptErr := firstTokenAttempt.finishRequestError(err)

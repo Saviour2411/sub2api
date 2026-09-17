@@ -409,9 +409,11 @@ func (a *firstTokenAttempt) cleanup() {
 }
 
 type firstTokenCleanupReadCloser struct {
-	upstream io.ReadCloser
-	cleanup  func()
-	once     sync.Once
+	upstream  io.ReadCloser
+	cleanup   func()
+	once      sync.Once
+	closeOnce sync.Once
+	closeErr  error
 }
 
 func (r *firstTokenCleanupReadCloser) Read(p []byte) (int, error) {
@@ -423,9 +425,11 @@ func (r *firstTokenCleanupReadCloser) Read(p []byte) (int, error) {
 }
 
 func (r *firstTokenCleanupReadCloser) Close() error {
-	err := r.upstream.Close()
 	r.runCleanup()
-	return err
+	r.closeOnce.Do(func() {
+		r.closeErr = r.upstream.Close()
+	})
+	return r.closeErr
 }
 
 func (r *firstTokenCleanupReadCloser) runCleanup() {

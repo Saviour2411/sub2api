@@ -64,7 +64,7 @@ jobs:
           CGO_ENABLED: '1'
         run: >-
           go test -race -tags=unit -count=1
-          -run 'TestAnthropicStreamSafeRetry|TestGatewayService_AnthropicAPIKeyPassthrough_StreamingIdleTimeout|TestDecompressResponseBodyStreamClose|TestDecompressedBodyClose'
+          -run 'TestAnthropicStreamSafeRetry|TestFirstTokenCleanup|TestGatewayService_AnthropicAPIKeyPassthrough_StreamingIdleTimeout|TestDecompressResponseBodyStreamClose|TestDecompressedBodyClose'
           ./internal/service ./internal/handler ./internal/repository
 
   frontend:
