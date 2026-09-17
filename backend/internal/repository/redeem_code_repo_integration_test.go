@@ -452,6 +452,41 @@ func (s *RedeemCodeRepoSuite) TestListByUser() {
 	s.Require().Equal("USER-1", codes[1].Code)
 }
 
+func (s *RedeemCodeRepoSuite) TestListByUserPaginatedKeepsMultiUserUsageHistory() {
+	firstUser := s.createUser(uniqueTestValue(s.T(), "history-first") + "@example.com")
+	secondUser := s.createUser(uniqueTestValue(s.T(), "history-second") + "@example.com")
+	base := time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC)
+	shared := &service.RedeemCode{Code: "PAGED-SHARED", Type: service.RedeemTypeBalance, Value: 2, Status: service.StatusUnused, MaxUses: 2}
+	s.Require().NoError(s.repo.Create(s.ctx, shared))
+	s.Require().NoError(s.repo.Use(s.ctx, shared.ID, firstUser.ID))
+	s.setRedeemUsageTime(shared.ID, firstUser.ID, base)
+	s.Require().NoError(s.repo.Use(s.ctx, shared.ID, secondUser.ID))
+	s.setRedeemUsageTime(shared.ID, secondUser.ID, base.Add(2*time.Hour))
+
+	personal := &service.RedeemCode{Code: "PAGED-PERSONAL", Type: service.RedeemTypeConcurrency, Value: 1, Status: service.StatusUnused}
+	s.Require().NoError(s.repo.Create(s.ctx, personal))
+	s.Require().NoError(s.repo.Use(s.ctx, personal.ID, firstUser.ID))
+	s.setRedeemUsageTime(personal.ID, firstUser.ID, base.Add(time.Hour))
+
+	for index, expected := range []int64{personal.ID, shared.ID} {
+		records, page, err := s.repo.ListByUserPaginated(s.ctx, firstUser.ID, pagination.PaginationParams{Page: index + 1, PageSize: 1}, "")
+		s.Require().NoError(err)
+		s.Require().Equal(int64(2), page.Total)
+		s.Require().Equal(2, page.Pages)
+		s.Require().Len(records, 1)
+		s.Require().Equal(expected, records[0].ID)
+		s.Require().NotNil(records[0].UsedBy)
+		s.Require().Equal(firstUser.ID, *records[0].UsedBy)
+	}
+	records, page, err := s.repo.ListByUserPaginated(s.ctx, secondUser.ID, pagination.PaginationParams{Page: 1, PageSize: 10}, "")
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), page.Total)
+	s.Require().Len(records, 1)
+	s.Require().Equal(shared.ID, records[0].ID)
+	s.Require().Equal(secondUser.ID, *records[0].UsedBy)
+	s.Require().True(records[0].UsedAt.Equal(base.Add(2 * time.Hour)))
+}
+
 func (s *RedeemCodeRepoSuite) TestListByUser_WithGroupPreload() {
 	user := s.createUser(uniqueTestValue(s.T(), "grp") + "@example.com")
 	group := s.createGroup(uniqueTestValue(s.T(), "g-listby"))
