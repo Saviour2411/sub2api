@@ -184,6 +184,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 		customUA = defaultGrokUpstreamUserAgent()
 	}
 	resp, firstTokenAttempt, err := s.sendCCUpstreamRequest(ctx, c, account, targetURL, upstreamBody, clientStream, upstreamModel, token, customUA, grokCacheIdentity)
+	reasoningEffort = kimiEffectiveReasoningEffort(c, reasoningEffort)
 	if err != nil {
 		return nil, err
 	}

@@ -266,6 +266,26 @@
             </div>
           </section>
 
+          <section class="border-t border-gray-100 pt-8 dark:border-dark-700" aria-labelledby="gateway-kimi-compatibility-title">
+            <h3 id="gateway-kimi-compatibility-title" class="font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.customFeatures.gateway.kimiCompatibility.title') }}
+            </h3>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.customFeatures.gateway.kimiCompatibility.description') }}
+            </p>
+            <div v-for="option in kimiCompatibilityOptions" :key="option.field" class="mt-5 flex items-center justify-between gap-4">
+              <div>
+                <p class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t(`admin.customFeatures.gateway.kimiCompatibility.${option.key}.title`) }}
+                </p>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{ t(`admin.customFeatures.gateway.kimiCompatibility.${option.key}.description`) }}
+                </p>
+              </div>
+              <Toggle v-model="gateway[option.field]" :data-test="`gateway-${option.field}`" />
+            </div>
+          </section>
+
           <section class="border-t border-gray-100 pt-8 dark:border-dark-700" aria-labelledby="gateway-custom-rate-recharge-bonus-title">
             <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -926,6 +946,13 @@ const dailyCheckin = reactive<DailyCheckinSettings>({
   linuxdo_exempt_enabled: false
 })
 
+const kimiCompatibilityOptions = [
+  { field: 'kimi_sampling_parameter_retry_enabled', key: 'sampling' },
+  { field: 'kimi_reasoning_effort_retry_enabled', key: 'reasoning' },
+  { field: 'kimi_tool_choice_retry_enabled', key: 'toolChoice' },
+  { field: 'kimi_max_completion_tokens_retry_enabled', key: 'budget' },
+] as const
+
 const gateway = reactive<GatewaySettings>({
   anthropic_stream_safe_retry_enabled: false,
   anthropic_stream_safe_retry_max_retries: 2,
@@ -946,6 +973,10 @@ const gateway = reactive<GatewaySettings>({
   anthropic_claude_code_mimicry_enabled: false,
   anthropic_sampling_parameter_filter_enabled: false,
   anthropic_sampling_parameter_filter_models: [],
+  kimi_sampling_parameter_retry_enabled: false,
+  kimi_reasoning_effort_retry_enabled: false,
+  kimi_tool_choice_retry_enabled: false,
+  kimi_max_completion_tokens_retry_enabled: false,
   disable_recharge_bonus_for_custom_rate_users: false
 })
 const gatewayRetryStatusCodesInput = ref(gateway.default_pool_mode_retry_status_codes.join(', '))
@@ -1025,6 +1056,10 @@ function cloneGateway(settings?: Partial<GatewaySettings>): GatewaySettings {
     anthropic_sampling_parameter_filter_models: [
       ...(settings?.anthropic_sampling_parameter_filter_models ?? [])
     ],
+    kimi_sampling_parameter_retry_enabled: settings?.kimi_sampling_parameter_retry_enabled ?? false,
+    kimi_reasoning_effort_retry_enabled: settings?.kimi_reasoning_effort_retry_enabled ?? false,
+    kimi_tool_choice_retry_enabled: settings?.kimi_tool_choice_retry_enabled ?? false,
+    kimi_max_completion_tokens_retry_enabled: settings?.kimi_max_completion_tokens_retry_enabled ?? false,
     disable_recharge_bonus_for_custom_rate_users:
       settings?.disable_recharge_bonus_for_custom_rate_users ?? false
   }
@@ -1284,6 +1319,10 @@ async function saveGateway() {
       anthropic_claude_code_mimicry_enabled: gateway.anthropic_claude_code_mimicry_enabled,
       anthropic_sampling_parameter_filter_enabled:
         gateway.anthropic_sampling_parameter_filter_enabled,
+      kimi_sampling_parameter_retry_enabled: gateway.kimi_sampling_parameter_retry_enabled,
+      kimi_reasoning_effort_retry_enabled: gateway.kimi_reasoning_effort_retry_enabled,
+      kimi_tool_choice_retry_enabled: gateway.kimi_tool_choice_retry_enabled,
+      kimi_max_completion_tokens_retry_enabled: gateway.kimi_max_completion_tokens_retry_enabled,
       anthropic_sampling_parameter_filter_models:
         validation.samplingParameterFilterModels,
       disable_recharge_bonus_for_custom_rate_users:

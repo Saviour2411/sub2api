@@ -205,6 +205,27 @@ func TestCustomFeatureHandler_UpdateGateway_部分更新保留ClaudeCode模拟�
 	require.Equal(t, `[451]`, repo.values[service.SettingKeyGatewayAdditionalFailoverStatusCodes])
 }
 
+func TestCustomFeatureHandler_KimiCompatibilityPartialUpdate(t *testing.T) {
+	repo := &customFeatureHandlerRepoStub{values: map[string]string{
+		service.SettingKeyGatewayKimiSamplingParameterRetryEnabled:   "true",
+		service.SettingKeyGatewayKimiReasoningEffortRetryEnabled:     "true",
+		service.SettingKeyGatewayKimiToolChoiceRetryEnabled:          "true",
+		service.SettingKeyGatewayKimiMaxCompletionTokensRetryEnabled: "true",
+	}}
+	router := newCustomFeatureHandlerRouter(repo)
+	for _, body := range []string{`{"image_group_success_rate_visible":false}`, `{"kimi_tool_choice_retry_enabled":false}`} {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPut, "/api/v1/admin/custom-features/gateway", bytes.NewBufferString(body))
+		request.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(recorder, request)
+		require.Equal(t, http.StatusOK, recorder.Code)
+		require.Equal(t, "true", repo.values[service.SettingKeyGatewayKimiSamplingParameterRetryEnabled])
+		require.Equal(t, "true", repo.values[service.SettingKeyGatewayKimiReasoningEffortRetryEnabled])
+		require.Equal(t, "true", repo.values[service.SettingKeyGatewayKimiMaxCompletionTokensRetryEnabled])
+	}
+	require.Equal(t, "false", repo.values[service.SettingKeyGatewayKimiToolChoiceRetryEnabled])
+}
+
 func TestCustomFeatureHandler_StreamSafeRetryCompatibilityAndValidation(t *testing.T) {
 	repo := &customFeatureHandlerRepoStub{values: map[string]string{
 		service.SettingKeyGatewayAnthropicStreamSafeRetryEnabled:                    "true",

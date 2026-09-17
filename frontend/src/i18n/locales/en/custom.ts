@@ -414,6 +414,26 @@ export default {
           description: 'Remove temperature, top_k and top_p from REST Messages bodies after the final upstream model matches. Exact model IDs and trailing wildcards are supported.',
           enabled: 'Enable filter',
         },
+        kimiCompatibility: {
+          title: 'Kimi Parameter Compatibility Retries',
+          description: 'Four independent switches, disabled by default, for Chat Completions upstreams in Kimi groups, including converted Messages/Responses requests. Retry explicit parameter rejections only before committing the client response, once per rule and at most four additional attempts per request.',
+          sampling: {
+            title: 'Sampling parameter compatibility',
+            description: 'After an explicit sampling rejection, remove temperature, top_p, top_k, presence_penalty and frequency_penalty and retry using channel defaults.',
+          },
+          reasoning: {
+            title: 'Reasoning effort compatibility',
+            description: 'Retry rejected reasoning effort with low. Also default kimi-k3 Messages conversions to low and preserve explicit low/high/max. Other explicit values fall back only after upstream rejection.',
+          },
+          toolChoice: {
+            title: 'Tool choice compatibility',
+            description: 'Retry invalid tool_choice or a missing function by removing only tool_choice. Keep tool definitions and history, but no longer force the selected tool.',
+          },
+          budget: {
+            title: 'Thinking budget compatibility',
+            description: 'When max_completion_tokens conflicts with thinking_budget, remove only max_completion_tokens and retry. Removing this output limit may increase output, latency and cost.',
+          },
+        },
         customRateRechargeBonus: {
           title: 'Disable Top-up Bonuses for Custom-rate Users',
           description: 'When enabled, users with a custom multiplier in any group receive only the original top-up amount, without tier bonuses or the legacy recharge multiplier.',

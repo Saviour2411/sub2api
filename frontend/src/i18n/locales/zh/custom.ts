@@ -414,6 +414,26 @@ export default {
           description: '命中最终上游模型后，从 REST Messages 请求体中删除 temperature、top_k 和 top_p。支持精确模型 ID 与末尾通配符。',
           enabled: '启用过滤',
         },
+        kimiCompatibility: {
+          title: 'Kimi 参数兼容重试',
+          description: '四项独立开关默认关闭，仅适用于 Kimi 类型分组的 Chat Completions 出站，包括 Messages/Responses 转换。上游明确返回参数错误后，在未向客户端提交响应时重试；每项每请求最多一次，共最多额外四次。',
+          sampling: {
+            title: '采样参数拒绝兼容',
+            description: '明确拒绝采样字段时，移除 temperature、top_p、top_k、presence_penalty、frequency_penalty 后重试，改用渠道默认值。',
+          },
+          reasoning: {
+            title: '思考强度兼容',
+            description: '非法思考强度被拒绝后改为 low 重试。开启后，kimi-k3 的 Messages 转换默认使用 low，保留显式 low/high/max；其他显式值仅在上游拒绝后回退。',
+          },
+          toolChoice: {
+            title: '工具选择格式兼容',
+            description: '非法 tool_choice 或缺少 function 被拒绝后，仅移除 tool_choice 重试。保留工具定义和历史，但不再强制选择指定工具。',
+          },
+          budget: {
+            title: '思考预算冲突兼容',
+            description: 'max_completion_tokens 与 thinking_budget 冲突时，仅移除 max_completion_tokens 重试。解除此输出上限可能增加输出量、耗时和费用。',
+          },
+        },
         customRateRechargeBonus: {
           title: '专属倍率用户充值不返利',
           description: '开启后，只要用户在任意分组配置了专属倍率，余额充值就按原始充值金额入账，不应用阶梯返利或旧版充值倍率。',

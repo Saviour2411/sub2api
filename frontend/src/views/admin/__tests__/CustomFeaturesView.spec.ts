@@ -145,6 +145,10 @@ function settingsFixture(): CustomFeatureSettings {
       anthropic_claude_code_mimicry_enabled: false,
       anthropic_sampling_parameter_filter_enabled: false,
       anthropic_sampling_parameter_filter_models: [],
+      kimi_sampling_parameter_retry_enabled: false,
+      kimi_reasoning_effort_retry_enabled: false,
+      kimi_tool_choice_retry_enabled: false,
+      kimi_max_completion_tokens_retry_enabled: false,
       disable_recharge_bonus_for_custom_rate_users: false,
     },
   }
@@ -264,10 +268,38 @@ describe('admin CustomFeaturesView', () => {
       anthropic_claude_code_mimicry_enabled: true,
       anthropic_sampling_parameter_filter_enabled: true,
       anthropic_sampling_parameter_filter_models: ['claude-opus-*'],
+      kimi_sampling_parameter_retry_enabled: false,
+      kimi_reasoning_effort_retry_enabled: false,
+      kimi_tool_choice_retry_enabled: false,
+      kimi_max_completion_tokens_retry_enabled: false,
       disable_recharge_bonus_for_custom_rate_users: true,
     })
     expect(updateDailyCheckin).not.toHaveBeenCalled()
     expect(showSuccess).toHaveBeenCalledWith('admin.customFeatures.gateway.saved')
+  })
+
+  it('独立保存 Kimi 四项兼容开关', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="custom-feature-tab-gateway"]').trigger('click')
+    for (const field of [
+      'kimi_sampling_parameter_retry_enabled',
+      'kimi_reasoning_effort_retry_enabled',
+      'kimi_tool_choice_retry_enabled',
+      'kimi_max_completion_tokens_retry_enabled',
+    ]) {
+      expect(wrapper.get(`[data-test="gateway-${field}"]`).text()).toBe('off')
+      await wrapper.get(`[data-test="gateway-${field}"]`).trigger('click')
+    }
+    await wrapper.get('[data-test="gateway-kimi_tool_choice_retry_enabled"]').trigger('click')
+    await wrapper.get('[data-test="gateway-form"]').trigger('submit')
+    await flushPromises()
+    expect(updateGateway).toHaveBeenCalledWith(expect.objectContaining({
+      kimi_sampling_parameter_retry_enabled: true,
+      kimi_reasoning_effort_retry_enabled: true,
+      kimi_tool_choice_retry_enabled: false,
+      kimi_max_completion_tokens_retry_enabled: true,
+    }))
   })
 
   it('独立保存安全重试开关、次数和预算', async () => {
@@ -357,6 +389,10 @@ describe('admin CustomFeaturesView', () => {
     delete legacyGateway.anthropic_claude_code_mimicry_enabled
     delete legacyGateway.anthropic_sampling_parameter_filter_enabled
     delete legacyGateway.anthropic_sampling_parameter_filter_models
+    delete legacyGateway.kimi_sampling_parameter_retry_enabled
+    delete legacyGateway.kimi_reasoning_effort_retry_enabled
+    delete legacyGateway.kimi_tool_choice_retry_enabled
+    delete legacyGateway.kimi_max_completion_tokens_retry_enabled
     delete legacyGateway.disable_recharge_bonus_for_custom_rate_users
     getSettings.mockResolvedValueOnce({
       ...legacySettings,
@@ -369,6 +405,14 @@ describe('admin CustomFeaturesView', () => {
 
     expect(wrapper.get<HTMLInputElement>('[data-test="gateway-first-token-scope-all"]').element.checked).toBe(true)
     expect(wrapper.get<HTMLInputElement>('[data-test="gateway-stream-safe-retry-first-content-timeout"]').element.value).toBe('180')
+    for (const field of [
+      'kimi_sampling_parameter_retry_enabled',
+      'kimi_reasoning_effort_retry_enabled',
+      'kimi_tool_choice_retry_enabled',
+      'kimi_max_completion_tokens_retry_enabled',
+    ]) {
+      expect(wrapper.get(`[data-test="gateway-${field}"]`).text()).toBe('off')
+    }
     expect(
       wrapper.get<HTMLInputElement>('[data-test="gateway-first-token-consecutive-threshold"]')
         .element.value

@@ -62,6 +62,7 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
 	chatReq.Model = upstreamModel
 	chatReq.ReasoningEffort = openAICompatAnthropicReasoningEffort(&anthropicReq, upstreamModel, chatReq.ReasoningEffort)
+	chatReq.ReasoningEffort = s.kimiMessagesReasoningEffort(ctx, c, &anthropicReq, upstreamModel, chatReq.ReasoningEffort)
 	chatReq.Stream = clientStream
 	if clientStream {
 		chatReq.StreamOptions = &apicompat.ChatStreamOptions{IncludeUsage: true}
@@ -114,6 +115,7 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 		return nil, err
 	}
 	resp, firstTokenAttempt, err := s.sendCCUpstreamRequest(ctx, c, account, targetURL, chatBody, clientStream, upstreamModel, apiKey, account.GetOpenAIUserAgent(), "")
+	reasoningEffort = kimiEffectiveReasoningEffort(c, reasoningEffort)
 	if err != nil {
 		return nil, err
 	}

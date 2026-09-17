@@ -62,6 +62,10 @@ export interface GatewaySettings {
   anthropic_claude_code_mimicry_enabled: boolean
   anthropic_sampling_parameter_filter_enabled: boolean
   anthropic_sampling_parameter_filter_models: string[]
+  kimi_sampling_parameter_retry_enabled: boolean
+  kimi_reasoning_effort_retry_enabled: boolean
+  kimi_tool_choice_retry_enabled: boolean
+  kimi_max_completion_tokens_retry_enabled: boolean
   disable_recharge_bonus_for_custom_rate_users: boolean
 }
 

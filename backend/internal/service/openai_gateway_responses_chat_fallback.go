@@ -109,6 +109,7 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 		return nil, err
 	}
 	resp, firstTokenAttempt, err := s.sendCCUpstreamRequest(ctx, c, account, targetURL, chatBody, clientStream, upstreamModel, apiKey, account.GetOpenAIUserAgent(), "")
+	reasoningEffort = kimiEffectiveReasoningEffort(c, reasoningEffort)
 	if err != nil {
 		return nil, err
 	}

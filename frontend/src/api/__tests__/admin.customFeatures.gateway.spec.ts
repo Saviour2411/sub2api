@@ -33,6 +33,10 @@ const gatewaySettings: GatewaySettings = {
   anthropic_claude_code_mimicry_enabled: false,
   anthropic_sampling_parameter_filter_enabled: false,
   anthropic_sampling_parameter_filter_models: [],
+  kimi_sampling_parameter_retry_enabled: false,
+  kimi_reasoning_effort_retry_enabled: false,
+  kimi_tool_choice_retry_enabled: false,
+  kimi_max_completion_tokens_retry_enabled: false,
   disable_recharge_bonus_for_custom_rate_users: false,
 }
 
@@ -55,6 +59,21 @@ describe('admin custom features gateway API', () => {
       data: { ...gatewaySettings, ...partialSettings },
     })
 
+    await expect(updateGateway(partialSettings)).resolves.toEqual({
+      ...gatewaySettings,
+      ...partialSettings,
+    })
+    expect(put).toHaveBeenCalledWith('/admin/custom-features/gateway', partialSettings)
+  })
+
+  it('允许独立启用和关闭 Kimi 兼容项', async () => {
+    const partialSettings = {
+      kimi_sampling_parameter_retry_enabled: true,
+      kimi_reasoning_effort_retry_enabled: false,
+      kimi_tool_choice_retry_enabled: true,
+      kimi_max_completion_tokens_retry_enabled: false,
+    }
+    put.mockResolvedValue({ data: { ...gatewaySettings, ...partialSettings } })
     await expect(updateGateway(partialSettings)).resolves.toEqual({
       ...gatewaySettings,
       ...partialSettings,

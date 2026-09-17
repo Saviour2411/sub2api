@@ -375,6 +375,34 @@ func TestOpsErrorLoggerMiddleware_RecordsRecoveredUpstreamTelemetryOutsideFailur
 	require.Equal(t, http.StatusTooManyRequests, persistedEvents[0].UpstreamStatusCode)
 }
 
+func TestOpsErrorLoggerMiddleware_KimiCompatibilityRecovered(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 2)
+	gin.SetMode(gin.TestMode)
+	ops := service.NewOpsService(&ingressRejectOpsRepo{}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.POST("/v1/chat/completions", func(c *gin.Context) {
+		c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{{
+			Platform: service.PlatformKimi, AccountID: 865, UpstreamStatusCode: 400,
+			Kind: "parameter_compat_retry", Scope: "request", Reason: "reasoning_effort",
+			Message: "Kimi 参数拒绝兼容重试: reasoning_effort",
+			Detail:  `{"rule":"reasoning_effort","changed_fields":["reasoning_effort"],"compat_retry":1}`,
+		}})
+		c.JSON(200, gin.H{"choices": []gin.H{{"message": gin.H{"content": "ok"}}}})
+	})
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
+	require.Equal(t, int64(1), OpsErrorLogQueueLength())
+	job := <-opsErrorLogQueue
+	require.Equal(t, 200, job.entry.StatusCode)
+	require.Contains(t, job.entry.ErrorMessage, "Recovered upstream error 400")
+	events, err := service.ParseOpsUpstreamErrors(*job.entry.UpstreamErrorsJSON)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.Equal(t, "parameter_compat_retry", events[0].Kind)
+	require.Equal(t, "reasoning_effort", events[0].Reason)
+}
+
 func TestOpsErrorLoggerMiddleware_RecoveredTelemetryFiltersSkipMonitoringAttempts(t *testing.T) {
 	setupOpsErrorLogTestQueue(t, 2)
 	gin.SetMode(gin.TestMode)

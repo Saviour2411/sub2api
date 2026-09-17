@@ -98,6 +98,10 @@ type GatewaySettings struct {
 	AnthropicClaudeCodeMimicryEnabled                  bool     `json:"anthropic_claude_code_mimicry_enabled"`
 	AnthropicSamplingParameterFilterEnabled            bool     `json:"anthropic_sampling_parameter_filter_enabled"`
 	AnthropicSamplingParameterFilterModels             []string `json:"anthropic_sampling_parameter_filter_models"`
+	KimiSamplingParameterRetryEnabled                  bool     `json:"kimi_sampling_parameter_retry_enabled"`
+	KimiReasoningEffortRetryEnabled                    bool     `json:"kimi_reasoning_effort_retry_enabled"`
+	KimiToolChoiceRetryEnabled                         bool     `json:"kimi_tool_choice_retry_enabled"`
+	KimiMaxCompletionTokensRetryEnabled                bool     `json:"kimi_max_completion_tokens_retry_enabled"`
 	DisableRechargeBonusForCustomRateUsers             bool     `json:"disable_recharge_bonus_for_custom_rate_users"`
 	FailurePolicyRevision                              int64    `json:"-"`
 }
@@ -147,6 +151,10 @@ var gatewaySettingKeys = []string{
 	SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled,
 	SettingKeyGatewayAnthropicSamplingParameterFilterEnabled,
 	SettingKeyGatewayAnthropicSamplingParameterFilterModels,
+	SettingKeyGatewayKimiSamplingParameterRetryEnabled,
+	SettingKeyGatewayKimiReasoningEffortRetryEnabled,
+	SettingKeyGatewayKimiToolChoiceRetryEnabled,
+	SettingKeyGatewayKimiMaxCompletionTokensRetryEnabled,
 	SettingKeyGatewayDisableRechargeBonusForCustomRateUsers,
 	SettingKeyGatewayFailurePolicyRevision,
 }
@@ -184,6 +192,10 @@ var customFeatureSettingKeys = []string{
 	SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled,
 	SettingKeyGatewayAnthropicSamplingParameterFilterEnabled,
 	SettingKeyGatewayAnthropicSamplingParameterFilterModels,
+	SettingKeyGatewayKimiSamplingParameterRetryEnabled,
+	SettingKeyGatewayKimiReasoningEffortRetryEnabled,
+	SettingKeyGatewayKimiToolChoiceRetryEnabled,
+	SettingKeyGatewayKimiMaxCompletionTokensRetryEnabled,
 	SettingKeyGatewayDisableRechargeBonusForCustomRateUsers,
 	SettingKeyGatewayFailurePolicyRevision,
 }
@@ -267,6 +279,10 @@ func DefaultGatewaySettings() GatewaySettings {
 		AnthropicClaudeCodeMimicryEnabled:                  false,
 		AnthropicSamplingParameterFilterEnabled:            false,
 		AnthropicSamplingParameterFilterModels:             []string{},
+		KimiSamplingParameterRetryEnabled:                  false,
+		KimiReasoningEffortRetryEnabled:                    false,
+		KimiToolChoiceRetryEnabled:                         false,
+		KimiMaxCompletionTokensRetryEnabled:                false,
 		DisableRechargeBonusForCustomRateUsers:             false,
 		FailurePolicyRevision:                              DefaultGatewayFailurePolicyRevision,
 	}
@@ -385,6 +401,10 @@ func (s *SettingService) UpdateGatewaySettings(ctx context.Context, input Gatewa
 		SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled:                  strconv.FormatBool(input.AnthropicClaudeCodeMimicryEnabled),
 		SettingKeyGatewayAnthropicSamplingParameterFilterEnabled:            strconv.FormatBool(input.AnthropicSamplingParameterFilterEnabled),
 		SettingKeyGatewayAnthropicSamplingParameterFilterModels:             string(filterModelsJSON),
+		SettingKeyGatewayKimiSamplingParameterRetryEnabled:                  strconv.FormatBool(input.KimiSamplingParameterRetryEnabled),
+		SettingKeyGatewayKimiReasoningEffortRetryEnabled:                    strconv.FormatBool(input.KimiReasoningEffortRetryEnabled),
+		SettingKeyGatewayKimiToolChoiceRetryEnabled:                         strconv.FormatBool(input.KimiToolChoiceRetryEnabled),
+		SettingKeyGatewayKimiMaxCompletionTokensRetryEnabled:                strconv.FormatBool(input.KimiMaxCompletionTokensRetryEnabled),
 		SettingKeyGatewayDisableRechargeBonusForCustomRateUsers:             strconv.FormatBool(input.DisableRechargeBonusForCustomRateUsers),
 	}
 	var revision int64
@@ -540,6 +560,10 @@ func parseGatewaySettings(values map[string]string) GatewaySettings {
 	if raw, ok := values[SettingKeyGatewayAnthropicSamplingParameterFilterEnabled]; ok {
 		settings.AnthropicSamplingParameterFilterEnabled = strings.EqualFold(strings.TrimSpace(raw), "true")
 	}
+	settings.KimiSamplingParameterRetryEnabled = strings.EqualFold(strings.TrimSpace(values[SettingKeyGatewayKimiSamplingParameterRetryEnabled]), "true")
+	settings.KimiReasoningEffortRetryEnabled = strings.EqualFold(strings.TrimSpace(values[SettingKeyGatewayKimiReasoningEffortRetryEnabled]), "true")
+	settings.KimiToolChoiceRetryEnabled = strings.EqualFold(strings.TrimSpace(values[SettingKeyGatewayKimiToolChoiceRetryEnabled]), "true")
+	settings.KimiMaxCompletionTokensRetryEnabled = strings.EqualFold(strings.TrimSpace(values[SettingKeyGatewayKimiMaxCompletionTokensRetryEnabled]), "true")
 	if raw, ok := values[SettingKeyGatewayAnthropicSamplingParameterFilterModels]; ok && strings.TrimSpace(raw) != "" {
 		var models []string
 		if err := json.Unmarshal([]byte(raw), &models); err == nil {

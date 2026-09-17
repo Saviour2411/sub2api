@@ -171,7 +171,7 @@ func (s *OpenAIGatewayService) resolveCCFallbackTarget(account *Account) (apiKey
 // 统一由 handleOpenAIUpstreamTransportError 归一为 failover。
 //
 // userAgent 为空时保留默认 UA；Grok 的默认 UA 兜底由调用方解析后传入。
-func (s *OpenAIGatewayService) sendCCUpstreamRequest(
+func (s *OpenAIGatewayService) sendCCUpstreamRequestOnce(
 	ctx context.Context,
 	c *gin.Context,
 	account *Account,
