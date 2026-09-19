@@ -1033,6 +1033,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				var streamFailure *service.AnthropicStreamFailure
 				var safeFailover *service.UpstreamFailoverError
 				if err != nil && (errors.As(err, &streamFailure) || (retry.Started() && errors.As(err, &safeFailover))) {
+					if streamFailure != nil && streamFailure.HTTPStatus != 0 {
+						fs.RecordOutcomeError(c.Request.Context(), h.gatewayService, account.ID, err, result != nil && result.ClientDisconnect)
+					}
 					if safeFailover != nil {
 						if safeFailover.FirstTokenTimeout {
 							fs.FailedAccountIDs[account.ID] = struct{}{}

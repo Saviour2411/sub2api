@@ -44,6 +44,7 @@ export interface DailyCheckinSettings {
 
 export interface GatewaySettings {
   anthropic_stream_safe_retry_enabled: boolean
+  anthropic_stream_safe_retry_early_keepalive_enabled: boolean
   anthropic_stream_safe_retry_max_retries: number
   anthropic_stream_safe_retry_total_wait_seconds: number
   anthropic_stream_safe_retry_first_content_timeout_seconds: number

@@ -127,6 +127,7 @@ function settingsFixture(): CustomFeatureSettings {
     },
     gateway: {
       anthropic_stream_safe_retry_enabled: false,
+      anthropic_stream_safe_retry_early_keepalive_enabled: false,
       anthropic_stream_safe_retry_max_retries: 2,
       anthropic_stream_safe_retry_total_wait_seconds: 300,
       anthropic_stream_safe_retry_first_content_timeout_seconds: 180,
@@ -250,6 +251,7 @@ describe('admin CustomFeaturesView', () => {
 
     expect(updateGateway).toHaveBeenCalledWith({
       anthropic_stream_safe_retry_enabled: false,
+      anthropic_stream_safe_retry_early_keepalive_enabled: false,
       anthropic_stream_safe_retry_max_retries: 2,
       anthropic_stream_safe_retry_total_wait_seconds: 300,
       anthropic_stream_safe_retry_first_content_timeout_seconds: 180,
@@ -307,13 +309,16 @@ describe('admin CustomFeaturesView', () => {
     await flushPromises()
     await wrapper.get('[data-test="custom-feature-tab-gateway"]').trigger('click')
     expect(wrapper.get('[data-test="gateway-stream-safe-retry-enabled"]').text()).toBe('off')
+    expect(wrapper.get('[data-test="gateway-stream-safe-retry-early-keepalive"]').attributes('disabled')).toBeDefined()
     await wrapper.get('[data-test="gateway-stream-safe-retry-enabled"]').trigger('click')
+    await wrapper.get('[data-test="gateway-stream-safe-retry-early-keepalive"]').trigger('click')
     await wrapper.get('[data-test="gateway-stream-safe-retry-max-retries"]').setValue(1)
     await wrapper.get('[data-test="gateway-stream-safe-retry-budget"]').setValue(240)
     await wrapper.get('[data-test="gateway-form"]').trigger('submit')
     await flushPromises()
     expect(updateGateway).toHaveBeenCalledWith(expect.objectContaining({
       anthropic_stream_safe_retry_enabled: true,
+      anthropic_stream_safe_retry_early_keepalive_enabled: true,
       anthropic_stream_safe_retry_max_retries: 1,
       anthropic_stream_safe_retry_total_wait_seconds: 240,
       anthropic_stream_safe_retry_first_content_timeout_seconds: 180,
@@ -376,6 +381,7 @@ describe('admin CustomFeaturesView', () => {
     const legacySettings = settingsFixture()
     const legacyGateway: Partial<GatewaySettings> = { ...legacySettings.gateway }
     delete legacyGateway.anthropic_stream_safe_retry_enabled
+    delete legacyGateway.anthropic_stream_safe_retry_early_keepalive_enabled
     delete legacyGateway.anthropic_stream_safe_retry_max_retries
     delete legacyGateway.anthropic_stream_safe_retry_total_wait_seconds
     delete legacyGateway.anthropic_stream_safe_retry_first_content_timeout_seconds

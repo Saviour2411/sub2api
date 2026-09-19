@@ -22,6 +22,7 @@ type AnthropicStreamFailure struct {
 	Kind       string
 	Cause      error
 	Replayable bool
+	HTTPStatus int
 }
 
 func (e *AnthropicStreamFailure) Error() string {
@@ -50,6 +51,9 @@ func (e *AnthropicStreamFailure) Error() string {
 }
 func (e *AnthropicStreamFailure) Unwrap() error { return e.Cause }
 func (e *AnthropicStreamFailure) ClientStatus() int {
+	if e.HTTPStatus >= 400 && e.HTTPStatus <= 599 {
+		return e.HTTPStatus
+	}
 	if e.Kind == "idle_timeout" || e.Kind == "budget_exhausted" || e.Kind == "first_content_timeout" {
 		return http.StatusGatewayTimeout
 	}
@@ -68,6 +72,7 @@ type AnthropicStreamDiagnostic struct {
 	LastEventType         string      `json:"last_event_type,omitempty"`
 	TerminalComplete      bool        `json:"terminal_complete"`
 	OutputCommitted       bool        `json:"output_committed"`
+	EarlyKeepaliveSent    bool        `json:"early_keepalive_sent,omitempty"`
 	PreludeBytes          int         `json:"prelude_bytes"`
 	UpstreamBytes         int64       `json:"upstream_bytes"`
 	Heartbeats            int         `json:"heartbeats"`
@@ -87,26 +92,27 @@ type AnthropicStreamDiagnostic struct {
 // AnthropicStreamRetryState 跨账号持有同一份预算；所有计时与取消回调只访问受锁状态。
 // waitCtx 没有固定 deadline，首个内容提交后停止计时，不会误杀后续长流。
 type AnthropicStreamRetryState struct {
-	mu            sync.Mutex
-	settings      GatewaySettings
-	clientCtx     context.Context
-	waitCtx       context.Context
-	cancel        context.CancelCauseFunc
-	timer         *time.Timer
-	clientStop    func() bool
-	started       time.Time
-	committed     bool
-	closed        bool
-	replays       int
-	dispatches    int
-	lastAccountID int64
-	pending       bool
-	preferSame    bool
-	allowSame     bool
-	sameTried     map[int64]bool
-	failed        map[int64]struct{}
-	diagnostics   []*AnthropicStreamDiagnostic
-	attemptUsage  *ForwardResult
+	mu                 sync.Mutex
+	settings           GatewaySettings
+	clientCtx          context.Context
+	waitCtx            context.Context
+	cancel             context.CancelCauseFunc
+	timer              *time.Timer
+	clientStop         func() bool
+	started            time.Time
+	committed          bool
+	earlyKeepaliveSent bool
+	closed             bool
+	replays            int
+	dispatches         int
+	lastAccountID      int64
+	pending            bool
+	preferSame         bool
+	allowSame          bool
+	sameTried          map[int64]bool
+	failed             map[int64]struct{}
+	diagnostics        []*AnthropicStreamDiagnostic
+	attemptUsage       *ForwardResult
 }
 
 func newAnthropicStreamRetryState(ctx context.Context, settings GatewaySettings) *AnthropicStreamRetryState {
@@ -196,6 +202,41 @@ func (r *AnthropicStreamRetryState) LastAccountID() int64 {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.lastAccountID
+}
+
+// EarlyKeepaliveSent 只表示 HTTP 响应已开始，不解除内容前的重试资格。
+func (r *AnthropicStreamRetryState) EarlyKeepaliveSent() bool {
+	if r == nil {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.earlyKeepaliveSent
+}
+
+func (r *AnthropicStreamRetryState) markEarlyKeepaliveSent() {
+	r.mu.Lock()
+	r.earlyKeepaliveSent = true
+	r.mu.Unlock()
+}
+
+// 提前保活后 HTTP 状态已经固化，非重试 HTTP 错误交由 handler 发送 SSE 终止错误。
+func earlyAnthropicStreamHTTPFailure(c *gin.Context, account *Account, status int, body []byte) error {
+	retry := AnthropicStreamRetryFromGin(c)
+	if !retry.EarlyKeepaliveSent() {
+		return nil
+	}
+	clientStatus := http.StatusBadGateway
+	switch status {
+	case http.StatusBadRequest, http.StatusTooManyRequests:
+		clientStatus = status
+	case 529:
+		clientStatus = http.StatusServiceUnavailable
+	}
+	if mapped, _, _, matched := applyErrorPassthroughRule(c, account.Platform, status, body, clientStatus, "upstream_error", "上游请求失败"); matched {
+		clientStatus = mapped
+	}
+	return &AnthropicStreamFailure{Kind: "upstream_http_error", HTTPStatus: clientStatus}
 }
 func (r *AnthropicStreamRetryState) remainingLocked() time.Duration {
 	if r.started.IsZero() {
@@ -332,6 +373,7 @@ func (r *AnthropicStreamRetryState) Diagnostic(d *AnthropicStreamDiagnostic) {
 	}
 	d.Attempt = r.dispatches
 	d.OutputCommitted = r.committed
+	d.EarlyKeepaliveSent = r.earlyKeepaliveSent
 	if !r.started.IsZero() {
 		d.ElapsedMs = time.Since(r.started).Milliseconds()
 	}

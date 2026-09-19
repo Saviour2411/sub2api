@@ -18,6 +18,7 @@
           <p>尝试 {{ row.attempt }} · 账号 {{ row.account }} · {{ row.decision }} · {{ row.reason }} <span v-if="row.recovered">（后续已恢复）</span></p>
           <p class="break-all font-mono">上游请求 ID：{{ row.upstreamRequestId || '—' }} · 时间：{{ row.time ? new Date(row.time).toISOString() : '—' }}</p>
           <p>实际上游 HTTP：{{ row.upstreamStatus }} · 客户端 HTTP：{{ row.wireStatus }} · 逻辑错误：{{ row.logicalStatus }}</p>
+          <p v-if="row.earlyKeepaliveSent">提前 JSON 保活：已发送</p>
           <p>最后完整事件：{{ row.event || '—' }} · 完整终止：{{ row.terminal ? '是' : '否' }} · 已交付内容：{{ row.committed ? '是' : '否' }}</p>
           <p>前导缓存：{{ row.preludeBytes }} 字节 · 未完成帧：{{ row.pendingFrameBytes }} 字节 · 见过终止标记：{{ row.terminalCandidate ? '是' : '否' }} · 已等待：{{ row.elapsedMs }} ms · 剩余预算：{{ row.remainingMs }} ms · 上游空闲：{{ row.lastReadAgeMs }} ms</p>
         </div>

@@ -118,7 +118,7 @@ func terminalStreamPayload(tester *testing.T, encoding, payload string) []byte {
 	return encoded
 }
 
-func terminalStreamHandler(tester *testing.T, baseURL string, safeRetry bool, firstToken int) (http.Handler, *safeHandlerUsageRepo) {
+func terminalStreamHandler(tester *testing.T, baseURL string, safeRetry bool, firstToken int, earlyKeepalive ...bool) (http.Handler, *safeHandlerUsageRepo) {
 	tester.Helper()
 	groupID := int64(41)
 	group := &service.Group{ID: groupID, Hydrated: true, Platform: service.PlatformAnthropic, Status: service.StatusActive, RateMultiplier: 1}
@@ -134,10 +134,11 @@ func terminalStreamHandler(tester *testing.T, baseURL string, safeRetry bool, fi
 	cfg.Gateway.MaxLineSize = 8 << 20
 	cfg.Gateway.StreamDataIntervalTimeout = 180
 	settings := service.NewSettingService(&safeHandlerSettingsRepo{values: map[string]string{
-		service.SettingKeyGatewayAnthropicStreamSafeRetryEnabled:          strconv.FormatBool(safeRetry),
-		service.SettingKeyGatewayAnthropicStreamSafeRetryMaxRetries:       "2",
-		service.SettingKeyGatewayAnthropicStreamSafeRetryTotalWaitSeconds: "300",
-		service.SettingKeyGatewayFirstTokenTimeoutSeconds:                 strconv.Itoa(firstToken),
+		service.SettingKeyGatewayAnthropicStreamSafeRetryEarlyKeepaliveEnabled: strconv.FormatBool(len(earlyKeepalive) > 0 && earlyKeepalive[0]),
+		service.SettingKeyGatewayAnthropicStreamSafeRetryEnabled:               strconv.FormatBool(safeRetry),
+		service.SettingKeyGatewayAnthropicStreamSafeRetryMaxRetries:            "2",
+		service.SettingKeyGatewayAnthropicStreamSafeRetryTotalWaitSeconds:      "300",
+		service.SettingKeyGatewayFirstTokenTimeoutSeconds:                      strconv.Itoa(firstToken),
 	}}, cfg)
 	rate := service.NewRateLimitService(nil, nil, cfg, nil, nil)
 	rate.SetSettingService(settings)

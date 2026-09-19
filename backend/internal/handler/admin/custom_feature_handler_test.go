@@ -228,6 +228,7 @@ func TestCustomFeatureHandler_KimiCompatibilityPartialUpdate(t *testing.T) {
 
 func TestCustomFeatureHandler_StreamSafeRetryCompatibilityAndValidation(t *testing.T) {
 	repo := &customFeatureHandlerRepoStub{values: map[string]string{
+		service.SettingKeyGatewayAnthropicStreamSafeRetryEarlyKeepaliveEnabled:      "true",
 		service.SettingKeyGatewayAnthropicStreamSafeRetryEnabled:                    "true",
 		service.SettingKeyGatewayAnthropicStreamSafeRetryMaxRetries:                 "1",
 		service.SettingKeyGatewayAnthropicStreamSafeRetryTotalWaitSeconds:           "240",
@@ -242,6 +243,7 @@ func TestCustomFeatureHandler_StreamSafeRetryCompatibilityAndValidation(t *testi
 		return recorder
 	}
 	require.Equal(t, http.StatusOK, send(`{"first_token_timeout_seconds":45}`).Code)
+	require.Equal(t, "true", repo.values[service.SettingKeyGatewayAnthropicStreamSafeRetryEarlyKeepaliveEnabled])
 	require.Equal(t, "true", repo.values[service.SettingKeyGatewayAnthropicStreamSafeRetryEnabled])
 	require.Equal(t, "1", repo.values[service.SettingKeyGatewayAnthropicStreamSafeRetryMaxRetries])
 	require.Equal(t, "240", repo.values[service.SettingKeyGatewayAnthropicStreamSafeRetryTotalWaitSeconds])
@@ -256,4 +258,6 @@ func TestCustomFeatureHandler_StreamSafeRetryCompatibilityAndValidation(t *testi
 	require.Equal(t, http.StatusOK, send(`{"anthropic_stream_safe_retry_enabled":false,"anthropic_stream_safe_retry_max_retries":0}`).Code)
 	require.Equal(t, "false", repo.values[service.SettingKeyGatewayAnthropicStreamSafeRetryEnabled])
 	require.Equal(t, "0", repo.values[service.SettingKeyGatewayAnthropicStreamSafeRetryMaxRetries])
+	require.Equal(t, http.StatusOK, send(`{"anthropic_stream_safe_retry_early_keepalive_enabled":false}`).Code)
+	require.Equal(t, "false", repo.values[service.SettingKeyGatewayAnthropicStreamSafeRetryEarlyKeepaliveEnabled])
 }

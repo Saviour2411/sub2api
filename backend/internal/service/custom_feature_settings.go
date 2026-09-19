@@ -80,6 +80,7 @@ type DailyCheckinSettings struct {
 // GatewaySettings 是二开功能中的网关运行配置。
 type GatewaySettings struct {
 	AnthropicStreamSafeRetryEnabled                    bool     `json:"anthropic_stream_safe_retry_enabled"`
+	AnthropicStreamSafeRetryEarlyKeepaliveEnabled      bool     `json:"anthropic_stream_safe_retry_early_keepalive_enabled"`
 	AnthropicStreamSafeRetryMaxRetries                 int      `json:"anthropic_stream_safe_retry_max_retries"`
 	AnthropicStreamSafeRetryTotalWaitSeconds           int      `json:"anthropic_stream_safe_retry_total_wait_seconds"`
 	AnthropicStreamSafeRetryFirstContentTimeoutSeconds int      `json:"anthropic_stream_safe_retry_first_content_timeout_seconds"`
@@ -132,6 +133,7 @@ type CustomFeatureSettings struct {
 }
 
 var gatewaySettingKeys = []string{
+	SettingKeyGatewayAnthropicStreamSafeRetryEarlyKeepaliveEnabled,
 	SettingKeyGatewayAnthropicStreamSafeRetryFirstContentTimeoutSeconds,
 	SettingKeyGatewayFirstTokenTimeoutScope,
 	SettingKeyGatewayFirstTokenTimeoutGroupIDs,
@@ -160,6 +162,7 @@ var gatewaySettingKeys = []string{
 }
 
 var customFeatureSettingKeys = []string{
+	SettingKeyGatewayAnthropicStreamSafeRetryEarlyKeepaliveEnabled,
 	SettingKeyGatewayAnthropicStreamSafeRetryFirstContentTimeoutSeconds,
 	SettingKeyGatewayFirstTokenTimeoutScope,
 	SettingKeyGatewayFirstTokenTimeoutGroupIDs,
@@ -383,6 +386,7 @@ func (s *SettingService) UpdateGatewaySettings(ctx context.Context, input Gatewa
 	}
 	updates := map[string]string{
 		SettingKeyGatewayAnthropicStreamSafeRetryEnabled:                    strconv.FormatBool(input.AnthropicStreamSafeRetryEnabled),
+		SettingKeyGatewayAnthropicStreamSafeRetryEarlyKeepaliveEnabled:      strconv.FormatBool(input.AnthropicStreamSafeRetryEarlyKeepaliveEnabled),
 		SettingKeyGatewayAnthropicStreamSafeRetryFirstContentTimeoutSeconds: strconv.Itoa(input.AnthropicStreamSafeRetryFirstContentTimeoutSeconds),
 		SettingKeyGatewayAnthropicStreamSafeRetryMaxRetries:                 strconv.Itoa(input.AnthropicStreamSafeRetryMaxRetries),
 		SettingKeyGatewayAnthropicStreamSafeRetryTotalWaitSeconds:           strconv.Itoa(input.AnthropicStreamSafeRetryTotalWaitSeconds),
@@ -498,6 +502,7 @@ func ApplyGatewayPoolModeDefaults(accountType string, credentials map[string]any
 func parseGatewaySettings(values map[string]string) GatewaySettings {
 	settings := DefaultGatewaySettings()
 	settings.AnthropicStreamSafeRetryEnabled = strings.EqualFold(strings.TrimSpace(values[SettingKeyGatewayAnthropicStreamSafeRetryEnabled]), "true")
+	settings.AnthropicStreamSafeRetryEarlyKeepaliveEnabled = strings.EqualFold(strings.TrimSpace(values[SettingKeyGatewayAnthropicStreamSafeRetryEarlyKeepaliveEnabled]), "true")
 	if n, err := strconv.Atoi(values[SettingKeyGatewayAnthropicStreamSafeRetryMaxRetries]); err == nil && n >= 0 && n <= 5 {
 		settings.AnthropicStreamSafeRetryMaxRetries = n
 	}

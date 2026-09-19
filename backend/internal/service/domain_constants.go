@@ -410,6 +410,7 @@ const (
 
 	// 二开功能 - 网关配置。
 	SettingKeyGatewayAnthropicStreamSafeRetryEnabled                    = "gateway_anthropic_stream_safe_retry_enabled"
+	SettingKeyGatewayAnthropicStreamSafeRetryEarlyKeepaliveEnabled      = "gateway_anthropic_stream_safe_retry_early_keepalive_enabled"
 	SettingKeyGatewayAnthropicStreamSafeRetryMaxRetries                 = "gateway_anthropic_stream_safe_retry_max_retries"
 	SettingKeyGatewayAnthropicStreamSafeRetryTotalWaitSeconds           = "gateway_anthropic_stream_safe_retry_total_wait_seconds"
 	SettingKeyGatewayAnthropicStreamSafeRetryFirstContentTimeoutSeconds = "gateway_anthropic_stream_safe_retry_first_content_timeout_seconds"

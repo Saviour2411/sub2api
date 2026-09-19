@@ -17,6 +17,8 @@ import (
 
 type anthropicFrameKind uint8
 
+const anthropicStreamKeepaliveFrame = "event: ping\ndata: {\"type\":\"ping\"}\n\n"
+
 const (
 	anthropicFramePrelude anthropicFrameKind = iota
 	anthropicFrameContent
@@ -104,11 +106,15 @@ func (s *GatewayService) handleGuardedAnthropicStream(ctx context.Context, resp 
 	responseStarted := time.Now()
 	retry.startResponse()
 	headerSnapshot := c.Writer.Header().Clone()
-	writeAnthropicPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	earlyKeepalive := retry.settings.AnthropicStreamSafeRetryEarlyKeepaliveEnabled
+	// 提前响应时只交付网关通用头，不能把失败尝试的请求 ID、限流信息固化给客户端。
+	if !earlyKeepalive {
+		writeAnthropicPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	}
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("X-Accel-Buffering", "no")
-	if id := resp.Header.Get("x-request-id"); id != "" {
+	if id := resp.Header.Get("x-request-id"); !earlyKeepalive && id != "" {
 		c.Header("x-request-id", id)
 	}
 	if s.rateLimitService != nil {
@@ -126,7 +132,7 @@ func (s *GatewayService) handleGuardedAnthropicStream(ctx context.Context, resp 
 	var readBytes atomic.Int64
 	lastRead.Store(time.Now().UnixNano())
 	defer func() {
-		if !retry.Committed() {
+		if !retry.Committed() && !c.Writer.Written() {
 			restoreAnthropicHeader(c.Writer.Header(), headerSnapshot)
 		}
 		d.PendingFrameBytes = frame.Len()
@@ -210,6 +216,9 @@ func (s *GatewayService) handleGuardedAnthropicStream(ctx context.Context, resp 
 		interval = time.Duration(s.cfg.Gateway.StreamDataIntervalTimeout) * time.Second
 		keepalive = time.Duration(s.cfg.Gateway.StreamKeepaliveInterval) * time.Second
 	}
+	if earlyKeepalive && keepalive <= 0 {
+		keepalive = 10 * time.Second
+	}
 	var idleTimer, pingTimer *time.Timer
 	var idleCh, pingCh <-chan time.Time
 	if interval > 0 {
@@ -253,6 +262,25 @@ func (s *GatewayService) handleGuardedAnthropicStream(ctx context.Context, resp 
 		}
 		return &AnthropicStreamFailure{Kind: kind, Cause: cause, Replayable: replayable && !retry.Committed() && !result.clientDisconnect}
 	}
+	writeEarlyKeepalive := func() error {
+		if err := retry.Check(); err != nil {
+			return err
+		}
+		if first != nil && first.currentState() == firstTokenAttemptTimedOut {
+			return errFirstTokenAttemptTimedOut
+		}
+		writeFrame([]byte(anthropicStreamKeepaliveFrame))
+		if result.clientDisconnect {
+			return failure("client_write_error", nil, false)
+		}
+		retry.markEarlyKeepaliveSent()
+		return nil
+	}
+	if earlyKeepalive && !retry.EarlyKeepaliveSent() {
+		if err := writeEarlyKeepalive(); err != nil {
+			return result, err
+		}
+	}
 	for {
 		if !contentDeadline.IsZero() && !time.Now().Before(contentDeadline) {
 			return result, failure("first_content_timeout", nil, true)
@@ -276,9 +304,13 @@ func (s *GatewayService) handleGuardedAnthropicStream(ctx context.Context, resp 
 			}
 			return result, failure("idle_timeout", nil, true)
 		case <-pingCh:
-			// 前导阶段不交付尝试相关心跳；内容交付后继续既有下游保活，且不续上游计时。
-			if retry.Committed() && frame.Len() == 0 {
-				writeFrame([]byte("event: ping\ndata: {\"type\":\"ping\"}\n\n"))
+			// 上游半帧仍在内存中，独立下游保活不会插入未完成的 SSE 事件，也不续上游计时。
+			if earlyKeepalive && !retry.Committed() {
+				if err := writeEarlyKeepalive(); err != nil {
+					return result, err
+				}
+			} else if retry.Committed() && frame.Len() == 0 {
+				writeFrame([]byte(anthropicStreamKeepaliveFrame))
 			}
 			pingTimer.Reset(keepalive)
 		case ev, ok := <-events:

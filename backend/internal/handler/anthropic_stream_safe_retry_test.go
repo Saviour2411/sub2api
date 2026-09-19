@@ -55,11 +55,13 @@ func (r *safeHandlerUsageRepo) Create(_ context.Context, log *service.UsageLog) 
 
 type safeHandlerUpstream struct {
 	service.HTTPUpstream
-	bodies       []string
-	accounts     []int64
-	requests     [][]byte
-	responseBody func(*http.Request, int) io.ReadCloser
-	runRequest   func(func())
+	earlyKeepalive bool
+	statuses       []int
+	bodies         []string
+	accounts       []int64
+	requests       [][]byte
+	responseBody   func(*http.Request, int) io.ReadCloser
+	runRequest     func(func())
 }
 
 func (u *safeHandlerUpstream) DoWithTLS(req *http.Request, _ string, accountID int64, _ int, _ *tlsfingerprint.Profile) (*http.Response, error) {
@@ -78,7 +80,11 @@ func (u *safeHandlerUpstream) DoWithTLS(req *http.Request, _ string, accountID i
 	if u.responseBody != nil {
 		responseBody = u.responseBody(req, i)
 	}
-	return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}, "X-Request-Id": {fmt.Sprintf("upstream-%d", i)}}, Body: responseBody}, nil
+	status := http.StatusOK
+	if i < len(u.statuses) {
+		status = u.statuses[i]
+	}
+	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": {"text/event-stream"}, "X-Request-Id": {fmt.Sprintf("upstream-%d", i)}}, Body: responseBody}, nil
 }
 
 func runSafeHandlerFixture(t *testing.T, upstream *safeHandlerUpstream, oneAccount bool, inspect ...func(*gin.Context)) (*httptest.ResponseRecorder, *safeHandlerUsageRepo) {
@@ -100,7 +106,8 @@ func runSafeHandlerFixture(t *testing.T, upstream *safeHandlerUpstream, oneAccou
 	cfg.Gateway.MaxLineSize = 8 << 20
 	cfg.Gateway.StreamDataIntervalTimeout = 180
 	settings := service.NewSettingService(&safeHandlerSettingsRepo{values: map[string]string{
-		service.SettingKeyGatewayAnthropicStreamSafeRetryEnabled: "true", service.SettingKeyGatewayAnthropicStreamSafeRetryMaxRetries: "2", service.SettingKeyGatewayAnthropicStreamSafeRetryTotalWaitSeconds: "300", service.SettingKeyGatewayFirstTokenTimeoutSeconds: "0",
+		service.SettingKeyGatewayAnthropicStreamSafeRetryEarlyKeepaliveEnabled: fmt.Sprint(upstream.earlyKeepalive),
+		service.SettingKeyGatewayAnthropicStreamSafeRetryEnabled:               "true", service.SettingKeyGatewayAnthropicStreamSafeRetryMaxRetries: "2", service.SettingKeyGatewayAnthropicStreamSafeRetryTotalWaitSeconds: "300", service.SettingKeyGatewayFirstTokenTimeoutSeconds: "0",
 	}}, cfg)
 	rate := service.NewRateLimitService(nil, nil, cfg, nil, nil)
 	rate.SetSettingService(settings)

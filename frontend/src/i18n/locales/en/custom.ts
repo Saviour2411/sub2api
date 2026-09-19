@@ -396,6 +396,7 @@ export default {
         minutes: 'minutes',
         saved: 'Gateway settings saved',
         streamSafeRetry: {
+          earlyKeepalive: '提前发送 JSON 保活',
           title: 'Claude passthrough stream safe retry',
           description: 'Applies only to Claude API key passthrough streams. Disabled by default. Retries empty streams, EOF, idle timeouts and first-content timeouts only before output is committed.',
           maxRetries: 'Additional retries (0–5)',

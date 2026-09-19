@@ -396,6 +396,7 @@ export default {
         minutes: '分钟',
         saved: '网关配置已保存',
         streamSafeRetry: {
+          earlyKeepalive: '提前发送 JSON 保活',
           title: 'Claude 透传流安全重试',
           description: '仅适用于 Claude API Key 透传流。默认关闭；尚未交付内容时，有限重试空流、EOF、流空闲及首有效内容超时。',
           maxRetries: '额外重试次数（0–5）',

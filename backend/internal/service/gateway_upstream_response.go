@@ -415,6 +415,9 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 	if shouldDisable {
 		return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: body, RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode)}
 	}
+	if err := earlyAnthropicStreamHTTPFailure(c, account, resp.StatusCode, body); err != nil {
+		return nil, outcomeError(err)
+	}
 
 	MarkResponseCommitted(c)
 
@@ -541,7 +544,9 @@ func (s *GatewayService) handleFailoverSideEffects(ctx context.Context, resp *ht
 // OAuth 403：标记账号异常
 // API Key 未配置错误码：仅返回错误，不标记账号
 func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *http.Response, c *gin.Context, account *Account) (*ForwardResult, error) {
-	MarkResponseCommitted(c)
+	if !AnthropicStreamRetryFromGin(c).EarlyKeepaliveSent() {
+		MarkResponseCommitted(c)
+	}
 	// Capture upstream error body before side-effects consume the stream.
 	respBody, _ := s.readUpstreamErrorBody(resp)
 	outcomeError := func(err error) error {
@@ -587,6 +592,9 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 		Message:            upstreamMsg,
 		Detail:             upstreamDetail,
 	})
+	if err := earlyAnthropicStreamHTTPFailure(c, account, resp.StatusCode, respBody); err != nil {
+		return nil, outcomeError(err)
+	}
 
 	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
 		logger.LegacyPrintf("service.gateway",

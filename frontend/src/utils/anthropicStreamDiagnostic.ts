@@ -10,6 +10,7 @@ export interface AnthropicStreamDiagnosticRow {
   event: string
   terminal: boolean
   committed: boolean
+  earlyKeepaliveSent: boolean
   pendingFrameBytes: number
   terminalCandidate: boolean
   preludeBytes: number
@@ -28,7 +29,8 @@ const reasons: Record<string, string> = {
   prelude_overflow: '缓存超限', idle_timeout: '上游流空闲超时', empty_stream: '空流',
   missing_terminal: '缺终止事件', truncated_event: '事件不完整', invalid_json: '事件JSON无效',
   invalid_event: '事件无效', event_type_mismatch: '事件类型不一致', upstream_error_event: '上游错误事件',
-  stream_read_error: '上游流读取失败', first_token_timeout: '首 Token 超时', first_content_timeout: '首有效内容超时'
+  stream_read_error: '上游流读取失败', first_token_timeout: '首 Token 超时', first_content_timeout: '首有效内容超时',
+  client_write_error: '客户端写入失败', upstream_http_error: '上游HTTP错误'
 }
 export function parseAnthropicStreamDiagnostics(raw?: string): AnthropicStreamDiagnosticRow[] {
   if (!raw) return []
@@ -45,6 +47,7 @@ export function parseAnthropicStreamDiagnostics(raw?: string): AnthropicStreamDi
         time: number(event.at_unix_ms), upstreamStatus: number(event.upstream_status_code), wireStatus: number(d.wire_status),
         logicalStatus: number(d.logical_status), event: text(d.last_event_type), terminal: d.terminal_complete === true,
         committed: d.output_committed === true, pendingFrameBytes: number(d.pending_frame_bytes),
+        earlyKeepaliveSent: d.early_keepalive_sent === true,
         terminalCandidate: d.terminal_candidate_seen === true, preludeBytes: number(d.prelude_bytes), elapsedMs: number(d.elapsed_ms),
         remainingMs: number(d.budget_remaining_ms), lastReadAgeMs: number(d.last_read_age_ms),
         decision: d.decision === 'retry' ? '继续重试' : '停止重试', reason: reasons[reason] || reason,

@@ -17,6 +17,7 @@ import {
 
 const gatewaySettings: GatewaySettings = {
   anthropic_stream_safe_retry_enabled: false,
+  anthropic_stream_safe_retry_early_keepalive_enabled: false,
   anthropic_stream_safe_retry_max_retries: 2,
   anthropic_stream_safe_retry_total_wait_seconds: 300,
   anthropic_stream_safe_retry_first_content_timeout_seconds: 180,

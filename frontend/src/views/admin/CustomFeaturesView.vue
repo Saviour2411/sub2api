@@ -196,6 +196,10 @@
               </div>
               <Toggle v-model="gateway.anthropic_stream_safe_retry_enabled" data-test="gateway-stream-safe-retry-enabled" />
             </div>
+            <div class="mt-4 flex items-center justify-between gap-4">
+              <span id="gateway-stream-safe-early-keepalive-label" class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.customFeatures.gateway.streamSafeRetry.earlyKeepalive') }}</span>
+              <Toggle v-model="gateway.anthropic_stream_safe_retry_early_keepalive_enabled" aria-labelledby="gateway-stream-safe-early-keepalive-label" :disabled="!gateway.anthropic_stream_safe_retry_enabled" data-test="gateway-stream-safe-retry-early-keepalive" />
+            </div>
             <div class="mt-4 grid gap-4 sm:grid-cols-2">
               <div>
                 <label class="input-label" for="gateway-stream-safe-retries">{{ t('admin.customFeatures.gateway.streamSafeRetry.maxRetries') }}</label>
@@ -955,6 +959,7 @@ const kimiCompatibilityOptions = [
 
 const gateway = reactive<GatewaySettings>({
   anthropic_stream_safe_retry_enabled: false,
+  anthropic_stream_safe_retry_early_keepalive_enabled: false,
   anthropic_stream_safe_retry_max_retries: 2,
   anthropic_stream_safe_retry_total_wait_seconds: 300,
   anthropic_stream_safe_retry_first_content_timeout_seconds: 180,
@@ -1038,6 +1043,7 @@ function cloneGateway(settings?: Partial<GatewaySettings>): GatewaySettings {
       ...(settings?.auto_managed_probe_backoff_minutes ?? [5, 10, 15, 30, 60])
     ],
     anthropic_stream_safe_retry_enabled: settings?.anthropic_stream_safe_retry_enabled ?? false,
+    anthropic_stream_safe_retry_early_keepalive_enabled: settings?.anthropic_stream_safe_retry_early_keepalive_enabled ?? false,
     anthropic_stream_safe_retry_max_retries: settings?.anthropic_stream_safe_retry_max_retries ?? 2,
     anthropic_stream_safe_retry_total_wait_seconds: settings?.anthropic_stream_safe_retry_total_wait_seconds ?? 300,
     anthropic_stream_safe_retry_first_content_timeout_seconds: settings?.anthropic_stream_safe_retry_first_content_timeout_seconds ?? 180,
@@ -1304,6 +1310,7 @@ async function saveGateway() {
       additional_failover_status_codes: validation.additionalFailoverStatusCodes,
       auto_managed_probe_backoff_minutes: gateway.auto_managed_probe_backoff_minutes.map(Number),
       anthropic_stream_safe_retry_enabled: gateway.anthropic_stream_safe_retry_enabled,
+      anthropic_stream_safe_retry_early_keepalive_enabled: gateway.anthropic_stream_safe_retry_early_keepalive_enabled,
       anthropic_stream_safe_retry_max_retries: Number(gateway.anthropic_stream_safe_retry_max_retries),
       anthropic_stream_safe_retry_total_wait_seconds: Number(gateway.anthropic_stream_safe_retry_total_wait_seconds),
       anthropic_stream_safe_retry_first_content_timeout_seconds: Number(gateway.anthropic_stream_safe_retry_first_content_timeout_seconds),
