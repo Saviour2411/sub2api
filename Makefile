@@ -29,6 +29,10 @@ FRONTEND_CRITICAL_VITEST := \
 	src/utils/__tests__/usageOutputRate.spec.ts \
 	src/components/admin/usage/__tests__/UsageTable.spec.ts \
 	src/api/__tests__/balanceQuery.spec.ts \
+	src/api/__tests__/admin.userCustomizations.spec.ts \
+	src/api/__tests__/admin.system.spec.ts \
+	src/components/common/__tests__/VersionBadge.spec.ts \
+	src/components/common/__tests__/ConfirmDialog.spec.ts \
 	src/components/admin/user/__tests__/UserCustomizationsPanel.spec.ts \
 	src/views/public/__tests__/BalanceQueryView.spec.ts \
 	src/utils/__tests__/canvasBridge.spec.ts

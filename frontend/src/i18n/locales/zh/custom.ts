@@ -1,7 +1,7 @@
 export default {
   userCustomization: {
     title: '用户定制', paymentMethods: '全局充值方式', methodKey: '名称，例如币安 ID', methodValue: '收款信息',
-    noPaymentMethods: '暂未配置充值方式', moveUp: '上移', moveDown: '下移', search: '搜索用户名或用户 ID',
+    noPaymentMethods: '暂未配置充值方式', moveUp: '上移', moveDown: '下移', search: '搜索用户名、邮箱或用户 ID',
     user: '用户', queryLink: '查询链接', autoCredit: '自动授信', noUsers: '暂无用户', totalUsers: '共 {count} 位用户',
     linkActive: '已启用', linkDisabled: '已停用', noLink: '未生成', copyLink: '复制查询链接', generateLink: '生成链接',
     disableLink: '停用', enableLink: '启用', resetLink: '重置链接', configure: '授信配置',

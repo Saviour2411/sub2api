@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/api/admin/userCustomizations', () => ({ default: mocks.api }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => mocks.app }))
 vi.mock('vue-i18n', async (original) => ({ ...await original<typeof import('vue-i18n')>(), useI18n: () => ({ t: (key: string, args?: unknown) => key + (args ? JSON.stringify(args) : '') }) }))
-const user: UserCustomization = { user_id: 7, username: '用户甲', balance: 50, status: 'active', has_link: true, link_enabled: true, link_version: 3, auto_credit_enabled: true, credit_threshold: 1000, credit_amount: 200, credit_generation: 2, credit_used_at: '2026-09-14T00:00:00Z' }
+const user: UserCustomization = { user_id: 7, username: '用户甲', email: 'boxinsmart@example.test', balance: 50, status: 'active', has_link: true, link_enabled: true, link_version: 3, auto_credit_enabled: true, credit_threshold: 1000, credit_amount: 200, credit_generation: 2, credit_used_at: '2026-09-14T00:00:00Z' }
 const dialogs = {
   BaseDialog: { props: ['show', 'title'], template: '<div v-if="show" data-test="dialog"><slot /><slot name="footer" /></div>' },
   ConfirmDialog: { props: ['show', 'message'], emits: ['confirm', 'cancel'], template: '<div v-if="show" data-test="confirm">{{ message }}<button data-test="confirm-action" @click="$emit(\'confirm\')">确认</button></div>' }
@@ -28,6 +28,43 @@ describe('用户定制管理', () => {
   })
   afterEach(() => wrapper?.unmount())
   const open = async () => { wrapper = mount(UserCustomizationsPanel, { global: { stubs: dialogs } }); await flushPromises(); return wrapper }
+
+  it('搜索去除首尾空白并回到第一页，按提交操作发起请求', async () => {
+    mocks.api.list.mockResolvedValue({ items: [user], total: 41 })
+    const view = await open()
+    await view.get('[aria-label="common.next"]').trigger('click')
+    await flushPromises()
+    expect(mocks.api.list).toHaveBeenLastCalledWith('', 2)
+    await view.get('[aria-label="userCustomization.search"]').setValue('  box  ')
+    expect(mocks.api.list).toHaveBeenCalledTimes(2)
+    await view.get('form').trigger('submit')
+    await flushPromises()
+    expect(mocks.api.list).toHaveBeenLastCalledWith('box', 1)
+    expect(view.get('[data-test="custom-user-7"]').text()).toContain('boxinsmart@example.test')
+  })
+
+  it('用户名为空时在列表、编辑和确认窗口显示邮箱与 ID', async () => {
+    mocks.api.list.mockResolvedValue({ items: [{ ...user, username: '' }], total: 1 })
+    const view = await open()
+    const row = view.get('[data-test="custom-user-7"]')
+    expect(row.text()).toContain(user.email)
+    expect(row.text()).toContain('ID 7')
+    await view.get('[aria-label="userCustomization.configure"]').trigger('click')
+    expect(view.get('[data-test="dialog"]').text()).toContain(user.email)
+    await view.findAll('button').find(button => button.text() === 'userCustomization.restoreCredit')!.trigger('click')
+    expect(view.get('[data-test="confirm"]').text()).toContain(user.email)
+    expect(view.get('[data-test="confirm"]').text()).toContain('"id":7')
+  })
+
+  it('用户名和邮箱同时存在时完整展示，不替换用户名', async () => {
+    const view = await open()
+    const row = view.get('[data-test="custom-user-7"]')
+    expect(row.text()).toContain(user.username)
+    expect(row.text()).toContain(user.email)
+    await view.findAll('button').find(button => button.text() === 'userCustomization.resetLink')!.trigger('click')
+    expect(view.get('[data-test="confirm"]').text()).toContain(user.username)
+    expect(view.get('[data-test="confirm"]').text()).toContain(user.email)
+  })
 
   it('充值方式可排序和保存，内容按键值对提交', async () => {
     const view = await open()

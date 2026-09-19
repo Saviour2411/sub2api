@@ -10,12 +10,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestProvideServiceBuildInfo(t *testing.T) {
+func TestProvidePluginHostInfo(t *testing.T) {
 	in := handler.BuildInfo{
 		Version:   "v-test",
 		BuildType: "release",
 	}
-	out := provideServiceBuildInfo(in)
+	out := providePluginHostInfo(in)
 	require.Equal(t, in.Version, out.Version)
 	require.Equal(t, in.BuildType, out.BuildType)
 }

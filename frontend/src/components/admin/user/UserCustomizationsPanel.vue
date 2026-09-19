@@ -43,7 +43,11 @@
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
             <tr v-for="user in users" :key="user.user_id" :data-test="`custom-user-${user.user_id}`">
-              <td class="max-w-56 p-3"><div class="break-words font-medium text-gray-900 dark:text-white">{{ user.username || `#${user.user_id}` }}</div><div class="text-xs text-gray-500">ID {{ user.user_id }}</div></td>
+              <td class="max-w-56 p-3">
+                <div class="break-words font-medium text-gray-900 dark:text-white">{{ userLabel(user) }}</div>
+                <div v-if="user.username && user.email" class="break-all text-xs text-gray-500">{{ user.email }}</div>
+                <div class="text-xs text-gray-500">ID {{ user.user_id }}</div>
+              </td>
               <td class="p-3 font-medium tabular-nums text-emerald-700 dark:text-emerald-400">{{ money(user.balance) }}</td>
               <td class="p-3">
                 <div class="flex items-center gap-2">
@@ -80,7 +84,10 @@
 
     <BaseDialog :show="editing !== null" :title="t('userCustomization.configure')" @close="closeEditor">
       <form id="user-credit-settings" class="space-y-4" @submit.prevent="saveCredit">
-        <p class="break-words font-medium">{{ editing?.username || `#${editing?.user_id}` }} <span class="text-gray-500">ID {{ editing?.user_id }}</span></p>
+        <div v-if="editing">
+          <p class="break-words font-medium">{{ userLabel(editing) }} <span class="text-gray-500">ID {{ editing.user_id }}</span></p>
+          <p v-if="editing.username && editing.email" class="break-all text-sm text-gray-500">{{ editing.email }}</p>
+        </div>
         <fieldset :disabled="busy" class="space-y-4">
           <label class="flex items-center justify-between gap-4"><span>{{ t('userCustomization.autoCredit') }}</span><Toggle v-model="credit.auto_credit_enabled" /></label>
           <label class="block text-sm">{{ t('userCustomization.threshold') }}<input v-model.number="credit.credit_threshold" type="number" min="0" max="999999999999" step="0.00000001" required class="input mt-1 w-full" /></label>
@@ -121,13 +128,14 @@ const editing = ref<UserCustomization | null>(null)
 const credit = reactive<UserCreditSettings>({ auto_credit_enabled: false, credit_threshold: 1000, credit_amount: 0 })
 const confirmation = ref<{ kind: 'restore' | 'rotate'; user: UserCustomization } | null>(null)
 let requestVersion = 0
+const userLabel = (user: UserCustomization) => user.username || user.email || `#${user.user_id}`
 const money = (value: number) => `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })}`
 const creditStatus = (user: UserCustomization) => t(user.credit_used_at ? 'userCustomization.used' : user.auto_credit_enabled ? 'userCustomization.ready' : 'userCustomization.off')
 const confirmationMessage = computed(() => {
   const action = confirmation.value
   if (!action) return ''
   return t(action.kind === 'restore' ? 'userCustomization.restoreConfirm' : 'userCustomization.resetLinkConfirm', {
-    user: action.user.username || `#${action.user.user_id}`, id: action.user.user_id,
+    user: action.user.username && action.user.email ? `${userLabel(action.user)} (${action.user.email})` : userLabel(action.user), id: action.user.user_id,
     threshold: money(action.user.credit_threshold), amount: money(action.user.credit_amount)
   })
 })

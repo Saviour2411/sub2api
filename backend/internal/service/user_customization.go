@@ -39,6 +39,7 @@ type UserCustomizationInput struct {
 type UserCustomization struct {
 	UserID      int64   `json:"user_id"`
 	Username    string  `json:"username"`
+	Email       string  `json:"email"`
 	Balance     float64 `json:"balance"`
 	Status      string  `json:"status"`
 	HasLink     bool    `json:"has_link"`

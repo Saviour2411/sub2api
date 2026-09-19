@@ -14,14 +14,14 @@ func NewUserCustomizationRepository(db *sql.DB) service.UserCustomizationReposit
 	return &userCustomizationRepository{db: db}
 }
 
-const customizationColumns = `u.id, u.username, u.balance, u.status,
+const customizationColumns = `u.id, u.username, u.email, u.balance, u.status,
     c.link_hash IS NOT NULL, COALESCE(c.link_enabled, FALSE), COALESCE(c.link_version, 0),
     COALESCE(c.auto_credit_enabled, FALSE), COALESCE(c.credit_threshold, 1000),
     COALESCE(c.credit_amount, 0), COALESCE(c.credit_generation, 1), c.credit_used_at`
 
 func scanCustomization(row interface{ Scan(...any) error }) (*service.UserCustomization, error) {
 	var item service.UserCustomization
-	err := row.Scan(&item.UserID, &item.Username, &item.Balance, &item.Status,
+	err := row.Scan(&item.UserID, &item.Username, &item.Email, &item.Balance, &item.Status,
 		&item.HasLink, &item.LinkEnabled, &item.LinkVersion, &item.AutoCreditEnabled,
 		&item.CreditThreshold, &item.CreditAmount, &item.CreditGeneration, &item.CreditUsedAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -31,7 +31,7 @@ func scanCustomization(row interface{ Scan(...any) error }) (*service.UserCustom
 }
 
 func (r *userCustomizationRepository) List(ctx context.Context, search string, page, size int) ([]service.UserCustomization, int64, error) {
-	filter := `u.deleted_at IS NULL AND ($1 = '' OR u.username ILIKE '%' || $1 || '%' OR u.id::text = $1)`
+	filter := `u.deleted_at IS NULL AND ($1 = '' OR u.username ILIKE '%' || $1 || '%' OR u.email ILIKE '%' || $1 || '%' OR u.id::text = $1)`
 	var total int64
 	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users u WHERE `+filter, search).Scan(&total); err != nil {
 		return nil, 0, err

@@ -5,6 +5,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -33,6 +34,117 @@ func customizationUser(t *testing.T, balance float64) int64 {
 
 func enabledCredit(amount float64) service.UserCustomizationInput {
 	return service.UserCustomizationInput{AutoCreditEnabled: true, CreditThreshold: 1000, CreditAmount: amount}
+}
+
+func TestUserCustomizationSearchUsernameEmailAndID(t *testing.T) {
+	ctx := context.Background()
+	repo := NewUserCustomizationRepository(integrationDB)
+	svc := service.NewUserCustomizationService(repo, nil, nil)
+	prefix := fmt.Sprintf("custom-search-%d", time.Now().UnixNano())
+	_, initialTotal, err := repo.List(ctx, "", 1, 20)
+	require.NoError(t, err)
+	_, existingBoxTotal, err := svc.List(ctx, "box", 1, 100)
+	require.NoError(t, err)
+	emailID := customizationUser(t, 10)
+	usernameID := customizationUser(t, 20)
+	deletedID := customizationUser(t, 30)
+	notesID := customizationUser(t, 40)
+	email := "boxinsmart-" + prefix + "@example.test"
+	_, err = integrationDB.Exec(`UPDATE users SET username = '', email = $2 WHERE id = $1`, emailID, email)
+	require.NoError(t, err)
+	_, err = integrationDB.Exec(`UPDATE users SET username = $2, email = $3 WHERE id = $1`, usernameID, "中文查询-MixedUser-"+prefix, "other-"+prefix+"@example.test")
+	require.NoError(t, err)
+	_, err = integrationDB.Exec(`UPDATE users SET username = $2, email = $3, deleted_at = NOW() WHERE id = $1`, deletedID, "中文查询-"+prefix, "boxinsmart-deleted-"+prefix+"@example.test")
+	require.NoError(t, err)
+	_, err = integrationDB.Exec(`UPDATE users SET username = '普通用户', email = $2, notes = $3 WHERE id = $1`, notesID, "plain-"+prefix+"@example.test", "boxinsmart 中文查询")
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		name, search string
+		wantID       int64
+		existing     int64
+	}{
+		{"邮箱前缀", "box", emailID, existingBoxTotal},
+		{"忽略大小写", "BOX", emailID, existingBoxTotal},
+		{"首尾空白", " \tbox\n", emailID, existingBoxTotal},
+		{"完整邮箱", email, emailID, 0},
+		{"邮箱中段", "smart-" + prefix, emailID, 0},
+		{"中文用户名", "中文查询-MixedUser-" + prefix, usernameID, 0},
+		{"用户名中段", "查询-MixedUser-" + prefix, usernameID, 0},
+		{"用户名忽略大小写", "mixeduser-" + prefix, usernameID, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			items, total, listErr := svc.List(ctx, tc.search, 1, 100)
+			require.NoError(t, listErr)
+			require.Equal(t, tc.existing+1, total)
+			require.Len(t, items, int(total))
+			var matched *service.UserCustomization
+			for i := range items {
+				require.NotEqual(t, deletedID, items[i].UserID)
+				require.NotEqual(t, notesID, items[i].UserID)
+				if items[i].UserID == tc.wantID {
+					matched = &items[i]
+				}
+			}
+			require.NotNil(t, matched)
+			if tc.wantID == emailID {
+				require.Empty(t, matched.Username)
+				require.Equal(t, email, matched.Email)
+			}
+		})
+	}
+
+	items, _, err := svc.List(ctx, " "+strconv.FormatInt(emailID, 10)+" ", 1, 100)
+	require.NoError(t, err)
+	ids := make([]int64, len(items))
+	for i := range items {
+		ids[i] = items[i].UserID
+	}
+	require.Contains(t, ids, emailID)
+
+	items, total, err := svc.List(ctx, prefix+"-absent", 1, 20)
+	require.NoError(t, err)
+	require.Empty(t, items)
+	require.Zero(t, total)
+	_, total, err = svc.List(ctx, " \t ", 1, 20)
+	require.NoError(t, err)
+	require.Equal(t, initialTotal+3, total)
+
+	var pagedIDs []int64
+	for page := 1; page <= 4; page++ {
+		items, total, err = svc.List(ctx, prefix, page, 1)
+		require.NoError(t, err)
+		require.EqualValues(t, 3, total)
+		for _, item := range items {
+			pagedIDs = append(pagedIDs, item.UserID)
+		}
+	}
+	require.Equal(t, []int64{notesID, usernameID, emailID}, pagedIDs)
+	item, err := repo.Get(ctx, emailID)
+	require.NoError(t, err)
+	require.Equal(t, email, item.Email)
+}
+
+func TestUserCustomizationSearchIDRequiresExactMatch(t *testing.T) {
+	ctx := context.Background()
+	repo := NewUserCustomizationRepository(integrationDB)
+	const exactID, longerID int64 = 81234567890123456, 812345678901234567
+	_, err := integrationDB.Exec(`INSERT INTO users (id, email, username, password_hash) VALUES
+		($1, 'exact-id@example.test', '', 'hash'), ($2, 'longer-id@example.test', '', 'hash')`, exactID, longerID)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, err := integrationDB.Exec(`DELETE FROM users WHERE id IN ($1, $2)`, exactID, longerID)
+		require.NoError(t, err)
+	})
+	items, total, err := repo.List(ctx, strconv.FormatInt(exactID, 10), 1, 20)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Len(t, items, 1)
+	require.Equal(t, exactID, items[0].UserID)
+	items, total, err = repo.List(ctx, "8123456789012345", 1, 20)
+	require.NoError(t, err)
+	require.Empty(t, items)
+	require.Zero(t, total)
 }
 
 func TestUserCustomizationThresholdAndEligibility(t *testing.T) {

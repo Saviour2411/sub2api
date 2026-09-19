@@ -1,7 +1,7 @@
 export default {
   userCustomization: {
     title: 'User customizations', paymentMethods: 'Shared payment instructions', methodKey: 'Name, e.g. Binance ID', methodValue: 'Payment details',
-    noPaymentMethods: 'No payment instructions configured', moveUp: 'Move up', moveDown: 'Move down', search: 'Search username or user ID',
+    noPaymentMethods: 'No payment instructions configured', moveUp: 'Move up', moveDown: 'Move down', search: 'Search username, email or user ID',
     user: 'User', queryLink: 'Query link', autoCredit: 'Automatic credit', noUsers: 'No users', totalUsers: '{count} users',
     linkActive: 'Enabled', linkDisabled: 'Disabled', noLink: 'Not generated', copyLink: 'Copy query link', generateLink: 'Generate link',
     disableLink: 'Disable', enableLink: 'Enable', resetLink: 'Reset link', configure: 'Credit settings',

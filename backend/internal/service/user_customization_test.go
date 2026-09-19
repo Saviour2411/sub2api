@@ -20,6 +20,14 @@ type customizationTestRepo struct {
 	resolves  int
 	complete  int
 	grants    int
+	search    string
+	page      int
+	size      int
+}
+
+func (r *customizationTestRepo) List(_ context.Context, search string, page, size int) ([]UserCustomization, int64, error) {
+	r.search, r.page, r.size = search, page, size
+	return []UserCustomization{r.item}, 1, nil
 }
 
 func (r *customizationTestRepo) Get(context.Context, int64) (*UserCustomization, error) {
@@ -96,6 +104,22 @@ func TestUserCustomizationMoneyValidation(t *testing.T) {
 	require.NoError(t, err)
 	_, err = s.Save(context.Background(), 1, UserCustomizationInput{AutoCreditEnabled: true, CreditThreshold: 1000, CreditAmount: 0.00000001})
 	require.NoError(t, err)
+}
+
+func TestUserCustomizationListTrimsSearchAndPreservesAdminEmail(t *testing.T) {
+	for _, search := range []string{" box ", "\tBOX\n", " 查询 ", " 1054 ", "  "} {
+		t.Run(search, func(t *testing.T) {
+			repo := &customizationTestRepo{item: UserCustomization{UserID: 1054, Email: "boxinsmart@example.test"}}
+			s := NewUserCustomizationService(repo, nil, nil)
+			items, total, err := s.List(context.Background(), search, 2, 20)
+			require.NoError(t, err)
+			require.Equal(t, strings.TrimSpace(search), repo.search)
+			require.Equal(t, 2, repo.page)
+			require.Equal(t, 20, repo.size)
+			require.EqualValues(t, 1, total)
+			require.Equal(t, "boxinsmart@example.test", items[0].Email)
+		})
+	}
 }
 
 func TestUserCustomizationPaymentMethods(t *testing.T) {

@@ -10,6 +10,7 @@ export interface UserCreditSettings {
 export interface UserCustomization extends UserCreditSettings {
   user_id: number
   username: string
+  email: string
   balance: number
   status: string
   has_link: boolean

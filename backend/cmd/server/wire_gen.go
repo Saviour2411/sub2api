@@ -253,13 +253,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	userCustomizationService := service.NewUserCustomizationService(userCustomizationRepository, settingRepository, secretEncryptor)
 	customFeatureHandler := handler.ProvideCustomFeatureHandler(settingService, imageGroupSuccessRateService, upstreamService, userCustomizationService)
 	opsHandler := admin.NewOpsHandler(opsService)
-	updateCache := repository.NewUpdateCache(redisClient)
-	gitHubReleaseClient := repository.ProvideGitHubReleaseClient(configConfig)
-	serviceBuildInfo := provideServiceBuildInfo(buildInfo)
-	updateService := service.ProvideUpdateService(updateCache, gitHubReleaseClient, serviceBuildInfo)
-	idempotencyRepository := repository.NewIdempotencyRepository(client, db)
-	systemOperationLockService := service.ProvideSystemOperationLockService(idempotencyRepository, configConfig)
-	systemHandler := handler.ProvideSystemHandler(updateService, systemOperationLockService)
+	systemHandler := handler.ProvideSystemHandler(buildInfo)
 	adminSubscriptionHandler := admin.NewSubscriptionHandler(subscriptionService)
 	usageCleanupRepository := repository.NewUsageCleanupRepository(client, db)
 	usageCleanupService := service.ProvideUsageCleanupService(usageCleanupRepository, timingWheelService, dashboardAggregationService, configConfig)
@@ -336,6 +330,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	modelMarketplaceHandler := handler.NewModelMarketplaceHandler(settingService, groupRepository, gatewayService)
 	rateLimiter := middleware.NewRateLimiter(redisClient)
 	balanceQueryHandler := handler.NewBalanceQueryHandler(userCustomizationService, rateLimiter)
+	idempotencyRepository := repository.NewIdempotencyRepository(client, db)
 	idempotencyCoordinator := service.ProvideIdempotencyCoordinator(idempotencyRepository, configConfig)
 	idempotencyCleanupService := service.ProvideIdempotencyCleanupService(idempotencyRepository, configConfig)
 	openAIQuotaAutoResetService := service.ProvideOpenAIQuotaAutoResetService(accountRepository, openAIQuotaService, rateLimitService, idempotencyCoordinator, auditLogService, settingService, leaderLockCache)
@@ -356,6 +351,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	opsIngressRejectAggregator := service.ProvideOpsIngressRejectAggregator(opsRepository, opsService)
 	accountExpiryService := service.ProvideAccountExpiryService(accountRepository)
 	cnProviderBalanceCheckService := service.ProvideCNProviderBalanceCheckService(accountRepository, cnProviderBalanceService, cnProviderQuotaService, configConfig)
+	gitHubReleaseClient := repository.ProvideGitHubReleaseClient(configConfig)
 	openAICodexVersionSyncService := service.ProvideOpenAICodexVersionSyncService(settingRepository, settingService, gitHubReleaseClient)
 	proxyExpiryService := service.ProvideProxyExpiryService(proxyRepository)
 	subscriptionExpiryService := service.ProvideSubscriptionExpiryService(userSubscriptionRepository, settingRepository, notificationEmailService, leaderLockCache, db)
@@ -395,13 +391,6 @@ type Application struct {
 
 func providePrivacyClientFactory() service.PrivacyClientFactory {
 	return repository.CreatePrivacyReqClient
-}
-
-func provideServiceBuildInfo(buildInfo handler.BuildInfo) service.BuildInfo {
-	return service.BuildInfo{
-		Version:   buildInfo.Version,
-		BuildType: buildInfo.BuildType,
-	}
 }
 
 func providePluginHostInfo(buildInfo handler.BuildInfo) service.PluginHostInfo {
