@@ -4430,3 +4430,399 @@ M	README.md
 - 04:18:38切流至green/18082，确认耗时1.192秒；09:21:57最终验收为stable、pending=null，API/direct均200且同一实例。部署窗口两入口各3509次健康探针、异常0，配置、数据挂载和PG/Redis容器身份未变。
 - 旧blue在一小时到期后仍有78个会话租约，按既有授权策略强制退役，05:19:47回收完成；退出137、OOMKilled=false、可见用量丢弃0，但clean_exit=false、usage_loss_unknown=true。旧请求/续接可能中断，不能声称自然排空或完整计费。
 - 本次仅发布已验证代码，未追加业务变更、生产配置或数据库迁移；真实Provider、支付回调、完整账单及峰值负载仍未验证。详见`docs/operations/2026-09-18-v0.1.240-release.md`；两份台账与发布记录一同走记录分支CI后再合入主线。
+
+## 2026-09-20 本地上游同步 7c700729c
+
+- 记录时间：2026-09-20T23:09:09.441+08:00；执行开始：2026-09-20T21:53:36+08:00，时区Asia/Shanghai。
+- 状态：固定范围本地合并与验证成功；目标main的ff-only更新作为记录提交后的最终门禁，最终SHA在对话交付，不自引用记录提交。
+- 本地仓库：`D:/project/sub2api`；目标分支：main；LOCAL_PRE_SYNC_SHA：`b28864efb029acb59616b146d1723b0fa3390474`。
+- 上游：`https://github.com/Wei-Shaw/sub2api`；remote=upstream；远端HEAD确认默认分支main。
+- UPSTREAM_OLD_SHA：`efe9aab1e4ec89a42ba45e8dac20e882c5409a6a`；UPSTREAM_NEW_SHA：`7c700729c23187d31ed320f6b19c790e2f194826`。
+- ACTUAL_MERGE_BASE：`efe9aab1e4ec89a42ba45e8dac20e882c5409a6a`，等于记录旧基线；旧基线是本地及新目标的祖先，实际merge范围没有扩大。
+- LAST_FULLY_INTEGRATED_UPSTREAM_SHA：`7c700729c23187d31ed320f6b19c790e2f194826`。
+- 集成策略：用户集中审批后完整merge，未使用cherry-pick、整文件ours/theirs、stash或历史重写。29普通提交的git cherry结果均为+，17合并节点未发现额外remerge差异。
+- 备份分支：`backup/pre-upstream-sync-20260920-215433-b28864efb`；同步分支：`sync/upstream-20260920-7c700729c`。
+- M1（上游merge及本地兼容代码提交）：`c40d5917f3f9653db9501c854596309e54419a63`；父提交依次为LOCAL_PRE_SYNC_SHA和UPSTREAM_NEW_SHA。
+- M1同时更新二开功能清单和变更记录；M2仅追加本同步历史，是本轮最后一个本地提交。所有46个上游提交均映射到M1的祖先历史，具体处置如下。
+- 处置数量：Applied共46，其中6项标注Applied + Overridden，普通Applied为40；Already Applied=0、Skipped=0、Deferred=0、未解决Conflict=0。覆盖标记不表示跳过上游历史。
+- 上游净变更135个文件，48个与本地定制重叠；本地M1净变更136个文件，最终含本历史共137个文件。工作树版本保留0.1.242。
+- 边界：只授权本地备份、合并、兼容修改、隔离测试、提交和最后快进；没有push、PR、tag、远端CI、发布、部署、远程服务器连接或生产数据库操作。
+
+### 上游逐项处置
+
+| 上游完整SHA | 分组 | 状态 | 处理与本地映射 |
+| --- | --- | --- | --- |
+| `aba34524f1d52c4f1b9fb59886fa6f55d70ef3ee` | Seedance | Applied + Overridden | M1；原生视频任务的创建、查询、删除及兼容路由；保留本地根路径 Responses 图片统计。 |
+| `d099c06945523ab9fe4124a0f1a4ed3f1c83e289` | Seedance | Applied | M1；Seedance lint 与 gRPC 安全检查修复；相关依赖版本已在同步前基线存在，净依赖文件不变化。 |
+| `f79b8bf96c8703db4759f9306a7de58d367286e9` | Gemini/传输 | Applied | M1；Go/Python GenAI 客户端禁用原生流 SSE 注释；新增测试按本地签名补充 Account 参数。 |
+| `0f4d8acaa8400ddfe9c88efbd791105d8677e071` | Gemini/传输 | Applied | M1；按 thinkingConfig 将 Gemini 裸模型映射为推理变体。 |
+| `a9c7c6e8bf2c9576aad024dcb2452e47fc45d703` | 界面 | Applied | M1；移动端竖屏顶栏保留模型广场图标入口。 |
+| `0920e06a423abf7b2b87d788c9df55a8a2a4d668` | 协议 | Applied + Overridden | M1；恢复公开响应模型别名，继续保留本地上游型号诊断、映射链、Token 用量与请求模型计费。 |
+| `bcc73f8d405892e4748bbcb0fb73af070f3745d4` | 协议 | Applied + Overridden | M1；DeepSeek 缺失历史推理内容时补占位；保留本地 CC 三返回值、首 Token 生命周期及 Kimi 参数重试。 |
+| `7b4de8b6ae7652c36fbdc859486f52d937173246` | 审核 | Applied | M1；防止 reminder 标签绕过关键词审核。 |
+| `db8692d679d375b53ce157477d8e7b6b4d889140` | 额度/刷新 | Applied | M1；中国产商 Coding Plan 明确额度耗尽 403 进入临时停调度；保留本地人工暂停和故障恢复边界。 |
+| `a8a1a3a958a0df8544aaa90729b5e4c178aa4090` | 协议 | Applied | M1；将 Anthropic 工具 schema 根联合类型扁平化，保留既有 namespace 和工具转换链。 |
+| `2d37088bd95301300bf5a5360aa546766a1720c3` | 协议 | Applied | M1；非法 User-Agent 不丢弃独立解析的客户端版本。 |
+| `c63bd14a021625531f557b1112332273f945808d` | 插件 | Applied | M1；通用宿主服务、KV、账号目录和只读状态桥接；依赖注入与本地构造参数顺序共存。 |
+| `6477143533a38cf1803f36aad8970efff2e063ba` | 插件 | Applied | M1；插件类型断言检查补齐，满足 errcheck。 |
+| `4dbcdce43c63814c93e215cbf06044b57660341b` | 合并节点 | Applied | M1；无额外remerge差异；对应功能提交完整纳入，本地覆盖见其功能行。 |
+| `4275047d164591118be946e964e921e9672347c6` | 合并节点 | Applied | M1；无额外remerge差异；对应功能提交完整纳入，本地覆盖见其功能行。 |
+| `d5cea617a5795ba1c159f90a20efeae54df138c1` | 合并节点 | Applied | M1；无额外remerge差异；对应功能提交完整纳入，本地覆盖见其功能行。 |
+| `1b45d213288cb8f69e1cd611293f05dae6dc1c7f` | 合并节点 | Applied | M1；无额外remerge差异；对应功能提交完整纳入，本地覆盖见其功能行。 |
+| `09f88865e08f938c1e7e6df54df9928fef902f7b` | 合并节点 | Applied | M1；无额外remerge差异；对应功能提交完整纳入，本地覆盖见其功能行。 |
+| `0c9e83b59cf9f8647434008a7377ad481b291d3f` | 合并节点 | Applied | M1；无额外remerge差异；对应功能提交完整纳入，本地覆盖见其功能行。 |
+| `74431ffad8b9446100a6c1416fe69e908c03ae81` | 合并节点 | Applied | M1；无额外remerge差异；对应功能提交完整纳入，本地覆盖见其功能行。 |
+| `aea725f2ea644d5592d0bbb1d63b607efa7e200a` | 合并节点 | Applied | M1；无额外remerge差异；对应功能提交完整纳入，本地覆盖见其功能行。 |
+| `1a9d49e16f7a22c432b428fce4af8d731f1fa364` | 版本 | Applied + Overridden | M1；上游 VERSION=0.2.7 的历史纳入；工作树明确保留本地0.1.242，继续使用本地发布版本线。 |
+| `b252821c59d399bc067b60f669c242669fa3012b` | 额度/刷新 | Applied | M1；用量查询保留账号刷新错误，不以读取覆盖故障状态。 |
+| `783a0a98304a383b333e311dcec49d453533221a` | 审核 | Applied + Overridden | M1；引入 TypeSafe 独立配置与可空 engine_meta；全部 LocalAudit、Cyber 字段、保存、克隆和视图组合保留。 |
+| `1bfe0d37284804a94c76c979585195c1f9af06a5` | 审核 | Applied | M1；引擎草稿密钥状态、阈值默认值和界面反馈保持独立。 |
+| `29eead917f6b619693d99e668a0ca19c5ccb27d1` | 插件 | Applied | M1；HostService 账号目录增加结构化只读元数据。 |
+| `19794bc46afb1147d6cd6c266f3b77193c8c8c42` | 合并节点 | Applied | M1；无额外remerge差异；对应功能提交完整纳入，本地覆盖见其功能行。 |
+| `f28adb6ddbfcf6a1b6bc65663d31e983b3eff5a1` | 合并节点 | Applied | M1；无额外remerge差异；对应功能提交完整纳入，本地覆盖见其功能行。 |
+| `8bb48622a3893c7a968756bb7d4a5d9cfda5c029` | 合并节点 | Applied | M1；无额外remerge差异；对应功能提交完整纳入，本地覆盖见其功能行。 |
+| `53b4bbe736323abac37dcf0a5f1ed7cd7893008f` | 合并节点 | Applied | M1；无额外remerge差异；对应功能提交完整纳入，本地覆盖见其功能行。 |
+| `7403a011775c2543cb0e212e8cf1dd52f1a13cc1` | 合并节点 | Applied | M1；无额外remerge差异；对应功能提交完整纳入，本地覆盖见其功能行。 |
+| `bbdcfbac0a3c0982a33639fba372d55d25724e2f` | 合并节点 | Applied | M1；无额外remerge差异；对应功能提交完整纳入，本地覆盖见其功能行。 |
+| `5090ffe05ef6c9286f425bce4754ca0b9b6f4327` | 积分/邀请 | Applied | M1；Codex 积分展示、兑换与邀请管理；仅运行本地mock，不进行真实邀请或兑换。 |
+| `e50993738285b1895195f7ef8a26eb34fca1544d` | 文档 | Applied | M1；上游曾增加积分界面验证文档和截图，随后由95134201b删除；保留两条历史，最终无这些文件。 |
+| `e009ea303602d07a11f34e72f0fab3fa8c67d578` | Gemini/传输 | Applied | M1；OpenAI HTTP/2 探测和PING期限恢复为15秒/15秒，其他传输及本地流处理保留。 |
+| `fbb9006adef852c46f0c7f18b0a8a740722cfac7` | 合并节点 | Applied | M1；无额外remerge差异；对应功能提交完整纳入，本地覆盖见其功能行。 |
+| `8f6bbb59c742e9d3ce56615a8b21bf504b3a56b9` | Gemini/传输 | Applied | M1；稳定 Gemini 注释保活测试，保留断言并与本地账号参数适配。 |
+| `fc96132e7231132722f8737257f59a1ca55df347` | 积分/邀请 | Applied | M1；邀请结果处理及独立HTTP传输加固。 |
+| `acdf3c54da70ee05c5b939a30ac2d2b28f2a7a22` | 合并节点 | Applied | M1；无额外remerge差异；对应功能提交完整纳入，本地覆盖见其功能行。 |
+| `95134201b2529fb8fdc759af625a3431da2d7d1e` | 文档 | Applied | M1；删除误合入的积分文档和截图；与其新增提交一起完整集成。 |
+| `0892ef3a9a320dad79ff87930dcd5ae56a9a140a` | 发布 | Applied + Overridden | M1；独立构建矩阵、产物校验和dry-run；保留Canvas、DockerHub凭据回退、固定SHA部署及蓝绿门禁。 |
+| `d2e319b2a17006122cd2d53d828c44a0bf21bd9b` | Gemini/传输 | Applied | M1；修复WebSocket同线程抢占测试的关闭时序竞态。 |
+| `d2416a9b68cf345a38e5d98c395cfb5d44a22572` | 发布 | Applied | M1；发布工具与跨job缓存键固定，下载的构建产物按同一SHA核验。 |
+| `d1556a7a96d99ee2ebd93a624c16deb6fa387e49` | 发布 | Applied | M1；发布辅助测试指向最终目录，本地兼容回归加入相同测试文件。 |
+| `87957a608bd3b0fdd1e91852f9afcd9b2af55135` | 合并节点 | Applied | M1；无额外remerge差异；对应功能提交完整纳入，本地覆盖见其功能行。 |
+| `7c700729c23187d31ed320f6b19c790e2f194826` | 忽略规则 | Applied | M1；增加上游忽略项，同时保留本地临时、缓存和运维文件规则。 |
+
+### 已批准冲突与兼容处理
+
+- `.github/workflows/backend-ci.yml`：本地流竞态、生命周期及蓝绿任务与上游release-helpers同时保留；没有删除或关闭既有门禁。
+- `.github/workflows/release.yml`：保留默认deploy_production和Canvas构建；DockerHub用户名继续secrets/vars回退，登录及描述更新检查token，镜像脚本缺token时只走可用的GHCR路径；矩阵与发布保留120分钟GoReleaser超时。
+- 发布的build-frontend、build-binaries、release和deploy-production都绑定prepare.sha；版本回写显式contents:write，dry-run禁止回写；生产job依赖prepare且同时排除dry-run/simple，保留120分钟、3600秒观察及既有强制退役风险提示。仅结构检查和模拟Docker命令，未执行真实发布。
+- `.gitignore`组合双方规则；`backend/cmd/server/VERSION`保留0.1.242；`wire_gen.go`通过go generate重新生成，保留本地AccountTest参数次序，注入Referral和PluginKV/目录能力。
+- `content_moderation_handler.go`及`content_moderation.go`：Engine/TypeSafe/EngineConfigs与全部LocalAudit、Cyber字段并存，保持原有保存、深拷贝、状态及后台副作用路径；没有用上游结构整体替换本地结构。
+- `routes/gateway.go`：增加Seedance路由，根路径Responses及其子路径继续携带trackImageGroupResult。`openai_gateway_cc_pipeline.go`：保留本地三返回值和firstTokenAttempt，在同一出站点加入DeepSeek占位，Kimi参数重试及资源清理不变。
+- `frontend/src/types/index.ts`：Seedance端点能力与ImageSizeTier均保留。`RiskControlView.vue`及测试：本地审计控件/列表、Cyber设置和新引擎草稿共存，合并mock而不删断言。以上共12个文本冲突文件，已全部解决。
+- 同步后首次默认Go测试发现新增Gemini心跳测试少传本地Account参数；参照既有测试补`&Account{}`，随后默认/unit全量及构建通过。这是批准范围内的机械签名适配，不改变业务策略。
+- 同步后首次Linux integration的Claude断连超时用例失败一次，得到缺少终止事件而非超时；相关实现和测试与基线一致。备份b28864efb的独立快照重复20次时复现同样错误一次（命令退出1），合并代码20次全部通过（退出0），确认该失败在同步前代码同样存在。夹具在1秒超时后仅留0.5秒便关闭pipe，推断受调度延迟影响；未修改实现、测试或断言，原全量integration另行复跑，所有结果保留如下。
+- 新增2项后端审核交叉测试及2项前端保存切换测试，验证全部LocalAudit和Cyber字段不丢失、TypeSafe及规则快照不共享可变内存；响应别名8组场景补充请求/映射/上游型号及Token用量断言。发布辅助测试新增4项结构化YAML约束，共14项，镜像发布命令使用fake docker。
+
+### 保留的本地行为与接受边界
+
+- 60个CUST编号集合与同步前完全一致，没有停用、删除或复用。清单已更新CUST-GW-001、CUST-GW-003、CUST-PROTO-001、CUST-PROTO-006、CUST-ACC-001、CUST-BILL-001、CUST-BILL-004、CUST-RISK-001、CUST-RISK-002、CUST-OPS-001、CUST-OPS-004；纯上游新功能不重复分配CUST编号。
+- Claude安全流重试和提前JSON保活继续默认关闭；首语义输出、终止帧收尾、先取消再关闭、已交付输出禁止重放和按请求用量去重保留。Kimi四项参数兼容开关默认关闭，单项一次及最多额外四次的边界保留。
+- 用户按请求模型计费、Composite显式别名价格规则、严格缺价、Fable无默认三倍、Free Fast、人工暂停与故障恢复策略不被上游显示别名覆盖；本轮没有修改实际定价、用户余额或生产账号。
+- 按用户串行扣费、usage task 5秒、禁止网页自更新、生产bind mount/回环监听/HTTP upstream、持久化通用响应头3600秒及既有资源预算保持不变。生产Compose、配置和依赖锁文件无净改动。
+- Seedance能力默认不启用，创建任务不按最终生成Token立即结算，仅客户端查询成功任务时走既有用量结算；没有新增后台轮询，未查询完成可能不结算是获批保留的上游边界。
+- TypeSafe为独立可选审核引擎，默认仍OpenAI；图像跳过、引擎独立密钥/阈值和失败处理保持上游语义，本地规则及Cyber作用域不扩大。新增238b迁移只增加可空engine_meta。
+- 插件HostService账号目录仅提供能力授权范围内账号，但其中包含短期访问Token、代理认证与Extra元数据；用户审批已接受这一信任边界。本次不安装或启用插件，不以只读元数据描述为不含敏感信息。
+
+### 验证环境与结果
+
+- 同步前后相同工具环境：Windows Go1.27.0、Node20.20.2、pnpm9.15.9、golangci-lint2.13；Ubuntu24.04/WSL Go1.27.0执行隔离PostgreSQL/Redis集成及CGO竞态。缓存、构建产物和日志均在仓库内，运行记录目录`output/upstream-sync-20260920-7c700729c`。
+- Go构建并行参数均为GOFLAGS=-p=4；Windows验证GOMAXPROCS=8/GOMEMLIMIT=6GiB，Linux为4/3GiB，非竞态CGO_ENABLED=0、竞态为1。全包Windows/Linux验证在基线首次争用后不再并行；后补基线仅在独立快照运行一个定向用例。
+- 清除实际Provider、数据库及外部测试凭据，TYPESAFE_LIVE_TEST=0；TypeSafe、邀请、插件及Provider验证使用mock/httptest。独立启动使用本机18973和带本轮专有标签的容器，假凭据、临时数据，HTTP代理指向本机拒绝端口以阻断外部业务访问。
+- Go默认全量、unit全量、integration全量、构建、golangci-lint、govulncheck、两组流/生命周期race前后最终均退出0；仅定向race，不声称全包竞态。
+- 前端：同步前324文件/2441用例，同步后326文件/2481用例，lint、类型检查和构建均0。Canvas前后均8文件/34用例，类型检查、测试和构建均0；格式检查均1且只报告既有package.json。
+- 隔离启动前后最终均0；同步后恢复同步前的测试数据库，启动完成迁移、/health通过，校验engine_meta可空并重复DDL成功。启动轮询中的暂时超时不等于最终健康失败，也不作为性能验收。新库完整迁移由integration覆盖。
+- Compose安全/网关环境/资源检查、12项模拟远程部署、Caddy策略、shell语法、蓝绿证据2项及预检3项通过；蓝绿48项在项目内POSIX临时目录前后通过。
+- 既有依赖审计：前端2高危、13中危、1低危；Canvas6中危，两个pnpm audit命令前后均退出1且数量一致。没有为本次同步扩大升级范围、增加豁免或掩盖这些风险。
+- 既有平台限制：Apple测试在Linux使用macOS的stat -f %Lp而失败；原始蓝绿测试把Unix socket建在NTFS路径导致Operation not supported。后者在仓库内tmpfs仅改临时目录、不改断言重跑48项通过；macOS原生行为仍未验证。
+- 首次同步前integration因Windows/Linux全包测试同时操作.entc失败；串行复跑退出0。此后两平台全包不并行。首次smoke外层180秒在构建阶段超时124，内部cleanup误报0不能算通过；固定600秒上限后前后启动均成功。
+- 同步前曾修改正在运行的Linux验证封装，导致测试结束后外层shell异常；保留首次原始记录，固定封装并复跑集成/race后确认退出0，不把封装异常当业务测试通过。
+- 差异检查、索引冲突、严格冲突标记、意外删除、临时/秘密文件路径、高置信私钥/Token/认证URL特征扫描均通过；这些是有限特征检查，不宣称形式化证明没有任何秘密。
+
+### 实际命令索引
+
+下表记录实际执行命令及工作目录。Windows命令以程序和参数逐项JSON引用；Linux命令保留封装记录。V编号在执行表复用，同一命令的首次失败和重跑均保留。内部smoke收尾另列，最终结果以外层timeout命令为准。
+
+| 编号 | 工作目录 | 实际命令 |
+| --- | --- | --- |
+| V001 | `D:\project\sub2api\backend` | `"C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe" "test" "./..." "-count=1" "-timeout=20m"` |
+| V002 | `D:\project\sub2api\frontend` | `"D:\\project\\sub2api\\output\\upstream-sync-20260910-98d86915b\\tools\\node-v20.20.2-win-x64\\node.exe" "D:\\project\\sub2api\\output\\upstream-sync-20260905-ab99d56e9\\pnpm-9.15.9\\package\\bin\\pnpm.cjs" "install" "--frozen-lockfile" "--offline" "--ignore-scripts"` |
+| V003 | `D:\project\sub2api\backend` | `"D:\\project\\sub2api\\output\\upstream-sync-20260905-ab99d56e9\\go-tools\\bin\\golangci-lint.exe" "run" "./..." "--timeout=30m"` |
+| V004 | `/mnt/d/project/sub2api/backend` | `go test -exec /mnt/d/project/sub2api/output/upstream-sync-20260920-7c700729c/test-exec-v2.sh -tags=integration ./... -count=1 -timeout=25m ` |
+| V005 | `/mnt/d/project/sub2api/backend` | `go test -exec /mnt/d/project/sub2api/output/upstream-sync-20260920-7c700729c/test-exec-v2.sh -race -tags=unit -count=1 -timeout=20m -run TestKimi\\|TestOpsErrorLoggerMiddleware_Kimi\\|TestAnthropicStreamSafeRetry\\|TestFirstTokenCleanup\\|TestGatewayService_AnthropicAPIKeyPassthrough_StreamingIdleTimeout\\|TestDecompressResponseBodyStreamClose\\|TestDecompressedBodyClose ./internal/service ./internal/handler ./internal/repository ` |
+| V006 | `D:\project\sub2api\frontend` | `"D:\\project\\sub2api\\output\\upstream-sync-20260910-98d86915b\\tools\\node-v20.20.2-win-x64\\node.exe" "D:\\project\\sub2api\\output\\upstream-sync-20260905-ab99d56e9\\pnpm-9.15.9\\package\\bin\\pnpm.cjs" "run" "lint:check"` |
+| V007 | `D:\project\sub2api\canvas` | `"D:\\project\\sub2api\\output\\upstream-sync-20260910-98d86915b\\tools\\node-v20.20.2-win-x64\\node.exe" "node_modules/prettier/bin/prettier.cjs" "--check" "."` |
+| V008 | `D:\project\sub2api\canvas` | `"D:\\project\\sub2api\\output\\upstream-sync-20260910-98d86915b\\tools\\node-v20.20.2-win-x64\\node.exe" "node_modules/typescript/bin/tsc" "--noEmit"` |
+| V009 | `D:\project\sub2api\canvas` | `"D:\\project\\sub2api\\output\\upstream-sync-20260910-98d86915b\\tools\\node-v20.20.2-win-x64\\node.exe" "node_modules/vitest/vitest.mjs" "run" "--maxWorkers=4" "--minWorkers=1"` |
+| V010 | `由封装脚本确定` | `smoke.sh before` |
+| V011 | `/mnt/d/project/sub2api/backend` | `timeout 180s bash /mnt/d/project/sub2api/output/upstream-sync-20260920-7c700729c/smoke.sh before ` |
+| V012 | `/mnt/d/project/sub2api/output/upstream-sync-20260920-7c700729c/before-static-lf` | `bash deploy/tests/docker-compose-security-test.sh ` |
+| V013 | `D:\project\sub2api\backend` | `"D:\\project\\sub2api\\output\\upstream-sync-20260915-bdb42e22f\\tools\\govulncheck.exe" "./..."` |
+| V014 | `/mnt/d/project/sub2api/output/upstream-sync-20260920-7c700729c/before-static-lf` | `bash deploy/tests/docker-compose-gateway-env-test.sh ` |
+| V015 | `/mnt/d/project/sub2api/output/upstream-sync-20260920-7c700729c/before-static-lf` | `bash deploy/tests/docker-runtime-resources-test.sh ` |
+| V016 | `/mnt/d/project/sub2api/output/upstream-sync-20260920-7c700729c/before-static-lf` | `bash deploy/tests/remote-deploy-test.sh ` |
+| V017 | `/mnt/d/project/sub2api/output/upstream-sync-20260920-7c700729c/before-static-lf` | `bash deploy/tests/apple-container-test.sh ` |
+| V018 | `/mnt/d/project/sub2api/output/upstream-sync-20260920-7c700729c/before-static-lf` | `bash deploy/test-caddyfile-cache.sh ` |
+| V019 | `/mnt/d/project/sub2api/output/upstream-sync-20260920-7c700729c/before-static-lf` | `bash -n deploy/apple-container.sh ` |
+| V020 | `/mnt/d/project/sub2api/output/upstream-sync-20260920-7c700729c/before-static-lf` | `sh -n deploy/remote-deploy.sh ` |
+| V021 | `/mnt/d/project/sub2api/output/upstream-sync-20260920-7c700729c/before-static-lf` | `python3 /mnt/d/project/sub2api/deploy/tests/blue-green-test.py ` |
+| V022 | `D:\project\sub2api\frontend` | `"D:\\project\\sub2api\\output\\upstream-sync-20260910-98d86915b\\tools\\node-v20.20.2-win-x64\\node.exe" "D:\\project\\sub2api\\output\\upstream-sync-20260905-ab99d56e9\\pnpm-9.15.9\\package\\bin\\pnpm.cjs" "audit" "--prod" "--audit-level=high" "--json"` |
+| V023 | `/mnt/d/project/sub2api/output/upstream-sync-20260920-7c700729c/before-static-lf` | `python3 /mnt/d/project/sub2api/deploy/tests/blue-green-evidence-test.py ` |
+| V024 | `/mnt/d/project/sub2api/output/upstream-sync-20260920-7c700729c/before-static-lf` | `python3 /mnt/d/project/sub2api/deploy/tests/blue-green-preflight-test.py ` |
+| V025 | `D:\project\sub2api\frontend` | `"D:\\project\\sub2api\\output\\upstream-sync-20260910-98d86915b\\tools\\node-v20.20.2-win-x64\\node.exe" "D:\\project\\sub2api\\output\\upstream-sync-20260905-ab99d56e9\\pnpm-9.15.9\\package\\bin\\pnpm.cjs" "run" "typecheck"` |
+| V026 | `D:\project\sub2api\backend` | `"C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe" "test" "-tags=unit" "./..." "-count=1" "-timeout=20m"` |
+| V027 | `D:\project\sub2api\frontend` | `"D:\\project\\sub2api\\output\\upstream-sync-20260910-98d86915b\\tools\\node-v20.20.2-win-x64\\node.exe" "D:\\project\\sub2api\\output\\upstream-sync-20260905-ab99d56e9\\pnpm-9.15.9\\package\\bin\\pnpm.cjs" "run" "test:run" "--maxWorkers=4" "--minWorkers=1"` |
+| V028 | `D:\project\sub2api\canvas` | `"D:\\project\\sub2api\\output\\upstream-sync-20260910-98d86915b\\tools\\node-v20.20.2-win-x64\\node.exe" "D:\\project\\sub2api\\output\\upstream-sync-20260905-ab99d56e9\\pnpm-9.15.9\\package\\bin\\pnpm.cjs" "run" "build" "--outDir" "D:\\project\\sub2api\\output\\upstream-sync-20260920-7c700729c\\artifacts\\before-canvas"` |
+| V029 | `/mnt/d/project/sub2api` | `python3 /mnt/d/project/sub2api/output/upstream-sync-20260920-7c700729c/bluegreen-posix.py ` |
+| V030 | `/mnt/d/project/sub2api/backend` | `timeout 600s bash /mnt/d/project/sub2api/output/upstream-sync-20260920-7c700729c/smoke.sh before ` |
+| V031 | `D:\project\sub2api\frontend` | `"D:\\project\\sub2api\\output\\upstream-sync-20260910-98d86915b\\tools\\node-v20.20.2-win-x64\\node.exe" "D:\\project\\sub2api\\output\\upstream-sync-20260905-ab99d56e9\\pnpm-9.15.9\\package\\bin\\pnpm.cjs" "run" "build" "--outDir" "D:\\project\\sub2api\\output\\upstream-sync-20260920-7c700729c\\artifacts\\before-frontend"` |
+| V032 | `/mnt/d/project/sub2api/backend` | `go test -exec /mnt/d/project/sub2api/output/upstream-sync-20260920-7c700729c/test-exec-v2.sh -race -tags=unit -count=1 -timeout=20m -run TestPeer\\|TestAffinity\\|TestPublicPeer\\|TestLongSSE\\|TestHijacked\\|TestDetachedProducer\\|TestControl\\|TestDrain\\|TestNewInstance\\|TestLegacyWaits\\|TestRenewal\\|TestUsageRecordWorkerPool_StopRace\\|TestStoppedKeyed\\|TestOpenAIResponsesWebSocket_Ingress\\|OllamaCloud\\|Idempotency\\|Subscription ./internal/pkg/lifecycle ./internal/service ./internal/repository ./internal/handler ` |
+| V033 | `D:\project\sub2api\backend` | `"C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe" "build" "./..."` |
+| V034 | `D:\project\sub2api\backend` | `"C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe" "generate" "./cmd/server"` |
+| V035 | `/mnt/d/project/sub2api` | `python3 -m unittest discover -s .github/release-tools -p test_release_matrix.py ` |
+| V036 | `/mnt/d/project/sub2api` | `bash -n .github/release-tools/release-images.sh ` |
+| V037 | `D:\project\sub2api\canvas` | `"D:\\project\\sub2api\\output\\upstream-sync-20260910-98d86915b\\tools\\node-v20.20.2-win-x64\\node.exe" "D:\\project\\sub2api\\output\\upstream-sync-20260905-ab99d56e9\\pnpm-9.15.9\\package\\bin\\pnpm.cjs" "run" "build" "--outDir" "D:\\project\\sub2api\\output\\upstream-sync-20260920-7c700729c\\artifacts\\after-canvas"` |
+| V038 | `D:\project\sub2api\frontend` | `"D:\\project\\sub2api\\output\\upstream-sync-20260910-98d86915b\\tools\\node-v20.20.2-win-x64\\node.exe" "D:\\project\\sub2api\\output\\upstream-sync-20260905-ab99d56e9\\pnpm-9.15.9\\package\\bin\\pnpm.cjs" "run" "build" "--outDir" "D:\\project\\sub2api\\output\\upstream-sync-20260920-7c700729c\\artifacts\\after-frontend"` |
+| V039 | `由封装脚本确定` | `smoke.sh after` |
+| V040 | `/mnt/d/project/sub2api/backend` | `timeout 600s bash /mnt/d/project/sub2api/output/upstream-sync-20260920-7c700729c/smoke.sh after ` |
+| V041 | `D:\project\sub2api` | `node output/upstream-sync-20260920-7c700729c/final-check.mjs` |
+| V042 | `/mnt/d/project/sub2api/backend` | `go -C /mnt/d/project/sub2api/backend test -exec /mnt/d/project/sub2api/output/upstream-sync-20260920-7c700729c/test-exec-v2.sh -tags=integration ./internal/service -run \^TestGatewayService_AnthropicAPIKeyPassthrough_StreamingTimeoutAfterClientDisconnect\$ -count=20 -timeout=5m ` |
+| V043 | `/mnt/d/project/sub2api/backend` | `go -C /mnt/d/project/sub2api/output/upstream-sync-20260920-7c700729c/baseline-disconnect/backend test -exec /mnt/d/project/sub2api/output/upstream-sync-20260920-7c700729c/test-exec-v2.sh -tags=integration ./internal/service -run \^TestGatewayService_AnthropicAPIKeyPassthrough_StreamingTimeoutAfterClientDisconnect\$ -count=20 -timeout=5m ` |
+
+### 前后执行记录
+
+| 开始时间 | 阶段/套件/检查 | 命令 | 退出码 | 证据 |
+| --- | --- | --- | --- | --- |
+| 2026-09-20T22:00:28.8544656+08:00 | 同步前/backend/test-default | V001 | 0 | `logs/before-backend-test-default-220028854.log` |
+| 2026-09-20T22:00:29.1266450+08:00 | 同步前/frontend/install | V002 | 0 | `logs/before-frontend-install-220029126.log` |
+| 2026-09-20T22:00:29.4760490+08:00 | 同步前/canvas/install | V002 | 0 | `logs/before-canvas-install-220029475.log` |
+| 2026-09-20T22:00:29.7858307+08:00 | 同步前/extra/golangci-lint | V003 | 0 | `logs/before-extra-golangci-lint-220029785.log` |
+| 2026-09-20T22:00:30+08:00 | 同步前/integration/integration | V004 | 1 | `logs/before-integration-integration-220030.log` |
+| 2026-09-20T22:00:30+08:00 | 同步前/race/stream-race | V005 | 0 | `logs/before-race-stream-race-220030.log` |
+| 2026-09-20T22:00:32.6871653+08:00 | 同步前/frontend/lint | V006 | 0 | `logs/before-frontend-lint-220032686.log` |
+| 2026-09-20T22:00:33.0858253+08:00 | 同步前/canvas/format | V007 | 1 | `logs/before-canvas-format-220033085.log` |
+| 2026-09-20T22:00:44.1847197+08:00 | 同步前/canvas/typecheck | V008 | 0 | `logs/before-canvas-typecheck-220044184.log` |
+| 2026-09-20T22:01:12.9340646+08:00 | 同步前/canvas/test | V009 | 0 | `logs/before-canvas-test-220112933.log` |
+| 2026-09-20T22:02:09+08:00 | 同步前/smoke-linux/内部收尾 | V010 | 0 | `before-smoke-results.jsonl` |
+| 2026-09-20T22:02:09+08:00 | 同步前/smoke/health | V011 | 124 | `logs/before-smoke-health-220209.log` |
+| 2026-09-20T22:02:10+08:00 | 同步前/static-posix/docker-compose-security-test | V012 | 0 | `logs/before-static-posix-docker-compose-security-test-220210.log` |
+| 2026-09-20T22:02:10.2783368+08:00 | 同步前/security/govulncheck | V013 | 0 | `logs/before-security-govulncheck-220210276.log` |
+| 2026-09-20T22:02:11+08:00 | 同步前/static-posix/docker-compose-gateway-env-test | V014 | 0 | `logs/before-static-posix-docker-compose-gateway-env-test-220211.log` |
+| 2026-09-20T22:02:17+08:00 | 同步前/static-posix/docker-runtime-resources-test | V015 | 0 | `logs/before-static-posix-docker-runtime-resources-test-220217.log` |
+| 2026-09-20T22:02:17+08:00 | 同步前/static-posix/remote-deploy-test | V016 | 0 | `logs/before-static-posix-remote-deploy-test-220217.log` |
+| 2026-09-20T22:02:22+08:00 | 同步前/static-posix/apple-container-test | V017 | 1 | `logs/before-static-posix-apple-container-test-220222.log` |
+| 2026-09-20T22:02:23+08:00 | 同步前/static-posix/caddy-cache | V018 | 0 | `logs/before-static-posix-caddy-cache-220223.log` |
+| 2026-09-20T22:02:23+08:00 | 同步前/static-posix/apple-syntax | V019 | 0 | `logs/before-static-posix-apple-syntax-220223.log` |
+| 2026-09-20T22:02:23+08:00 | 同步前/static-posix/remote-syntax | V020 | 0 | `logs/before-static-posix-remote-syntax-220223.log` |
+| 2026-09-20T22:02:23+08:00 | 同步前/static-posix/blue-green-test | V021 | 1 | `logs/before-static-posix-blue-green-test-220223.log` |
+| 2026-09-20T22:02:43.4706562+08:00 | 同步前/security/frontend-audit | V022 | 1 | `logs/before-security-frontend-audit-220243470.log` |
+| 2026-09-20T22:02:53.2950753+08:00 | 同步前/security/canvas-audit | V022 | 1 | `logs/before-security-canvas-audit-220253294.log` |
+| 2026-09-20T22:02:55+08:00 | 同步前/static-posix/blue-green-evidence-test | V023 | 0 | `logs/before-static-posix-blue-green-evidence-test-220255.log` |
+| 2026-09-20T22:02:56+08:00 | 同步前/static-posix/blue-green-preflight-test | V024 | 0 | `logs/before-static-posix-blue-green-preflight-test-220256.log` |
+| 2026-09-20T22:03:40.3717187+08:00 | 同步前/frontend/typecheck | V025 | 0 | `logs/before-frontend-typecheck-220340371.log` |
+| 2026-09-20T22:05:04.9515283+08:00 | 同步前/backend/test-unit | V026 | 0 | `logs/before-backend-test-unit-220504951.log` |
+| 2026-09-20T22:05:05.0097363+08:00 | 同步前/frontend/test | V027 | 0 | `logs/before-frontend-test-220505009.log` |
+| 2026-09-20T22:05:30.7988256+08:00 | 同步前/canvas-build/build | V028 | 0 | `logs/before-canvas-build-build-220530797.log` |
+| 2026-09-20T22:07:32+08:00 | 同步前/bluegreen-posix/blue-green-test | V029 | 0 | `logs/before-bluegreen-posix-blue-green-test-220732.log` |
+| 2026-09-20T22:07:33+08:00 | 同步前/smoke-linux/内部收尾 | V010 | 0 | `before-smoke-results.jsonl` |
+| 2026-09-20T22:07:33+08:00 | 同步前/smoke/health | V030 | 0 | `logs/before-smoke-health-220733.log` |
+| 2026-09-20T22:10:27.4781158+08:00 | 同步前/frontend/build | V031 | 0 | `logs/before-frontend-build-221027478.log` |
+| 2026-09-20T22:10:48+08:00 | 同步前/race/lifecycle-race | V032 | 0 | `logs/before-race-lifecycle-race-221048.log` |
+| 2026-09-20T22:11:55.1386188+08:00 | 同步前/backend/build | V033 | 0 | `logs/before-backend-build-221155138.log` |
+| 2026-09-20T22:13:52+08:00 | 同步前/integration/integration | V004 | 0 | `logs/before-integration-integration-221352.log` |
+| 2026-09-20T22:13:52+08:00 | 同步前/race/stream-race | V005 | 0 | `logs/before-race-stream-race-221352.log` |
+| 2026-09-20T22:15:57+08:00 | 同步前/race/lifecycle-race | V032 | 0 | `logs/before-race-lifecycle-race-221557.log` |
+| 2026-09-20T22:25:37.2148253+08:00 | 同步后/generate/wire | V034 | 0 | `logs/after-generate-wire-222537214.log` |
+| 2026-09-20T22:27:28+08:00 | 同步后/release-helpers/tests | V035 | 0 | `logs/after-release-helpers-tests-222728.log` |
+| 2026-09-20T22:27:28.3671264+08:00 | 同步后/frontend/install | V002 | 0 | `logs/after-frontend-install-222728366.log` |
+| 2026-09-20T22:27:29+08:00 | 同步后/release-helpers/syntax | V036 | 0 | `logs/after-release-helpers-syntax-222729.log` |
+| 2026-09-20T22:27:30.8052441+08:00 | 同步后/frontend/lint | V006 | 0 | `logs/after-frontend-lint-222730804.log` |
+| 2026-09-20T22:27:54.4492389+08:00 | 同步后/backend/test-default | V001 | 1 | `logs/after-backend-test-default-222754448.log` |
+| 2026-09-20T22:27:54.8106743+08:00 | 同步后/canvas/install | V002 | 0 | `logs/after-canvas-install-222754810.log` |
+| 2026-09-20T22:27:57.2704721+08:00 | 同步后/canvas/format | V007 | 1 | `logs/after-canvas-format-222757269.log` |
+| 2026-09-20T22:28:06.2407560+08:00 | 同步后/canvas/typecheck | V008 | 0 | `logs/after-canvas-typecheck-222806240.log` |
+| 2026-09-20T22:28:27.9359706+08:00 | 同步后/canvas/test | V009 | 0 | `logs/after-canvas-test-222827935.log` |
+| 2026-09-20T22:29:01.8500030+08:00 | 同步后/frontend/typecheck | V025 | 0 | `logs/after-frontend-typecheck-222901849.log` |
+| 2026-09-20T22:29:16.7528550+08:00 | 同步后/canvas-build/build | V037 | 0 | `logs/after-canvas-build-build-222916752.log` |
+| 2026-09-20T22:29:17+08:00 | 同步后/race/stream-race | V005 | 0 | `logs/after-race-stream-race-222917.log` |
+| 2026-09-20T22:29:20.7757027+08:00 | 同步后/backend/test-unit | V026 | 0 | `logs/after-backend-test-unit-222920775.log` |
+| 2026-09-20T22:29:51.0841975+08:00 | 同步后/frontend/test | V027 | 0 | `logs/after-frontend-test-222951083.log` |
+| 2026-09-20T22:33:48.1273353+08:00 | 同步后/extra/golangci-lint | V003 | 0 | `logs/after-extra-golangci-lint-223348126.log` |
+| 2026-09-20T22:33:48.4656305+08:00 | 同步后/security/govulncheck | V013 | 0 | `logs/after-security-govulncheck-223348464.log` |
+| 2026-09-20T22:34:20.7437856+08:00 | 同步后/frontend/build | V038 | 0 | `logs/after-frontend-build-223420743.log` |
+| 2026-09-20T22:34:31.2847688+08:00 | 同步后/security/frontend-audit | V022 | 1 | `logs/after-security-frontend-audit-223431284.log` |
+| 2026-09-20T22:34:35.5934925+08:00 | 同步后/security/canvas-audit | V022 | 1 | `logs/after-security-canvas-audit-223435593.log` |
+| 2026-09-20T22:34:52.8170359+08:00 | 同步后/backend/build | V033 | 0 | `logs/after-backend-build-223452816.log` |
+| 2026-09-20T22:35:34+08:00 | 同步后/race/lifecycle-race | V032 | 0 | `logs/after-race-lifecycle-race-223534.log` |
+| 2026-09-20T22:36:56.5742455+08:00 | 同步后/backend/test-default | V001 | 0 | `logs/after-backend-test-default-223656573.log` |
+| 2026-09-20T22:36:57+08:00 | 同步后/smoke-linux/内部收尾 | V039 | 0 | `after-smoke-results.jsonl` |
+| 2026-09-20T22:36:57+08:00 | 同步后/smoke/health | V040 | 0 | `logs/after-smoke-health-223657.log` |
+| 2026-09-20T22:38:05+08:00 | 同步后/bluegreen-posix/blue-green-test | V029 | 0 | `logs/after-bluegreen-posix-blue-green-test-223805.log` |
+| 2026-09-20T22:38:06+08:00 | 同步后/static-posix/docker-compose-security-test | V012 | 0 | `logs/after-static-posix-docker-compose-security-test-223806.log` |
+| 2026-09-20T22:38:06+08:00 | 同步后/static-posix/docker-compose-gateway-env-test | V014 | 0 | `logs/after-static-posix-docker-compose-gateway-env-test-223806.log` |
+| 2026-09-20T22:38:10+08:00 | 同步后/static-posix/docker-runtime-resources-test | V015 | 0 | `logs/after-static-posix-docker-runtime-resources-test-223810.log` |
+| 2026-09-20T22:38:10+08:00 | 同步后/static-posix/remote-deploy-test | V016 | 0 | `logs/after-static-posix-remote-deploy-test-223810.log` |
+| 2026-09-20T22:38:13+08:00 | 同步后/static-posix/apple-container-test | V017 | 1 | `logs/after-static-posix-apple-container-test-223813.log` |
+| 2026-09-20T22:38:14+08:00 | 同步后/static-posix/caddy-cache | V018 | 0 | `logs/after-static-posix-caddy-cache-223814.log` |
+| 2026-09-20T22:38:14+08:00 | 同步后/static-posix/apple-syntax | V019 | 0 | `logs/after-static-posix-apple-syntax-223814.log` |
+| 2026-09-20T22:38:14+08:00 | 同步后/static-posix/remote-syntax | V020 | 0 | `logs/after-static-posix-remote-syntax-223814.log` |
+| 2026-09-20T22:38:14+08:00 | 同步后/static-posix/blue-green-test | V021 | 1 | `logs/after-static-posix-blue-green-test-223814.log` |
+| 2026-09-20T22:38:34+08:00 | 同步后/static-posix/blue-green-evidence-test | V023 | 0 | `logs/after-static-posix-blue-green-evidence-test-223834.log` |
+| 2026-09-20T22:38:34+08:00 | 同步后/static-posix/blue-green-preflight-test | V024 | 0 | `logs/after-static-posix-blue-green-preflight-test-223834.log` |
+| 2026-09-20T14:41:20.476Z | 同步后/safety/final-check | V041 | 0 | `logs/after-safety-1789915281314.json` |
+| 2026-09-20T22:41:54+08:00 | 同步后/integration/integration | V004 | 1 | `logs/after-integration-integration-224154.log` |
+| 2026-09-20T22:53:53+08:00 | 同步后/disconnect-check/repeated-timeout | V042 | 0 | `logs/after-disconnect-check-repeated-timeout-225353.log` |
+| 2026-09-20T22:54:08+08:00 | 基线快照复核/disconnect-check/repeated-timeout | V043 | 1 | `logs/before-disconnect-check-repeated-timeout-225408.log` |
+| 2026-09-20T22:56:28+08:00 | 同步后/integration/integration | V004 | 0 | `logs/after-integration-integration-225628.log` |
+| 2026-09-20T15:05:50.723Z | 同步后/safety/final-check | V041 | 0 | `logs/after-safety-1789916751536.json` |
+
+### 修改文件
+
+以下为M1相对同步前本地基线的136个文件；最后的M2另追加本同步历史，最终137个。
+
+```text
+A	.github/release-tools/.gitignore
+A	.github/release-tools/README.md
+A	.github/release-tools/release-images.sh
+A	.github/release-tools/release_matrix.py
+A	.github/release-tools/requirements-release.txt
+A	.github/release-tools/test_release_matrix.py
+M	.github/workflows/backend-ci.yml
+M	.github/workflows/release.yml
+M	.gitignore
+M	Makefile
+M	backend/cmd/server/wire_gen.go
+A	backend/internal/handler/admin/content_moderation_engine_test.go
+M	backend/internal/handler/admin/content_moderation_handler.go
+M	backend/internal/handler/admin/openai_oauth_handler.go
+M	backend/internal/handler/admin/openai_oauth_handler_reset_quota_test.go
+A	backend/internal/handler/admin/openai_referral_handler.go
+A	backend/internal/handler/admin/openai_referral_handler_test.go
+M	backend/internal/handler/admin/plugin_handler.go
+M	backend/internal/handler/endpoint.go
+M	backend/internal/handler/grok_media.go
+M	backend/internal/handler/grok_media_slots_test.go
+A	backend/internal/handler/seedance.go
+A	backend/internal/handler/seedance_test.go
+M	backend/internal/pkg/apicompat/responses_to_anthropic_request.go
+A	backend/internal/pkg/apicompat/responses_to_anthropic_tool_schema.go
+M	backend/internal/pkg/apicompat/responses_to_anthropic_tools_test.go
+A	backend/internal/pkg/typesafe/client.go
+A	backend/internal/pkg/typesafe/client_test.go
+M	backend/internal/repository/account_repo.go
+A	backend/internal/repository/account_repo_codex_display_snapshot_test.go
+M	backend/internal/repository/content_moderation_repo.go
+M	backend/internal/repository/content_moderation_repo_test.go
+M	backend/internal/repository/http_upstream.go
+M	backend/internal/repository/http_upstream_http2_keepalive_test.go
+A	backend/internal/repository/http_upstream_http2_ping_test.go
+A	backend/internal/repository/openai_referral_client.go
+A	backend/internal/repository/openai_referral_client_test.go
+A	backend/internal/repository/plugin_kv_store.go
+A	backend/internal/repository/plugin_kv_store_test.go
+M	backend/internal/repository/wire.go
+M	backend/internal/server/routes/admin.go
+M	backend/internal/server/routes/gateway.go
+M	backend/internal/server/routes/gateway_model_allowlist_test.go
+A	backend/internal/server/routes/seedance_test.go
+M	backend/internal/service/account.go
+M	backend/internal/service/account_usage_service.go
+M	backend/internal/service/account_usage_service_batch_test.go
+M	backend/internal/service/account_usage_service_spark_shadow_test.go
+M	backend/internal/service/antigravity_gateway_gemini.go
+M	backend/internal/service/antigravity_gateway_streaming.go
+A	backend/internal/service/antigravity_gemini_thinking_variant.go
+A	backend/internal/service/antigravity_gemini_thinking_variant_test.go
+M	backend/internal/service/content_moderation.go
+A	backend/internal/service/content_moderation_engine_custom_test.go
+A	backend/internal/service/content_moderation_engines.go
+A	backend/internal/service/content_moderation_engines_test.go
+M	backend/internal/service/content_moderation_input.go
+A	backend/internal/service/content_moderation_reminder_test.go
+A	backend/internal/service/content_moderation_typesafe.go
+A	backend/internal/service/content_moderation_typesafe_live_test.go
+M	backend/internal/service/gateway_forward_as_responses_test.go
+A	backend/internal/service/gemini_sse_comment_compat.go
+A	backend/internal/service/gemini_sse_comment_compat_test.go
+M	backend/internal/service/grok_media.go
+M	backend/internal/service/openai_codex_version_sync_service_test.go
+M	backend/internal/service/openai_gateway_cc_pipeline.go
+M	backend/internal/service/openai_gateway_chat_completions_raw.go
+M	backend/internal/service/openai_gateway_chat_completions_raw_test.go
+A	backend/internal/service/openai_gateway_deepseek_chat_reasoning_test.go
+M	backend/internal/service/openai_gateway_passthrough.go
+M	backend/internal/service/openai_gateway_request_body.go
+M	backend/internal/service/openai_gateway_response_handling.go
+M	backend/internal/service/openai_gateway_responses_chat_fallback.go
+M	backend/internal/service/openai_gateway_service_test.go
+A	backend/internal/service/openai_plugin_account_directory.go
+A	backend/internal/service/openai_plugin_account_directory_test.go
+A	backend/internal/service/openai_quota_credits_test.go
+M	backend/internal/service/openai_quota_reset_credits_test.go
+M	backend/internal/service/openai_quota_service.go
+M	backend/internal/service/openai_quota_spark_window_test.go
+A	backend/internal/service/openai_referral_client.go
+A	backend/internal/service/openai_referral_service.go
+A	backend/internal/service/openai_referral_service_test.go
+A	backend/internal/service/openai_response_model_rewrite_test.go
+M	backend/internal/service/openai_ws_forwarder_ingress_execution_scope_test.go
+A	backend/internal/service/plugin_host_services.go
+A	backend/internal/service/plugin_host_services_broker_test.go
+A	backend/internal/service/plugin_host_services_test.go
+M	backend/internal/service/plugin_manager.go
+M	backend/internal/service/plugin_manager_routing_test.go
+M	backend/internal/service/plugin_runtime.go
+M	backend/internal/service/plugin_runtime_integration_test.go
+M	backend/internal/service/ratelimit_cn_providers.go
+M	backend/internal/service/ratelimit_service.go
+M	backend/internal/service/ratelimit_service_401_test.go
+A	backend/internal/service/ratelimit_service_cn_quota_403_test.go
+A	backend/internal/service/seedance.go
+A	backend/internal/service/seedance_test.go
+M	backend/internal/service/setting_gateway_runtime.go
+M	backend/internal/service/wire.go
+A	backend/migrations/238b_content_moderation_engine_meta.sql
+A	backend/migrations/content_moderation_engine_meta_test.go
+M	backend/pkg/pluginapi/README.md
+M	backend/pkg/pluginapi/docs/ui-bridge.md
+M	backend/pkg/pluginapi/v1/plugin.pb.go
+M	backend/pkg/pluginapi/v1/plugin.proto
+M	backend/pkg/pluginapi/v1/plugin_grpc.pb.go
+M	backend/pkg/pluginapi/v1/runtime.go
+M	docs/custom-development-history.md
+A	docs/seedance-api.md
+M	frontend/src/api/__tests__/client.spec.ts
+M	frontend/src/api/admin/accounts.ts
+M	frontend/src/api/admin/plugins.ts
+M	frontend/src/api/admin/riskControl.ts
+M	frontend/src/api/client.ts
+M	frontend/src/components/account/BulkEditAccountModal.vue
+M	frontend/src/components/account/CreateAccountModal.vue
+M	frontend/src/components/account/EditAccountModal.vue
+M	frontend/src/components/account/OpenAIQuotaResetCell.vue
+A	frontend/src/components/account/OpenAIReferralCell.vue
+M	frontend/src/components/account/__tests__/BulkEditAccountModal.spec.ts
+M	frontend/src/components/account/__tests__/EditAccountModal.spec.ts
+M	frontend/src/components/account/__tests__/OpenAIQuotaResetCell.spark_shadow.spec.ts
+A	frontend/src/components/account/__tests__/OpenAIReferralCell.spec.ts
+A	frontend/src/components/account/__tests__/OpenAIReferralCell.transport.spec.ts
+M	frontend/src/components/layout/AppHeader.vue
+M	frontend/src/i18n/locales/en/admin/accounts.ts
+M	frontend/src/i18n/locales/en/admin/channels.ts
+M	frontend/src/i18n/locales/zh/admin/accounts.ts
+M	frontend/src/i18n/locales/zh/admin/channels.ts
+M	frontend/src/i18n/locales/zh/common.ts
+M	frontend/src/types/index.ts
+A	frontend/src/types/openaiReferrals.ts
+M	frontend/src/views/admin/PluginsView.vue
+M	frontend/src/views/admin/RiskControlView.vue
+M	frontend/src/views/admin/__tests__/RiskControlView.spec.ts
+```
+
+### 未验证与最终门禁
+
+- 未验证：真实Provider、真实TypeSafe、真实邀请/积分兑换、支付/邮件/第三方回调、插件真实部署、完整浏览器业务E2E、生产数据库及服务、原生macOS、多架构真实Release、GitHub Actions在线工作流、全包race与峰值负载。没有由mock结果推断这些链路全部正常。
+- 生产Go软内存与PostgreSQL缓存叠加的既有OOM风险继续存在，本轮没有压力验证，也没有调整预算。Seedance查询结算与插件凭据边界按获批方案保留；依赖告警和Canvas格式问题继续作为已知基线。
+- Claude断连超时用例的既有计时波动未在本轮修复；基线快照已复现相同失败，不能把重复测试通过描述为已消除该稳定性风险。
+- 形成M1前没有未解决Git/语义冲突，相对同步前没有尚未修复的新增测试失败，关键门禁均通过。备份保留原HEAD，main在记录提交前仍为LOCAL_PRE_SYNC_SHA，未提前更新。
+- M2提交后再次检查main未变且工作树干净，只执行git switch main和git merge --ff-only同步分支；若不满足则停止，绝不强制更新。最终记录SHA、main SHA及清理核验在对话报告。
+- 本轮隔离smoke进程和专有标签容器已清理，18973无监听；Testcontainers容器已回收，Docker最终仅见原有其他项目容器及历史停止容器。POSIX临时挂载初检非空而保留，进一步确认仅余两个无监听者的插件测试socket后解除挂载；未删除原有其他项目容器、缓存、日志或工作资料。
+- Git执行摘要：固定SHA的git merge --no-ff --no-commit退出1（预期12个文本冲突）；逐块apply_patch、Wire生成和兼容修正完成后，git add及暂存差异检查退出0，git commit创建M1退出0。M1的双父关系已核对，最后的记录提交及ff-only结果在最终对话交付。
