@@ -4834,3 +4834,11 @@ M	frontend/src/views/admin/__tests__/RiskControlView.spec.ts
 - 新增 `CUST-OPS-007` 及兼容审批文档，不修改上游原始 SQL、旧迁移校验和或业务默认值。部署门禁只接纳受限新增可空字段且需绑定旧代码审查；其他变化继续拒绝。
 - 候选启动完整待执行清单校验、NOWAIT 和短事务预算、禁用失败候选自动重启纳入本次实现。测试及实际发布结果另行补记，不把本地实现写成生产已完成。
 - 本地门禁验证退出0：Python证据6项、状态机51项、预检3项，Go迁移定向单元和隔离PostgreSQL集成测试，golangci-lint无问题。实际生产迁移清单只读比对为唯一238b，原SQL摘要保留；现有一小时强制退役策略、资源参数和数据目录均未修改。
+
+## 2026-09-21 v0.1.243 发布交付
+
+- 在上述旧版兼容字段迁移授权范围内，实现提交`6154c64ffc83f180f7e8f118ccbd5182b8cb0f52`经候选CI/安全扫描后快进合入main，并创建新附注标签`v0.1.243`；候选、主线和标签各8项CI、2项安全任务成功。Release `35604350151`的10项作业及实际蓝绿部署步骤成功，未移动历史标签。
+- 固定镜像`saviour2411/sub2api@sha256:ce498d5c6f434bcb869d1d1bfc12ed48b9c980f36eb83e2384bf97e6d9c2ebbf`于21:23:32切至blue/18080。唯一238b原始SQL和摘要保持不变，实际新增可空JSONB字段`engine_meta`且无默认值；历史账本摘要全部保持，运行策略与归档兼容基线一致。
+- 22:24:41旧green回收后恢复stable、pending=null；22:25:37最终只读验收通过。生产资源参数、3600秒响应头超时、5秒usage任务超时、原bind mount、双Compose、持久配置及PG/Redis身份和启动时间均未变，新blue未重启。人工操作仅只读，实际迁移、切流和退役由Actions执行。
+- 退役边界：一小时到期关停前仍有HTTP 10、SSE 4、会话租约495；退出137、非OOM、usage_loss_unknown=true。API/direct合计7016次健康探针无异常不证明旧请求无中断或账单完整。本轮未执行真实付费模型/支付回调、完整账单核对、恢复演练或峰值负载测试。
+- `LAST_FULLY_INTEGRATED_UPSTREAM_SHA`仍为`7c700729c23187d31ed320f6b19c790e2f194826`，未追加上游范围。二次开发事实同步至`docs/custom-development-history.md`，当前61个稳定编号均保留；完整运行ID、镜像与归档摘要见`docs/operations/2026-09-21-v0.1.243-release.md`。
