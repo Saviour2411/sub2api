@@ -4826,3 +4826,11 @@ M	frontend/src/views/admin/__tests__/RiskControlView.spec.ts
 - M2提交后再次检查main未变且工作树干净，只执行git switch main和git merge --ff-only同步分支；若不满足则停止，绝不强制更新。最终记录SHA、main SHA及清理核验在对话报告。
 - 本轮隔离smoke进程和专有标签容器已清理，18973无监听；Testcontainers容器已回收，Docker最终仅见原有其他项目容器及历史停止容器。POSIX临时挂载初检非空而保留，进一步确认仅余两个无监听者的插件测试socket后解除挂载；未删除原有其他项目容器、缓存、日志或工作资料。
 - Git执行摘要：固定SHA的git merge --no-ff --no-commit退出1（预期12个文本冲突）；逐块apply_patch、Wire生成和兼容修正完成后，git add及暂存差异检查退出0，git commit创建M1退出0。M1的双父关系已核对，最后的记录提交及ff-only结果在最终对话交付。
+
+## 2026-09-21 同步后发布兼容门禁
+
+- 上轮完整同步提交 `8b6b56f043def67860b8f1a0a487d0d69844ecae` 已在候选与主线 CI、安全扫描全部成功后快进合入 `main`。`LAST_FULLY_INTEGRATED_UPSTREAM_SHA` 仍为 `7c700729c23187d31ed320f6b19c790e2f194826`，未扩大上游范围。
+- 用户继续授权更新标签并经 GitHub Actions 蓝绿部署。预检发现 `238b_content_moderation_engine_meta.sql` 被既有“无迁移”门禁拒绝，尚未推送标签。2026-09-21 用户在了解共享数据库和锁表风险后批准旧版兼容的字段扩展。
+- 新增 `CUST-OPS-007` 及兼容审批文档，不修改上游原始 SQL、旧迁移校验和或业务默认值。部署门禁只接纳受限新增可空字段且需绑定旧代码审查；其他变化继续拒绝。
+- 候选启动完整待执行清单校验、NOWAIT 和短事务预算、禁用失败候选自动重启纳入本次实现。测试及实际发布结果另行补记，不把本地实现写成生产已完成。
+- 本地门禁验证退出0：Python证据6项、状态机51项、预检3项，Go迁移定向单元和隔离PostgreSQL集成测试，golangci-lint无问题。实际生产迁移清单只读比对为唯一238b，原SQL摘要保留；现有一小时强制退役策略、资源参数和数据目录均未修改。

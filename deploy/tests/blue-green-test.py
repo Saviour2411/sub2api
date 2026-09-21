@@ -44,7 +44,7 @@ class FakeDeployment(bg.Deployment):
             output = ""
         if args[:2] == ("docker","compose"):
             slot = args[-1]
-            self.containers["sub2api-"+slot] = {"Id":"container-"+self.state["release"]["sha"],"Config":{"Image":self.state["release"]["image"]}}
+            self.containers["sub2api-"+slot] = {"Id":"container-"+self.state["release"]["sha"],"Config":{"Image":self.state["release"]["image"]},"State":{"Running":True}}
             self.states[slot] = {"state":"standby","instance_id":"instance-"+self.state["release"]["sha"],"version":"test"}
         if args[:3] == ("nginx","-s","reload"):
             self.routed = "blue" if "server 127.0.0.1:18080; }" in Path(self.config["upstream_file"]).read_text().split("\n")[1 if Path(self.config["upstream_file"]).read_text().startswith("#") else 0] else "green"
@@ -159,6 +159,38 @@ class BlueGreenTests(unittest.TestCase):
         stops = [call for call in self.deployment.calls if call[:2] == ("docker","stop")]
         self.assertEqual(20,len(stops))
         self.assertTrue(all(call[2:4] == ("-t","-1") for call in stops))
+
+    def test_failed_expansion_keeps_old_instance_and_does_not_restart_candidate(self):
+        release = dict(self.release(1),migration_class="expand",migration_policy={"version":1,"migrations":[{}]})
+        original = self.deployment.run
+        def execute(*args, **kwargs):
+            result = original(*args, **kwargs)
+            if args[:2] == ("docker","compose"):
+                self.deployment.containers["sub2api-green"]["State"]["Running"] = False
+            return result
+        with patch.object(self.deployment,"run",side_effect=execute):
+            with self.assertRaisesRegex(bg.Refused,"禁止自动重试"):
+                self.deployment.deploy(release,window=0)
+        self.assertEqual("blue",self.deployment.state["active"])
+        self.assertNotIn(("control","blue","drain"),self.deployment.calls)
+        self.assertFalse(any(call[:2] in (("docker","stop"),("docker","update"),("docker","restart")) for call in self.deployment.calls))
+
+    def test_successful_expansion_restores_restart_policy_before_switch(self):
+        release = dict(self.release(1),migration_class="expand",migration_policy={"version":1,"migrations":[{}]})
+        self.deployment.deploy(release,window=0)
+        calls = self.deployment.calls
+        self.assertLess(calls.index(("control","green","synthetic")),calls.index(("docker","update","--restart=on-failure","sub2api-green")))
+        self.assertLess(calls.index(("docker","update","--restart=on-failure","sub2api-green")),calls.index(("control","green","activate")))
+        self.assertFalse(bg.same_release(release,dict(release,migration_policy={"version":1,"migrations":[]})))
+
+    def test_expansion_render_disables_restart_and_binds_policy(self):
+        release = dict(self.release(1),migration_class="expand",migration_policy={"version":1,"migrations":[{"filename":"999_test.sql"}]})
+        compose = {"services":{"sub2api":{"environment":{},"volumes":[]}},"networks":{}}
+        with patch.object(bg.os,"chown"):
+            path = bg.Deployment.render(self.deployment,"green",release,compose)
+        spec = json.loads(path.read_text())["services"]["green"]
+        self.assertEqual("no",spec["restart"])
+        self.assertEqual(release["migration_policy"],json.loads(spec["environment"]["SUB2API_BLUE_GREEN_MIGRATIONS"]))
 
     def test_busy_old_slot_is_retained_and_next_release_refused(self):
         self.deployment.busy.add("blue")

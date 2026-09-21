@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -115,7 +116,11 @@ func ApplyMigrations(ctx context.Context, db *sql.DB) error {
 	if db == nil {
 		return errors.New("nil sql db")
 	}
-	return applyMigrationsFS(ctx, db, migrations.FS)
+	policy, err := parseBlueGreenMigrationPolicy(os.Getenv("SUB2API_BLUE_GREEN_MIGRATIONS"))
+	if err != nil {
+		return err
+	}
+	return applyMigrationsFSWithPolicy(ctx, db, migrations.FS, policy)
 }
 
 // applyMigrationsFS 是迁移执行的核心实现。
@@ -137,6 +142,10 @@ func ApplyMigrations(ctx context.Context, db *sql.DB) error {
 //   - db: 数据库连接
 //   - fsys: 包含迁移文件的文件系统（通常是 embed.FS）
 func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
+	return applyMigrationsFSWithPolicy(ctx, db, fsys, nil)
+}
+
+func applyMigrationsFSWithPolicy(ctx context.Context, db *sql.DB, fsys fs.FS, policy *blueGreenMigrationPolicy) error {
 	if db == nil {
 		return errors.New("nil sql db")
 	}
@@ -159,6 +168,11 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 		defer cancel()
 		_ = pgAdvisoryUnlock(unlockCtx, lockConn)
 	}()
+	if policy != nil {
+		if err := validateBlueGreenPendingMigrations(ctx, lockConn, fsys, policy); err != nil {
+			return err
+		}
+	}
 
 	// 创建迁移记录表（如果不存在）。
 	// 该表记录所有已应用的迁移及其校验和。
@@ -222,6 +236,16 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 		}
 		if !errors.Is(rowErr, sql.ErrNoRows) {
 			return fmt.Errorf("check migration %s: %w", name, rowErr)
+		}
+		if policy != nil {
+			entry, ok := policy.find(name)
+			if !ok {
+				return fmt.Errorf("蓝绿待执行迁移未获批准：%s", name)
+			}
+			if err := applyBlueGreenExpansion(ctx, lockConn, entry, content); err != nil {
+				return err
+			}
+			continue
 		}
 
 		nonTx, err := validateMigrationExecutionMode(name, content)

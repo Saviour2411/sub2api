@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "approvals": [
+    {
+      "compatible_from": "ee1c56f75a38c8678ed338a4a1fecad51b08593c",
+      "path": "backend/migrations/238b_content_moderation_engine_meta.sql",
+      "checksum": "420af91eec85bdb60474640612a0f4d069db6ddfb21e6ed702b89713f3599287",
+      "column": {
+        "table": "content_moderation_logs",
+        "column": "engine_meta",
+        "data_type": "jsonb"
+      },
+      "legacy_contracts": [
+        {
+          "path": "backend/internal/repository/content_moderation_repo.go",
+          "checksum": "1359c3f5b16f78376b941db7993d386b35538c6247c5b938f255950adf92de52"
+        }
+      ],
+      "review": "2026-09-21 用户批准旧版兼容的字段扩展。旧版审核日志使用明确列名读写；新增字段可空，无默认值、约束或回填。保留字段回退应用，不执行反向删列。"
+    }
+  ]
+}

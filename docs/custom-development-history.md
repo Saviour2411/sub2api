@@ -238,6 +238,7 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 
 | 编号 | 功能 | 当前行为与边界 | 关键入口 | 状态 |
 | --- | --- | --- | --- | --- |
+| `CUST-OPS-007` | 蓝绿兼容字段迁移门禁 | 2026-09-21 经用户批准，只允许经过旧版读写审查、绑定旧提交和 SQL/旧代码摘要的新增可空字段；禁止默认值、约束、回填及未知结构变化。候选启动核对实际待迁移清单，NOWAIT 表锁、事务级 1秒锁等待/5秒语句限制及10秒事务预算；迁移失败不自动重启候选、不切流，旧实例继续服务。短暂表锁仍可能增加延迟，不承诺绝对零影响；应用回退保留已新增字段。 | `deploy/blue-green/evidence.py`、`deploy/blue-green/expand-approvals.json`、`backend/internal/repository/migrations_blue_green.go`、`docs/operations/blue-green-expand-migrations.md` | 发布门禁 |
 | `CUST-OPS-001` | 标签发布与生产自动部署 | `v*` 标签构建发布产物、Docker Hub/GHCR 镜像并自动 SSH 部署；完整多架构发布允许最长 120 分钟，包含连接诊断、重试、健康检查和版本文件回写。 2026-09-14 生产部署目标迁至216.152.153.86，后续按用户要求将SSH改为22748，工作流默认值、强制校验与GitHub DEPLOY_PORT同步修改，独立部署密钥经重启后验证；旧机禁止再次部署业务。2026-09-16新增用户授权的一小时观察及超时强制退役策略，生产job为120分钟，固定实例身份、Redis归属清理、游标恢复和强制结果独立审计；已手动回收green，后续tag须包含该工作流变更，不宣称强制请求无损。 2026-09-20 上游适配：接入独立构建矩阵与 dry-run，构建/镜像/部署绑定 prepare 的固定 SHA；保留 DockerHub secrets/vars 回退、凭据门禁、Canvas 构建、120分钟超时和3600秒蓝绿观察。dry-run 禁止版本回写及部署，simple 模式禁止部署，正常发布默认部署策略不变。本轮仅本地验证，不触发发布。 | `.github/workflows/release.yml`、`deploy/blue-green/deploy.py`、`deploy/remote-deploy.sh` | 运维约束 |
 | `CUST-OPS-002` | 保留生产 Compose | 自动部署默认不上传仓库 Compose，只更新远端 `.env` 镜像标签并使用活动 Compose，防止通用命名卷配置覆盖生产文件。 本次上游适配：本次仅本地更新两份 Compose 的图片主控模型环境变量，不上传文件或改变生产活动配置。 2026-09-15 上游适配：本次仅在本地同步两份生产 Compose 的 compact 默认值为 gpt-5.5；字节一致约束保留，不上传或变更生产配置。 | `.github/workflows/release.yml`、`deploy/remote-deploy.sh` | 运维约束 |
 | `CUST-OPS-003` | 生产数据与网络拓扑 | 生产实例必须保持 bind mount 数据目录、仅回环地址暴露、两个活动 Compose 一致，以及业务要求的 HTTP upstream 安全开关；Compose 接入上游健康检查变化并透传实例级数据保留参数，具体保留天数、实例专用路径和连接参数只保存在不跟踪的 `.env` 与本地运维说明中。 2026-09-05 发布门禁在变更版本/重建前强制校验两份Compose字节一致、应用/PostgreSQL/Redis的精确bind mount和旧实例健康；Release配置只允许服务器1及指定用户、端口、目录和活动文件。不满足时失败退出，不修改.env或重建容器。 本次上游适配：两份 Compose 字节一致，增加 SUB2API_IMAGES_MAIN_MODEL（默认 gpt-5.6-luna）；bind mount、回环监听和 HTTP upstream 约束不变。 2026-09-14 已完成 PostgreSQL/Redis 单写迁移、商店 SQLite 一致性复制及10条 A 记录切换；旧机只保留固定新 IP 的 Nginx 转发，停用数据库、Docker 与业务定时任务。新端写入后禁止直接启动旧库回退。后续经授权完成系统包和内核更新，SSH仅22748且保留密码登录，Fail2ban封禁1小时；BBR/CAKE保留用户配置。脱敏主机配置归档于deploy/operations/production-20260914。 2026-09-16 经授权平滑调整Nginx为worker_connections=16384、multi_accept=off，修复当前epoll接入轮转偏斜，保留旧worker自然排空与应用资源上限；实测证据见docs/operations/2026-09-16-nginx-worker-balance.md。 | `deploy/docker-compose.yml`、`deploy/docker-compose.sub2api.yml`、`deploy/remote-deploy.sh`、`.github/workflows/release.yml` | 运维约束 |
@@ -246,6 +247,14 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 | `CUST-OPS-006` | 禁止网页自更新 | 定制版版本区仅静态展示公共设置中的当前构建版本，不检查上游应用版本、不显示更新弹窗或更新提示。已移除网页更新、回滚、重启入口及 `/api/v1/admin/system/` 下 `check-updates`、`rollback-versions`、`update`、`rollback`、`restart` 路由，旧页面调用返回 404；仅保留管理员鉴权的只读 `version` 接口，直接返回构建版本、不访问 GitHub。专用更新服务、缓存、操作锁及依赖注入已移除；共享 GitHub 客户端和首次安装使用的重启工具保留。后续上游同步不得恢复这些入口；升级继续走定制版标签发布和蓝绿部署流程。 | `frontend/src/components/common/VersionBadge.vue`、`frontend/src/stores/app.ts`、`backend/internal/handler/admin/system_handler.go`、`backend/internal/server/routes/admin.go`、`backend/internal/service/github_release.go` | 运维约束 |
 
 ## 变更记录
+
+### 2026-09-21 蓝绿可空字段扩展审批
+
+- 用户在风险说明后批准旧版兼容的字段迁移，新增 `CUST-OPS-007`，与 `CUST-OPS-001` 发布流程集成；不放开删除、改类型、强约束、数据回填或历史迁移改写。
+- 对上游新增 `engine_meta JSONB` 保留原始 SQL 和校验和，以旧版明确列名读写为审查依据，新增固定基线/摘要证据和候选启动保护。版本预备为 `0.1.243`。
+- 验证与生产交付结果在发布前后分别补记；尚未以本段声明生产迁移、标签推送或部署完成。
+- 本地验证：证据测试6项、部署状态机51项、预检3项通过；迁移定向单元与 PostgreSQL 集成测试通过，golangci-lint 0 issues。NTFS Unix socket 用例首次失败，转至仓库内 POSIX 临时目录后原断言通过。初始化与常规启动统一使用受保护迁移入口。
+- 2026-09-21 20:58（UTC+8）生产只读预检：活动旧提交与审批一致，实际仅待执行238b；目标为普通表且无继承，采样无该表锁/长事务。备份记录最近完成于同日12:12:53，本轮未下载或演练恢复，不将记录状态等同于恢复能力证明。
 
 记录按时间倒序追加。功能清单描述“现在是什么”，本节描述“为什么变成这样”。
 

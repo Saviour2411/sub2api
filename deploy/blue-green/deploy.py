@@ -69,7 +69,7 @@ def require_matching_runtime(slot, expected, actual_entries):
 def same_release(left, right):
     # 重跑时 CI run/attempt 可能变化；恢复身份只由不可变镜像、提交及迁移基线决定。
     return all(left.get(key) == right.get(key) for key in
-               ("sha","image","compatible_from","migration_class","rollback_compatible"))
+               ("sha","image","compatible_from","migration_class","rollback_compatible","migration_policy"))
 
 
 def resource_check(sample, config):
@@ -260,6 +260,9 @@ class Deployment:
         active = self.state["slots"][self.state["active"]]
         require(release.get("compatible_from") == active["sha"], "未提供针对当前活动提交的迁移兼容审查")
         require(release.get("migration_class") in ("none", "expand"), "破坏性或未知迁移禁止普通蓝绿发布")
+        policy = release.get("migration_policy")
+        require(isinstance(policy, dict) and policy.get("version") == 1 and isinstance(policy.get("migrations"), list), "缺少候选启动迁移保护清单")
+        require(bool(policy["migrations"]) == (release["migration_class"] == "expand"), "迁移类型与启动保护清单不符")
         require(self.machine_id() == self.config["machine_id"], "目标机器指纹不匹配")
         source = self.directory / "docker-compose.yml"
         require(source.read_bytes() == (self.directory / "docker-compose.sub2api.yml").read_bytes(), "活动 Compose 与二开清单不一致")
@@ -294,8 +297,11 @@ class Deployment:
         spec["image"] = release["image"]
         spec["container_name"] = "sub2api-" + slot
         spec["restart"] = "on-failure"
+        if release["migration_class"] == "expand":
+            spec["restart"] = "no"
         spec["ports"] = [{"target": 8080, "published": str(SLOTS[slot]), "host_ip": "127.0.0.1", "protocol": "tcp"}]
         spec["environment"].update({"LIFECYCLE_MODE": "standby", "LIFECYCLE_SOCKET": "/run/sub2api/"+slot+".sock", "LOG_OUTPUT_FILE_PATH": "/app/instance-logs/sub2api.log", "LIFECYCLE_LEGACY": str(any(s.get("legacy") for s in self.state["slots"].values())).lower()})
+        spec["environment"]["SUB2API_BLUE_GREEN_MIGRATIONS"] = json.dumps(release["migration_policy"], separators=(",", ":"))
         for name in ("run", "logs/"+slot):
             path = self.root/name
             path.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -842,6 +848,9 @@ class Deployment:
             require(existing["Config"]["Image"] == release["image"], "槽位镜像与发布不一致；拒绝重建")
         deadline = time.monotonic()+180
         while True:
+            if release["migration_class"] == "expand":
+                running = self.inspect("sub2api-"+slot)
+                require(running and running.get("State", {}).get("Running"), "候选迁移启动失败，禁止自动重试或切流；旧实例保持服务")
             try:
                 candidate = self.control(slot)
                 if candidate["state"] in ("standby", "active"):
@@ -859,6 +868,8 @@ class Deployment:
         require(not known or known["instance_id"] == candidate["instance_id"], "候选意外重启，停止自动恢复")
         slots[slot] = dict(container_id=self.inspect("sub2api-"+slot)["Id"], instance_id=candidate["instance_id"], image=release["image"], sha=release["sha"], version=candidate["version"])
         self.save(slots=slots)
+        if release["migration_class"] == "expand":
+            self.run("docker", "update", "--restart=on-failure", "sub2api-"+slot)
         self.switch(slot)
         self.drain(window)
 
