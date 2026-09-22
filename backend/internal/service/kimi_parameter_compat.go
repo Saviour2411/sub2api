@@ -19,23 +19,25 @@ const (
 	kimiCompatReasoning
 	kimiCompatToolChoice
 	kimiCompatBudget
+	kimiCompatThinkingType
 	kimiCompatRuleCount
 )
 
 var kimiSamplingFields = [...]string{"temperature", "top_p", "top_k", "presence_penalty", "frequency_penalty"}
 
 var (
-	kimiErrorPrefix       = regexp.MustCompile(`(?i)^(?:[a-z_*][a-z0-9_*]*\.)*InvalidParameter:\s*`)
-	kimiUnsupportedValue  = regexp.MustCompile("(?i)^Parameter ['\"`]?([a-z_]+)['\"`]?=([^\\s]+) is not supported for [a-z0-9._/-]+ model[.!]?$")
-	kimiFixedValue        = regexp.MustCompile(`(?i)^field ([a-z_]+) invalid, only (-?[0-9]+(?:\.[0-9]+)?) is allowed for this model[.!]?$`)
-	kimiInvalidType       = regexp.MustCompile("(?i)^['\"`]?([a-z_]+)['\"`]? must be (float|integer|number|a number|an integer)[.!]?$")
-	kimiInvalidRange      = regexp.MustCompile(`(?i)^([a-z_]+) should be in ([\[(])(-?[0-9]+(?:\.[0-9]+)?),\s*(-?[0-9]+(?:\.[0-9]+)?)([\])])[.!]?$`)
-	kimiUnsupportedField  = regexp.MustCompile("(?i)^Unsupported parameter: ['\"`]([a-z_]+)['\"`][.!]?$")
-	kimiUnsupportedLevel  = regexp.MustCompile("(?i)^level ['\"`]([^'\"`]+)['\"`] not supported, valid levels: ([a-z_, ]+)[.!]?$")
-	kimiInvalidEffort     = regexp.MustCompile("(?i)^Invalid value for ['\"`]?reasoning_effort['\"`]?: ['\"`]([^'\"`]+)['\"`][.!]?(?: (?:Supported values are|Valid values): ([a-z_'\"`, ]+)[.!]?)?$")
-	kimiInvalidToolChoice = regexp.MustCompile("^Invalid value for [`\"']?tool_choice[`\"']?: ([^!\\r\\n]+)! Only named tools, \"none\", \"auto\" or \"required\" are supported\\.$")
-	kimiMissingFunction   = regexp.MustCompile("^Expected field [`\"']function[`\"'] in [`\"']tool_choice[`\"'](?:\\. Correct usage: `?(\\{[^\\r\\n]+\\})`?)?\\.?$")
-	kimiBudgetConflict    = regexp.MustCompile(`(?i)^max_completion_tokens\s*(?:\[\s*([0-9]+)\s*\])? must be (?:greater|larger) than thinking_budget\s*(?:\[\s*([0-9]+)\s*\])?[.!]?$`)
+	kimiErrorPrefix         = regexp.MustCompile(`(?i)^(?:[a-z_*][a-z0-9_*]*\.)*InvalidParameter:\s*`)
+	kimiUnsupportedValue    = regexp.MustCompile("(?i)^Parameter ['\"`]?([a-z_]+)['\"`]?=([^\\s]+) is not supported for [a-z0-9._/-]+ model[.!]?$")
+	kimiFixedValue          = regexp.MustCompile(`(?i)^field ([a-z_]+) invalid, only (-?[0-9]+(?:\.[0-9]+)?) is allowed for this model[.!]?$`)
+	kimiInvalidType         = regexp.MustCompile("(?i)^['\"`]?([a-z_]+)['\"`]? must be (float|integer|number|a number|an integer)[.!]?$")
+	kimiInvalidRange        = regexp.MustCompile(`(?i)^([a-z_]+) should be in ([\[(])(-?[0-9]+(?:\.[0-9]+)?),\s*(-?[0-9]+(?:\.[0-9]+)?)([\])])[.!]?$`)
+	kimiUnsupportedField    = regexp.MustCompile("(?i)^Unsupported parameter: ['\"`]([a-z_]+)['\"`][.!]?$")
+	kimiUnsupportedLevel    = regexp.MustCompile("(?i)^level ['\"`]([^'\"`]+)['\"`] not supported, valid levels: ([a-z_, ]+)[.!]?$")
+	kimiInvalidEffort       = regexp.MustCompile("(?i)^Invalid value for ['\"`]?reasoning_effort['\"`]?: ['\"`]([^'\"`]+)['\"`][.!]?(?: (?:Supported values are|Valid values): ([a-z_'\"`, ]+)[.!]?)?$")
+	kimiInvalidToolChoice   = regexp.MustCompile("^Invalid value for [`\"']?tool_choice[`\"']?: ([^!\\r\\n]+)! Only named tools, \"none\", \"auto\" or \"required\" are supported\\.$")
+	kimiMissingFunction     = regexp.MustCompile("^Expected field [`\"']function[`\"'] in [`\"']tool_choice[`\"'](?:\\. Correct usage: `?(\\{[^\\r\\n]+\\})`?)?\\.?$")
+	kimiBudgetConflict      = regexp.MustCompile(`(?i)^max_completion_tokens\s*(?:\[\s*([0-9]+)\s*\])? must be (?:greater|larger) than thinking_budget\s*(?:\[\s*([0-9]+)\s*\])?[.!]?$`)
+	kimiInvalidThinkingType = regexp.MustCompile("^['\"`]?type['\"`]? must be in \\[\\s*\"enabled\"\\s*,\\s*\"disabled\"\\s*,\\s*\"auto\"\\s*\\][.!]?$")
 )
 
 func (rule kimiCompatRule) String() string {
@@ -48,6 +50,8 @@ func (rule kimiCompatRule) String() string {
 		return "tool_choice"
 	case kimiCompatBudget:
 		return "max_completion_tokens"
+	case kimiCompatThinkingType:
+		return "thinking_type"
 	default:
 		return ""
 	}
@@ -63,6 +67,8 @@ func (rule kimiCompatRule) enabled(settings GatewaySettings) bool {
 		return settings.KimiToolChoiceRetryEnabled
 	case kimiCompatBudget:
 		return settings.KimiMaxCompletionTokensRetryEnabled
+	case kimiCompatThinkingType:
+		return settings.KimiThinkingTypeRetryEnabled
 	default:
 		return false
 	}
@@ -195,6 +201,28 @@ func matchKimiParameterRejection(requestBody, errorBody []byte) (kimiCompatRule,
 			(rejection.Param == "" || kimiParameterName(rejection.Param) == field)
 	}
 	message := rejection.Message
+	if kimiInvalidThinkingType.MatchString(message) {
+		switch rejection.Param {
+		case "", "type", "thinking.type":
+		default:
+			return 0, false
+		}
+		thinking := gjson.GetBytes(requestBody, "thinking")
+		if !kimiUniqueJSONObject([]byte(thinking.Raw)) {
+			return 0, false
+		}
+		thinkingType := thinking.Get("type")
+		if !thinkingType.Exists() {
+			return 0, false
+		}
+		if thinkingType.Type == gjson.String {
+			switch thinkingType.String() {
+			case "enabled", "disabled", "auto":
+				return 0, false
+			}
+		}
+		return kimiCompatThinkingType, true
+	}
 	for _, pattern := range []*regexp.Regexp{kimiUnsupportedValue, kimiFixedValue, kimiInvalidType, kimiInvalidRange, kimiUnsupportedField} {
 		matched := pattern.FindStringSubmatch(message)
 		if matched == nil {
@@ -287,6 +315,8 @@ func applyKimiParameterRepair(body []byte, rule kimiCompatRule) ([]byte, []strin
 	fields := []string{rule.String()}
 	if rule == kimiCompatSampling {
 		fields = kimiSamplingFields[:]
+	} else if rule == kimiCompatThinkingType {
+		fields = []string{"thinking"}
 	}
 	modified := body
 	var changed []string

@@ -112,8 +112,66 @@ func TestKimiParameterErrorEnvelope(t *testing.T) {
 	}
 }
 
+func TestKimiThinkingTypeParameterRejectionMatching(t *testing.T) {
+	message := `'type' must be in ["enabled", "disabled", "auto"]`
+	for _, test := range []struct {
+		name    string
+		request string
+		matched bool
+	}{
+		{"非法adaptive", `{"thinking":{"type":"adaptive"}}`, true},
+		{"其他非法字符串", `{"thinking":{"type":"high"}}`, true},
+		{"空字符串", `{"thinking":{"type":""}}`, true},
+		{"非法布尔值", `{"thinking":{"type":true}}`, true},
+		{"非法数字", `{"thinking":{"type":1}}`, true},
+		{"显式null", `{"thinking":{"type":null}}`, true},
+		{"合法enabled", `{"thinking":{"type":"enabled"}}`, false},
+		{"合法disabled", `{"thinking":{"type":"disabled"}}`, false},
+		{"合法auto", `{"thinking":{"type":"auto"}}`, false},
+		{"缺少thinking", `{}`, false},
+		{"缺少type", `{"thinking":{"budget_tokens":128}}`, false},
+		{"非对象thinking", `{"thinking":"adaptive"}`, false},
+		{"数组thinking", `{"thinking":[{"type":"adaptive"}]}`, false},
+		{"重复type", `{"thinking":{"type":"adaptive","type":"enabled"}}`, false},
+		{"大小写歧义type", `{"thinking":{"type":"adaptive","Type":"enabled"}}`, false},
+		{"重复thinking", `{"thinking":{"type":"adaptive"},"thinking":{"type":"enabled"}}`, false},
+		{"仅extra_body嵌套", `{"extra_body":{"thinking":{"type":"adaptive"}}}`, false},
+		{"仅工具type", `{"tools":[{"type":"adaptive"}]}`, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			rule, matched := matchKimiParameterRejection([]byte(test.request), kimiTestError(message))
+			require.Equal(t, test.matched, matched)
+			if matched {
+				require.Equal(t, kimiCompatThinkingType, rule)
+			}
+		})
+	}
+	for _, test := range []struct {
+		name    string
+		error   kimiParameterError
+		matched bool
+	}{
+		{"完整生产错误", kimiParameterError{Message: message, Code: "invalid_parameter_error", Type: "invalid_request_error"}, true},
+		{"明确thinking.type", kimiParameterError{Message: message, Param: "thinking.type"}, true},
+		{"明确type", kimiParameterError{Message: message, Param: "type"}, true},
+		{"其他字段", kimiParameterError{Message: message, Param: "tool_choice.type"}, false},
+		{"引用错误", kimiParameterError{Message: "Invalid message content: " + message}, false},
+		{"歧义尾随错误", kimiParameterError{Message: message + "; tool_choice invalid"}, false},
+		{"不同枚举", kimiParameterError{Message: `'type' must be in ["function", "custom"]`}, false},
+		{"泛化400", kimiParameterError{Message: "Invalid request parameters"}, false},
+		{"审核错误", kimiParameterError{Message: message, Type: "content_filter"}, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body, err := json.Marshal(map[string]any{"error": test.error})
+			require.NoError(t, err)
+			_, matched := matchKimiParameterRejection([]byte(`{"thinking":{"type":"adaptive"}}`), body)
+			require.Equal(t, test.matched, matched)
+		})
+	}
+}
+
 func TestKimiParameterRepairPreservesUnrelatedFields(t *testing.T) {
-	body := []byte(`{"temperature":0.7,"top_p":0.8,"top_k":5,"presence_penalty":0.5,"frequency_penalty":0.5,"n":1,"stop":"end","reasoning_effort":"medium","tool_choice":"bogus","tools":[{"type":"function","function":{"name":"keep"}}],"messages":[{"role":"assistant","tool_calls":[{"id":"call_keep"}]}],"max_completion_tokens":128,"max_tokens":512,"thinking_budget":32768}`)
+	body := []byte(`{"temperature":0.7,"top_p":0.8,"top_k":5,"presence_penalty":0.5,"frequency_penalty":0.5,"n":1,"stop":"end","reasoning_effort":"medium","tool_choice":"bogus","tools":[{"type":"function","function":{"name":"keep"}}],"messages":[{"role":"assistant","tool_calls":[{"id":"call_keep"}]}],"max_completion_tokens":128,"max_tokens":512,"thinking_budget":32768,"thinking":{"type":"adaptive","budget_tokens":1024,"keep":"all"}}`)
 	for rule := kimiCompatRule(0); rule < kimiCompatRuleCount; rule++ {
 		t.Run(rule.String(), func(t *testing.T) {
 			modified, fields, err := applyKimiParameterRepair(body, rule)
@@ -131,6 +189,14 @@ func TestKimiParameterRepairPreservesUnrelatedFields(t *testing.T) {
 				for _, field := range fields {
 					require.False(t, gjson.GetBytes(modified, field).Exists())
 				}
+			}
+			if rule == kimiCompatThinkingType {
+				require.Equal(t, []string{"thinking"}, fields)
+				for _, field := range []string{"reasoning_effort", "max_completion_tokens"} {
+					require.Equal(t, gjson.GetBytes(body, field).Raw, gjson.GetBytes(modified, field).Raw)
+				}
+			} else {
+				require.Equal(t, gjson.GetBytes(body, "thinking").Raw, gjson.GetBytes(modified, "thinking").Raw)
 			}
 			_, changed, err := applyKimiParameterRepair(modified, rule)
 			require.NoError(t, err)

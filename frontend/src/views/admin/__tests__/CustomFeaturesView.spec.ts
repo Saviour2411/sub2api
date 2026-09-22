@@ -150,6 +150,7 @@ function settingsFixture(): CustomFeatureSettings {
       kimi_reasoning_effort_retry_enabled: false,
       kimi_tool_choice_retry_enabled: false,
       kimi_max_completion_tokens_retry_enabled: false,
+      kimi_thinking_type_retry_enabled: false,
       disable_recharge_bonus_for_custom_rate_users: false,
     },
   }
@@ -274,13 +275,14 @@ describe('admin CustomFeaturesView', () => {
       kimi_reasoning_effort_retry_enabled: false,
       kimi_tool_choice_retry_enabled: false,
       kimi_max_completion_tokens_retry_enabled: false,
+      kimi_thinking_type_retry_enabled: false,
       disable_recharge_bonus_for_custom_rate_users: true,
     })
     expect(updateDailyCheckin).not.toHaveBeenCalled()
     expect(showSuccess).toHaveBeenCalledWith('admin.customFeatures.gateway.saved')
   })
 
-  it('独立保存 Kimi 四项兼容开关', async () => {
+  it('独立保存 Kimi 五项兼容开关', async () => {
     const wrapper = mountView()
     await flushPromises()
     await wrapper.get('[data-test="custom-feature-tab-gateway"]').trigger('click')
@@ -289,6 +291,7 @@ describe('admin CustomFeaturesView', () => {
       'kimi_reasoning_effort_retry_enabled',
       'kimi_tool_choice_retry_enabled',
       'kimi_max_completion_tokens_retry_enabled',
+      'kimi_thinking_type_retry_enabled',
     ]) {
       expect(wrapper.get(`[data-test="gateway-${field}"]`).text()).toBe('off')
       await wrapper.get(`[data-test="gateway-${field}"]`).trigger('click')
@@ -301,6 +304,7 @@ describe('admin CustomFeaturesView', () => {
       kimi_reasoning_effort_retry_enabled: true,
       kimi_tool_choice_retry_enabled: false,
       kimi_max_completion_tokens_retry_enabled: true,
+      kimi_thinking_type_retry_enabled: true,
     }))
   })
 
@@ -416,6 +420,7 @@ describe('admin CustomFeaturesView', () => {
       'kimi_reasoning_effort_retry_enabled',
       'kimi_tool_choice_retry_enabled',
       'kimi_max_completion_tokens_retry_enabled',
+      'kimi_thinking_type_retry_enabled',
     ]) {
       expect(wrapper.get(`[data-test="gateway-${field}"]`).text()).toBe('off')
     }

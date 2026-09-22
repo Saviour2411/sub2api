@@ -417,7 +417,7 @@ export default {
         },
         kimiCompatibility: {
           title: 'Kimi 参数兼容重试',
-          description: '四项独立开关默认关闭，仅适用于 Kimi 类型分组的 Chat Completions 出站，包括 Messages/Responses 转换。上游明确返回参数错误后，在未向客户端提交响应时重试；每项每请求最多一次，共最多额外四次。',
+          description: '五项独立开关默认关闭，仅适用于 Kimi 类型分组的 Chat Completions 出站，包括 Messages/Responses 转换。上游明确返回参数错误后，在未向客户端提交响应时重试；每项每请求最多一次，共最多额外五次。',
           sampling: {
             title: '采样参数拒绝兼容',
             description: '明确拒绝采样字段时，移除 temperature、top_p、top_k、presence_penalty、frequency_penalty 后重试，改用渠道默认值。',
@@ -433,6 +433,10 @@ export default {
           budget: {
             title: '思考预算冲突兼容',
             description: 'max_completion_tokens 与 thinking_budget 冲突时，仅移除 max_completion_tokens 重试。解除此输出上限可能增加输出量、耗时和费用。',
+          },
+          thinkingType: {
+            title: '思考模式类型兼容',
+            description: '上游明确要求 type 为 enabled、disabled 或 auto，且出站 thinking.type 非法时，移除整个 thinking 后重试一次。保留 reasoning_effort 和输出上限；thinking 内的预算及历史思考保留设置会一并移除，改用渠道默认行为。',
           },
         },
         customRateRechargeBonus: {

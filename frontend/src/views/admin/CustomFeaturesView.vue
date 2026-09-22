@@ -955,6 +955,7 @@ const kimiCompatibilityOptions = [
   { field: 'kimi_reasoning_effort_retry_enabled', key: 'reasoning' },
   { field: 'kimi_tool_choice_retry_enabled', key: 'toolChoice' },
   { field: 'kimi_max_completion_tokens_retry_enabled', key: 'budget' },
+  { field: 'kimi_thinking_type_retry_enabled', key: 'thinkingType' },
 ] as const
 
 const gateway = reactive<GatewaySettings>({
@@ -982,6 +983,7 @@ const gateway = reactive<GatewaySettings>({
   kimi_reasoning_effort_retry_enabled: false,
   kimi_tool_choice_retry_enabled: false,
   kimi_max_completion_tokens_retry_enabled: false,
+  kimi_thinking_type_retry_enabled: false,
   disable_recharge_bonus_for_custom_rate_users: false
 })
 const gatewayRetryStatusCodesInput = ref(gateway.default_pool_mode_retry_status_codes.join(', '))
@@ -1066,6 +1068,7 @@ function cloneGateway(settings?: Partial<GatewaySettings>): GatewaySettings {
     kimi_reasoning_effort_retry_enabled: settings?.kimi_reasoning_effort_retry_enabled ?? false,
     kimi_tool_choice_retry_enabled: settings?.kimi_tool_choice_retry_enabled ?? false,
     kimi_max_completion_tokens_retry_enabled: settings?.kimi_max_completion_tokens_retry_enabled ?? false,
+    kimi_thinking_type_retry_enabled: settings?.kimi_thinking_type_retry_enabled ?? false,
     disable_recharge_bonus_for_custom_rate_users:
       settings?.disable_recharge_bonus_for_custom_rate_users ?? false
   }
@@ -1330,6 +1333,7 @@ async function saveGateway() {
       kimi_reasoning_effort_retry_enabled: gateway.kimi_reasoning_effort_retry_enabled,
       kimi_tool_choice_retry_enabled: gateway.kimi_tool_choice_retry_enabled,
       kimi_max_completion_tokens_retry_enabled: gateway.kimi_max_completion_tokens_retry_enabled,
+      kimi_thinking_type_retry_enabled: gateway.kimi_thinking_type_retry_enabled,
       anthropic_sampling_parameter_filter_models:
         validation.samplingParameterFilterModels,
       disable_recharge_bonus_for_custom_rate_users:

@@ -433,6 +433,7 @@ const (
 	SettingKeyGatewayKimiReasoningEffortRetryEnabled                    = "gateway_kimi_reasoning_effort_retry_enabled"
 	SettingKeyGatewayKimiToolChoiceRetryEnabled                         = "gateway_kimi_tool_choice_retry_enabled"
 	SettingKeyGatewayKimiMaxCompletionTokensRetryEnabled                = "gateway_kimi_max_completion_tokens_retry_enabled"
+	SettingKeyGatewayKimiThinkingTypeRetryEnabled                       = "gateway_kimi_thinking_type_retry_enabled"
 	SettingKeyGatewayDisableRechargeBonusForCustomRateUsers             = "gateway_disable_recharge_bonus_for_custom_rate_users"
 	SettingKeyGatewayFailurePolicyRevision                              = "gateway_failure_policy_revision"
 	SettingKeyGatewayFailurePolicyFingerprint                           = "gateway_failure_policy_fingerprint"

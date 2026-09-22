@@ -9,13 +9,15 @@
 
 上游提交的逐项处置继续记录在 `docs/upstream-sync-history.md`。本文件不重复上游提交清单，只记录本地能力及其演进。
 
-## Kimi 参数兼容重试（待发布）
+## Kimi 参数兼容重试（思考模式类型兼容计划随 v0.1.244 发布）
 
-新增四个独立网关开关，默认关闭，分别兼容上游明确拒绝采样参数、非法思考强度、非法工具选择和思考预算冲突。仅 API Key 所属类型为 `kimi` 的分组及 Chat Completions 出站生效，覆盖 Messages/Responses 转换，不影响综合分组和原生其他协议。
+提供五个独立网关开关，默认关闭，分别兼容上游明确拒绝采样参数、非法思考强度、非法工具选择、思考预算冲突和非法 `thinking.type`。仅 API Key 所属类型为 `kimi` 的分组及 Chat Completions 出站生效，覆盖 Messages/Responses 转换，不影响综合分组和原生其他协议。
 
-只匹配实际 HTTP 400 的结构化明确错误，并核对出站字段和值；泛化400、引用文案、歧义JSON、额度/审核错误不匹配。每项每请求最多一次，共最多额外四次；普通重试和切号保留修正，既有 pool 次数不变。已提交响应禁止重放，中间失败不泄露到下游。思考兼容开启时，K3 的 Messages 默认强度改为 `low`；现有 Kimi 显式 `max` 保留行为不变。
+只匹配实际 HTTP 400 的结构化明确错误，并核对出站字段和值；泛化400、引用文案、歧义JSON、额度/审核错误不匹配。每项每请求最多一次，共最多额外五次；普通重试和切号保留修正，既有 pool 次数不变。已提交响应禁止重放，中间失败不泄露到下游。思考兼容开启时，K3 的 Messages 默认强度改为 `low`；现有 Kimi 显式 `max` 保留行为不变。
 
-通过共享 CC 入口管理响应关闭、取消和首 Token 资源，使用现有上游尝试链与 Recovered 展示。删除 `max_completion_tokens` 会解除该输出上限，可能增加输出和费用，须由管理员主动启用。配置、匹配、三个入口、限次、流安全和恢复日志均有回归，Kimi 用例加入流竞态 CI；本地测试不能替代生产第二次实际派发与完整恢复验收。详细说明见 `docs/kimi-parameter-compatibility.md`。本次不自动启用线上开关或部署。
+新增的思考模式类型开关 `kimi_thinking_type_retry_enabled` 只匹配已复现的 enabled/disabled/auto 枚举报错并核对实际出站非法值，剥离整个 `thinking` 后重试一次；合法值、缺失字段、歧义JSON及错误路径不符均不触发。剥离会移除嵌套预算和历史思考保留设置，独立的 `reasoning_effort`、`thinking_budget` 和输出上限保持不变。
+
+通过共享 CC 入口管理响应关闭、取消和首 Token 资源，使用现有上游尝试链与 Recovered 展示。删除 `max_completion_tokens` 会解除该输出上限，可能增加输出和费用，须由管理员主动启用。配置、匹配、三个入口、限次、流安全和恢复日志均有回归，Kimi 用例加入流竞态 CI；本地测试不能替代生产第二次实际派发与完整恢复验收。详细说明见 `docs/kimi-parameter-compatibility.md`。用户于2026-09-22追加授权提交代码，待 CI 与安全扫描通过后创建新标签并经 GitHub Actions 蓝绿部署；本次不自动启用线上开关。
 
 ## Claude透传流终止后的请求清理（2026-09-17，待发布）
 
@@ -155,6 +157,7 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 | `CUST-GW-012` | 指定分组首 Token 超时保护 | 在二开网关配置中选择全部分组或指定分组，默认 `all` 保持升级前行为；指定组至少选一个有效分组，依据请求上下文中的实际分组判断，不依据账号归属组。仅覆盖既有 HTTP 流式文本路径，不扩展 WS、非流式和媒体；前导纯空白不解除守卫，超时直接换号并沿用原换号上限。选中分组共用现有秒数、连续次数阈值，非受保护请求不增减首 Token streak；达到阈值后账号在所有关联分组停调度，按事故模型和时限测活恢复。范围变化纳入策略代次，旧客户端省略范围时不扩大为全局；全局指纹及原首输出行为兼容。与 `CUST-GW-013` 同时启用时由单层前导缓存协作；纯空白仍不解除首 Token 计时，但已交付不可撤销帧后的超时明确报错，不再换号重放。 | `backend/internal/service/first_token_timeout_scope.go`、`backend/internal/service/custom_feature_settings.go`、`backend/internal/service/account_test_first_token_recovery.go`、`frontend/src/views/admin/CustomFeaturesView.vue` | 生效中 |
 | `CUST-GW-013` | Claude 透传流安全重试 | 仅对 Anthropic API Key HTTP 透传流提供独立开关，默认关闭，额外重试默认2次（0–5）、总预算默认300秒（1–3600）。首次成功流响应头到达后跨尝试累计预算；仅缓存可证明无有效内容的前导事件（含待判定帧，累计上限256 KiB），先原号再换号，无替代时允许仍可调度且允许同号重试的原号使用剩余额度。交付任何不可撤销内容前关闭重放资格；完整终止帧立即收尾，缺终止、半帧、协议错误不伪装成功。保留首 Token 分组语义、取消、账号资格与按请求用量去重，错误详情展示脱敏尝试诊断。可选提前保活见 `CUST-GW-014`，HTTP 响应开始与内容提交独立判断，原有首字统计不变。 | `backend/internal/service/anthropic_stream_safe_retry.go`、`backend/internal/service/anthropic_stream_guard.go`、`backend/internal/handler/anthropic_stream_safe_retry.go`、`frontend/src/views/admin/CustomFeaturesView.vue` | 生效中（默认关闭） |
 | `CUST-GW-014` | Claude 安全重试提前 JSON 保活 | 在安全重试开启时，可选于首次成功流响应后立即发送标准 JSON `ping`，流读取期间按保活间隔继续发送（间隔未配置时使用10秒）。只发送无尝试身份的保活，暂存 `message_start` 与空前导；交付有效内容或未知不可撤销事件后禁止重放。保活不延长有效内容、空闲、首 Token 或总等待预算，不改变原有上游首事件统计。提前响应后的最终失败以 SSE 错误结束，非重试 HTTP 错误不得混写 JSON；失败尝试的响应头、消息身份与用量不得混入成功输出。 | `backend/internal/service/anthropic_stream_guard.go`、`backend/internal/service/anthropic_stream_safe_retry.go`、`backend/internal/service/custom_feature_settings.go`、`frontend/src/views/admin/CustomFeaturesView.vue` | 已发布v0.1.241（默认关闭） |
+| `CUST-GW-015` | Kimi 思考模式类型兼容重试 | 在既有 Kimi 参数兼容重试中新增默认关闭的独立开关，仅对 Kimi 类型分组的 Chat Completions 出站、明确400枚举报错及实际非法 `thinking.type` 生效。剥离整个 `thinking`，保留独立思考强度与输出上限，每请求最多一次；嵌套预算/keep 随之移除，已提交响应或取消不重放。五项规则累计最多额外五次，修正沿用至外层重试与换号，不影响其他分组及原生其他协议。 | `backend/internal/service/kimi_parameter_compat.go`、`backend/internal/service/custom_feature_settings.go`、`frontend/src/views/admin/CustomFeaturesView.vue` | 待发布，默认关闭 |
 
 ### 协议与上游兼容
 
@@ -268,6 +271,7 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 
 | 日期 | 版本/提交 | 类型 | 功能编号 | 变更与原因 | 验证 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-22 | `0.1.244` / 发布候选 | 新增与修复 | `CUST-GW-015` | 为 Kimi 参数兼容重试增加非法思考类型独立开关，明确400且出站值非法时删除整个 thinking 重试一次；默认关闭，新增配置读写/缓存、管理页中英文文案与旧客户端部分更新保护，累计规则上限由四次扩为五次。按用户追加授权，CI 与安全扫描通过后推送新标签并自动蓝绿部署；不修改生产开关及退役策略。 | 修复前真实上游三组 HTTP/2 流式对照已复现400，剥离/auto均完整成功。后端 service、admin handler 全量 unit 与 Kimi/审计定向竞态测试通过；前端326个文件、2481项测试全部通过，类型检查、改动文件 ESLint、gofmt 与 diff 检查通过。首次前端全量仅既有 browserStorage 测试失败，禁用 Node 25 原生 Web Storage 后定向及全量重跑通过，未修改无关代码。新增配置、匹配边界、流式/非流式恢复、限次、换号保留与界面回归均通过；本行记录发布前验证，不代表线上部署已完成。 |
 | 2026-09-20 | `0.1.242` / 本轮合并 | 上游适配 | `CUST-GW-001`、`CUST-GW-003`、`CUST-PROTO-001`、`CUST-PROTO-006`、`CUST-ACC-001`、`CUST-BILL-001`、`CUST-BILL-004`、`CUST-RISK-001`、`CUST-RISK-002`、`CUST-OPS-001`、`CUST-OPS-004` | 完整合并上游46个提交；逐块组合12个冲突文件，保留本地版本、审核/计费/重试策略与发布约束。纯上游新增能力不重复分配本地编号。 | 同步前后验证与首次失败/复跑证据见本轮同步历史；新增审核切换、元数据及发布门禁交叉回归。不推送、不部署，不以本地模拟验证代替真实Provider、支付和生产验收。 |
 | 2026-09-20 | `0.1.241` / 本地未提交 | 新增与修复 | `CUST-OPS-006`、`CUST-UI-001`、`CUST-PROD-008` | 删除不适用于定制版的网页自更新及危险操作接口；修复用户名为空时邮箱关键词无法搜索的问题，后台补充邮箱身份显示，公开页不增加邮箱。无数据库迁移，不推送、不打标签、不自动部署。 | Go 全量 unit、真实 PostgreSQL/Redis repository 集成包、golangci-lint 0 issues、嵌入构建；前端全量 324 文件 / 2441 用例、类型检查、非改写 ESLint、构建及 1440px/390px 本地浏览器夹具检查通过。 |
 | 2026-09-15 | 本地提交 | 修改 | `CUST-OPS-005` | 按用户要求提交既有 `gateway.stream_data_interval_timeout` 示例值从500秒调整为300秒的改动，并同步功能清单。后端缺省180秒、响应头超时及5秒用量任务超时不变；不连接或修改生产。 | 示例YAML解析通过，确认字段值为300；差异检查通过。仅配置示例及台账变更，未重跑全量测试或触发远端CI。 |

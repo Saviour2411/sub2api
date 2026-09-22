@@ -211,6 +211,7 @@ func TestCustomFeatureHandler_KimiCompatibilityPartialUpdate(t *testing.T) {
 		service.SettingKeyGatewayKimiReasoningEffortRetryEnabled:     "true",
 		service.SettingKeyGatewayKimiToolChoiceRetryEnabled:          "true",
 		service.SettingKeyGatewayKimiMaxCompletionTokensRetryEnabled: "true",
+		service.SettingKeyGatewayKimiThinkingTypeRetryEnabled:        "true",
 	}}
 	router := newCustomFeatureHandlerRouter(repo)
 	for _, body := range []string{`{"image_group_success_rate_visible":false}`, `{"kimi_tool_choice_retry_enabled":false}`} {
@@ -222,8 +223,16 @@ func TestCustomFeatureHandler_KimiCompatibilityPartialUpdate(t *testing.T) {
 		require.Equal(t, "true", repo.values[service.SettingKeyGatewayKimiSamplingParameterRetryEnabled])
 		require.Equal(t, "true", repo.values[service.SettingKeyGatewayKimiReasoningEffortRetryEnabled])
 		require.Equal(t, "true", repo.values[service.SettingKeyGatewayKimiMaxCompletionTokensRetryEnabled])
+		require.Equal(t, "true", repo.values[service.SettingKeyGatewayKimiThinkingTypeRetryEnabled])
 	}
 	require.Equal(t, "false", repo.values[service.SettingKeyGatewayKimiToolChoiceRetryEnabled])
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPut, "/api/v1/admin/custom-features/gateway", bytes.NewBufferString(`{"kimi_thinking_type_retry_enabled":false}`))
+	request.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(recorder, request)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, "false", repo.values[service.SettingKeyGatewayKimiThinkingTypeRetryEnabled])
+	require.Equal(t, "true", repo.values[service.SettingKeyGatewayKimiReasoningEffortRetryEnabled])
 }
 
 func TestCustomFeatureHandler_StreamSafeRetryCompatibilityAndValidation(t *testing.T) {

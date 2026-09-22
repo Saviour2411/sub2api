@@ -25,6 +25,7 @@ func kimiCompatTestService(upstream HTTPUpstream) *OpenAIGatewayService {
 		SettingKeyGatewayKimiReasoningEffortRetryEnabled:     "true",
 		SettingKeyGatewayKimiToolChoiceRetryEnabled:          "true",
 		SettingKeyGatewayKimiMaxCompletionTokensRetryEnabled: "true",
+		SettingKeyGatewayKimiThinkingTypeRetryEnabled:        "true",
 	}}}, cfg)
 	return &OpenAIGatewayService{cfg: cfg, settingService: settings, httpUpstream: upstream}
 }
@@ -118,14 +119,15 @@ func TestKimiCompatibilityAllCCPaths(t *testing.T) {
 	}
 }
 
-func TestKimiCompatibilityFourRepairsAndOuterRetry(t *testing.T) {
-	body := []byte(`{"model":"kimi-k3","messages":[],"temperature":0.7,"top_p":0.5,"reasoning_effort":"invalid-audit-value","tool_choice":"bogus","tools":[{"type":"function","function":{"name":"keep"}}],"max_completion_tokens":128}`)
+func TestKimiCompatibilityFiveRepairsAndOuterRetry(t *testing.T) {
+	body := []byte(`{"model":"kimi-k3","messages":[],"temperature":0.7,"top_p":0.5,"reasoning_effort":"invalid-audit-value","tool_choice":"bogus","tools":[{"type":"function","function":{"name":"keep"}}],"max_completion_tokens":128,"thinking":{"type":"adaptive"}}`)
 	ctx, _ := kimiCompatTestContext(body, "/v1/chat/completions")
 	upstream := &httpUpstreamRecorder{responses: []*http.Response{
 		kimiCompatTestResponse(400, kimiTestError("field Temperature invalid, only 1 is allowed for this model")),
 		kimiCompatTestResponse(400, kimiTestError(`level "invalid-audit-value" not supported, valid levels: low, high, max`)),
 		kimiCompatTestResponse(400, kimiTestError("Invalid value for `tool_choice`: bogus! Only named tools, \"none\", \"auto\" or \"required\" are supported.")),
 		kimiCompatTestResponse(400, kimiTestError("max_completion_tokens [128] must be greater than thinking_budget [32768]")),
+		kimiCompatTestResponse(400, kimiTestError(`'type' must be in ["enabled", "disabled", "auto"]`)),
 		kimiCompatTestResponse(503, []byte(`{"error":{"message":"busy"}}`)),
 		kimiCompatTestSuccess(false),
 	}}
@@ -135,21 +137,21 @@ func TestKimiCompatibilityFourRepairsAndOuterRetry(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 503, response.StatusCode)
 	require.NoError(t, response.Body.Close())
-	require.Len(t, upstream.bodies, 5)
-	require.Len(t, kimiCompatTestEvents(ctx), 4)
+	require.Len(t, upstream.bodies, 6)
+	require.Len(t, kimiCompatTestEvents(ctx), 5)
 	require.Equal(t, "invalid-audit-value", gjson.Get(kimiCompatTestEvents(ctx)[1].Detail, "rejected_effort").String())
 	require.Equal(t, "low", gjson.Get(kimiCompatTestEvents(ctx)[1].Detail, "effective_effort").String())
 	account.ID++
 	account.Credentials["model_mapping"] = map[string]any{"kimi-k3": "kimi-k2.6"}
 	result, err := service.forwardAsRawChatCompletions(ctx.Request.Context(), ctx, account, body, "")
 	require.NoError(t, err)
-	require.Len(t, upstream.bodies, 6)
-	require.Equal(t, 4, service.kimiParameterCompat(ctx.Request.Context(), ctx).retries)
+	require.Len(t, upstream.bodies, 7)
+	require.Equal(t, 5, service.kimiParameterCompat(ctx.Request.Context(), ctx).retries)
 	require.Equal(t, "low", *result.ReasoningEffort)
 	require.Equal(t, 3, result.Usage.InputTokens)
 	require.Equal(t, "kimi-k2.6", gjson.GetBytes(upstream.lastBody, "model").String())
-	for _, finalBody := range upstream.bodies[4:] {
-		for _, removed := range []string{"temperature", "top_p", "tool_choice", "max_completion_tokens"} {
+	for _, finalBody := range upstream.bodies[5:] {
+		for _, removed := range []string{"temperature", "top_p", "tool_choice", "max_completion_tokens", "thinking"} {
 			require.False(t, gjson.GetBytes(finalBody, removed).Exists())
 		}
 		require.Equal(t, "low", gjson.GetBytes(finalBody, "reasoning_effort").String())
@@ -166,10 +168,11 @@ func TestKimiCompatibilityEachRepairRecovers(t *testing.T) {
 		{kimiCompatReasoning, `level "invalid-audit-value" not supported, valid levels: low, high, max`},
 		{kimiCompatToolChoice, "Invalid value for `tool_choice`: bogus! Only named tools, \"none\", \"auto\" or \"required\" are supported."},
 		{kimiCompatBudget, "max_completion_tokens [128] must be greater than thinking_budget [32768]"},
+		{kimiCompatThinkingType, `'type' must be in ["enabled", "disabled", "auto"]`},
 	} {
 		for _, stream := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/stream=%t", test.rule, stream), func(t *testing.T) {
-				body := []byte(fmt.Sprintf(`{"model":"kimi-k3","messages":[{"role":"user","content":"hello"}],"stream":%t,"temperature":0.7,"reasoning_effort":"invalid-audit-value","tool_choice":"bogus","tools":[{"type":"function","function":{"name":"keep"}}],"max_completion_tokens":128}`, stream))
+				body := []byte(fmt.Sprintf(`{"model":"kimi-k3","messages":[{"role":"user","content":"hello"}],"stream":%t,"temperature":0.7,"reasoning_effort":"invalid-audit-value","tool_choice":"bogus","tools":[{"type":"function","function":{"name":"keep"}}],"max_completion_tokens":128,"thinking":{"type":"adaptive","budget_tokens":64,"keep":"all"}}`, stream))
 				ctx, recorder := kimiCompatTestContext(body, "/v1/chat/completions")
 				upstream := &httpUpstreamRecorder{responses: []*http.Response{
 					kimiCompatTestResponse(400, kimiTestError(test.message)), kimiCompatTestSuccess(stream),
@@ -177,7 +180,7 @@ func TestKimiCompatibilityEachRepairRecovers(t *testing.T) {
 				service := kimiCompatTestService(upstream)
 				state := service.kimiParameterCompat(ctx.Request.Context(), ctx)
 				state.settings = DefaultGatewaySettings()
-				fields := []*bool{&state.settings.KimiSamplingParameterRetryEnabled, &state.settings.KimiReasoningEffortRetryEnabled, &state.settings.KimiToolChoiceRetryEnabled, &state.settings.KimiMaxCompletionTokensRetryEnabled}
+				fields := []*bool{&state.settings.KimiSamplingParameterRetryEnabled, &state.settings.KimiReasoningEffortRetryEnabled, &state.settings.KimiToolChoiceRetryEnabled, &state.settings.KimiMaxCompletionTokensRetryEnabled, &state.settings.KimiThinkingTypeRetryEnabled}
 				*fields[test.rule] = true
 				result, err := service.ForwardAsChatCompletions(ctx.Request.Context(), ctx, kimiCompatTestAccount(), body, "", "")
 				require.NoError(t, err)
@@ -190,11 +193,80 @@ func TestKimiCompatibilityEachRepairRecovers(t *testing.T) {
 				require.NotContains(t, recorder.Body.String(), test.message)
 				require.Len(t, kimiCompatTestEvents(ctx), 1)
 				require.Equal(t, test.rule.String(), kimiCompatTestEvents(ctx)[0].Reason)
+				if test.rule == kimiCompatThinkingType {
+					require.True(t, gjson.GetBytes(upstream.bodies[0], "thinking").Exists())
+					require.False(t, gjson.GetBytes(upstream.bodies[1], "thinking").Exists())
+					require.JSONEq(t, `["thinking"]`, gjson.Get(kimiCompatTestEvents(ctx)[0].Detail, "changed_fields").Raw)
+					require.Equal(t, "adaptive", gjson.GetBytes(body, "thinking.type").String())
+				}
 				if test.rule == kimiCompatReasoning {
 					require.Equal(t, "low", *result.ReasoningEffort)
 				}
 			})
 		}
+	}
+}
+
+func TestKimiThinkingTypeCompatibilityScopeAndLimits(t *testing.T) {
+	message := `'type' must be in ["enabled", "disabled", "auto"]`
+	for _, test := range []struct {
+		name      string
+		platform  string
+		status    int
+		disabled  bool
+		committed bool
+		cancelled bool
+		attempts  int
+	}{
+		{"仅重试一次", PlatformKimi, 400, false, false, false, 2},
+		{"关闭独立开关", PlatformKimi, 400, true, false, false, 1},
+		{"非Kimi分组", PlatformOpenAI, 400, false, false, false, 1},
+		{"综合分组", PlatformComposite, 400, false, false, false, 1},
+		{"HTTP200不重试", PlatformKimi, 200, false, false, false, 1},
+		{"HTTP403不重试", PlatformKimi, 403, false, false, false, 1},
+		{"HTTP500不重试", PlatformKimi, 500, false, false, false, 1},
+		{"已提交响应", PlatformKimi, 400, false, true, false, 1},
+		{"客户端取消", PlatformKimi, 400, false, false, true, 0},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := []byte(`{"model":"kimi-k3","thinking":{"type":"adaptive"},"reasoning_effort":"low","max_tokens":128}`)
+			ctx, _ := kimiCompatTestContext(body, "/v1/chat/completions")
+			ctx.Set("api_key", &APIKey{Group: &Group{Platform: test.platform}})
+			if test.committed {
+				_, err := ctx.Writer.WriteString("data: output\n\n")
+				require.NoError(t, err)
+			}
+			if test.cancelled {
+				cancelCtx, cancel := context.WithCancel(ctx.Request.Context())
+				cancel()
+				ctx.Request = ctx.Request.WithContext(cancelCtx)
+			}
+			upstream := &httpUpstreamRecorder{responses: []*http.Response{
+				kimiCompatTestResponse(test.status, kimiTestError(message)),
+				kimiCompatTestResponse(test.status, kimiTestError(message)),
+			}}
+			service := kimiCompatTestService(upstream)
+			if test.disabled {
+				state := service.kimiParameterCompat(ctx.Request.Context(), ctx)
+				state.settings.KimiThinkingTypeRetryEnabled = false
+			}
+			response, _, err := service.sendCCUpstreamRequest(ctx.Request.Context(), ctx, kimiCompatTestAccount(), "http://upstream.example/v1/chat/completions", body, false, "kimi-k3", "test", "", "")
+			require.Len(t, upstream.requests, test.attempts)
+			if test.cancelled {
+				require.ErrorIs(t, err, context.Canceled)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, test.status, response.StatusCode)
+			require.NoError(t, response.Body.Close())
+			require.True(t, gjson.GetBytes(upstream.bodies[0], "thinking").Exists())
+			if test.attempts == 2 {
+				require.False(t, gjson.GetBytes(upstream.bodies[1], "thinking").Exists())
+				require.Len(t, kimiCompatTestEvents(ctx), 1)
+			} else {
+				require.Empty(t, kimiCompatTestEvents(ctx))
+			}
+		})
 	}
 }
 
@@ -453,7 +525,7 @@ func TestKimiCompatibilitySwitchesIndependentAndSafeBodyRead(t *testing.T) {
 			service := kimiCompatTestService(upstream)
 			state := service.kimiParameterCompat(ctx.Request.Context(), ctx)
 			state.settings = DefaultGatewaySettings()
-			fields := []*bool{&state.settings.KimiSamplingParameterRetryEnabled, &state.settings.KimiReasoningEffortRetryEnabled, &state.settings.KimiToolChoiceRetryEnabled, &state.settings.KimiMaxCompletionTokensRetryEnabled}
+			fields := []*bool{&state.settings.KimiSamplingParameterRetryEnabled, &state.settings.KimiReasoningEffortRetryEnabled, &state.settings.KimiToolChoiceRetryEnabled, &state.settings.KimiMaxCompletionTokensRetryEnabled, &state.settings.KimiThinkingTypeRetryEnabled}
 			*fields[enabled] = true
 			response, _, err := service.sendCCUpstreamRequest(ctx.Request.Context(), ctx, kimiCompatTestAccount(), "http://upstream.example/v1/chat/completions", []byte(`{"temperature":0.7}`), false, "kimi-k3", "test", "", "")
 			require.NoError(t, err)

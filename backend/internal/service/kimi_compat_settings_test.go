@@ -16,6 +16,7 @@ func TestKimiCompatibilitySettingsRoundTrip(t *testing.T) {
 		SettingKeyGatewayKimiReasoningEffortRetryEnabled,
 		SettingKeyGatewayKimiToolChoiceRetryEnabled,
 		SettingKeyGatewayKimiMaxCompletionTokensRetryEnabled,
+		SettingKeyGatewayKimiThinkingTypeRetryEnabled,
 	}
 	for index, key := range keys {
 		t.Run(key, func(t *testing.T) {
@@ -26,7 +27,7 @@ func TestKimiCompatibilitySettingsRoundTrip(t *testing.T) {
 			for rule := kimiCompatRule(0); rule < kimiCompatRuleCount; rule++ {
 				require.False(t, rule.enabled(*settings))
 			}
-			fields := []*bool{&settings.KimiSamplingParameterRetryEnabled, &settings.KimiReasoningEffortRetryEnabled, &settings.KimiToolChoiceRetryEnabled, &settings.KimiMaxCompletionTokensRetryEnabled}
+			fields := []*bool{&settings.KimiSamplingParameterRetryEnabled, &settings.KimiReasoningEffortRetryEnabled, &settings.KimiToolChoiceRetryEnabled, &settings.KimiMaxCompletionTokensRetryEnabled, &settings.KimiThinkingTypeRetryEnabled}
 			*fields[index] = true
 			_, err = service.UpdateGatewaySettings(context.Background(), *settings)
 			require.NoError(t, err)
