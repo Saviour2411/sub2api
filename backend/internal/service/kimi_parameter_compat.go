@@ -313,9 +313,10 @@ func matchKimiParameterRejection(requestBody, errorBody []byte) (kimiCompatRule,
 
 func applyKimiParameterRepair(body []byte, rule kimiCompatRule) ([]byte, []string, error) {
 	fields := []string{rule.String()}
-	if rule == kimiCompatSampling {
+	switch rule {
+	case kimiCompatSampling:
 		fields = kimiSamplingFields[:]
-	} else if rule == kimiCompatThinkingType {
+	case kimiCompatThinkingType:
 		fields = []string{"thinking"}
 	}
 	modified := body
