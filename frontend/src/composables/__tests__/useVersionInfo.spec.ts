@@ -107,6 +107,16 @@ describe('只读版本信息生命周期', () => {
     expect(getUpstreamVersion).toHaveBeenCalledTimes(3)
   })
 
+  it('浏览器时钟领先服务器时不会每秒重复检查有效缓存', async () => {
+    getUpstreamVersion.mockResolvedValue({ ...latest(), checked_at: '2026-09-23T11:00:00Z' })
+    create()
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(29 * 60 * 1000)
+    expect(getUpstreamVersion).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(60 * 1000)
+    expect(getUpstreamVersion).toHaveBeenCalledTimes(2)
+  })
+
   it('无成功历史时失败不会表示已经最新', async () => {
     getUpstreamVersion.mockRejectedValue(new Error('请求失败'))
     const { state } = create()

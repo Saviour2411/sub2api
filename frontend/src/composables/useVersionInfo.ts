@@ -47,9 +47,12 @@ export function useVersionInfo(admin: Ref<boolean>, identity: Ref<string | numbe
       if (generation !== current || disposed) return
       upstream.value = result
       const checked = result.checked_at ? Date.parse(result.checked_at) : NaN
+      const now = Date.now()
+      const expires = checked + CHECK_INTERVAL
+      // 服务端缓存仍有效但浏览器时钟领先时，避免到期时间落在过去而反复查询。
       nextCheckAt = result.status === 'ok'
-        ? Math.min(Date.now() + CHECK_INTERVAL, Number.isFinite(checked) ? checked + CHECK_INTERVAL : Date.now() + CHECK_INTERVAL)
-        : Date.now() + FAILURE_BACKOFF
+        ? Math.min(now + CHECK_INTERVAL, Number.isFinite(expires) && expires > now ? expires : now + CHECK_INTERVAL)
+        : now + FAILURE_BACKOFF
     } catch {
       if (generation !== current || disposed) return
       upstream.value = {
