@@ -134,7 +134,7 @@ jobs:
         run: |
           mkdir -p ../.cache/tmp
           export TMPDIR="$(pwd)/../.cache/tmp"
-          go test -race -tags=unit ./internal/pkg/lifecycle ./internal/service ./internal/repository ./internal/handler -run 'TestPeer|TestAffinity|TestPublicPeer|TestLongSSE|TestHijacked|TestDetachedProducer|TestControl|TestDrain|TestNewInstance|TestLegacyWaits|TestRenewal|TestUsageRecordWorkerPool_StopRace|TestStoppedKeyed|TestOpenAIResponsesWebSocket_Ingress|TestUpstreamVersion'
+          go test -race -tags=unit ./internal/pkg/lifecycle ./internal/service ./internal/repository ./internal/handler -run 'TestPeer|TestAffinity|TestPublicPeer|TestLongSSE|TestHijacked|TestDetachedProducer|TestControl|TestDrain|TestNewInstance|TestLegacyWaits|TestRenewal|TestUsageRecordWorkerPool_StopRace|TestStoppedKeyed|TestOpenAIResponsesWebSocket_Ingress|TestUpstreamVersion|TestChannelMonitorRunnerRejected'
 
   bluegreen-protocol:
     runs-on: ubuntu-latest

@@ -282,6 +282,14 @@ describe('API Client', () => {
       )
     })
 
+    it('将 Retry-After 传给导出重试调用方', async () => {
+      apiClient.defaults.adapter = vi.fn().mockRejectedValue({
+        response: { status: 429, data: { message: '请求过于频繁' }, headers: { 'retry-after': '17' } },
+        config: { url: '/usage/export' },
+      })
+      await expect(apiClient.get('/usage/export')).rejects.toMatchObject({ status: 429, retryAfter: '17' })
+    })
+
     it('部署与运营合规未确认时广播事件且保留登录态', async () => {
       localStorage.setItem('auth_token', 'admin-token')
       const listener = vi.fn()

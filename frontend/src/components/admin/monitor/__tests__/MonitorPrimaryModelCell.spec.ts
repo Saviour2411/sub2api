@@ -70,4 +70,28 @@ describe('MonitorPrimaryModelCell placeholder model display', () => {
     expect(wrapper.text()).toContain('claude-sonnet-4-5')
     expect(wrapper.text()).not.toContain('monitorCommon.checkMode.quota')
   })
+
+  it('过期监控隐藏额度，附加模型不继续显示正常或旧延迟', () => {
+    const wrapper = mount(MonitorPrimaryModelCell, {
+      props: {
+        row: makeRow({
+          stale: true,
+          primary_model: 'main',
+          extra_models: ['extra'],
+          extra_models_status: [{ model: 'extra', status: 'operational', latency_ms: 9876 }],
+        }),
+      },
+      global: {
+        stubs: {
+          MonitorQuotaView: true,
+          HelpTooltip: { template: '<div><slot name="trigger" /><slot /></div>' },
+        },
+      },
+    })
+    expect(wrapper.text()).toContain('monitorCommon.status.stale')
+    expect(wrapper.text()).not.toContain('monitorCommon.status.operational')
+    expect(wrapper.text()).not.toContain('9876')
+    expect(wrapper.findComponent({ name: 'MonitorQuotaView' }).props('snapshot')).toBeNull()
+    wrapper.unmount()
+  })
 })

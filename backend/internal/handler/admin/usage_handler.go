@@ -60,6 +60,15 @@ type CreateUsageCleanupTaskRequest struct {
 // List handles listing all usage records with filters
 // GET /api/v1/admin/usage
 func (h *UsageHandler) List(c *gin.Context) {
+	h.list(c, false)
+}
+
+// Export 与管理员列表共用筛选及脱敏映射，仅切换为有界的游标查询。
+func (h *UsageHandler) Export(c *gin.Context) {
+	h.list(c, true)
+}
+
+func (h *UsageHandler) list(c *gin.Context, exporting bool) {
 	page, pageSize := response.ParsePagination(c)
 	exactTotal := false
 	if exactTotalRaw := strings.TrimSpace(c.Query("exact_total")); exactTotalRaw != "" {
@@ -205,6 +214,25 @@ func (h *UsageHandler) List(c *gin.Context) {
 		StartTime:             startTime,
 		EndTime:               endTime,
 		ExactTotal:            exactTotal,
+	}
+
+	if exporting {
+		options, err := usagestats.ParseExportPageOptions(c.Query("cursor"), c.Query("page_size"))
+		if err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+		records, next, err := h.usageService.ListExport(c.Request.Context(), options, filters)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		out := make([]dto.AdminUsageLog, 0, len(records))
+		for i := range records {
+			out = append(out, *dto.UsageLogFromServiceAdmin(&records[i]))
+		}
+		response.Success(c, gin.H{"items": out, "next_cursor": next})
+		return
 	}
 
 	records, result, err := h.usageService.ListWithFilters(c.Request.Context(), params, filters)

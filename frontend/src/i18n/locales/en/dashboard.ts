@@ -357,6 +357,7 @@ export default {
     exportExcel: 'Export Excel',
     exportingProgress: 'Exporting data...',
     exportedCount: 'Exported {current}/{total} records',
+    exportedCountUnknown: 'Read {current} records',
     estimatedTime: 'Estimated time remaining: {time}',
     cancelExport: 'Cancel Export',
     exportCancelled: 'Export cancelled',
@@ -488,7 +489,11 @@ export default {
 
   // Shared keys for channel monitor (admin + user views)
   monitorCommon: {
+    noSamples: 'No data',
+    sampleCount: '{n} checks',
+    lastCheck: 'Last checked',
     status: {
+      stale: 'Stale',
       operational: 'Operational',
       degraded: 'Degraded',
       failed: 'Failed',
@@ -571,6 +576,7 @@ export default {
       '30d': '30 days'
     },
     overall: {
+      unknown: 'UNKNOWN',
       operational: 'OPERATIONAL',
       degraded: 'DEGRADED',
       unavailable: 'UNAVAILABLE'

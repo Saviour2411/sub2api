@@ -63,7 +63,10 @@ type channelMonitorUserListItem struct {
 	PrimaryStatus        string                               `json:"primary_status"`
 	PrimaryLatencyMs     *int                                 `json:"primary_latency_ms"`
 	PrimaryPingLatencyMs *int                                 `json:"primary_ping_latency_ms"`
-	Availability7d       float64                              `json:"availability_7d"`
+	Availability7d       *float64                             `json:"availability_7d"`
+	Samples7d            int                                  `json:"samples_7d"`
+	LastCheckedAt        *time.Time                           `json:"last_checked_at"`
+	Stale                bool                                 `json:"stale"`
 	ExtraModels          []dto.ChannelMonitorExtraModelStatus `json:"extra_models"`
 	Timeline             []channelMonitorUserTimelinePoint    `json:"timeline"`
 	// LatestQuota 主模型最近配额快照；channel_monitor_show_quota=false 时
@@ -89,13 +92,18 @@ type channelMonitorUserDetailResponse struct {
 }
 
 type channelMonitorUserModelStat struct {
-	Model           string  `json:"model"`
-	LatestStatus    string  `json:"latest_status"`
-	LatestLatencyMs *int    `json:"latest_latency_ms"`
-	Availability7d  float64 `json:"availability_7d"`
-	Availability15d float64 `json:"availability_15d"`
-	Availability30d float64 `json:"availability_30d"`
-	AvgLatency7dMs  *int    `json:"avg_latency_7d_ms"`
+	Model           string     `json:"model"`
+	LatestStatus    string     `json:"latest_status"`
+	LatestLatencyMs *int       `json:"latest_latency_ms"`
+	Availability7d  *float64   `json:"availability_7d"`
+	Availability15d *float64   `json:"availability_15d"`
+	Availability30d *float64   `json:"availability_30d"`
+	Samples7d       int        `json:"samples_7d"`
+	Samples15d      int        `json:"samples_15d"`
+	Samples30d      int        `json:"samples_30d"`
+	LastCheckedAt   *time.Time `json:"last_checked_at"`
+	Stale           bool       `json:"stale"`
+	AvgLatency7dMs  *int       `json:"avg_latency_7d_ms"`
 }
 
 func userMonitorViewToItem(v *service.UserMonitorView, includeQuota bool) channelMonitorUserListItem {
@@ -126,6 +134,9 @@ func userMonitorViewToItem(v *service.UserMonitorView, includeQuota bool) channe
 		PrimaryLatencyMs:     v.PrimaryLatencyMs,
 		PrimaryPingLatencyMs: v.PrimaryPingLatencyMs,
 		Availability7d:       v.Availability7d,
+		Samples7d:            v.Samples7d,
+		LastCheckedAt:        v.LastCheckedAt,
+		Stale:                v.Stale,
 		ExtraModels:          extras,
 		Timeline:             timeline,
 	}
@@ -145,6 +156,11 @@ func userMonitorDetailToResponse(d *service.UserMonitorDetail) *channelMonitorUs
 			Availability7d:  m.Availability7d,
 			Availability15d: m.Availability15d,
 			Availability30d: m.Availability30d,
+			Samples7d:       m.Samples7d,
+			Samples15d:      m.Samples15d,
+			Samples30d:      m.Samples30d,
+			LastCheckedAt:   m.LastCheckedAt,
+			Stale:           m.Stale,
 			AvgLatency7dMs:  m.AvgLatency7dMs,
 		})
 	}

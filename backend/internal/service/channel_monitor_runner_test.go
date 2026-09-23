@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/lifecycle"
 )
 
 // stubMonitorSvc 实现 monitorRunnerSvc，用于隔离 runner 与真实 service/repo。
@@ -341,6 +343,47 @@ func TestInFlight_AcquireReleaseSymmetric(t *testing.T) {
 		t.Fatal("acquire after release should succeed")
 	}
 	r.releaseInFlight(42)
+}
+
+func TestChannelMonitorRunnerRejectedJobReleasesInFlight(t *testing.T) {
+	for _, state := range []string{"starting", "standby", "draining", "legacy"} {
+		t.Run(state, func(t *testing.T) {
+			previous := lifecycle.Process
+			manager := lifecycle.New("monitor-regression")
+			lifecycle.Process = manager
+			t.Cleanup(func() { lifecycle.Process = previous })
+			switch state {
+			case "starting":
+				manager.Starting("test")
+			case "standby":
+				manager.Initialized(true)
+			case "draining":
+				manager.Drain()
+			case "legacy":
+				manager.SetLegacyCoexistence(true)
+			}
+			svc := &stubMonitorSvc{}
+			r := newRunnerForTest(svc)
+			t.Cleanup(r.Stop)
+			if !r.tryAcquireInFlight(19) {
+				t.Fatal("首次领取失败")
+			}
+			r.runOne(19, "测试渠道")
+			if svc.runCount.Load() != 0 {
+				t.Fatal("未获得执行资格时不应发起探测")
+			}
+			if !r.tryAcquireInFlight(19) {
+				t.Fatal("执行被拒绝后未释放标记，后续探测会永久卡住")
+			}
+			manager.SetLegacyCoexistence(false)
+			manager.Initialized(false)
+			r.runOne(19, "测试渠道")
+			if svc.runCount.Load() != 1 || !r.tryAcquireInFlight(19) {
+				t.Fatal("激活后应恢复探测并释放标记")
+			}
+			r.releaseInFlight(19)
+		})
+	}
 }
 
 // stoppedWithin 在 timeout 内并行调用 Stop，超时则 Fatal。验证 Stop 不会阻塞。

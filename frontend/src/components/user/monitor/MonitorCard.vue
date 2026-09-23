@@ -37,9 +37,9 @@
       </div>
       <span
         class="px-2.5 py-1 rounded-full text-xs font-semibold flex-shrink-0"
-        :class="statusBadgeClass(item.primary_status)"
+        :class="statusBadgeClass(displayStatus)"
       >
-        {{ statusLabel(item.primary_status) }}
+        {{ statusLabel(displayStatus) }}
       </span>
     </div>
 
@@ -47,11 +47,11 @@
     <MonitorMetricPair
       primary-icon="bolt"
       :primary-label="t('monitorCommon.dialogLatency')"
-      :primary-value="formatLatency(item.primary_latency_ms)"
+      :primary-value="formatLatency(item.stale ? null : item.primary_latency_ms)"
       primary-unit="ms"
       secondary-icon="globe"
       :secondary-label="t('monitorCommon.endpointPing')"
-      :secondary-value="formatLatency(item.primary_ping_latency_ms)"
+      :secondary-value="formatLatency(item.stale ? null : item.primary_ping_latency_ms)"
       secondary-unit="ms"
     />
 
@@ -65,13 +65,20 @@
     <MonitorAvailabilityRow
       :window-label="availabilityLabel"
       :value="availabilityValue"
-      :samples-label="extraModelsCountLabel"
+      :samples-label="samplesLabel"
     />
+
+    <div class="mt-2 min-h-4 text-xs text-gray-500 dark:text-gray-400 break-words">
+      {{ t('monitorCommon.lastCheck') }}:
+      <time v-if="item.last_checked_at" :datetime="item.last_checked_at">{{ new Date(item.last_checked_at).toLocaleString() }}</time>
+      <span v-else>{{ t('monitorCommon.noSamples') }}</span>
+    </div>
 
     <!-- Timeline -->
     <MonitorTimeline
       :buckets="item.timeline"
       :countdown-seconds="countdownSeconds"
+      :stale="item.stale"
     />
   </button>
 </template>
@@ -108,6 +115,7 @@ const props = defineProps<{
   item: UserMonitorView
   window: '7d' | '15d' | '30d'
   availabilityValue: number | null
+  sampleCount?: number
   countdownSeconds: number
 }>()
 
@@ -129,8 +137,10 @@ const providerTintClass = computed(() =>
   PROVIDER_TINT[props.item.provider] ?? 'text-gray-500 dark:text-gray-300'
 )
 
+const displayStatus = computed(() => props.item.stale ? 'stale' : props.item.primary_status)
+
 const quotaVisible = computed(
-  () => isChannelMonitorQuotaVisible() && !!props.item.latest_quota
+  () => !props.item.stale && isChannelMonitorQuotaVisible() && !!props.item.latest_quota
 )
 
 const availabilityLabel = computed(() => {
@@ -138,9 +148,11 @@ const availabilityLabel = computed(() => {
   return `${t('monitorCommon.availabilityPrefix')} · ${win}`
 })
 
-const extraModelsCountLabel = computed(() => {
+const samplesLabel = computed(() => {
+  const labels: string[] = []
+  if (props.sampleCount !== undefined) labels.push(t('monitorCommon.sampleCount', { n: props.sampleCount }))
   const count = props.item.extra_models?.length ?? 0
-  if (count === 0) return undefined
-  return t('monitorCommon.extraModelsCount', { n: count })
+  if (count > 0) labels.push(t('monitorCommon.extraModelsCount', { n: count }))
+  return labels.join(' · ') || undefined
 })
 </script>

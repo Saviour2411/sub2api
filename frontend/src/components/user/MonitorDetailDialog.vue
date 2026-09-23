@@ -34,12 +34,12 @@
             <td class="py-2 pr-3">
               <span
                 class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px]"
-                :class="statusBadgeClass(m.latest_status)"
+                :class="statusBadgeClass(m.stale ? 'stale' : m.latest_status)"
               >
-                {{ statusLabel(m.latest_status) }}
+                {{ statusLabel(m.stale ? 'stale' : m.latest_status) }}
               </span>
             </td>
-            <td class="py-2 pr-3 text-gray-700 dark:text-gray-300">{{ formatLatency(m.latest_latency_ms) }}</td>
+            <td class="py-2 pr-3 text-gray-700 dark:text-gray-300">{{ formatLatency(m.stale ? null : m.latest_latency_ms) }}</td>
             <td class="py-2 pr-3 text-gray-700 dark:text-gray-300">{{ formatPercent(m.availability_7d) }}</td>
             <td class="py-2 pr-3 text-gray-700 dark:text-gray-300">{{ formatPercent(m.availability_15d) }}</td>
             <td class="py-2 pr-3 text-gray-700 dark:text-gray-300">{{ formatPercent(m.availability_30d) }}</td>
