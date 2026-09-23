@@ -413,6 +413,35 @@ describe('useAppStore', () => {
       expect(store.publicSettingsLoaded).toBe(true)
     })
 
+    it('空注入版本只补查一次并复用并发请求', async () => {
+      window.__APP_CONFIG__ = createPublicSettings({ version: '' })
+      const pending = createDeferred<PublicSettings>()
+      vi.mocked(getPublicSettings).mockReturnValue(pending.promise)
+      const store = useAppStore()
+      store.initFromInjectedConfig()
+      const first = store.fetchPublicSettings()
+      const second = store.fetchPublicSettings()
+      expect(getPublicSettings).toHaveBeenCalledTimes(1)
+      pending.resolve(createPublicSettings({ version: '0.1.244' }))
+      await Promise.all([first, second])
+      expect(store.siteVersion).toBe('0.1.244')
+      await store.fetchPublicSettings()
+      expect(getPublicSettings).toHaveBeenCalledTimes(1)
+    })
+
+    it('空版本补查失败后保留原配置且不循环请求', async () => {
+      window.__APP_CONFIG__ = createPublicSettings({ version: '' })
+      const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+      vi.mocked(getPublicSettings).mockRejectedValue(new Error('网络中断'))
+      const store = useAppStore()
+      await store.fetchPublicSettings()
+      await store.fetchPublicSettings()
+      expect(getPublicSettings).toHaveBeenCalledTimes(1)
+      expect(store.siteName).toBe('Test Site')
+      expect(store.siteVersion).toBe('')
+      errorLog.mockRestore()
+    })
+
     it('无注入配置时返回 false', () => {
       const store = useAppStore()
       const result = store.initFromInjectedConfig()

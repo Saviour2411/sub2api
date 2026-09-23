@@ -2,7 +2,7 @@ package service
 
 import "context"
 
-// GitHubReleaseClient 保留共享发布查询能力，供 Codex 客户端版本同步使用。
+// GitHubReleaseClient 保留共享发布查询能力，供 Codex 版本同步和上游只读版本提示使用。
 type GitHubReleaseClient interface {
 	FetchLatestRelease(ctx context.Context, repo string) (*GitHubRelease, error)
 	FetchRecentReleases(ctx context.Context, repo string, perPage int) ([]*GitHubRelease, error)

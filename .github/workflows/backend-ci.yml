@@ -93,6 +93,13 @@ jobs:
         run: make test-frontend
       - name: Build Vue and canvas frontends
         run: make build-frontend
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: 校验实际构建首屏与版本接口一致
+        working-directory: backend
+        run: go test -tags=unit,embed ./internal/handler -run TestBuildVersion -count=1
 
   golangci-lint:
     runs-on: ubuntu-latest
@@ -127,7 +134,7 @@ jobs:
         run: |
           mkdir -p ../.cache/tmp
           export TMPDIR="$(pwd)/../.cache/tmp"
-          go test -race -tags=unit ./internal/pkg/lifecycle ./internal/service ./internal/repository ./internal/handler -run 'TestPeer|TestAffinity|TestPublicPeer|TestLongSSE|TestHijacked|TestDetachedProducer|TestControl|TestDrain|TestNewInstance|TestLegacyWaits|TestRenewal|TestUsageRecordWorkerPool_StopRace|TestStoppedKeyed|TestOpenAIResponsesWebSocket_Ingress'
+          go test -race -tags=unit ./internal/pkg/lifecycle ./internal/service ./internal/repository ./internal/handler -run 'TestPeer|TestAffinity|TestPublicPeer|TestLongSSE|TestHijacked|TestDetachedProducer|TestControl|TestDrain|TestNewInstance|TestLegacyWaits|TestRenewal|TestUsageRecordWorkerPool_StopRace|TestStoppedKeyed|TestOpenAIResponsesWebSocket_Ingress|TestUpstreamVersion'
 
   bluegreen-protocol:
     runs-on: ubuntu-latest
@@ -169,9 +176,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - run: python -m pip install -r .github/release-tools/requirements-release.txt
       - run: python -m unittest discover -s .github/release-tools -p 'test_release_matrix.py'
+      - name: 校验已同步上游来源
+        run: |
+          python -m unittest discover -s tools -p 'test_check_upstream_sync_metadata.py'
+          python tools/check_upstream_sync_metadata.py
       - run: bash -n .github/release-tools/release-images.sh

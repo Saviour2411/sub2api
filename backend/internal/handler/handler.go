@@ -2,6 +2,7 @@ package handler
 
 import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/buildmeta"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 )
 
@@ -78,4 +79,5 @@ type Handlers struct {
 type BuildInfo struct {
 	Version   string
 	BuildType string // "source" for manual builds, "release" for CI builds
+	Upstream  buildmeta.UpstreamSync
 }

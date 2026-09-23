@@ -35,6 +35,9 @@ FRONTEND_CRITICAL_VITEST := \
 	src/api/__tests__/admin.userCustomizations.spec.ts \
 	src/api/__tests__/admin.system.spec.ts \
 	src/components/common/__tests__/VersionBadge.spec.ts \
+	src/composables/__tests__/useVersionInfo.spec.ts \
+	src/stores/__tests__/app.spec.ts \
+	src/components/layout/__tests__/AppSidebar.spec.ts \
 	src/components/common/__tests__/ConfirmDialog.spec.ts \
 	src/components/admin/user/__tests__/UserCustomizationsPanel.spec.ts \
 	src/views/public/__tests__/BalanceQueryView.spec.ts \
