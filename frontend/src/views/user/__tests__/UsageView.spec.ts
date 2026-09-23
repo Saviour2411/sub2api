@@ -8,6 +8,7 @@ import UsageTable from '@/components/admin/usage/UsageTable.vue'
 
 const {
   query,
+  exportPage,
   getStats,
   getDashboardModels,
   getDashboardSnapshotV2,
@@ -20,6 +21,7 @@ const {
   showInfo,
 } = vi.hoisted(() => ({
   query: vi.fn(),
+  exportPage: vi.fn(),
   getStats: vi.fn(),
   getDashboardModels: vi.fn(),
   getDashboardSnapshotV2: vi.fn(),
@@ -78,6 +80,7 @@ const messages: Record<string, string> = {
 vi.mock('@/api', () => ({
   usageAPI: {
     query,
+    exportPage,
     getStats,
     getDashboardModels,
     getDashboardSnapshotV2,
@@ -160,6 +163,7 @@ function mountUsageView() {
         Icon: true,
         UsageStatsCards: chartStub,
         UsageTable: chartStub,
+        ExportProgressDialog: true,
         UserErrorRequestsTable: chartStub,
         ModelDistributionChart: chartStub,
         GroupDistributionChart: chartStub,
@@ -173,6 +177,7 @@ function mountUsageView() {
 describe('user UsageView', () => {
   beforeEach(() => {
     query.mockReset()
+    exportPage.mockReset().mockResolvedValue({ items: [usageLog], next_cursor: '' })
     getStats.mockReset()
     getDashboardModels.mockReset()
     getDashboardSnapshotV2.mockReset()
@@ -387,9 +392,12 @@ describe('user UsageView', () => {
     let exportedBlob: Blob | null = null
     let csvContent = ''
     const OriginalBlob = globalThis.Blob
+    const blobContents = new WeakMap<Blob, string>()
     vi.stubGlobal('Blob', vi.fn((parts: BlobPart[], options?: BlobPropertyBag) => {
-      csvContent = parts.map((part) => String(part)).join('')
-      return new OriginalBlob(parts, options)
+      csvContent = parts.map((part) => part instanceof OriginalBlob ? blobContents.get(part) : String(part)).join('')
+      const blob = new OriginalBlob(parts, options)
+      blobContents.set(blob, csvContent)
+      return blob
     }))
     const originalCreateObjectURL = window.URL.createObjectURL
     const originalRevokeObjectURL = window.URL.revokeObjectURL
@@ -403,19 +411,17 @@ describe('user UsageView', () => {
     await (wrapper.vm as any).exportToCSV()
 
     expect(exportedBlob).not.toBeNull()
-    expect(query).toHaveBeenCalledWith(expect.objectContaining({
-      page_size: 100,
-      sort_by: 'created_at',
-      sort_order: 'desc',
+    expect(exportPage).toHaveBeenCalledWith(expect.objectContaining({
+      page_size: 1000,
       native_compaction_v2: true,
-    }))
+    }), expect.objectContaining({ signal: expect.any(AbortSignal) }))
     expect(clickSpy).toHaveBeenCalled()
     expect(showSuccess).toHaveBeenCalled()
     expect(csvContent.startsWith('\uFEFF')).toBe(true)
     expect(csvContent.slice(1)).toBe([
       'Time,API Key Name,Model,Reasoning Effort,Inbound Endpoint,IP Address,Type,Billing Mode,Input Tokens,Output Tokens,Cache Read Tokens,Cache Creation Tokens,Rate Multiplier,Billed Cost,Original Cost,First Token (ms),Duration (ms)',
       '2026-03-08T00:00:00Z,demo-key,gpt-5.4,"\'-",,203.0.113.10,Sync,Token,4057,101,278272,4,1,0.09288300,0.09288300,12,345',
-    ].join('\n'))
+    ].join('\n') + '\n')
     expect(csvContent).toContain('IP Address')
     expect(csvContent).toContain('203.0.113.10')
     expect(csvContent).toContain('Billed Cost')
@@ -430,9 +436,9 @@ describe('user UsageView', () => {
     clickSpy.mockRestore()
   })
 
-  it('keeps the initial filters, sort, and filename while exporting multiple pages', async () => {
-    const pageResponse = { items: [usageLog], total: 101, pages: 2 }
-    query.mockResolvedValue(pageResponse)
+  it('多批游标导出始终使用初始筛选和文件名', async () => {
+    vi.useFakeTimers()
+    const pageResponse = { items: [usageLog], next_cursor: '10' }
     const wrapper = mountUsageView()
     await flushPromises()
 
@@ -443,9 +449,7 @@ describe('user UsageView', () => {
     let resolveFirstPage!: (value: typeof pageResponse) => void
     const firstPage = new Promise<typeof pageResponse>((resolve) => { resolveFirstPage = resolve })
     query.mockClear()
-    query.mockImplementation((params, options) =>
-      !options && params.page === 1 ? firstPage : Promise.resolve(pageResponse)
-    )
+    exportPage.mockImplementation((params) => !params.cursor ? firstPage : Promise.resolve({ items: [usageLog], next_cursor: '' }))
     const originalCreateObjectURL = window.URL.createObjectURL
     const originalRevokeObjectURL = window.URL.revokeObjectURL
     window.URL.createObjectURL = vi.fn(() => 'blob:usage-export')
@@ -457,10 +461,9 @@ describe('user UsageView', () => {
 
     try {
       await wrapper.findAll('button').find((button) => button.text() === 'Export CSV')!.trigger('click')
-      const initialParams = { ...query.mock.calls[0][0] }
+      const initialParams = { ...exportPage.mock.calls[0][0] }
       expect(initialParams).toMatchObject({
-        page: 1, page_size: 100, start_date: '2026-03-01', end_date: '2026-03-08',
-        sort_by: 'created_at', sort_order: 'desc',
+        cursor: '', page_size: 1000, start_date: '2026-03-01', end_date: '2026-03-08',
       })
 
       const keySelect = wrapper.findAllComponents(Select).find((select) =>
@@ -478,9 +481,9 @@ describe('user UsageView', () => {
 
       resolveFirstPage(pageResponse)
       await flushPromises()
+      await vi.advanceTimersByTimeAsync(1250)
 
-      const exportCalls = query.mock.calls.filter((call) => call.length === 1)
-      expect.soft(exportCalls).toEqual([[initialParams], [{ ...initialParams, page: 2 }]])
+      expect.soft(exportPage.mock.calls.map(call => call[0])).toEqual([initialParams, { ...initialParams, cursor: '10' }])
       expect.soft(filename).toBe('usage_2026-03-01_to_2026-03-08.csv')
       expect(showSuccess).toHaveBeenCalledWith('Export success')
       expect(showError).not.toHaveBeenCalled()
@@ -489,11 +492,12 @@ describe('user UsageView', () => {
       window.URL.revokeObjectURL = originalRevokeObjectURL
       clickSpy.mockRestore()
       wrapper.unmount()
+      vi.useRealTimers()
     }
   })
 
   it('exports historical image rows with image billing mode derived from image_count', async () => {
-    query.mockResolvedValue({
+    exportPage.mockResolvedValue({
       items: [
         {
           ...usageLog,
@@ -514,8 +518,7 @@ describe('user UsageView', () => {
           ip_address: null,
         },
       ],
-      total: 1,
-      pages: 1,
+      next_cursor: '',
     })
 
     const wrapper = mountUsageView()
@@ -523,9 +526,12 @@ describe('user UsageView', () => {
 
     let csvContent = ''
     const OriginalBlob = globalThis.Blob
+    const blobContents = new WeakMap<Blob, string>()
     vi.stubGlobal('Blob', vi.fn((parts: BlobPart[], options?: BlobPropertyBag) => {
-      csvContent = parts.map((part) => String(part)).join('')
-      return new OriginalBlob(parts, options)
+      csvContent = parts.map((part) => part instanceof OriginalBlob ? blobContents.get(part) : String(part)).join('')
+      const blob = new OriginalBlob(parts, options)
+      blobContents.set(blob, csvContent)
+      return blob
     }))
     const originalCreateObjectURL = window.URL.createObjectURL
     const originalRevokeObjectURL = window.URL.revokeObjectURL
@@ -543,6 +549,33 @@ describe('user UsageView', () => {
     window.URL.revokeObjectURL = originalRevokeObjectURL
     vi.unstubAllGlobals()
     clickSpy.mockRestore()
+  })
+
+  it('列表总数过期为零时仍查询导出接口，以导出结果判断是否为空', async () => {
+    query.mockResolvedValue({ items: [], total: 0, pages: 0 })
+    exportPage.mockResolvedValue({ items: [], next_cursor: '' })
+    const wrapper = mountUsageView()
+    await flushPromises()
+    await (wrapper.vm as any).exportToCSV()
+    expect(exportPage).toHaveBeenCalledTimes(1)
+    expect(showWarning).toHaveBeenCalledWith('No data')
+    expect(showError).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('页面卸载会取消正在导出的请求，不提示导出失败', async () => {
+    const wrapper = mountUsageView()
+    await flushPromises()
+    exportPage.mockImplementation((_params, { signal }) => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject({ code: 'ERR_CANCELED' }), { once: true })
+    }))
+    const result = (wrapper.vm as any).exportToCSV()
+    await flushPromises()
+    wrapper.unmount()
+    await result
+    expect(exportPage.mock.calls[0][1].signal.aborted).toBe(true)
+    expect(showError).not.toHaveBeenCalled()
+    expect(showSuccess).not.toHaveBeenCalled()
   })
 })
 

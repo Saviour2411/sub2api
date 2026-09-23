@@ -5,18 +5,19 @@
         {{ t('usage.exportingProgress') }}
       </div>
       <div class="flex items-center justify-between text-sm text-gray-700 dark:text-gray-300">
-        <span>{{ t('usage.exportedCount', { current, total }) }}</span>
-        <span class="font-medium text-gray-900 dark:text-white">{{ normalizedProgress }}%</span>
+        <span>{{ total > 0 ? t('usage.exportedCount', { current, total }) : t('usage.exportedCountUnknown', { current }) }}</span>
+        <span v-if="total > 0" class="font-medium text-gray-900 dark:text-white">{{ normalizedProgress }}%</span>
       </div>
       <div class="h-2 w-full rounded-full bg-gray-200 dark:bg-dark-700">
         <div
           role="progressbar"
-          :aria-valuenow="normalizedProgress"
+          :aria-valuenow="total > 0 ? normalizedProgress : undefined"
           aria-valuemin="0"
           aria-valuemax="100"
-          :aria-label="`${t('usage.exportingProgress')}: ${normalizedProgress}%`"
+          :aria-label="t('usage.exportingProgress')"
           class="h-2 rounded-full bg-primary-600 transition-all"
-          :style="{ width: `${normalizedProgress}%` }"
+          :class="{ 'animate-pulse': total <= 0 }"
+          :style="{ width: total > 0 ? `${normalizedProgress}%` : '33%' }"
         ></div>
       </div>
       <div v-if="estimatedTime" class="text-xs text-gray-500 dark:text-gray-400" aria-live="polite" aria-atomic="true">

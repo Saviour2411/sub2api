@@ -362,6 +362,7 @@ export default {
     exportExcel: '导出 Excel',
     exportingProgress: '正在导出数据...',
     exportedCount: '已导出 {current}/{total} 条',
+    exportedCountUnknown: '已读取 {current} 条',
     estimatedTime: '预计剩余时间：{time}',
     cancelExport: '取消导出',
     exportCancelled: '导出已取消',
@@ -493,7 +494,11 @@ export default {
 
   // Shared keys for channel monitor (admin + user views)
   monitorCommon: {
+    noSamples: '暂无数据',
+    sampleCount: '{n} 次检测',
+    lastCheck: '最后检测',
     status: {
+      stale: '数据已过期',
       operational: '正常',
       degraded: '降级',
       failed: '失败',
@@ -576,6 +581,7 @@ export default {
       '30d': '30 天'
     },
     overall: {
+      unknown: '状态未知',
       operational: 'OPERATIONAL',
       degraded: 'DEGRADED',
       unavailable: 'UNAVAILABLE'

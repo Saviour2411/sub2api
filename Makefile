@@ -30,6 +30,12 @@ FRONTEND_CRITICAL_VITEST := \
 	src/utils/__tests__/anthropicStreamDiagnostic.spec.ts \
 	src/views/admin/ops/components/__tests__/OpsErrorDetailModal.spec.ts \
 	src/utils/__tests__/usageOutputRate.spec.ts \
+	src/utils/__tests__/usageExport.spec.ts \
+	src/views/user/__tests__/UsageView.spec.ts \
+	src/views/admin/__tests__/UsageView.spec.ts \
+	src/views/user/__tests__/ChannelStatusV1View.refresh.spec.ts \
+	src/components/user/monitor/__tests__/MonitorCard.freshness.spec.ts \
+	src/components/admin/monitor/__tests__/MonitorPrimaryModelCell.spec.ts \
 	src/components/admin/usage/__tests__/UsageTable.spec.ts \
 	src/api/__tests__/balanceQuery.spec.ts \
 	src/api/__tests__/admin.userCustomizations.spec.ts \

@@ -107,7 +107,9 @@ type channelMonitorResponse struct {
 	UpdatedAt           string                               `json:"updated_at"`
 	PrimaryStatus       string                               `json:"primary_status"`
 	PrimaryLatencyMs    *int                                 `json:"primary_latency_ms"`
-	Availability7d      float64                              `json:"availability_7d"`
+	Availability7d      *float64                             `json:"availability_7d"`
+	Samples7d           int                                  `json:"samples_7d"`
+	Stale               bool                                 `json:"stale"`
 	ExtraModelsStatus   []dto.ChannelMonitorExtraModelStatus `json:"extra_models_status"`
 	// 请求自定义快照：前端编辑 / 展示「高级设置」用
 	TemplateID       *int64            `json:"template_id"`
@@ -298,6 +300,8 @@ func buildListItemResponse(m *service.ChannelMonitor, summary service.MonitorSta
 	resp.PrimaryStatus = summary.PrimaryStatus
 	resp.PrimaryLatencyMs = summary.PrimaryLatencyMs
 	resp.Availability7d = summary.Availability7d
+	resp.Samples7d = summary.Samples7d
+	resp.Stale = service.MonitorResultStale(m, summary.LastCheckedAt, time.Now())
 	resp.LatestQuota = summary.LatestQuota
 	resp.ExtraModelsStatus = make([]dto.ChannelMonitorExtraModelStatus, 0, len(summary.ExtraModels))
 	for _, e := range summary.ExtraModels {

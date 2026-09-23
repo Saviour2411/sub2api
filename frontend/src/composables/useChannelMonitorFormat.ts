@@ -48,12 +48,12 @@ export interface AvailabilityRow {
 export function useChannelMonitorFormat() {
   const { t } = useI18n()
 
-  function statusLabel(s: MonitorStatus | ''): string {
+  function statusLabel(s: MonitorStatus | '' | 'stale'): string {
     if (!s) return t('monitorCommon.status.unknown')
     return t(`monitorCommon.status.${s}`)
   }
 
-  function statusBadgeClass(s: MonitorStatus | ''): string {
+  function statusBadgeClass(s: MonitorStatus | '' | 'stale'): string {
     switch (s) {
       case STATUS_OPERATIONAL:
         return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'

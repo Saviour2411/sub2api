@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 )
 
 // 渠道监控聚合层：把 latest + availability 拼成 admin/user 视图所需的 summary / detail。
@@ -204,11 +205,13 @@ func buildStatusSummary(
 		if l, ok := latestByModel[primary]; ok {
 			summary.PrimaryStatus = l.Status
 			summary.PrimaryLatencyMs = l.LatencyMs
+			summary.LastCheckedAt = &l.CheckedAt
 			// 配额快照只挂主模型行（quota 模式唯一行 / quota_probe 的主行）。
 			summary.LatestQuota = l.Quota
 		}
-		if a, ok := availByModel[primary]; ok {
-			summary.Availability7d = a.AvailabilityPct
+		if a, ok := availByModel[primary]; ok && a.TotalChecks > 0 {
+			summary.Availability7d = &a.AvailabilityPct
+			summary.Samples7d = a.TotalChecks
 		}
 	}
 	for _, model := range extras {
@@ -239,6 +242,9 @@ func buildUserViewFromSummary(
 		PrimaryStatus:    summary.PrimaryStatus,
 		PrimaryLatencyMs: summary.PrimaryLatencyMs,
 		Availability7d:   summary.Availability7d,
+		Samples7d:        summary.Samples7d,
+		LastCheckedAt:    summary.LastCheckedAt,
+		Stale:            MonitorResultStale(m, summary.LastCheckedAt, time.Now()),
 		ExtraModels:      summary.ExtraModels,
 		Timeline:         buildTimelinePoints(timelineEntries),
 	}
@@ -278,18 +284,33 @@ func mergeModelDetails(
 		if l, ok := latestByModel[model]; ok {
 			d.LatestStatus = l.Status
 			d.LatestLatencyMs = l.LatencyMs
+			d.LastCheckedAt = &l.CheckedAt
 		}
-		if a, ok := availMap[monitorAvailability7Days][model]; ok {
-			d.Availability7d = a.AvailabilityPct
+		d.Stale = MonitorResultStale(m, d.LastCheckedAt, time.Now())
+		if a, ok := availMap[monitorAvailability7Days][model]; ok && a.TotalChecks > 0 {
+			d.Availability7d = &a.AvailabilityPct
+			d.Samples7d = a.TotalChecks
 			d.AvgLatency7dMs = a.AvgLatencyMs
 		}
-		if a, ok := availMap[monitorAvailability15Days][model]; ok {
-			d.Availability15d = a.AvailabilityPct
+		if a, ok := availMap[monitorAvailability15Days][model]; ok && a.TotalChecks > 0 {
+			d.Availability15d = &a.AvailabilityPct
+			d.Samples15d = a.TotalChecks
 		}
-		if a, ok := availMap[monitorAvailability30Days][model]; ok {
-			d.Availability30d = a.AvailabilityPct
+		if a, ok := availMap[monitorAvailability30Days][model]; ok && a.TotalChecks > 0 {
+			d.Availability30d = &a.AvailabilityPct
+			d.Samples30d = a.TotalChecks
 		}
 		out = append(out, d)
 	}
 	return out
+}
+
+// MonitorResultStale 为抖动及慢探测保留预算，不把合法的在途检查误判为停止。
+func MonitorResultStale(m *ChannelMonitor, checkedAt *time.Time, now time.Time) bool {
+	if checkedAt == nil || checkedAt.IsZero() {
+		return true
+	}
+	interval := time.Duration(max(m.IntervalSeconds+m.JitterSeconds, monitorMinIntervalSeconds)) * time.Second
+	grace := 2*interval + monitorRequestTimeout + monitorPingTimeout + monitorRunOneBuffer
+	return now.Sub(*checkedAt) > grace
 }

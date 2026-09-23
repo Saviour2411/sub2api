@@ -13,7 +13,7 @@
     >
       {{ t('monitorCommon.maintenancePaused') }}
     </div>
-    <div v-else class="flex items-end gap-[2px] h-5 w-full">
+    <div v-else class="flex items-end gap-[2px] h-5 w-full" :class="{ 'opacity-50': stale }">
       <div
         v-for="(bar, idx) in displayBars"
         :key="idx"
@@ -28,7 +28,7 @@
       class="mt-1 flex justify-between text-[9px] uppercase tracking-widest text-gray-400"
     >
       <span>{{ t('monitorCommon.past') }}</span>
-      <span>{{ t('monitorCommon.now') }}</span>
+      <span>{{ t(stale ? 'monitorCommon.lastCheck' : 'monitorCommon.now') }}</span>
     </div>
   </div>
 </template>
@@ -44,6 +44,7 @@ const props = withDefaults(defineProps<{
   countdownSeconds: number
   length?: number
   maintenance?: boolean
+  stale?: boolean
 }>(), {
   buckets: () => [],
   length: 60,

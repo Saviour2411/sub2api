@@ -76,11 +76,13 @@ const countdown = autoRefresh.countdown
 
 // ── Computed ──
 const overallStatus = computed<OverallStatus>(() => {
-  if (items.value.length === 0) return 'operational'
+  if (items.value.length === 0) return 'unknown'
   for (const it of items.value) {
+    if (it.stale || !it.primary_status) continue
     if (it.primary_status === 'failed' || it.primary_status === 'error') return 'degraded'
     if (it.primary_status !== STATUS_OPERATIONAL) return 'degraded'
   }
+  if (items.value.some(it => it.stale || !it.primary_status)) return 'unknown'
   return 'operational'
 })
 
@@ -98,6 +100,8 @@ async function reload(silent = false) {
     const res = await listChannelMonitorViews({ signal: ctrl.signal })
     if (ctrl.signal.aborted || abortController !== ctrl) return
     items.value = res.items || []
+    // 刷新后丢弃旧窗口统计，防止 15/30 天数据一直停留在首次加载时。
+    for (const id of Object.keys(detailCache)) delete detailCache[Number(id)]
     imageGroupSuccessRates.value = {
       visible: res.image_group_success_rates?.visible === true,
       items: res.image_group_success_rates?.items || [],
@@ -117,11 +121,6 @@ async function reload(silent = false) {
 
 async function manualReload() {
   await reload(false)
-  // After base reload, refresh any cached detail records so non-7d availability
-  // values stay in sync without forcing the user to switch tabs again.
-  if (currentWindow.value !== '7d') {
-    await Promise.all(items.value.map(it => loadDetail(it.id, true)))
-  }
 }
 
 async function loadDetail(id: number, force = false) {

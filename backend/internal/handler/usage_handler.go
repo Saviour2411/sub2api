@@ -259,6 +259,29 @@ func (h *UsageHandler) List(c *gin.Context) {
 	response.Paginated(c, out, result.Total, page, pageSize)
 }
 
+// Export 分批导出当前用户的记录，复用列表的权限检查及筛选。
+func (h *UsageHandler) Export(c *gin.Context) {
+	parsed, ok := h.parseUserUsageFilters(c, false)
+	if !ok {
+		return
+	}
+	options, err := usagestats.ParseExportPageOptions(c.Query("cursor"), c.Query("page_size"))
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	records, next, err := h.usageService.ListExport(c.Request.Context(), options, parsed.Filters)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	out := make([]dto.UsageLog, 0, len(records))
+	for i := range records {
+		out = append(out, *dto.UsageLogFromService(&records[i]))
+	}
+	response.Success(c, gin.H{"items": out, "next_cursor": next})
+}
+
 // ListErrors handles listing the current user's failed requests (redacted).
 // GET /api/v1/usage/errors
 func (h *UsageHandler) ListErrors(c *gin.Context) {

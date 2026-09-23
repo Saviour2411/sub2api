@@ -207,8 +207,17 @@ export async function cancelCleanupTask(taskId: number): Promise<{ id: number; s
   return data
 }
 
+export async function exportPage(
+  params: AdminUsageQueryParams & { cursor?: string },
+  options: { signal?: AbortSignal } = {}
+): Promise<import('@/utils/usageExport').UsageExportPage<AdminUsageLog>> {
+  const { data } = await apiClient.get('/admin/usage/export', { params, signal: options.signal })
+  return data
+}
+
 export const adminUsageAPI = {
   list,
+  exportPage,
   getStats,
   searchUsers,
   searchApiKeys,

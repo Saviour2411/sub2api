@@ -97,6 +97,28 @@ type UsageLogFilters = usagestats.UsageLogFilters
 
 // ListWithFilters lists usage logs with optional filters (for admin)
 func (r *usageLogRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters UsageLogFilters) ([]service.UsageLog, *pagination.PaginationResult, error) {
+	whereClause, args := usageLogFilterWhere(filters)
+	var (
+		logs []service.UsageLog
+		page *pagination.PaginationResult
+		err  error
+	)
+	if shouldUseFastUsageLogTotal(filters) {
+		logs, page, err = r.listUsageLogsWithFastPagination(ctx, whereClause, args, params)
+	} else {
+		logs, page, err = r.listUsageLogsWithPagination(ctx, whereClause, args, params)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := r.hydrateUsageLogAssociations(ctx, logs); err != nil {
+		return nil, nil, err
+	}
+	return logs, page, nil
+}
+
+// 列表与导出共用全部业务筛选，避免导出遗漏权限或过滤条件。
+func usageLogFilterWhere(filters UsageLogFilters) (string, []any) {
 	conditions := make([]string, 0, 9)
 	args := make([]any, 0, 9)
 
@@ -140,25 +162,7 @@ func (r *usageLogRepository) ListWithFilters(ctx context.Context, params paginat
 		args = append(args, *filters.EndTime)
 	}
 
-	whereClause := buildWhere(conditions)
-	var (
-		logs []service.UsageLog
-		page *pagination.PaginationResult
-		err  error
-	)
-	if shouldUseFastUsageLogTotal(filters) {
-		logs, page, err = r.listUsageLogsWithFastPagination(ctx, whereClause, args, params)
-	} else {
-		logs, page, err = r.listUsageLogsWithPagination(ctx, whereClause, args, params)
-	}
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if err := r.hydrateUsageLogAssociations(ctx, logs); err != nil {
-		return nil, nil, err
-	}
-	return logs, page, nil
+	return buildWhere(conditions), args
 }
 
 func upstreamModelMismatchCondition(column string, mismatch bool) string {

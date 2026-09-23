@@ -213,6 +213,14 @@
         @ipGeoBatchFailed="handleIpGeoBatchFailed"
       />
     </div>
+    <ExportProgressDialog
+      :show="exporting"
+      :progress="0"
+      :current="exportedCount"
+      :total="0"
+      estimated-time=""
+      @cancel="exportAbortController?.abort()"
+    />
   </AppLayout>
 
 </template>
@@ -224,6 +232,8 @@ import { useAppStore } from '@/stores/app'
 import { FeatureFlags, resolveFeatureFlag } from '@/utils/featureFlags'
 import { keysAPI, usageAPI, userGroupsAPI } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import ExportProgressDialog from '@/components/common/ExportProgressDialog.vue'
+import { exportUsagePages, isExportCanceled, USAGE_EXPORT_PAGE_SIZE } from '@/utils/usageExport'
 import Pagination from '@/components/common/Pagination.vue'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
@@ -275,6 +285,8 @@ const chartsLoading = ref(false)
 const modelStatsLoading = ref(false)
 const endpointStatsLoading = ref(false)
 const exporting = ref(false)
+const exportedCount = ref(0)
+let exportAbortController: AbortController | null = null
 const errorRows = ref<UserErrorRequest[]>([])
 const errorLoading = ref(false)
 const errorPage = ref(1)
@@ -632,25 +644,14 @@ const escapeCSVValue = (value: unknown): string => {
 }
 
 const exportToCSV = async () => {
-  if (pagination.total === 0) {
-    appStore.showWarning(t('usage.noDataToExport'))
-    return
-  }
+  if (exporting.value) return
   exporting.value = true
+  exportedCount.value = 0
+  const controller = new AbortController()
+  exportAbortController = controller
+  const exportParams = { ...normalizedFilters.value, page_size: USAGE_EXPORT_PAGE_SIZE }
   appStore.showInfo(t('usage.preparingExport'))
   try {
-    const allLogs: UsageLog[] = []
-    const pageSize = 100
-    const exportParams = buildUsageListParams(1, pageSize)
-    const totalPages = Math.ceil(pagination.total / pageSize)
-    for (let page = 1; page <= totalPages; page++) {
-      const response = await usageAPI.query({ ...exportParams, page })
-      allLogs.push(...response.items)
-    }
-    if (allLogs.length === 0) {
-      appStore.showWarning(t('usage.noDataToExport'))
-      return
-    }
     const headers = [
       'Time',
       'API Key Name',
@@ -670,30 +671,40 @@ const exportToCSV = async () => {
       'First Token (ms)',
       'Duration (ms)',
     ]
-    const rows = allLogs.map((log) => [
-      log.created_at,
-      log.api_key?.name || '',
-      log.model,
-      formatReasoningEffort(log.reasoning_effort),
-      log.inbound_endpoint || '',
-      log.ip_address || '',
-      getRequestTypeExportText(log),
-      getBillingModeLabel(getDisplayBillingMode(log), t),
-      log.input_tokens,
-      log.output_tokens,
-      log.cache_read_tokens,
-      log.cache_creation_tokens,
-      log.rate_multiplier,
-      log.actual_cost.toFixed(8),
-      log.total_cost.toFixed(8),
-      log.first_token_ms ?? '',
-      log.duration_ms ?? '',
-    ].map(escapeCSVValue))
-    const csvContent = [
-      headers.map(escapeCSVValue).join(','),
-      ...rows.map((row) => row.join(',')),
-    ].join('\n')
-    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' })
+    const parts: (Blob | string)[] = ['\uFEFF', headers.map(escapeCSVValue).join(',') + '\n']
+    const count = await exportUsagePages<UsageLog>({
+      load: (cursor, signal) => usageAPI.exportPage({ ...exportParams, cursor }, { signal }),
+      signal: controller.signal,
+      onProgress: (count) => { exportedCount.value = count },
+      consume: (logs) => {
+        const rows = logs.map((log) => [
+          log.created_at,
+          log.api_key?.name || '',
+          log.model,
+          formatReasoningEffort(log.reasoning_effort),
+          log.inbound_endpoint || '',
+          log.ip_address || '',
+          getRequestTypeExportText(log),
+          getBillingModeLabel(getDisplayBillingMode(log), t),
+          log.input_tokens,
+          log.output_tokens,
+          log.cache_read_tokens,
+          log.cache_creation_tokens,
+          log.rate_multiplier,
+          log.actual_cost.toFixed(8),
+          log.total_cost.toFixed(8),
+          log.first_token_ms ?? '',
+          log.duration_ms ?? '',
+        ].map(escapeCSVValue).join(','))
+        if (rows.length) parts.push(new Blob([rows.join('\n') + '\n']))
+      },
+    })
+    if (controller.signal.aborted) return
+    if (count === 0) {
+      appStore.showWarning(t('usage.noDataToExport'))
+      return
+    }
+    const blob = new Blob(parts, { type: 'text/csv;charset=utf-8;' })
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
@@ -702,10 +713,14 @@ const exportToCSV = async () => {
     window.URL.revokeObjectURL(url)
     appStore.showSuccess(t('usage.exportSuccess'))
   } catch (error) {
+    if (controller.signal.aborted || isExportCanceled(error)) return
     console.error('CSV Export failed:', error)
     appStore.showError(t('usage.exportFailed'))
   } finally {
-    exporting.value = false
+    if (exportAbortController === controller) {
+      exportAbortController = null
+      exporting.value = false
+    }
   }
 }
 
@@ -898,6 +913,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   abortController?.abort()
+  exportAbortController?.abort()
 })
 
 watch(endpointDistributionSource, () => {

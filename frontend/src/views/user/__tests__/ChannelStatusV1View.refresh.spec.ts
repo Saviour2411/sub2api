@@ -12,7 +12,7 @@ vi.mock('vue-i18n', async () => ({
 const mountView = () => shallowMount(ChannelStatusV1View, {
   global: { stubs: {
     AppLayout: { template: '<div><slot /></div>' },
-    MonitorHero: { props: ['autoRefresh'], emits: ['refresh'], template: `<div>
+    MonitorHero: { name: 'MonitorHero', props: ['autoRefresh', 'overallStatus'], emits: ['refresh'], template: `<div>
       <button class="interval" @click="autoRefresh.setInterval(120)">120 seconds</button>
       <button class="refresh" @click="$emit('refresh')">Refresh</button>
       <button class="disable" @click="autoRefresh.setEnabled(false)">Disable</button>
@@ -24,6 +24,11 @@ beforeEach(() => { vi.useFakeTimers(); localStorage.clear(); list.mockReset().mo
 afterEach(() => { wrapper?.unmount(); vi.useRealTimers(); localStorage.clear() })
 
 describe('channel monitor refresh interval', () => {
+  it('全部数据过期时整体状态为未知，不沿用历史降级状态', async () => {
+    list.mockResolvedValue({ items: [{ id: 1, primary_status: 'failed', stale: true }] })
+    wrapper = mountView(); await flushPromises()
+    expect(wrapper.findComponent({ name: 'MonitorHero' }).props('overallStatus')).toBe('unknown')
+  })
   it('refreshes at the selected interval on successive automatic refreshes', async () => {
     wrapper = mountView(); await flushPromises()
     await wrapper.get('.interval').trigger('click')

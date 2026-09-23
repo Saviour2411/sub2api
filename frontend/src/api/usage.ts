@@ -370,9 +370,19 @@ export async function getMyErrorDetail(id: number): Promise<UserErrorRequestDeta
   return data
 }
 
+// 导出沿用当前用户权限和筛选，按稳定游标分批读取。
+export async function exportPage(
+  params: UsageQueryParams & { cursor?: string },
+  options: { signal?: AbortSignal } = {}
+): Promise<import('@/utils/usageExport').UsageExportPage<UsageLog>> {
+  const { data } = await apiClient.get('/usage/export', { params, signal: options.signal })
+  return data
+}
+
 export const usageAPI = {
   list,
   query,
+  exportPage,
   getStats,
   getStatsByDateRange,
   getByDateRange,

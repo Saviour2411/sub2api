@@ -4,7 +4,7 @@ import { defineComponent, ref } from 'vue'
 
 import UsageView from '../UsageView.vue'
 
-const { list, exportList, getStats, getSnapshotV2, getById, getModelStats, listErrorLogs, routeQuery, aoaToSheet, sheetAddAoa, saveAs, xlsxWrite } = vi.hoisted(() => {
+const { list, exportList, showError, getStats, getSnapshotV2, getById, getModelStats, listErrorLogs, routeQuery, aoaToSheet, sheetAddAoa, saveAs, xlsxWrite } = vi.hoisted(() => {
   vi.stubGlobal('localStorage', {
     getItem: vi.fn(() => null),
     setItem: vi.fn(),
@@ -13,6 +13,7 @@ const { list, exportList, getStats, getSnapshotV2, getById, getModelStats, listE
 
   return {
     list: vi.fn(),
+		showError: vi.fn(),
 		exportList: vi.fn(),
     getStats: vi.fn(),
     getSnapshotV2: vi.fn(),
@@ -68,6 +69,7 @@ vi.mock('@/api/admin', () => ({
 vi.mock('@/api/admin/usage', () => ({
   adminUsageAPI: {
 		list: exportList,
+		exportPage: exportList,
   },
 }))
 
@@ -89,7 +91,7 @@ vi.mock('@/api/admin/ops', () => ({
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
-    showError: vi.fn(),
+    showError,
     showWarning: vi.fn(),
     showSuccess: vi.fn(),
     showInfo: vi.fn(),
@@ -787,6 +789,7 @@ describe('admin UsageView ranking tab', () => {
 
 describe('admin UsageView model audit export', () => {
 	beforeEach(() => {
+		showError.mockClear()
 		vi.useFakeTimers()
 		list.mockReset().mockResolvedValue({ items: [], total: 0, pages: 0 })
 		exportList.mockReset().mockResolvedValue({
@@ -804,8 +807,7 @@ describe('admin UsageView model audit export', () => {
 				cache_creation_tokens: 0,
 				duration_ms: 10,
 			}],
-			total: 1,
-			pages: 1,
+			next_cursor: '',
 		})
 		getStats.mockReset().mockResolvedValue({
 			total_requests: 0, total_input_tokens: 0, total_output_tokens: 0,
@@ -847,5 +849,24 @@ describe('admin UsageView model audit export', () => {
 		const row = sheetAddAoa.mock.calls[0][1][0]
 		expect(row.slice(4, 8)).toEqual(['gpt-5.6-sol', 'gpt-5.5', 'gpt-5.4', 'Yes'])
 		expect(saveAs).toHaveBeenCalledTimes(1)
+		wrapper.unmount()
+	})
+
+	it('取消导出不报错且下次导出清空旧进度', async () => {
+		const wrapper = mountRouteFilteredUsageView()
+		await flushPromises()
+		exportList.mockImplementation((_params, { signal }) => new Promise((_resolve, reject) => {
+			signal.addEventListener('abort', () => reject({ code: 'ERR_CANCELED' }), { once: true })
+		}))
+		;(wrapper.vm as any).exportProgress.current = 999
+		const result = (wrapper.vm as any).exportToExcel()
+		await flushPromises()
+		expect((wrapper.vm as any).exportProgress.current).toBe(0)
+		;(wrapper.vm as any).cancelExport()
+		await result
+		expect(showError).not.toHaveBeenCalled()
+		expect(saveAs).not.toHaveBeenCalled()
+		expect((wrapper.vm as any).exportProgress.show).toBe(false)
+		wrapper.unmount()
 	})
 })

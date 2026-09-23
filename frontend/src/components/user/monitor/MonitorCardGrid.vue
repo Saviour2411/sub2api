@@ -41,6 +41,7 @@
         :item="item"
         :window="window"
         :availability-value="resolveAvailability(item)"
+        :sample-count="resolveSamples(item)"
         :countdown-seconds="countdownSeconds"
         @click="emit('cardClick', item)"
       />
@@ -96,5 +97,11 @@ function resolveAvailability(item: UserMonitorView): number | null {
   const primary = detail.models.find(m => m.model === item.primary_model)
   if (!primary) return null
   return props.window === '15d' ? primary.availability_15d ?? null : primary.availability_30d ?? null
+}
+
+function resolveSamples(item: UserMonitorView): number | undefined {
+  if (props.window === '7d') return item.samples_7d
+  const primary = props.detailCache[item.id]?.models.find(m => m.model === item.primary_model)
+  return props.window === '15d' ? primary?.samples_15d : primary?.samples_30d
 }
 </script>
