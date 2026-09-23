@@ -7,7 +7,7 @@
     ]"
   >
     <!-- Logo/Brand -->
-    <div class="sidebar-header" :class="{ 'sidebar-header-collapsed': sidebarCollapsed }">
+    <div class="sidebar-header" :class="{ 'sidebar-header-collapsed': sidebarCollapsed, 'sidebar-header-versioned': isAdmin }">
       <!-- Custom Logo or Default Logo -->
       <router-link
         :to="homePath"
@@ -16,8 +16,9 @@
       >
         <img v-if="settingsLoaded" :src="siteLogo || '/logo.svg'" alt="Logo" class="h-full w-full object-contain" />
       </router-link>
-      <div class="sidebar-brand" :class="{ 'sidebar-brand-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
+      <div class="sidebar-brand" :class="{ 'sidebar-brand-collapsed': sidebarCollapsed }">
         <router-link
+          v-show="!sidebarCollapsed"
           :to="homePath"
           class="sidebar-brand-title text-lg font-bold text-gray-900 transition-colors hover:text-primary-600 dark:text-white dark:hover:text-primary-400"
           @click="handleMenuItemClick(homePath)"
@@ -25,7 +26,7 @@
           {{ siteName }}
         </router-link>
         <!-- Version Badge -->
-        <VersionBadge :version="siteVersion" />
+        <VersionBadge :version="siteVersion" :admin="isAdmin" :identity="authStore.user?.id" :collapsed="sidebarCollapsed" />
       </div>
     </div>
 
@@ -1006,15 +1007,32 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.sidebar-header {
+  height: auto;
+  min-height: 64px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  flex-shrink: 0;
+}
+
 .sidebar-logo {
   flex: 0 0 2.25rem;
   min-width: 2.25rem;
 }
 
 .sidebar-header-collapsed {
-  gap: 0;
+  flex-direction: column;
+  height: auto;
+  min-height: 80px;
+  gap: 4px;
+  padding-top: 8px;
+  padding-bottom: 8px;
   padding-left: 1.125rem;
   padding-right: 1.125rem;
+}
+
+.sidebar-header-versioned {
+  min-height: 96px;
 }
 
 .sidebar-brand {
@@ -1029,11 +1047,8 @@ onBeforeUnmount(() => {
 }
 
 .sidebar-brand-collapsed {
-  max-width: 0;
-  overflow: hidden;
-  opacity: 0;
-  transform: translateX(-4px);
-  pointer-events: none;
+  flex: 0 0 auto;
+  max-width: 100%;
 }
 
 .sidebar-brand-title {

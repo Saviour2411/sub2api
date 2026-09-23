@@ -29,6 +29,7 @@ export const useAppStore = defineStore('app', () => {
   const docUrl = ref<string>('')
   const cachedPublicSettings = ref<PublicSettings | null>(null)
   let publicSettingsRequest: Promise<PublicSettings | null> | null = null
+  let injectedVersionFallbackAttempted = false
 
   // Auto-incrementing ID for toasts
   let toastIdCounter = 0
@@ -253,7 +254,12 @@ export const useAppStore = defineStore('app', () => {
     // Check for injected config from server (eliminates flash)
     if (!publicSettingsLoaded.value && !force && window.__APP_CONFIG__) {
       applySettings(window.__APP_CONFIG__)
-      return Promise.resolve(window.__APP_CONFIG__)
+    }
+
+    // 旧构建可能注入空版本；仅补查一次，失败也不能形成请求循环。
+    if (publicSettingsLoaded.value && !force && !siteVersion.value.trim() && !injectedVersionFallbackAttempted) {
+      injectedVersionFallbackAttempted = true
+      force = true
     }
 
     // Return cached data if available and not forcing refresh
@@ -357,6 +363,7 @@ export const useAppStore = defineStore('app', () => {
   function clearPublicSettingsCache(): void {
     publicSettingsLoaded.value = false
     cachedPublicSettings.value = null
+    injectedVersionFallbackAttempted = false
   }
 
   /**

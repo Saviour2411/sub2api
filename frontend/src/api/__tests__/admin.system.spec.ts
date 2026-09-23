@@ -16,7 +16,15 @@ describe('只读系统版本接口', () => {
   })
 
   it('不导出更新、回滚或重启操作', () => {
-    expect(Object.keys(systemAPI)).toEqual(['getVersion'])
-    expect(Object.keys(system).sort()).toEqual(['default', 'getVersion', 'systemAPI'])
+    expect(Object.keys(systemAPI)).toEqual(['getVersion', 'getUpstreamVersion'])
+    expect(Object.keys(system).sort()).toEqual(['default', 'getUpstreamVersion', 'getVersion', 'systemAPI'])
+  })
+
+  it('只读检查使用独立接口并传递取消信号', async () => {
+    const signal = new AbortController().signal
+    const result = { latest_version: '0.2.8', has_update: true, status: 'ok', stale: false }
+    get.mockResolvedValue({ data: result })
+    await expect(systemAPI.getUpstreamVersion(signal)).resolves.toEqual(result)
+    expect(get).toHaveBeenCalledWith('/admin/system/upstream-version', { signal })
   })
 })

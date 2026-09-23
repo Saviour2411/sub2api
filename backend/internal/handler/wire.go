@@ -154,12 +154,13 @@ func ProvideBatchImageHandler(
 }
 
 // ProvideSystemHandler 注入当前构建版本，不提供网页更新或重启能力。
-func ProvideSystemHandler(buildInfo BuildInfo) *admin.SystemHandler {
-	return admin.NewSystemHandler(buildInfo.Version)
+func ProvideSystemHandler(buildInfo BuildInfo, githubClient service.GitHubReleaseClient) *admin.SystemHandler {
+	return admin.NewSystemHandler(buildInfo.Version, buildInfo.Upstream, service.NewUpstreamVersionService(buildInfo.Upstream, githubClient))
 }
 
-// ProvideSettingHandler creates SettingHandler with version from BuildInfo
+// ProvideSettingHandler 将同一构建版本注入首屏配置和公共设置接口。
 func ProvideSettingHandler(settingService *service.SettingService, buildInfo BuildInfo, notificationEmailService *service.NotificationEmailService) *SettingHandler {
+	settingService.SetVersion(buildInfo.Version)
 	h := NewSettingHandler(settingService, buildInfo.Version)
 	h.SetNotificationEmailService(notificationEmailService)
 	return h

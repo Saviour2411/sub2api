@@ -1,4 +1,9 @@
 export default {
+  versionInfo: {
+    custom: '二开', synced: '已同步原版', details: '版本信息', unknown: '版本未知', notRecorded: '未记录',
+    newRelease: '原版新版本 {version}', latest: '原版最新 {version}', noUpdate: '原版暂无新版本',
+    checking: '正在检查原版版本', unavailable: '版本检查暂不可用', cached: '（缓存）', lastChecked: '上次成功检查：{time}'
+  },
   userCustomization: {
     title: '用户定制', paymentMethods: '全局充值方式', methodKey: '名称，例如币安 ID', methodValue: '收款信息',
     noPaymentMethods: '暂未配置充值方式', moveUp: '上移', moveDown: '下移', search: '搜索用户名、邮箱或用户 ID',

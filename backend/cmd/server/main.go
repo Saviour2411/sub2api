@@ -22,6 +22,7 @@ import (
 	_ "github.com/Wei-Shaw/sub2api/ent/runtime"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/buildmeta"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/lifecycle"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -148,9 +149,14 @@ func runMainServer() {
 		log.Println("⚠️  WARNING: Running in SIMPLE mode - billing and quota checks are DISABLED")
 	}
 
+	upstream, err := buildmeta.EmbeddedUpstreamSync()
+	if err != nil {
+		log.Printf("上游同步元数据不可用：%v", err)
+	}
 	buildInfo := handler.BuildInfo{
 		Version:   Version,
 		BuildType: BuildType,
+		Upstream:  upstream,
 	}
 
 	lifecycle.Process.SetLegacyCoexistence(cfg.Lifecycle.Legacy)

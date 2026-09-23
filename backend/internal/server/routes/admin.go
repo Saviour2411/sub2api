@@ -668,6 +668,7 @@ func registerSystemRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	system := admin.Group("/system")
 	{
 		system.GET("/version", h.Admin.System.GetVersion)
+		system.GET("/upstream-version", h.Admin.System.GetUpstreamVersion)
 	}
 }
 

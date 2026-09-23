@@ -1,4 +1,9 @@
 export default {
+  versionInfo: {
+    custom: 'Fork', synced: 'Synced upstream', details: 'Version information', unknown: 'Version unknown', notRecorded: 'Not recorded',
+    newRelease: 'Upstream update {version}', latest: 'Latest upstream {version}', noUpdate: 'No new upstream release',
+    checking: 'Checking upstream release', unavailable: 'Version check unavailable', cached: '(cached)', lastChecked: 'Last successful check: {time}'
+  },
   userCustomization: {
     title: 'User customizations', paymentMethods: 'Shared payment instructions', methodKey: 'Name, e.g. Binance ID', methodValue: 'Payment details',
     noPaymentMethods: 'No payment instructions configured', moveUp: 'Move up', moveDown: 'Move down', search: 'Search username, email or user ID',
