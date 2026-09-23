@@ -326,12 +326,26 @@ func TestCalculateTokenCostForRequest_Fable51MaxEffortCacheTTLAndUserRate(t *tes
 	}
 }
 
-func TestCalculateTokenCostForRequest_ChannelOverridesFable51MaxEffortMultiplier(t *testing.T) {
+func TestCalculateTokenCostForRequest_Fable51HasNoImplicitReasoningMultiplier(t *testing.T) {
+	bs := NewBillingService(&config.Config{}, nil)
+	tokens := UsageTokens{InputTokens: 1000, OutputTokens: 10}
+	standard, err := bs.CalculateTokenCostForRequest(TokenCostRequest{
+		Model: "claude-fable-5-1", Tokens: tokens, RateMultiplier: 1, ReasoningEffort: "xhigh",
+	})
+	require.NoError(t, err)
+	max, err := bs.CalculateTokenCostForRequest(TokenCostRequest{
+		Model: "claude-fable-5-1", Tokens: tokens, RateMultiplier: 1, ReasoningEffort: "max",
+	})
+	require.NoError(t, err)
+	require.Equal(t, standard, max)
+}
+
+func TestCalculateTokenCostForRequest_ChannelConfiguresReasoningEffortMultiplier(t *testing.T) {
 	configured := 1.5
 	bs, resolver := newTokenCostTestEnv(t, PlatformAnthropic, []ChannelModelPricing{{
 		Platform: PlatformAnthropic, Models: []string{"claude-fable-5-1"}, BillingMode: BillingModeToken,
 		InputPrice: testPtrFloat64(10e-6), OutputPrice: testPtrFloat64(50e-6),
-		MaxReasoningEffortMultiplier: &configured,
+		ReasoningEffortMultipliers: map[string]float64{"max": configured},
 	}}, nil)
 	group := &Group{ID: 100, Platform: PlatformAnthropic}
 	gid := group.ID

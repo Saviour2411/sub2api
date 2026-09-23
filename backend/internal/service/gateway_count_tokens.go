@@ -26,6 +26,17 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		return fmt.Errorf("parse request: empty request")
 	}
 
+	validationModel := parsed.Model
+	if account != nil && account.Type == AccountTypeAPIKey {
+		validationModel = account.GetMappedModel(validationModel)
+	}
+	if account != nil && account.Platform == PlatformAnthropic && !account.IsBedrock() && account.Type != AccountTypeServiceAccount {
+		if err := validateClaudeOpus55Request(parsed.Body.Bytes(), validationModel); err != nil {
+			s.countTokensError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+			return err
+		}
+	}
+
 	if account != nil && account.IsAnthropicAPIKeyPassthroughEnabled() {
 		passthroughBody := parsed.Body.Bytes()
 		if reqModel := parsed.Model; reqModel != "" {
@@ -524,6 +535,7 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 	}
 
 	// OAuth 账号：应用统一指纹和重写 userID（受设置开关控制）
+	ctMimicUserAgent := claude.DefaultUserAgent()
 	// 如果启用了会话ID伪装，会在重写后替换 session 部分为固定值
 	ctEnableFP, ctEnableMPT := true, false
 	if s.settingService != nil {
@@ -539,7 +551,7 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 				if accountUUID != "" && fp.ClientID != "" {
 					metadataUserAgent := fp.UserAgent
 					if mimicClaudeCode {
-						metadataUserAgent = claude.DefaultHeaders["User-Agent"]
+						metadataUserAgent = ctMimicUserAgent
 					}
 					if newBody, err := s.identityService.RewriteUserIDWithMasking(ctx, body, account, accountUUID, fp.ClientID, metadataUserAgent); err == nil && len(newBody) > 0 {
 						body = newBody
@@ -554,7 +566,9 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 	if ctEnableFP {
 		billingFingerprint = ctFingerprint
 	}
-	if billingUA := effectiveBillingUserAgent(tokenType, mimicClaudeCode, billingFingerprint); billingUA != "" {
+	// 一致性铁律：同一次请求内只取一次 mimic UA，billing cc_version 与出站
+	// User-Agent 头共用这一个字符串（同 buildUpstreamRequest）。
+	if billingUA := effectiveBillingUserAgent(ctMimicUserAgent, tokenType, mimicClaudeCode, billingFingerprint); billingUA != "" {
 		body = syncBillingHeaderVersion(body, billingUA)
 	}
 
@@ -635,8 +649,8 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 	}
 
 	// OAuth + mimic Claude Code：强制注入 CLI 指纹 header
-	if tokenType == "oauth" && mimicClaudeCode {
-		applyClaudeCodeMimicHeaders(req, false)
+	if mimicClaudeCode {
+		applyClaudeCodeMimicHeaders(req, false, ctMimicUserAgent)
 	}
 
 	// 写入最终 anthropic-beta header（Del 一次避免白名单透传值残留）
@@ -657,7 +671,7 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 	// 账号级请求头覆写（仅 anthropic/openai api_key 账号启用时生效；OAuth 路径 no-op）
 	account.ApplyHeaderOverrides(req.Header)
 	if mimicClaudeCode {
-		applyClaudeCodeMimicHeaders(req, false)
+		applyClaudeCodeMimicHeaders(req, false, ctMimicUserAgent)
 		deleteHeaderAllForms(req.Header, "anthropic-beta")
 		if finalBetaShouldSet {
 			setHeaderRaw(req.Header, "anthropic-beta", finalBetaHeader)

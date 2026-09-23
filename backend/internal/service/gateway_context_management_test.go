@@ -61,7 +61,7 @@ func TestBuildAnthropicMimicRequests_BillingMatchesForcedCurrentUA(t *testing.T)
 			c.Request.Header.Set("User-Agent", "claude-cli/1.0.0 (external, cli)")
 			req, wireBody, err := tt.build(c)
 			require.NoError(t, err)
-			require.Equal(t, claude.DefaultHeaders["User-Agent"], getHeaderRaw(req.Header, "User-Agent"))
+			require.Equal(t, claude.DefaultHeaders()["User-Agent"], getHeaderRaw(req.Header, "User-Agent"))
 			require.Contains(t, gjson.GetBytes(wireBody, "system.0.text").String(), "cc_version="+claude.CLICurrentVersion+".")
 			require.NotContains(t, gjson.GetBytes(wireBody, "system.0.text").String(), "cc_version=1.0.0.")
 			if tt.checkMetadata {

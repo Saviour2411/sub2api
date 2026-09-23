@@ -310,18 +310,18 @@ func newStubPricingServiceFromMap(data map[string]*LiteLLMModelPricing) *Pricing
 }
 
 func TestFillGlobalPricingFallback_Fable51DoesNotInjectMaxMultiplier(t *testing.T) {
-	for _, multiplier := range []*float64{nil, testPtrFloat64(1.25)} {
+	for _, multipliers := range []map[string]float64{nil, {"max": 1.25}} {
 		models := []SupportedModel{{
 			Name:    "claude-fable-5-1",
-			Pricing: &ChannelModelPricing{MaxReasoningEffortMultiplier: multiplier},
+			Pricing: &ChannelModelPricing{ReasoningEffortMultipliers: multipliers},
 		}}
 		fillGlobalPricingFallback(nil, models)
-		require.Equal(t, multiplier, models[0].Pricing.MaxReasoningEffortMultiplier)
+		require.Equal(t, multipliers, models[0].Pricing.ReasoningEffortMultipliers)
 		catalog := newStubPricingServiceFromMap(map[string]*LiteLLMModelPricing{
 			"claude-fable-5-1": {InputCostPerToken: 10e-6, OutputCostPerToken: 50e-6},
 		})
 		fillGlobalPricingFallback(catalog, models)
-		require.Equal(t, multiplier, models[0].Pricing.MaxReasoningEffortMultiplier)
+		require.Equal(t, multipliers, models[0].Pricing.ReasoningEffortMultipliers)
 		require.NotNil(t, models[0].Pricing.InputPrice)
 		require.InDelta(t, 10e-6, *models[0].Pricing.InputPrice, 1e-12)
 	}

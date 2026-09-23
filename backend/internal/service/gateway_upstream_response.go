@@ -347,8 +347,9 @@ func (s *GatewayService) readUpstreamErrorBody(resp *http.Response) ([]byte, err
 }
 
 func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, requestedModel ...string) (*ForwardResult, error) {
-	// Upstream returned a non-success HTTP status; count Ollama Cloud activity.
+	// Upstream returned a non-success HTTP status; count Ollama Cloud / OpenCode Go activity.
 	scheduleOllamaCloudUsageActivity(s.deferredService, account)
+	scheduleOpenCodeGoUsageActivity(s.deferredService, account)
 	body, readErr := s.readUpstreamErrorBody(resp)
 	outcomeError := func(err error) error {
 		return NewUpstreamOutcomeError(resp.StatusCode, body, err)

@@ -341,7 +341,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoningOnAccepted(
 		eventStartsTTFTOutput = false
 		eventShouldFlush = false
 	}
-	sendErrorEvent := func(reason string) {
+	sendErrorEvent := func(code, message string) {
 		if errorEventSent || clientDisconnected || failureDelivered {
 			return
 		}
@@ -350,7 +350,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoningOnAccepted(
 			clientDisconnected = true
 			return
 		}
-		if _, err := writePendingString(openAIResponsesStreamFailedEvent(reason)); err != nil {
+		if _, err := writePendingString(openAIResponsesStreamFailedEvent(message, code)); err != nil {
 			clientDisconnected = true
 			return
 		}
@@ -360,6 +360,8 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoningOnAccepted(
 		}
 		clientOutputStarted = true
 		lastDownstreamWriteAt = time.Now()
+		// The handler must not append its generic failure after this error event.
+		MarkResponseCommitted(c)
 	}
 
 	needModelReplace := originalModel != mappedModel
@@ -496,7 +498,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoningOnAccepted(
 		}
 		if errors.Is(scanErr, bufio.ErrTooLong) {
 			logger.LegacyPrintf("service.openai_gateway", "SSE line too long: account=%d max_size=%d error=%v", account.ID, maxLineSize, scanErr)
-			sendErrorEvent("response_too_large")
+			sendErrorEvent("response_too_large", "Upstream response exceeded the size limit")
 			return resultWithUsage(), scanErr, true
 		}
 		if !openAIStreamClientOutputStarted(c, clientOutputStarted) && !eventShouldFlush {
@@ -511,7 +513,8 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoningOnAccepted(
 			return resultWithUsage(), fmt.Errorf("stream usage incomplete after disconnect: %w", scanErr), true
 		}
 		s.recordOpenAIProxyStreamDisconnect(account, scanErr, upstreamRequestID)
-		sendErrorEvent("stream_read_error")
+		code, message := classifyOpenAIUpstreamStreamReadError(scanErr)
+		sendErrorEvent(code, message)
 		return resultWithUsage(), fmt.Errorf("stream read error: %w", scanErr), true
 	}
 	processSSELine := func(line string, queueDrained bool) {
@@ -880,6 +883,12 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoningOnAccepted(
 			if streamEarlyErr != nil {
 				return resultWithUsage(), streamEarlyErr
 			}
+			// Terminal 事件完整写出后直接结束，不等上游 EOF（见下方异步循环同款说明）。
+			// Codex bare error 序列（error 后可能跟 response.failed 或翻盘的 completed）
+			// 必须继续读取，不适用提前结束。
+			if sawTerminalEvent && !eventInProgress && (!codexFailureTerminal || !sawBareError) {
+				return finalizeStream()
+			}
 		}
 		if result, err, done := handleScanErr(documentScanner.Err()); done {
 			return result, err
@@ -959,6 +968,15 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoningOnAccepted(
 			if streamEarlyErr != nil {
 				return resultWithUsage(), streamEarlyErr
 			}
+			// Terminal 事件（response.completed 等）已完整写出后不再等上游 EOF：
+			// 上游在 keep-alive/HTTP2 复用连接上可能拖延关闭连接，空等期间只能
+			// 靠 keepalive 维持，白白拉长尾延迟。usage 已在 terminal 事件中解析。
+			// Codex bare error 序列（error 后可能跟 response.failed 或翻盘的 completed）
+			// 必须继续读取，不适用提前结束。
+			if sawTerminalEvent && !eventInProgress && (!codexFailureTerminal || !sawBareError) {
+				_ = resp.Body.Close()
+				return finalizeStream()
+			}
 
 		case <-intervalCh:
 			if failureDelivered {
@@ -990,7 +1008,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoningOnAccepted(
 					return resultWithUsage(), grokStreamIdleFailoverError(account, streamInterval)
 				}
 			}
-			sendErrorEvent("stream_timeout")
+			sendErrorEvent("stream_timeout", "Upstream response stream timed out")
 			return resultWithUsage(), fmt.Errorf("stream data interval timeout")
 
 		case <-firstOutputCh:

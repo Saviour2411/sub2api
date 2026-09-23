@@ -17,6 +17,44 @@ import (
 	"github.com/tidwall/sjson"
 )
 
+func TestMimicRequestVersionSnapshotSurvivesResolverChanges(t *testing.T) {
+	for _, tokenType := range []string{"oauth", "apikey"} {
+		for _, endpoint := range []string{"messages", "count_tokens"} {
+			t.Run(tokenType+"/"+endpoint, func(t *testing.T) {
+				calls := 0
+				claude.SetCLIVersionResolver(func() string {
+					calls++
+					if calls%2 == 1 {
+						return "2.1.280"
+					}
+					return "2.1.281"
+				})
+				defer claude.SetCLIVersionResolver(nil)
+				c, _ := gin.CreateTestContext(httptest.NewRecorder())
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+				body := []byte(`{"model":"claude-haiku-4-5","system":[{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.81; cc_entrypoint=cli;"}],"messages":[{"role":"user","content":"测试"}]}`)
+				svc := &GatewayService{cfg: &config.Config{}}
+				account := &Account{ID: 1, Platform: PlatformAnthropic, Type: tokenType}
+				var req *http.Request
+				var wireBody []byte
+				var err error
+				if endpoint == "messages" {
+					req, wireBody, err = svc.buildUpstreamRequest(context.Background(), c, account, body, "test-token", tokenType, "claude-haiku-4-5", false, true)
+				} else {
+					req, wireBody, err = svc.buildCountTokensRequest(context.Background(), c, account, body, "test-token", tokenType, "claude-haiku-4-5", true)
+				}
+				require.NoError(t, err)
+				defer func() { require.NoError(t, req.Body.Close()) }()
+				require.Equal(t, "claude-cli/2.1.280 (external, cli)", getHeaderRaw(req.Header, "User-Agent"))
+				require.Contains(t, gjson.GetBytes(wireBody, "system.0.text").String(), "cc_version=2.1.280;")
+				actual, err := io.ReadAll(req.Body)
+				require.NoError(t, err)
+				require.Equal(t, wireBody, actual)
+			})
+		}
+	}
+}
+
 func TestSyncBillingHeaderVersion(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -144,7 +182,7 @@ func TestBuildOAuthRequest_BillingMatchesWireUserAgent(t *testing.T) {
 				defer func() { require.NoError(t, req.Body.Close()) }()
 				wantUA := cachedUA
 				if tc.mimic {
-					wantUA = claude.DefaultHeaders["User-Agent"]
+					wantUA = claude.DefaultHeaders()["User-Agent"]
 				}
 				require.Equal(t, wantUA, getHeaderRaw(req.Header, "User-Agent"))
 				version := ExtractCLIVersion(wantUA)

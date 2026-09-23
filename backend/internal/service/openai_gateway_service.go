@@ -1254,7 +1254,11 @@ func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Acco
 	}
 }
 
-func openAIResponsesStreamFailedEvent(message string) string {
+func openAIResponsesStreamFailedEvent(message string, codes ...string) string {
+	code := "server_error"
+	if len(codes) > 0 && strings.TrimSpace(codes[0]) != "" {
+		code = codes[0]
+	}
 	message = strings.TrimSpace(message)
 	if message == "" {
 		message = "upstream error"
@@ -1264,7 +1268,7 @@ func openAIResponsesStreamFailedEvent(message string) string {
 		"response": map[string]any{
 			"status": "failed",
 			"error": map[string]any{
-				"code":    "server_error",
+				"code":    code,
 				"message": message,
 			},
 		},

@@ -420,7 +420,7 @@ describe('user UsageView', () => {
     expect(csvContent.startsWith('\uFEFF')).toBe(true)
     expect(csvContent.slice(1)).toBe([
       'Time,API Key Name,Model,Reasoning Effort,Inbound Endpoint,IP Address,Type,Billing Mode,Input Tokens,Output Tokens,Cache Read Tokens,Cache Creation Tokens,Rate Multiplier,Billed Cost,Original Cost,First Token (ms),Duration (ms)',
-      '2026-03-08T00:00:00Z,demo-key,gpt-5.4,"\'-",,203.0.113.10,Sync,Token,4057,101,278272,4,1,0.09288300,0.09288300,12,345',
+      '2026-03-08T00:00:00Z,demo-key,gpt-5.4,-,,203.0.113.10,Sync,Token,4057,101,278272,4,1,0.09288300,0.09288300,12,345',
     ].join('\n') + '\n')
     expect(csvContent).toContain('IP Address')
     expect(csvContent).toContain('203.0.113.10')
@@ -434,6 +434,41 @@ describe('user UsageView', () => {
     window.URL.revokeObjectURL = originalRevokeObjectURL
     vi.unstubAllGlobals()
     clickSpy.mockRestore()
+  })
+
+  it('游标导出保留危险值的公式注入保护', async () => {
+    exportPage.mockResolvedValue({
+      items: [{ ...usageLog, api_key: { name: '-1+1' } }],
+      next_cursor: '',
+    })
+    const wrapper = mountUsageView()
+    await flushPromises()
+
+    let csvContent = ''
+    const OriginalBlob = globalThis.Blob
+    const blobContents = new WeakMap<Blob, string>()
+    vi.stubGlobal('Blob', vi.fn((parts: BlobPart[], options?: BlobPropertyBag) => {
+      csvContent = parts.map((part) => part instanceof OriginalBlob ? blobContents.get(part) : String(part)).join('')
+      const blob = new OriginalBlob(parts, options)
+      blobContents.set(blob, csvContent)
+      return blob
+    }))
+    const originalCreateObjectURL = window.URL.createObjectURL
+    const originalRevokeObjectURL = window.URL.revokeObjectURL
+    window.URL.createObjectURL = vi.fn(() => 'blob:usage-export') as typeof window.URL.createObjectURL
+    window.URL.revokeObjectURL = vi.fn(() => {}) as typeof window.URL.revokeObjectURL
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    await (wrapper.vm as any).exportToCSV()
+
+    expect(csvContent).toContain(',"\'-1+1",gpt-5.4,-,')
+    expect(showSuccess).toHaveBeenCalled()
+
+    window.URL.createObjectURL = originalCreateObjectURL
+    window.URL.revokeObjectURL = originalRevokeObjectURL
+    vi.unstubAllGlobals()
+    clickSpy.mockRestore()
+    wrapper.unmount()
   })
 
   it('多批游标导出始终使用初始筛选和文件名', async () => {

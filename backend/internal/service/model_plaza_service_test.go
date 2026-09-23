@@ -58,9 +58,9 @@ func TestListPlazaGroups_GroupCentricAggregation(t *testing.T) {
 }
 
 func TestModelPlazaPricing_Fable51DoesNotInjectMaxMultiplier(t *testing.T) {
-	for _, multiplier := range []*float64{nil, testPtrFloat64(1.25)} {
+	for _, multipliers := range []map[string]float64{nil, {"max": 1.25}} {
 		for _, withSchedule := range []bool{false, true} {
-			pricing := &ChannelModelPricing{BillingMode: BillingModeToken, MaxReasoningEffortMultiplier: multiplier}
+			pricing := &ChannelModelPricing{BillingMode: BillingModeToken, ReasoningEffortMultipliers: multipliers}
 			model := &PlazaModel{Name: "claude-fable-5-1", Platform: PlatformAnthropic, Pricing: pricing}
 			svc := &ModelPlazaService{}
 			if withSchedule {
@@ -68,10 +68,20 @@ func TestModelPlazaPricing_Fable51DoesNotInjectMaxMultiplier(t *testing.T) {
 			}
 			svc.fillDisplayPricing(context.Background(), model, &Group{ID: 100, Platform: PlatformAnthropic})
 			require.NotNil(t, model.Pricing)
-			require.Equal(t, multiplier, model.Pricing.MaxReasoningEffortMultiplier)
-			require.Equal(t, multiplier, pricing.MaxReasoningEffortMultiplier)
+			require.Equal(t, multipliers, model.Pricing.ReasoningEffortMultipliers)
+			require.Equal(t, multipliers, pricing.ReasoningEffortMultipliers)
 		}
 	}
+}
+
+func TestListPlazaGroups_Fable51HasNoImplicitReasoningMultiplier(t *testing.T) {
+	ch := plazaPricedChannel(1, "ch", []int64{10}, "anthropic", "claude-fable-5-1")
+	svc := newPlazaService([]Channel{ch}, []Group{{ID: 10, Platform: "anthropic"}}, nil)
+	groups, err := svc.ListGroups(context.Background())
+	require.NoError(t, err)
+	require.Len(t, groups, 1)
+	require.Len(t, groups[0].Models, 1)
+	require.Empty(t, groups[0].Models[0].Pricing.ReasoningEffortMultipliers)
 }
 
 func TestListPlazaGroups_DedupFirstWinsWithPricingUpgrade(t *testing.T) {

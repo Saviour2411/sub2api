@@ -56,6 +56,10 @@ func TestNormalizeKnownOpenAICodexModel_RejectsUnknownGPT5Variants(t *testing.T)
 func TestNormalizeKnownOpenAIPricingModel_OfficialFamilies(t *testing.T) {
 	tests := map[string]string{
 		"gpt-6-astra":                "gpt-6-astra",
+		"gpt-6-sol":                  "gpt-6-sol",
+		"openai/gpt-6-sol-high":      "gpt-6-sol",
+		"gpt-6-luna":                 "gpt-6-luna",
+		"gpt-6-luna-openai-compact":  "gpt-6-luna",
 		"openai/gpt-6-astra":         "gpt-6-astra",
 		"gpt-6":                      "gpt-6-astra",
 		"openai/gpt-6":               "gpt-6-astra",
@@ -78,7 +82,7 @@ func TestNormalizeKnownOpenAIPricingModel_OfficialFamilies(t *testing.T) {
 			require.Equal(t, expected, normalizeKnownOpenAIPricingModel(input))
 		})
 	}
-	for _, input := range []string{"gpt-5.999", "gpt-5.4-custom", "gpt-5.2-pro-custom", "gpt-6-custom", "gpt-6-astra-custom", "x-gpt-6-astra", "astra-public"} {
+	for _, input := range []string{"gpt-5.999", "gpt-5.4-custom", "gpt-5.2-pro-custom", "gpt-6-custom", "gpt-6-astra-custom", "gpt-6-sol-custom", "gpt-6-luna-custom", "x-gpt-6-astra", "astra-public"} {
 		t.Run("reject/"+input, func(t *testing.T) {
 			require.Empty(t, normalizeKnownOpenAIPricingModel(input))
 		})
