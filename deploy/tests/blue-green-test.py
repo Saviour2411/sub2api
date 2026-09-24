@@ -804,6 +804,65 @@ class BlueGreenTests(unittest.TestCase):
         for value in ("off","80%","-1","",None):
             with self.assertRaises(bg.Refused): bg.bytes_value(value)
 
+    def special_release(self):
+        release = self.release(1)
+        release.update(migration_class="expand", rollback_compatible=True,
+                       migration_policy={"version":1,"migrations":[{"profile":"reasoning-empty-239-v1"}]})
+        self.deployment.config["machine_id"] = "test-machine"
+        for name in ("docker-compose.yml", "docker-compose.sub2api.yml"):
+            (self.directory/name).write_text("一致的测试配置")
+        self.deployment.config["compose_sha256"] = bg.hashlib.sha256((self.directory/"docker-compose.yml").read_bytes()).hexdigest()
+        self.deployment.containers["sub2api-postgres"] = {"Id":"test-postgres"}
+        return release
+
+    def test_pricing_guard_must_exist_before_switch(self):
+        release = self.special_release()
+        with patch.object(self.deployment, "pricing_guard_database", return_value={"valid":False,"migrations":True}):
+            with self.assertRaisesRegex(bg.Refused,"计费保护"):
+                self.deployment.deploy(release,window=0)
+        self.assertEqual("blue",self.deployment.routed)
+
+    def test_pricing_guard_release_follows_retirement_and_recovers(self):
+        release = self.special_release()
+        events = []
+        def database(mode):
+            events.append((mode, self.deployment.state["phase"], self.deployment.state.get("pending")))
+            if mode == "check": return {"valid":True,"migrations":True}
+        with patch.object(self.deployment,"pricing_guard_database",side_effect=database):
+            self.deployment.deploy(release,window=0)
+            self.deployment.deploy(release,window=0)
+        self.assertEqual(["check","release","release"],[event[0] for event in events])
+        self.assertTrue(all(phase == "stable" and pending is None for mode,phase,pending in events if mode == "release"))
+        self.assertEqual("released",self.deployment.state["pricing_guard_result"]["status"])
+
+    def test_pricing_guard_is_retained_while_old_slot_busy_and_on_rollback(self):
+        release = self.special_release()
+        self.deployment.busy.add("blue")
+        with patch.object(self.deployment,"pricing_guard_database",return_value={"valid":True,"migrations":True}) as database:
+            self.deployment.deploy(release,window=0)
+            self.assertEqual([(("check",),{})],database.call_args_list)
+            with self.assertRaisesRegex(bg.Refused,"尚未退役"):
+                self.deployment.finish_pricing_guard()
+            self.deployment.rollback(window=0)
+            self.deployment.finish_pricing_guard()
+            self.assertTrue(all(call.args == ("check",) for call in database.call_args_list))
+        self.assertEqual("blue",self.deployment.routed)
+
+    def test_pricing_guard_cleanup_failure_keeps_stable_release_retryable(self):
+        release = self.special_release()
+        def database(mode):
+            if mode == "check": return {"valid":True,"migrations":True}
+            raise bg.Refused("解除锁冲突")
+        with patch.object(self.deployment,"pricing_guard_database",side_effect=database):
+            with self.assertRaisesRegex(bg.Refused,"解除锁冲突"):
+                self.deployment.deploy(release,window=0)
+        self.assertEqual("stable",self.deployment.state["phase"])
+        self.assertEqual("green",self.deployment.routed)
+        self.assertNotIn("pricing_guard_result",self.deployment.state)
+        with patch.object(self.deployment,"pricing_guard_database",return_value=None) as database:
+            self.deployment.deploy(release,window=0)
+            database.assert_called_once_with("release")
+
 
 if __name__ == "__main__":
     unittest.main()

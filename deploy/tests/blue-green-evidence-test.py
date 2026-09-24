@@ -106,7 +106,31 @@ class EvidenceTests(unittest.TestCase):
         for entry in approvals["approvals"]:
             content = (ROOT/entry["path"]).read_text()
             self.assertEqual(entry["checksum"],e.checksum(content))
-            self.assertEqual(entry["column"],e.additive_column(content))
+            if "profile" in entry:
+                self.assertEqual((entry["profile"], entry["checksum"]), e.SPECIAL_MIGRATIONS[Path(entry["path"]).name])
+            else:
+                self.assertEqual(entry["column"],e.additive_column(content))
+
+    def test_special_profiles_require_exact_baseline_code_and_content(self):
+        approvals = json.loads((ROOT/e.APPROVALS_PATH).read_text())
+        for approval in approvals["approvals"]:
+            if "profile" not in approval:
+                continue
+            for contract in approval["legacy_contracts"]:
+                contract["checksum"] = e.checksum("旧版契约")
+            base, sha = approval["compatible_from"], "b"*40
+            path = approval["path"]
+            content = (ROOT/path).read_text()
+            def git(*args):
+                if args[0] == "diff": return "A\t"+path
+                if args[0] == "show" and args[1] == sha+":"+path: return content
+                if args[0] == "show" and args[1] == sha+":"+e.APPROVALS_PATH: return json.dumps(approvals)
+                return "旧版契约" if args[0] == "show" else ""
+            result = e.migration_evidence(base, sha, git)
+            self.assertEqual(approval["profile"],result["migration_policy"]["migrations"][0]["profile"])
+            content += "\n-- 未经批准的变化"
+            with self.assertRaisesRegex(RuntimeError, "固定 SQL"):
+                e.migration_evidence(base, sha, git)
 
 
 if __name__ == "__main__":

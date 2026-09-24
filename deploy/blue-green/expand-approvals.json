@@ -17,6 +17,30 @@
         }
       ],
       "review": "2026-09-21 用户批准旧版兼容的字段扩展。旧版审核日志使用明确列名读写；新增字段可空，无默认值、约束或回填。保留字段回退应用，不执行反向删列。"
+    },
+    {
+      "compatible_from": "9e641699209adfe84b00a22966c51655d735fe96",
+      "path": "backend/migrations/239_channel_reasoning_effort_multipliers.sql",
+      "checksum": "66feb546785dfa385d8efd268a40276cd8ffdb0cead7026cd79e339a3b69edf1",
+      "profile": "reasoning-empty-239-v1",
+      "legacy_contracts": [
+        {"path": "backend/internal/repository/channel_repo_pricing.go", "checksum": "e6a4519ce003d0cc31cdaede96dd7c9c932b218e5e98d37f048985cdfdb348ea"},
+        {"path": "backend/internal/repository/channel_repo_account_stats_pricing.go", "checksum": "e2b6397d468974f7f58a4b74364d3bde7d2efbe837ac867f494fe62a27d9829b"},
+        {"path": "backend/internal/repository/group_repo.go", "checksum": "b78584cdc0e531f2c132ebefc89afbc4cbb95524b817a340cfcea5f726c23488"},
+        {"path": "backend/internal/service/channel.go", "checksum": "ec5367e6229aa0c3e9b677a425211b3e9fdeff454e229f3cc48b6132461c6acf"},
+        {"path": "backend/internal/service/billing_service.go", "checksum": "88708d7859a002f39185e3eadde9a59d1644cdc6c87bc378aa9f185249c3dd5e"}
+      ],
+      "review": "2026-09-24 用户批准专项兼容适配。仅限无显式倍率的旧版基线，持锁检查后执行原SQL，并安装三项数据库约束，禁止新旧实例并行期间配置倍率。旧版null与新空映射均不额外加价；其他价格仍可保存。旧槽完全退役后才解除，回滚或失败保留保护。普通迁移规则不放宽。"
+    },
+    {
+      "compatible_from": "9e641699209adfe84b00a22966c51655d735fe96",
+      "path": "backend/migrations/240_affiliate_ledger_operation_id.sql",
+      "checksum": "3823bfea5f64feb58f5fcebc341c6877eaefc97834b4cd652c8e83ad08ed78da",
+      "profile": "affiliate-operation-240-v1",
+      "legacy_contracts": [
+        {"path": "backend/internal/repository/affiliate_repo.go", "checksum": "bf3a69334a6bc6439768361ba3a05658da9f5e11575c6a5edb022a663fb413e2"}
+      ],
+      "review": "2026-09-24 用户批准专项兼容适配。旧版流水明确列名读写，不提供operation_id，新增可空字段和只覆盖非NULL值的唯一索引不改变旧版流水。新增线下提现入口旧版不存在。普通索引短暂阻止写入，限普通小表、NOWAIT表锁、1秒锁等待/5秒语句/10秒事务预算，冲突立即回滚，不改历史SQL。"
     }
   ]
 }

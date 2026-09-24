@@ -244,7 +244,7 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 
 | 编号 | 功能 | 当前行为与边界 | 关键入口 | 状态 |
 | --- | --- | --- | --- | --- |
-| `CUST-OPS-007` | 蓝绿兼容字段迁移门禁 | 2026-09-21 经用户批准，只允许经过旧版读写审查、绑定旧提交和 SQL/旧代码摘要的新增可空字段；禁止默认值、约束、回填及未知结构变化。候选启动核对实际待迁移清单，NOWAIT 表锁、事务级 1秒锁等待/5秒语句限制及10秒事务预算；迁移失败不自动重启候选、不切流，旧实例继续服务。短暂表锁仍可能增加延迟，不承诺绝对零影响；应用回退保留已新增字段。已随v0.1.243完成唯一238b生产迁移，历史账本逐项未变。 2026-09-24 上游适配：239包含非空默认值与数据回填，240包含唯一索引，均超出现有蓝绿兼容字段门禁；不扩展白名单、不更改原SQL、不执行生产迁移。 | `deploy/blue-green/evidence.py`、`deploy/blue-green/expand-approvals.json`、`backend/internal/repository/migrations_blue_green.go`、`docs/operations/blue-green-expand-migrations.md` | 发布门禁 |
+| `CUST-OPS-007` | 蓝绿兼容字段迁移门禁 | 普通规则仅允许绑定旧提交、SQL和旧代码摘要的新增可空字段，238b已随v0.1.243发布。2026-09-24经用户追加批准，239/240采用固定SQL摘要专项，不放宽普通门禁、不改上游SQL。专项限PostgreSQL18、无用户触发器/继承且至多16MiB的普通表，NOWAIT表锁及1秒锁等待/5秒语句/10秒事务预算；失败不自动重启候选或切流。239仅允许无显式倍率，事务内安装检查约束，临时禁止新旧实例共存期写入推理倍率，普通价格可写；切流/回滚前核对保护，旧槽退役并重新安全核验后自动解除，回滚或失败保留。240核验可空操作ID及部分唯一索引。已提交迁移不反向删除，不承诺零延迟或无损强制退役。专项发布结果另行记录。 | `deploy/blue-green/evidence.py`、`deploy/blue-green/expand-approvals.json`、`deploy/blue-green/pricing-guard.py`、`backend/internal/repository/migrations_blue_green_special.go`、`docs/operations/blue-green-expand-migrations.md` | 发布门禁 |
 | `CUST-OPS-001` | 标签发布与生产自动部署 | `v*` 标签构建发布产物、Docker Hub/GHCR 镜像并自动 SSH 部署；完整多架构发布允许最长 120 分钟，包含连接诊断、重试、健康检查和版本文件回写。 2026-09-14 生产部署目标迁至216.152.153.86，后续按用户要求将SSH改为22748，工作流默认值、强制校验与GitHub DEPLOY_PORT同步修改，独立部署密钥经重启后验证；旧机禁止再次部署业务。2026-09-16新增用户授权的一小时观察及超时强制退役策略，生产job为120分钟，固定实例身份、Redis归属清理、游标恢复和强制结果独立审计；已手动回收green，后续tag须包含该工作流变更，不宣称强制请求无损。 2026-09-20 上游适配：接入独立构建矩阵与 dry-run，构建/镜像/部署绑定 prepare 的固定 SHA；保留 DockerHub secrets/vars 回退、凭据门禁、Canvas 构建、120分钟超时和3600秒蓝绿观察。dry-run 禁止版本回写及部署，simple 模式禁止部署，正常发布默认部署策略不变。本轮仅本地验证，不触发发布。 2026-09-24 上游适配：月度归档与本地备份生命周期组合；记录写入有数据库时沿用 backup:records advisory lock（含共享数据库回退），恢复写入保留实例归属，未知或存活实例不能仅凭超时判失败，Stop仍等待活跃任务。 | `.github/workflows/release.yml`、`deploy/blue-green/deploy.py`、`deploy/remote-deploy.sh` | 运维约束 |
 | `CUST-OPS-002` | 保留生产 Compose | 自动部署默认不上传仓库 Compose，只更新远端 `.env` 镜像标签并使用活动 Compose，防止通用命名卷配置覆盖生产文件。 本次上游适配：本次仅本地更新两份 Compose 的图片主控模型环境变量，不上传文件或改变生产活动配置。 2026-09-15 上游适配：本次仅在本地同步两份生产 Compose 的 compact 默认值为 gpt-5.5；字节一致约束保留，不上传或变更生产配置。 2026-09-24 上游适配：两份生产Compose同步增加简易模式分组初始化和Key窗口开关，继续逐字一致，保留绑定目录、回环端口及资源入口。 | `.github/workflows/release.yml`、`deploy/remote-deploy.sh` | 运维约束 |
 | `CUST-OPS-003` | 生产数据与网络拓扑 | 生产实例必须保持 bind mount 数据目录、仅回环地址暴露、两个活动 Compose 一致，以及业务要求的 HTTP upstream 安全开关；Compose 接入上游健康检查变化并透传实例级数据保留参数，具体保留天数、实例专用路径和连接参数只保存在不跟踪的 `.env` 与本地运维说明中。 2026-09-05 发布门禁在变更版本/重建前强制校验两份Compose字节一致、应用/PostgreSQL/Redis的精确bind mount和旧实例健康；Release配置只允许服务器1及指定用户、端口、目录和活动文件。不满足时失败退出，不修改.env或重建容器。 本次上游适配：两份 Compose 字节一致，增加 SUB2API_IMAGES_MAIN_MODEL（默认 gpt-5.6-luna）；bind mount、回环监听和 HTTP upstream 约束不变。 2026-09-14 已完成 PostgreSQL/Redis 单写迁移、商店 SQLite 一致性复制及10条 A 记录切换；旧机只保留固定新 IP 的 Nginx 转发，停用数据库、Docker 与业务定时任务。新端写入后禁止直接启动旧库回退。后续经授权完成系统包和内核更新，SSH仅22748且保留密码登录，Fail2ban封禁1小时；BBR/CAKE保留用户配置。脱敏主机配置归档于deploy/operations/production-20260914。 2026-09-16 经授权平滑调整Nginx为worker_connections=16384、multi_accept=off，修复当前epoll接入轮转偏斜，保留旧worker自然排空与应用资源上限；实测证据见docs/operations/2026-09-16-nginx-worker-balance.md。 | `deploy/docker-compose.yml`、`deploy/docker-compose.sub2api.yml`、`deploy/remote-deploy.sh`、`.github/workflows/release.yml` | 运维约束 |
@@ -254,6 +254,13 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 | `CUST-OPS-008` | 构建版本与上游来源提示 | 当前二开版本来自运行程序构建信息，启动时统一注入 HTML、公共设置及管理员接口；旧首屏配置缺版本时仅补查一次公共设置。管理员显示二开版本、已同步原版版本及原版更新状态，普通用户只看二开版本。来源由随二进制嵌入的 `upstream-sync.json` 记录，缺失时显示未记录，不与二开版本比较。最新正式 Release 只读检查采用8秒超时、30分钟成功缓存、60秒失败退避和并发合并；失败保留旧结果并标记缓存，无历史显示暂不可用。可见页定时检查，后台暂停，退出或换用户清理请求和计时器；支持折叠详情、移动端、深浅主题与长版本换行。 2026-09-24 上游适配：随合并更新嵌入来源为0.2.8/a3eb7ef302961cba716dc78b39b93b60c467db0e，二开版本保持0.1.245；只读提示、缓存、身份差异及禁止自更新边界不变。 | `backend/internal/pkg/buildmeta/upstream-sync.json`、`backend/internal/handler/wire.go`、`backend/internal/service/upstream_version.go`、`frontend/src/composables/useVersionInfo.ts`、`frontend/src/components/common/VersionBadge.vue`、`tools/check_upstream_sync_metadata.py` | 生效中 |
 
 ## 变更记录
+
+### 2026-09-24 239/240专项蓝绿兼容适配
+
+- 关联`CUST-OPS-001`、`CUST-OPS-007`。用户在主线`304006b24`候选/主线各8项CI与2项安全扫描通过后，明确批准迁移兼容适配、隔离验证及后续tag自动蓝绿发布。
+- 只批准固定旧SHA及两个原始SQL摘要；普通可空字段规则、历史迁移校验和、生产Compose、资源参数、3600秒响应头超时、5秒usage任务及按用户串行扣费不变。新增专项表大小/类型/版本/锁超时检查，候选失败不切流。
+- 新旧并行期间以数据库约束保护空推理倍率；旧版可继续保存空倍率及其他价格，新增倍率需待退役解除后保存。回滚保留约束；解除失败报告失败而非静默放行。此行为只用于本次受控发布，不改变常规启动和计费默认值。
+- 新增旧新版读写、全推理级别计费、前置拒绝、事务回滚、索引、锁冲突、定义漂移、重复启动及解除恢复测试。生产备份恢复及峰值负载不在本地测试证明范围内；本条为实现记录，不代表标签发布已完成。
 
 ### 2026-09-24 上游0.2.8本地增量同步
 

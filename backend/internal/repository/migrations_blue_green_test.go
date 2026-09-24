@@ -10,12 +10,41 @@ import (
 	"testing/fstest"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
+	"github.com/Wei-Shaw/sub2api/migrations"
 	"github.com/stretchr/testify/require"
 )
 
 func expansionEntry(name, table, content string) blueGreenMigration {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(content)))
 	return blueGreenMigration{Filename: name, Checksum: hex.EncodeToString(sum[:]), Table: table, Column: "engine_meta", DataType: "jsonb"}
+}
+
+func TestBlueGreenSpecialPolicyBindsExactFileAndSQL(t *testing.T) {
+	for _, entry := range []blueGreenMigration{
+		{Filename: blueGreenReasoningFile, Checksum: blueGreenReasoningChecksum, Profile: blueGreenReasoningProfile},
+		{Filename: blueGreenAffiliateFile, Checksum: blueGreenAffiliateChecksum, Profile: blueGreenAffiliateProfile},
+	} {
+		content, err := migrations.FS.ReadFile(entry.Filename)
+		require.NoError(t, err)
+		require.NoError(t, validateBlueGreenSQL(entry, string(content)))
+		raw, err := json.Marshal(blueGreenMigrationPolicy{Version: 1, Migrations: []blueGreenMigration{entry}})
+		require.NoError(t, err)
+		_, err = parseBlueGreenMigrationPolicy(string(raw))
+		require.NoError(t, err)
+		for _, altered := range []blueGreenMigration{
+			{Filename: entry.Filename, Checksum: strings.Repeat("a", 64), Profile: entry.Profile},
+			{Filename: "999_other.sql", Checksum: entry.Checksum, Profile: entry.Profile},
+			{Filename: entry.Filename, Checksum: entry.Checksum, Profile: "unknown"},
+			{Filename: entry.Filename, Checksum: entry.Checksum, Profile: entry.Profile, Table: "users"},
+		} {
+			require.False(t, approvedBlueGreenSpecial(altered))
+			encoded, err := json.Marshal(blueGreenMigrationPolicy{Version: 1, Migrations: []blueGreenMigration{altered}})
+			require.NoError(t, err)
+			_, err = parseBlueGreenMigrationPolicy(string(encoded))
+			require.Error(t, err)
+		}
+		require.Error(t, validateBlueGreenSQL(entry, string(content)+"\nDELETE FROM users;"))
+	}
 }
 
 func TestBlueGreenMigrationPolicy(t *testing.T) {

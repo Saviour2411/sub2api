@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -359,4 +360,34 @@ func TestCalculateTokenCostForRequest_ChannelConfiguresReasoningEffortMultiplier
 	require.NoError(t, err)
 	require.InDelta(t, 1000*10e-6*configured, got.TotalCost, 1e-12)
 	require.InDelta(t, got.TotalCost, got.ActualCost, 1e-12)
+}
+
+func TestBlueGreen239EmptyPricingPreservesBillingAcrossEfforts(t *testing.T) {
+	for _, snapshot := range []string{
+		`{"platform":"anthropic","models":["custom-model"],"billing_mode":"token","input_price":0.00001,"output_price":0.00005,"max_reasoning_effort_multiplier":null}`,
+		`{"platform":"anthropic","models":["custom-model"],"billing_mode":"token","input_price":0.00001,"output_price":0.00005,"reasoning_effort_multipliers":{}}`,
+	} {
+		for _, scope := range []string{"channel", "group"} {
+			var pricing ChannelModelPricing
+			require.NoError(t, json.Unmarshal([]byte(snapshot), &pricing))
+			group := &Group{ID: 100, Platform: PlatformAnthropic}
+			channelPricing := []ChannelModelPricing{pricing}
+			if scope == "group" {
+				group.ModelPricing = channelPricing
+				channelPricing = nil
+			}
+			bs, resolver := newTokenCostTestEnv(t, PlatformAnthropic, channelPricing, nil)
+			resolved := resolver.Resolve(context.Background(), PricingInput{Model: "custom-model", GroupID: &group.ID, Group: group})
+			for _, effort := range []string{"", "none", "low", "medium", "high", "xhigh", "max"} {
+				got, err := bs.CalculateTokenCostForRequest(TokenCostRequest{
+					Ctx: context.Background(), Model: "custom-model", Group: group,
+					Tokens: UsageTokens{InputTokens: 1000, OutputTokens: 100}, RateMultiplier: 1.3, ReasoningEffort: effort,
+					Resolver: resolver, Resolved: resolved,
+				})
+				require.NoError(t, err, scope+effort)
+				require.InDelta(t, 0.015, got.TotalCost, 1e-12, scope+effort)
+				require.InDelta(t, 0.0195, got.ActualCost, 1e-12, scope+effort)
+			}
+		}
+	}
 }

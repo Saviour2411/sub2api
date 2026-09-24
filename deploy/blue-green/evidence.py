@@ -16,6 +16,10 @@ REQUIRED = {
 }
 MIGRATION_PATHS = ["backend/migrations", "backend/ent/schema"]
 APPROVALS_PATH = "deploy/blue-green/expand-approvals.json"
+SPECIAL_MIGRATIONS = {
+    "239_channel_reasoning_effort_multipliers.sql": ("reasoning-empty-239-v1", "66feb546785dfa385d8efd268a40276cd8ffdb0cead7026cd79e339a3b69edf1"),
+    "240_affiliate_ledger_operation_id.sql": ("affiliate-operation-240-v1", "3823bfea5f64feb58f5fcebc341c6877eaefc97834b4cd652c8e83ad08ed78da"),
+}
 ADD_COLUMN = re.compile(
     r"ALTER\s+TABLE\s+([a-z_][a-z0-9_]*)\s+ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+"
     r"([a-z_][a-z0-9_]*)\s+(jsonb|text|boolean|smallint|integer|bigint|uuid)\s*;", re.I)
@@ -69,7 +73,13 @@ def migration_evidence(base, sha, git):
         require(status == "A" and re.fullmatch(r"backend/migrations/[0-9][a-zA-Z0-9_]+\.sql", path),
                 "迁移门禁拒绝修改历史 SQL、删除、重命名、Ent schema 或其他未知文件")
         content = git("show", sha+":"+path)
-        column = additive_column(content)
+        filename = path.rsplit("/", 1)[1]
+        special = SPECIAL_MIGRATIONS.get(filename)
+        if special:
+            require(checksum(content) == special[1], "专项迁移固定 SQL 摘要不符")
+            contract = {"profile": special[0]}
+        else:
+            contract = additive_column(content)
         if approvals is None:
             approvals = json.loads(git("show", sha+":"+APPROVALS_PATH))
             require(approvals.get("version") == 1 and isinstance(approvals.get("approvals"), list), "兼容审批格式无效")
@@ -77,14 +87,17 @@ def migration_evidence(base, sha, git):
         require(len(matches) == 1, "新增字段缺少针对当前旧版本的唯一兼容审批")
         approval = matches[0]
         require(approval.get("checksum") == checksum(content), "迁移内容与兼容审批摘要不符")
-        require(approval.get("column") == column, "新增字段与兼容审批不符")
+        if special:
+            require(approval.get("profile") == special[0] and "column" not in approval, "专项迁移与兼容审批不符")
+        else:
+            require(approval.get("column") == contract and "profile" not in approval, "新增字段与兼容审批不符")
         contracts = approval.get("legacy_contracts", [])
         require(isinstance(contracts, list) and contracts, "缺少旧版读写契约审查")
-        for contract in contracts:
-            source = contract.get("path", "")
+        for legacy_contract in contracts:
+            source = legacy_contract.get("path", "")
             require(re.fullmatch(r"backend/[a-zA-Z0-9_/]+\.go", source) is not None and not source.endswith("_test.go"), "旧版契约路径无效")
-            require(checksum(git("show", base+":"+source)) == contract.get("checksum"), "旧版读写实现与审批摘要不符")
-        policy["migrations"].append({"filename": path.rsplit("/", 1)[1], "checksum": checksum(content), **column})
+            require(checksum(git("show", base+":"+source)) == legacy_contract.get("checksum"), "旧版读写实现与审批摘要不符")
+        policy["migrations"].append({"filename": filename, "checksum": checksum(content), **contract})
     if policy["migrations"]:
         result["migration_class"] = "expand"
     return result

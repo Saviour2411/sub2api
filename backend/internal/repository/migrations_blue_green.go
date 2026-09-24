@@ -17,9 +17,10 @@ import (
 type blueGreenMigration struct {
 	Filename string `json:"filename"`
 	Checksum string `json:"checksum"`
-	Table    string `json:"table"`
-	Column   string `json:"column"`
-	DataType string `json:"data_type"`
+	Table    string `json:"table,omitempty"`
+	Column   string `json:"column,omitempty"`
+	DataType string `json:"data_type,omitempty"`
+	Profile  string `json:"profile,omitempty"`
 }
 
 type blueGreenMigrationPolicy struct {
@@ -47,17 +48,24 @@ func parseBlueGreenMigrationPolicy(raw string) (*blueGreenMigrationPolicy, error
 	}
 	seen := map[string]bool{}
 	for _, entry := range policy.Migrations {
-		if !blueGreenFilename.MatchString(entry.Filename) || !blueGreenChecksum.MatchString(entry.Checksum) ||
-			!blueGreenIdentifier.MatchString(entry.Table) || strings.HasPrefix(entry.Table, "pg_") ||
-			!blueGreenIdentifier.MatchString(entry.Column) || seen[entry.Filename] {
+		if !blueGreenFilename.MatchString(entry.Filename) || !blueGreenChecksum.MatchString(entry.Checksum) || seen[entry.Filename] {
 			return nil, fmt.Errorf("蓝绿迁移策略包含无效或重复条目")
+		}
+		seen[entry.Filename] = true
+		if entry.Profile != "" {
+			if !approvedBlueGreenSpecial(entry) {
+				return nil, fmt.Errorf("蓝绿专项迁移未经批准")
+			}
+			continue
+		}
+		if !blueGreenIdentifier.MatchString(entry.Table) || strings.HasPrefix(entry.Table, "pg_") || !blueGreenIdentifier.MatchString(entry.Column) {
+			return nil, fmt.Errorf("蓝绿迁移字段或表名无效")
 		}
 		switch entry.DataType {
 		case "jsonb", "text", "boolean", "smallint", "integer", "bigint", "uuid":
 		default:
 			return nil, fmt.Errorf("蓝绿迁移字段类型未经批准")
 		}
-		seen[entry.Filename] = true
 	}
 	return &policy, nil
 }
@@ -75,6 +83,12 @@ func validateBlueGreenSQL(entry blueGreenMigration, content string) error {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(content)))
 	if hex.EncodeToString(sum[:]) != entry.Checksum {
 		return fmt.Errorf("蓝绿迁移摘要不符：%s", entry.Filename)
+	}
+	if entry.Profile != "" {
+		if !approvedBlueGreenSpecial(entry) {
+			return fmt.Errorf("蓝绿专项迁移未经批准：%s", entry.Filename)
+		}
+		return nil
 	}
 	lines := []string{}
 	for _, line := range strings.Split(content, "\n") {
@@ -147,6 +161,9 @@ func validateBlueGreenPendingMigrations(ctx context.Context, conn *sql.Conn, fsy
 func applyBlueGreenExpansion(ctx context.Context, conn *sql.Conn, entry blueGreenMigration, content string) error {
 	if err := validateBlueGreenSQL(entry, content); err != nil {
 		return err
+	}
+	if entry.Profile != "" {
+		return applyBlueGreenSpecial(ctx, conn, entry, content)
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
