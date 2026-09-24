@@ -254,3 +254,32 @@ func TestBlueGreenSpecialSecondMigrationFailureRetainsPricingGuard(t *testing.T)
 	_, err = conn.ExecContext(context.Background(), "ROLLBACK")
 	require.NoError(t, err)
 }
+
+func TestBlueGreenSpecialReviewedGroupTriggerAndDrift(t *testing.T) {
+	for _, drift := range []bool{false, true} {
+		t.Run(fmt.Sprint(drift), func(t *testing.T) {
+			db, conn, entries := specialMigrationFixture(t)
+			_, err := db.Exec(`ALTER TABLE groups ADD COLUMN status text, ADD COLUMN is_exclusive boolean,
+                ADD COLUMN allow_image_generation boolean, ADD COLUMN platform text, ADD COLUMN subscription_type text,
+                ADD COLUMN rate_multiplier numeric, ADD COLUMN peak_rate_enabled boolean, ADD COLUMN peak_start text,
+                ADD COLUMN peak_end text, ADD COLUMN peak_rate_multiplier numeric, ADD COLUMN profit_control_enabled boolean,
+                ADD COLUMN profit_min_margin numeric, ADD COLUMN profit_safety_buffer numeric, ADD COLUMN deleted_at timestamptz`)
+			require.NoError(t, err)
+			function, err := migrations.FS.ReadFile("193_group_profit_control_auth_cache_invalidation.sql")
+			require.NoError(t, err)
+			_, err = db.Exec(string(function))
+			require.NoError(t, err)
+			_, err = db.Exec(`CREATE TRIGGER trg_groups_auth_cache_invalidation AFTER UPDATE OR DELETE ON groups
+                FOR EACH ROW EXECUTE FUNCTION enqueue_group_auth_cache_invalidation()`)
+			require.NoError(t, err)
+			if drift {
+				_, err = db.Exec(strings.ReplaceAll(string(function), "target_group_id := OLD.id;", "target_group_id := OLD.id + 1;"))
+				require.NoError(t, err)
+				require.ErrorContains(t, runSpecialMigration(t, conn, entries[0]), "触发器已审查")
+			} else {
+				// 未创建api_keys或outbox；若触发器没有直接返回，原239就会失败。
+				require.NoError(t, runSpecialMigration(t, conn, entries[0]))
+			}
+		})
+	}
+}

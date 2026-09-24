@@ -15,6 +15,7 @@ const (
 	blueGreenReasoningChecksum = "66feb546785dfa385d8efd268a40276cd8ffdb0cead7026cd79e339a3b69edf1"
 	blueGreenAffiliateChecksum = "3823bfea5f64feb58f5fcebc341c6877eaefc97834b4cd652c8e83ad08ed78da"
 	blueGreenSpecialTableLimit = 16 * 1024 * 1024
+	blueGreenGroupTriggerHash  = "f1f99ee3f64e0c9f152ee2061c294d6e6b271b21d5fbeede52b68ddf2af27dae"
 )
 
 // 旧版把 nil 倍率序列化为 JSON null；允许它继续保存其他价格，但不能新增倍率。
@@ -69,10 +70,13 @@ func applyBlueGreenSpecial(ctx context.Context, conn *sql.Conn, entry blueGreenM
 		if err := tx.QueryRowContext(ctx, `SELECT c.relkind = 'r' AND c.reloftype = 0
             AND pg_total_relation_size(c.oid) <= $2
             AND NOT EXISTS (SELECT 1 FROM pg_inherits i WHERE i.inhparent = c.oid OR i.inhrelid = c.oid)
-            AND NOT EXISTS (SELECT 1 FROM pg_trigger t WHERE t.tgrelid = c.oid AND NOT t.tgisinternal)
+            AND NOT EXISTS (SELECT 1 FROM pg_trigger t WHERE t.tgrelid = c.oid AND NOT t.tgisinternal AND NOT (
+                c.relname = 'groups' AND t.tgenabled = 'O'
+                AND pg_get_triggerdef(t.oid) = 'CREATE TRIGGER trg_groups_auth_cache_invalidation AFTER DELETE OR UPDATE ON public.groups FOR EACH ROW EXECUTE FUNCTION enqueue_group_auth_cache_invalidation()'
+                AND encode(sha256(convert_to(pg_get_functiondef(t.tgfoid), 'UTF8')), 'hex') = $3))
             FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE n.nspname = 'public' AND c.relname = $1`, table, blueGreenSpecialTableLimit).Scan(&allowed); err != nil || !allowed {
-			return fmt.Errorf("蓝绿专项迁移只允许无用户触发器、至多16MiB的普通表：%s", table)
+            WHERE n.nspname = 'public' AND c.relname = $1`, table, blueGreenSpecialTableLimit, blueGreenGroupTriggerHash).Scan(&allowed); err != nil || !allowed {
+			return fmt.Errorf("蓝绿专项迁移只允许触发器已审查、至多16MiB的普通表：%s", table)
 		}
 	}
 	if err := precheckBlueGreenSpecial(ctx, tx, entry.Profile); err != nil {
