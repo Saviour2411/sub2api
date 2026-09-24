@@ -83,12 +83,13 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 
 ## 当前基线
 
-- 当前生产核验（2026-09-21 22:25:37）：`0.1.243`、revision `6154c64ffc83f180f7e8f118ccbd5182b8cb0f52` 在blue/18080接流，状态stable、pending=null；兼容字段迁移已完成，生产保护项不变。旧green按一小时策略强退，退出137且非OOM、用量收尾完整性未知，详情见 `docs/operations/2026-09-21-v0.1.243-release.md`。
+- 当前生产核验（2026-09-24 11:44:11）：`0.1.246`、revision `94dac3dcb880dcf96e3677827d3b4af7a55b9c98`在green/18082接流，状态stable、pending=null；239/240已执行且并行期倍率保护在旧槽退役后解除，原配置、资源与数据挂载不变。旧blue一小时后强退，退出137且非OOM、用量收尾完整性未知，详情见`docs/operations/2026-09-24-v0.1.246-release.md`。
+- 历史生产核验（2026-09-21 22:25:37）：`0.1.243`、revision `6154c64ffc83f180f7e8f118ccbd5182b8cb0f52` 在blue/18080接流，状态stable、pending=null；兼容字段迁移已完成，生产保护项不变。旧green按一小时策略强退，退出137且非OOM、用量收尾完整性未知，详情见 `docs/operations/2026-09-21-v0.1.243-release.md`。
 - 历史生产核验（2026-09-16）：`0.1.237`、revision `004cc47a2090a35b7cc94a6463e97273b86562fb` 在 blue/18080 接收新流量；当时v0.1.234已正常退役，v0.1.235 green按真实工作自然排空。资源上限、PG/Redis和持久挂载保持不变。详情见 `docs/operations/2026-09-16-legacy-retire-gate.md`。
 - 上一版生产记录（2026-09-15）：v0.1.234 原地部署时观察到 HTTP 强制关停及 `usage_record.task_dropped`（`reason=stopped`）告警；本次生命周期与蓝绿修正的目标即消除计划发布中的这类问题。历史证据保留于 `docs/operations/2026-09-15-v0.1.234-release.md`。
 
-- 本地代码基线日期：2026-09-24（北京时间，上游同步；生产事实仍以上述独立记录为准）
-- 本地版本：`0.1.245`（本轮不提升版本、不打标签、不推送或部署）
+- 本地代码基线日期：2026-09-24（北京时间，上游同步与后续获批发布；生产事实以上述独立验收为准）
+- 本地版本：`0.1.246`（本地同步阶段保持0.1.245；后续经追加授权发布，由Actions回写版本，不移动旧标签）
 - 本地同步前代码基线提交：`5fc1a94713062e0d08fe82848a3a3975f82efa19`；本轮合并提交与验证结果见 `docs/upstream-sync-history.md` 的 2026-09-24 记录
 - 已完整集成的上游提交：`a3eb7ef302961cba716dc78b39b93b60c467db0e`
 - 本次同步范围：`7c700729c..a3eb7ef30`，210个上游提交（122个非合并、88个合并）；63项既有能力族编号全部保留，无跳过或延期提交；本地覆盖、实际验证和未覆盖范围见本轮同步记录
@@ -244,7 +245,7 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 
 | 编号 | 功能 | 当前行为与边界 | 关键入口 | 状态 |
 | --- | --- | --- | --- | --- |
-| `CUST-OPS-007` | 蓝绿兼容字段迁移门禁 | 普通规则仅允许绑定旧提交、SQL和旧代码摘要的新增可空字段，238b已随v0.1.243发布。2026-09-24经用户追加批准，239/240采用固定SQL摘要专项，不放宽普通门禁、不改上游SQL。专项限PostgreSQL18、无继承且至多16MiB的普通表；未知用户触发器拒绝，仅按定义及函数摘要接纳184/193既有groups鉴权缓存触发器。NOWAIT表锁及1秒锁等待/5秒语句/10秒事务预算；失败不自动重启候选或切流。239仅允许无显式倍率，事务内安装检查约束，临时禁止新旧实例共存期写入推理倍率，普通价格可写；切流/回滚前核对保护，旧槽退役并重新安全核验后自动解除，回滚或失败保留。240核验可空操作ID及部分唯一索引。已提交迁移不反向删除，不承诺零延迟或无损强制退役。专项发布结果另行记录。 | `deploy/blue-green/evidence.py`、`deploy/blue-green/expand-approvals.json`、`deploy/blue-green/pricing-guard.py`、`backend/internal/repository/migrations_blue_green_special.go`、`docs/operations/blue-green-expand-migrations.md` | 发布门禁 |
+| `CUST-OPS-007` | 蓝绿兼容字段迁移门禁 | 普通规则仅允许绑定旧提交、SQL和旧代码摘要的新增可空字段，238b已随v0.1.243发布。2026-09-24经用户追加批准，239/240采用固定SQL摘要专项，不放宽普通门禁、不改上游SQL。专项限PostgreSQL18、无继承且至多16MiB的普通表；未知用户触发器拒绝，仅按定义及函数摘要接纳184/193既有groups鉴权缓存触发器。NOWAIT表锁及1秒锁等待/5秒语句/10秒事务预算；失败不自动重启候选或切流。239仅允许无显式倍率，事务内安装检查约束，临时禁止新旧实例共存期写入推理倍率，普通价格可写；切流/回滚前核对保护，旧槽退役并重新安全核验后自动解除，回滚或失败保留。240核验可空操作ID及部分唯一索引。已提交迁移不反向删除，不承诺零延迟或无损强制退役。239/240已随v0.1.246发布，旧槽退役后保护已解除，验收见本轮发布记录。 | `deploy/blue-green/evidence.py`、`deploy/blue-green/expand-approvals.json`、`deploy/blue-green/pricing-guard.py`、`backend/internal/repository/migrations_blue_green_special.go`、`docs/operations/blue-green-expand-migrations.md` | 发布门禁 |
 | `CUST-OPS-001` | 标签发布与生产自动部署 | `v*` 标签构建发布产物、Docker Hub/GHCR 镜像并自动 SSH 部署；完整多架构发布允许最长 120 分钟，包含连接诊断、重试、健康检查和版本文件回写。 2026-09-14 生产部署目标迁至216.152.153.86，后续按用户要求将SSH改为22748，工作流默认值、强制校验与GitHub DEPLOY_PORT同步修改，独立部署密钥经重启后验证；旧机禁止再次部署业务。2026-09-16新增用户授权的一小时观察及超时强制退役策略，生产job为120分钟，固定实例身份、Redis归属清理、游标恢复和强制结果独立审计；已手动回收green，后续tag须包含该工作流变更，不宣称强制请求无损。 2026-09-20 上游适配：接入独立构建矩阵与 dry-run，构建/镜像/部署绑定 prepare 的固定 SHA；保留 DockerHub secrets/vars 回退、凭据门禁、Canvas 构建、120分钟超时和3600秒蓝绿观察。dry-run 禁止版本回写及部署，simple 模式禁止部署，正常发布默认部署策略不变。本轮仅本地验证，不触发发布。 2026-09-24 上游适配：月度归档与本地备份生命周期组合；记录写入有数据库时沿用 backup:records advisory lock（含共享数据库回退），恢复写入保留实例归属，未知或存活实例不能仅凭超时判失败，Stop仍等待活跃任务。 | `.github/workflows/release.yml`、`deploy/blue-green/deploy.py`、`deploy/remote-deploy.sh` | 运维约束 |
 | `CUST-OPS-002` | 保留生产 Compose | 自动部署默认不上传仓库 Compose，只更新远端 `.env` 镜像标签并使用活动 Compose，防止通用命名卷配置覆盖生产文件。 本次上游适配：本次仅本地更新两份 Compose 的图片主控模型环境变量，不上传文件或改变生产活动配置。 2026-09-15 上游适配：本次仅在本地同步两份生产 Compose 的 compact 默认值为 gpt-5.5；字节一致约束保留，不上传或变更生产配置。 2026-09-24 上游适配：两份生产Compose同步增加简易模式分组初始化和Key窗口开关，继续逐字一致，保留绑定目录、回环端口及资源入口。 | `.github/workflows/release.yml`、`deploy/remote-deploy.sh` | 运维约束 |
 | `CUST-OPS-003` | 生产数据与网络拓扑 | 生产实例必须保持 bind mount 数据目录、仅回环地址暴露、两个活动 Compose 一致，以及业务要求的 HTTP upstream 安全开关；Compose 接入上游健康检查变化并透传实例级数据保留参数，具体保留天数、实例专用路径和连接参数只保存在不跟踪的 `.env` 与本地运维说明中。 2026-09-05 发布门禁在变更版本/重建前强制校验两份Compose字节一致、应用/PostgreSQL/Redis的精确bind mount和旧实例健康；Release配置只允许服务器1及指定用户、端口、目录和活动文件。不满足时失败退出，不修改.env或重建容器。 本次上游适配：两份 Compose 字节一致，增加 SUB2API_IMAGES_MAIN_MODEL（默认 gpt-5.6-luna）；bind mount、回环监听和 HTTP upstream 约束不变。 2026-09-14 已完成 PostgreSQL/Redis 单写迁移、商店 SQLite 一致性复制及10条 A 记录切换；旧机只保留固定新 IP 的 Nginx 转发，停用数据库、Docker 与业务定时任务。新端写入后禁止直接启动旧库回退。后续经授权完成系统包和内核更新，SSH仅22748且保留密码登录，Fail2ban封禁1小时；BBR/CAKE保留用户配置。脱敏主机配置归档于deploy/operations/production-20260914。 2026-09-16 经授权平滑调整Nginx为worker_connections=16384、multi_accept=off，修复当前epoll接入轮转偏斜，保留旧worker自然排空与应用资源上限；实测证据见docs/operations/2026-09-16-nginx-worker-balance.md。 | `deploy/docker-compose.yml`、`deploy/docker-compose.sub2api.yml`、`deploy/remote-deploy.sh`、`.github/workflows/release.yml` | 运维约束 |
@@ -254,6 +255,14 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 | `CUST-OPS-008` | 构建版本与上游来源提示 | 当前二开版本来自运行程序构建信息，启动时统一注入 HTML、公共设置及管理员接口；旧首屏配置缺版本时仅补查一次公共设置。管理员显示二开版本、已同步原版版本及原版更新状态，普通用户只看二开版本。来源由随二进制嵌入的 `upstream-sync.json` 记录，缺失时显示未记录，不与二开版本比较。最新正式 Release 只读检查采用8秒超时、30分钟成功缓存、60秒失败退避和并发合并；失败保留旧结果并标记缓存，无历史显示暂不可用。可见页定时检查，后台暂停，退出或换用户清理请求和计时器；支持折叠详情、移动端、深浅主题与长版本换行。 2026-09-24 上游适配：随合并更新嵌入来源为0.2.8/a3eb7ef302961cba716dc78b39b93b60c467db0e，二开版本保持0.1.245；只读提示、缓存、身份差异及禁止自更新边界不变。 | `backend/internal/pkg/buildmeta/upstream-sync.json`、`backend/internal/handler/wire.go`、`backend/internal/service/upstream_version.go`、`frontend/src/composables/useVersionInfo.ts`、`frontend/src/components/common/VersionBadge.vue`、`tools/check_upstream_sync_metadata.py` | 生效中 |
 
 ## 变更记录
+
+### 2026-09-24 v0.1.246发布验收
+
+- 关联`CUST-OPS-001`、`CUST-OPS-003`、`CUST-OPS-007`，不新增或退役二开编号，63项能力族全部保留。实现提交`94dac3dcb880dcf96e3677827d3b4af7a55b9c98`通过候选、主线、标签各8项CI及2项安全扫描；新附注tag`v0.1.246`与Release `35947647075`的10项作业均成功，没有重打标签或绕过门禁。
+- 10:41:53切流green/18082，11:43:01旧blue回收后恢复stable、pending=null，11:43:02自动解除倍率保护；11:44:11只读核验发布版本/摘要、唯一活动槽、双入口和迁移结构均符合预期。309条历史迁移及摘要未变，仅新增239/240，三项临时保护约束已消失；普通字段门禁及原SQL不变。
+- 原Compose/config哈希、批准资源参数、HTTP upstream、bind mount、PG/Redis身份及启动时间均不变，保留3600秒响应头等待、5秒usage任务与按用户串行扣费；green切流后未重启。VERSION仅由Actions回写至0.1.246，生产验收记录不另触发部署。
+- 旧blue一小时到期时仍有HTTP 5、SSE 3、会话租约832，按既有策略强制退出137、非OOM，clean_exit=false、usage_loss_unknown=true；817条旧归属已清理。7012次健康探针无异常不能证明旧请求无中断或用量完整，不改账单和退役策略。
+- 真实付费Provider、支付/回调/提现、完整账单、备份恢复演练、全二开浏览器端到端及峰值压测仍未验证；既有内存预算OOM风险保留。完整时序、CI、镜像与迁移证据见`docs/operations/2026-09-24-v0.1.246-release.md`；本记录通过独立文档分支门禁后再合入主线。
 
 ### 2026-09-24 239/240专项蓝绿兼容适配
 
