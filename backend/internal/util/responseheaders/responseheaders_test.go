@@ -61,6 +61,28 @@ func TestFilterHeadersForceRemoveOverridesReasoningIncluded(t *testing.T) {
 	}
 }
 
+func TestFilterHeadersKimiRequestSignature(t *testing.T) {
+	src := http.Header{}
+	src.Set("Msh-Request-Timestamp", "1790232056000")
+	src.Set("Msh-Request-Signature", "reqsigv1_upstream-proof")
+	src.Set("X-Msh-Private-Key", "must-not-leak")
+
+	filtered := FilterHeaders(src, nil)
+	if filtered.Get("Msh-Request-Timestamp") != "1790232056000" || filtered.Get("Msh-Request-Signature") != "reqsigv1_upstream-proof" {
+		t.Fatalf("上游签名头未完整保留: %v", filtered)
+	}
+	if filtered.Get("X-Msh-Private-Key") != "" {
+		t.Fatal("不应放行其他未列入白名单的头")
+	}
+
+	filtered = FilterHeaders(src, CompileHeaderFilter(config.ResponseHeaderConfig{
+		Enabled: true, ForceRemove: []string{"msh-request-signature", "msh-request-timestamp"},
+	}))
+	if filtered.Get("Msh-Request-Signature") != "" || filtered.Get("Msh-Request-Timestamp") != "" {
+		t.Fatal("管理员显式剥离规则应优先于默认签名白名单")
+	}
+}
+
 func TestFilterHeadersEnabledUsesAllowlist(t *testing.T) {
 	src := http.Header{}
 	src.Add("Content-Type", "application/json")

@@ -222,6 +222,7 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequestOnce(
 	if userAgent != "" {
 		upstreamReq.Header.Set("user-agent", userAgent)
 	}
+	forwardKimiRequestNonce(c, account, upstreamReq.Header)
 
 	if account.Platform == PlatformGrok {
 		if account.IsGrokOAuth() {

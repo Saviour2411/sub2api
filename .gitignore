@@ -150,6 +150,7 @@ docs/operations/*
 !docs/PLUGIN_DEVELOPMENT.md
 !docs/channel-monitor-v2-safe-defaults.md
 !docs/kimi-parameter-compatibility.md
+!docs/kimi-k3-contract-assessment.md
 !docs/codex-credits.md
 !docs/legal/
 !docs/legal/*.md

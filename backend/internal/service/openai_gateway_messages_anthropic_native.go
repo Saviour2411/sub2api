@@ -195,6 +195,8 @@ func (s *OpenAIGatewayService) buildNativeAnthropicUpstreamRequest(
 		}
 	}
 
+	forwardKimiRequestNonce(c, account, req.Header)
+
 	// 覆盖入站鉴权残留，注入上游认证（默认 x-api-key；可经 extra
 	// anthropic_apikey_auth_scheme 切换 Authorization: Bearer；Ollama Cloud
 	// 上游按实际 base_url 强制 Bearer，与 nativeAnthropicTargetURL 同源）。
