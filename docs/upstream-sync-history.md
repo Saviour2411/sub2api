@@ -6423,3 +6423,8 @@ M	frontend/src/views/user/KeysView.vue
 - GitHub Actions完成五个平台构建、正式产物发布及版本回写，03:55切到新blue，04:56完成旧green回收；Release `36621524840` 的10个作业全部成功。最终只读核验与部署归档比较确认stable、pending为空，311条迁移账本、数据服务身份、挂载、Compose、持久配置和资源白名单不变，首页/公开版本及静态资源响应正确。
 - 双入口各3507次健康探针无错误；旧实例仍有102个会话租约，满一小时后按既有策略强退，退出137、非OOM，虽工作计数与已记录的用量丢弃数为0，仍标记`usage_loss_unknown=true`。本次不是无损自然退役，不将探针成功等同于全业务或用量完整性验证。
 - `LAST_FULLY_INTEGRATED_UPSTREAM_SHA=a60a29549f488a854966aaec9541abbe006cac22`；103项处置、9项本地覆盖及63个二开编号不变。未继续拉入新的上游提交，发布风险及证据归档见 `docs/operations/2026-09-30-v0.1.247-release.md`。
+
+## 2026-09-30 主线安全审计变化与补充发布准备
+
+- v0.1.247已完成部署，验收文档提交06164536b的候选CI成功，但主线复跑Security Scan 36631941272新检出Canvas间接依赖undici的两项high。本次修复7.29.0至7.29.1，不以此前成功记录掩盖新失败，不增加豁免。
+- 上游同步范围不扩大，`LAST_FULLY_INTEGRATED_UPSTREAM_SHA=a60a29549f488a854966aaec9541abbe006cac22`，103项处置和63个正式二开编号保持。修复通过CI后另发v0.1.248，原标签不移动，结果见 `docs/operations/2026-09-30-v0.1.248-release.md`。
