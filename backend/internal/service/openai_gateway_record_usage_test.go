@@ -3417,7 +3417,7 @@ func TestOpenAIGatewayServiceRecordUsage_FreeOpenAIFastMissingPricingRecordsZero
 		},
 	}
 
-	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+	input := &OpenAIRecordUsageInput{
 		Result: &OpenAIForwardResult{
 			RequestID:   "resp_free_fast_missing_pricing",
 			ServiceTier: &serviceTier,
@@ -3428,7 +3428,17 @@ func TestOpenAIGatewayServiceRecordUsage_FreeOpenAIFastMissingPricingRecordsZero
 		APIKey:  apiKey,
 		User:    &User{ID: 2021},
 		Account: &Account{ID: 3021, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
-	})
+	}
+
+	// 标准模式不得因 Free Fast 而绕过本地严格缺价规则。
+	err := svc.RecordUsage(context.Background(), input)
+	require.ErrorIs(t, err, ErrModelPricingUnavailable)
+	require.Zero(t, usageRepo.calls)
+	require.Nil(t, usageRepo.lastLog)
+
+	// 简易模式允许保留缺价用量，仍须记录真实 Token、服务层级和零费用。
+	svc.cfg.RunMode = config.RunModeSimple
+	err = svc.RecordUsage(context.Background(), input)
 
 	require.NoError(t, err)
 	require.Equal(t, 1, usageRepo.calls)

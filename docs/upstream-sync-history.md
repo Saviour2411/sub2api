@@ -5969,3 +5969,12 @@ M	frontend/src/views/user/__tests__/UsageView.spec.ts
 | `2840cdeced31574e6007e2244d832689ee45d73d` | Applied | Claude Code 专用组隐藏不支持的客户端标签。 |
 | `2f3fed2fdb0787141294cec81487a5df30426f7f` | Applied | 合入PR #7678；子提交及本地适配按本表执行。 |
 | `a60a29549f488a854966aaec9541abbe006cac22` | Applied + Overridden | 上游来源记录0.2.10及固定SHA；二开VERSION保持0.1.246，不发布。 |
+
+### 2026-09-30 02:33 +08:00 测试契约适配补记
+
+- 候选 merge 为 `64e77f8c1432a6045a22cc45e156fb639ce59de2`，父提交分别为本地同步前 SHA 与固定新上游 SHA。首轮 unit 退出1（含已经校准、但该轮仍使用旧编译结果的综合WS费用断言），integration 退出1，Linux build 退出0；失败原始日志保留，复测结果另行追加。
+- 剩余两项失败均为上游测试假设与本地规则不一致：Cyber 留证必须显式开启内容审核且位于作用域；标准模式未知模型必须严格拒绝计费。仅完善测试夹具与断言，不放宽产品规则。
+- Cyber 留证用例开启审核、通知与自动封禁，仍要求仅记录证据而无副作用；新增五种开关及作用域排除回归。Free Fast 用例同时验证标准模式错误且零写入、简易模式真实用量与零费用日志。
+- 对执行阶段处置表作明确更正：`3c5ea297ffe82521e0209aea9cfb1cf397434cc6` 最终状态为 **Applied + Overridden**。零费用日志仅适用于本地既有允许缺价记录的路径，本次覆盖简易模式；标准模式仍拒绝未知定价。实现来自 merge，测试契约由后续适配提交补齐。
+- 据此最终处置计数为103项：Applied 102（普通 Applied 93，Applied + Overridden 9），Already Applied 1，Skipped/Deferred/Conflict 0。本段更正优先于上方执行阶段的8项覆盖统计；不删除原始阶段记录。
+- 后续适配提交只含两个测试文件及两份台账；其实际 SHA 和最终验收命令、退出码将在最终记录中给出。`main` 暂不移动。
