@@ -5836,3 +5836,583 @@ M	frontend/src/views/user/__tests__/UsageView.spec.ts
 - 完整账本逐项比较：309条旧迁移及摘要未变，新增239/240后共311条；倍率列、operation_id及部分唯一索引定义符合审批，临时约束数量为0。未修改上游原SQL、生产价格数据或历史账本，普通字段门禁不放宽。
 - 旧blue并非自然排空：一小时到期时HTTP=5、SSE=3、会话租约832，按既有策略强退，退出137且非OOM、clean_exit=false、usage_loss_unknown=true；清理817条旧归属。7012次连续健康探针无异常不证明旧请求无中断或账单完整，不能声称业务零错误或无损。
 - 生产健康、迁移结构、原配置与实际部署现已按上述范围验证，不再属于前述本地阶段的未验证项；真实Provider/支付/回调/提现、完整账单、备份恢复、原生多平台运行、全二开浏览器端到端及峰值负载仍未验证。完整证据及风险见`docs/operations/2026-09-24-v0.1.246-release.md`，两份台账同步更新，既有OOM预算风险保留。
+
+## 2026-09-30 上游同步 a60a29549（北京时间，执行阶段）
+
+- 用户在集中审批后明确“批准执行”。本次仅本地合并、适配、测试和提交；禁止推送、PR、标签、发布及远程生产操作。
+- 目标分支 `main`；`LOCAL_PRE_SYNC_SHA=8bef535b1df379fdddac734040b7017d5214e666`。备份分支 `backup/pre-upstream-sync-20260930-012102-8bef535b1`；同步分支 `sync/upstream-20260930-a60a29549`。
+- 上游 `https://github.com/Wei-Shaw/sub2api`，远端 HEAD 确认为 `main`。`UPSTREAM_OLD_SHA=a3eb7ef302961cba716dc78b39b93b60c467db0e`；固定 `UPSTREAM_NEW_SHA=a60a29549f488a854966aaec9541abbe006cac22`；实际 merge-base 与旧基线相同。旧基线是两侧祖先，完整同步范围闭合，不随远端后续更新扩大。
+- 同步前工作树干净，main 与已抓取 origin/main 一致，无未完成 Git 操作、stash、submodule 或 LFS 文件。本次 HTTPS 抓取遇到网络错误后使用既有 GitHub SSH，未改 remote，未连接业务服务器。
+- 完整范围103项（59普通、44合并），上游214个差异文件，92个与本地变更重叠；无新迁移、依赖清单变化、删除或重命名。59个普通提交 patch-id 均未直接匹配；17ce21c03 的测试指针修正已在本地等价存在。两处有 remerge 差异的合并节点另列说明。
+- 策略：在同步分支 `git merge --no-ff --no-commit a60a29549f488a854966aaec9541abbe006cac22`，逐块处理12个预期冲突，不整文件选 ours/theirs。代码、受影响二开清单和本阶段记录一起形成 merge commit；验证结果及实际代码 SHA 在最后的独立文档提交追加，避免自引用。
+- 本地 `VERSION=0.1.246` 不变；嵌入来源为上游0.2.10/固定SHA。原目标分支在完成门禁前不移动。完整集成基线与最终状态以本节后续验收记录为准。
+
+### 冲突与本地边界
+
+- `VERSION`、`wire_gen.go`：保留本地发布号及 customFeatureHandler，新增 ClaudeResetCreditService 注入。
+- `openai_gateway_handler.go` 及测试：接入综合别名路由、白名单；保留逐轮模型/用量、原子状态、响应体释放、失败去重和预计算会话阻断计划。白名单连续WS用例暴露 Cyber 兜底与正常逐轮记账重复，改为有结果的失败只走逐轮记账，新增两轮恰好两行及实际Token断言。
+- `content_moderation.go`：白名单默认空；显式配置后仅日志，不处罚、通知或新增会话阻断。保留 EmailOnHit、group/model scope、独立 prompt audit 和本地审计功能；不承诺能绕过上游拒绝。
+- `gateway_count_tokens.go`、`gateway_upstream_request.go`：模拟身份保持最终优先级，Sonnet工具集过滤在最终头后执行；显式 structured outputs beta 可保留，策略过滤仍优先。
+- `gateway_forward_as_chat_completions.go`：保留首Token包装、完结及取消，接入收到的usage事件与缓存归一化。Kimi兼容重试、已提交禁止重放、用户串行扣费和5秒usage任务不变。
+- `model_pricing_resolver.go`、`account_stats_pricing_test.go`：保留分组/渠道/默认定价、严格缺价、Fast/Flex和无渠道成本回退。图片留空继承，输入/输出显式0免费；账号成本只看账号开关，客户售价保留双门禁。综合路由的新测试按本地“请求模型收费”校准，保留三种配置的费用断言。
+- `ModelWhitelistSelector.spec.ts`：合入映射冲突用例，保留预览同步和复制回归。
+- 两份生产Compose采用相同Redis参数列表，保留bind mount、maxclients、回环监听与全部资源参数。本次不访问生产、不改持久化实例配置。
+- Antigravity 的15秒首内容前保活及固定两分钟截止按审批覆盖；默认入口仍在首内容前不提交200，并保留空流换号、signature修复和既有空闲超时。参数化上游测试保留，增加默认入口等待30秒/3分钟的回归（时间偏移夹具，不代表真实持续负载测试）。
+- 63个二开编号保留；受影响清单和变更记录同步更新 `docs/custom-development-history.md`，无新增、退役或复用编号。
+
+### 逐提交处置
+
+共103项：Applied 102（其中 Applied + Overridden 8），Already Applied 1，Skipped/Deferred/Conflict 0。合并节点也是完整范围的一部分；覆盖不是跳过。所有 Applied 提交统一映射到本次 merge commit，其实际SHA在最终验收记录中给出。
+
+| 上游完整SHA | 状态 | 原因与处理 |
+| --- | --- | --- |
+| `14483c9254d9cf026e292e43c19f58612e5eca09` | Applied | CC Switch 保留 Codex provider 根端点，沿用本地导入边界。 |
+| `f45126c8ec29914a9c266bbe7d0525f50f3cd7f2` | Applied | 合入PR #7622；子提交及本地适配按本表执行。 |
+| `512aa8bc93ded5658b7bf561fc21976fa64a21fa` | Applied | 安装配置不再生成废弃限流默认值，保留实际生效限流和生产配置。 |
+| `35d2ef0cbdd10ce6f493a934a5418548f83d0378` | Applied | 合入PR #7636；子提交及本地适配按本表执行。 |
+| `f652d0ed387b01b869959c7e7d9b27abdffca5e8` | Applied | Windows Codex 模型目录改用用户主目录路径。 |
+| `ec334fda2caa9b88aa55c41cc89102c76267cc69` | Applied | 合入PR #7628；子提交及本地适配按本表执行。 |
+| `994048e6a4cf1988ef7232cd4c5258dcb5c85e3a` | Applied | 已知重置时间的空闲用量窗口显示倒计时。 |
+| `99d86e41acb47d632de27598a727c671ed7fadb1` | Applied | 合入PR #7611；子提交及本地适配按本表执行。 |
+| `1af3269adb1bceea4e8d362ed5e55438f081ece8` | Applied | 分组弹窗清理监听和未完成搜索，保留本地交互。 |
+| `89e9976950a8928d0285fb7efd535cdf5c7a5b38` | Applied | 合入PR #7497；子提交及本地适配按本表执行。 |
+| `00f6f4e4a89a09b337dc2d83ea4394770e84cb9c` | Applied | 修复 CC Switch 用量查询重复 v1 路径。 |
+| `66f07efd264086258c25107932348fc6e19316ac` | Applied | 合入PR #7549；子提交及本地适配按本表执行。 |
+| `82d2552360bf7b7b267ecdc6320fef34b0e93ac7` | Applied | Responses 转换的角色项显式标记 message 类型。 |
+| `be64b553f99cd1f56f9c0ac91aa178197c4b7e4c` | Applied | 合入PR #7635；子提交及本地适配按本表执行。 |
+| `ef51690b5a71501a2ce76296d6979f4ea09f6779` | Applied | Antigravity 工具 schema 保留字符串 const 约束。 |
+| `f867e3e2ece67781d23cff532c64fcd8bbc90c73` | Applied | 补齐 schema properties 类型断言回归。 |
+| `afbe51abf8951a7df851fc897cf6a1b4cc33aa01` | Applied | 已审查 remerge-diff，保留字符串 const 与 enum 交集处理。 |
+| `6655f4ec0eee4e1313fb949a85c9e3a304cb9061` | Applied | 合入PR #7393；子提交及本地适配按本表执行。 |
+| `ca2746f3bba246a6cbd7dac3482965cae3c054d8` | Applied | Chat PDF 数据转为 Gemini inlineData。 |
+| `51a10e42f70e76aef8db2af5ef4fcea643baf00e` | Applied | 合入PR #7585；子提交及本地适配按本表执行。 |
+| `97bdde3135dd47f1fbb5c3bff6849d25dcd646b9` | Applied | 保留 content_block_start 携带的工具参数。 |
+| `00ae7c38e2886e687316603d40d8b622d92f1bf7` | Applied | 合入PR #7570；子提交及本地适配按本表执行。 |
+| `090b2cc00091e0bd4858a28d04143bb693366a1b` | Applied | 终态消息为空时恢复已接收的流式文本。 |
+| `8aa7fb8c2d28b5a6b9e17be037eb4bac72f3cde1` | Applied | 合入PR #7569；子提交及本地适配按本表执行。 |
+| `82b092ffc20f32b0d485fff57c65b88ab1dc5dcf` | Applied | GPT 第5代及以后按推理模型执行协议兼容。 |
+| `11608c51f0dd8b3de7ec9c8e3b849327bd94cec1` | Applied | 合入PR #7568；子提交及本地适配按本表执行。 |
+| `3c5ea297ffe82521e0209aea9cfb1cf397434cc6` | Applied | Free Fast 缺价保留零费用行；保留本地严格准入及双成本。 |
+| `dc4874a2f1766cb4a01753ac97c51e856a8863e7` | Applied | 合入PR #7613；子提交及本地适配按本表执行。 |
+| `11ffee55431c038771102f2996104b7f12c3b237` | Applied | 识别 OpenRouter Opus 5.5 别名定价，未放宽其他未知模型。 |
+| `630639f74797066d38f0d13235fc99b3c75a85f4` | Applied | 保留该别名的 thinking 回归。 |
+| `69060621872d80a66eed31324c0767bb82e3a810` | Applied | 合入PR #7597；子提交及本地适配按本表执行。 |
+| `1d126c833b848a677a14f35e9527a932dda5140c` | Applied | Alpha 搜索兜底仅在成功终态后记账。 |
+| `06f70a6232f4d764b367caca71cca4c9dedb24f1` | Applied | 合入PR #7572；子提交及本地适配按本表执行。 |
+| `9461196864191a9406bea0ca48fc14ffdc61df97` | Applied | 探测型号不可用不再错误标记 Responses 不支持。 |
+| `9375e288ba6f16798917193e5abb1f76d1c14161` | Applied | 合入PR #7571；子提交及本地适配按本表执行。 |
+| `02088be2d1a6b987ab39ba9534d3e71f49602721` | Applied | 已知未来重置时间到达前保持额度暂停。 |
+| `90ae81e9f8ecbcab633d3df1aa4813a8afffdf97` | Applied | 合入PR #7624；子提交及本地适配按本表执行。 |
+| `fd7af1d462a57a363af848354968b9f2d3b97670` | Applied + Overridden | 账号成本只看账号开关并设置 configured 标志；客户售价保留分组与账号双门禁，无渠道仍按上游型号计成本。 |
+| `e4b34446afc993552a414d40be4cfd74f4fa566c` | Applied | 合入PR #7619；子提交及本地适配按本表执行。 |
+| `b5b5f1f94bfcf0badfb49bd50cf38ae48e492f5d` | Applied | 模型广场应用独立视频计费倍率。 |
+| `17ce21c03801f7e4a867f24a25dc6fe8dff26eba` | Already Applied | 本地已通过 floatPtr 传入等价倍率指针；合并保留祖先关系，不重复修改测试。 |
+| `510b680fcac9badfde4659f924967fd9840414a7` | Applied | 已审查 remerge-diff，保留上游调度快照测试修正及本地等价指针调用。 |
+| `37f35b12ea21cc909c1220ec698be7e03abd3c19` | Applied | 合入PR #7524；子提交及本地适配按本表执行。 |
+| `f0ebc183e17d1353d479d8ed0bd1c8924a9341aa` | Applied | 分组模型白名单支持任意位置通配符，前后端校验一致。 |
+| `f592b336a3ea32ec799976260eb1117c4492f878` | Applied | 合入PR #7595；子提交及本地适配按本表执行。 |
+| `a2007db707b18b9f23d67762fcc8e9c0b2ca1b35` | Applied + Overridden | 图片留空继承目录价，保留本地定价优先级和 nil 防护；新增输入显式标志，使图片输入/输出显式0均免费。 |
+| `1ff2bd6d95989d7a8a457f7bb3ec22cb0fd2b899` | Applied | 合入PR #7573；子提交及本地适配按本表执行。 |
+| `c802c45e37557fe3f785fbc6bbcba575e63d9e7f` | Applied + Overridden | Redis 采用参数列表，同时保留生产 bind mount、maxclients、资源及双 Compose 一致性。 |
+| `790723e0402b1c9fa18434d7f42c72b32af2ec64` | Applied | 合入PR #7610；子提交及本地适配按本表执行。 |
+| `f4f8ff04db3ff7d27993869796aa14ae039b16af` | Applied | 客户端取消统一499；保留首Token、失败归因及部分用量，测试夹具补本地构造参数。 |
+| `79c18ec836c0f700ee41ced949d603c598cf368c` | Applied | 合入PR #7609；子提交及本地适配按本表执行。 |
+| `7626110d0b172e7b8154a5a99300fa056dd8893f` | Applied | 上下文滚动断开 WS 响应链，保留逐轮状态和安全重放边界。 |
+| `ff6b85e30b4add5bfda9af98c127d0a336b45012` | Applied | 合入PR #7615；子提交及本地适配按本表执行。 |
+| `1ca7b2a519471b452160917b6270a772065038d5` | Applied | 调度投影保留重置额度字段及本地投影资格字段。 |
+| `85810365a6df3ada0e107c370447e263d9f22941` | Applied | 确认无额度停止重复查询，查询失败退避。 |
+| `93c3da03eb5760fdc95f42415d422fb205b5fb6d` | Applied | 合入PR #7555；子提交及本地适配按本表执行。 |
+| `8b95dc94f8db0c258dfbd6c045ff6dd3a9a9b2d4` | Applied | 保留 Responses 多智能体 beta。 |
+| `8616d4e03610e399cba00f62528e16b1141c6b5c` | Applied | 合入PR #7617；子提交及本地适配按本表执行。 |
+| `ecba49f711d5f514cbc302a8c36d5c55a48c348c` | Applied | 透传账号补充模型发现结果，不隐藏已有映射模型。 |
+| `b3c7038cf418f374b207d22f8ac399ba508441e7` | Applied | 合入PR #7526；子提交及本地适配按本表执行。 |
+| `5979521309c77f2ca5f6195a0c79d4a1228678fa` | Applied | OpenCode Zen 的 DeepSeek 推理占位修复；本地 Kimi 策略保留。 |
+| `1df5c39311a4b7b808c354bbb151b662745e4065` | Applied | 合入PR #7562；子提交及本地适配按本表执行。 |
+| `52c2f4cb105a178b88a2ae04d5d32c895fd17e36` | Applied | MALFORMED_FUNCTION_CALL 空流触发安全换号。 |
+| `6b40449c3f31afffcbf76fddaa1c63f65f2a8608` | Applied | 纯 signature 事件不算有效内容。 |
+| `5a350108c43c3cbb1ec8d31c0c1b16c7a6cedd04` | Applied | 合入PR #7607；子提交及本地适配按本表执行。 |
+| `2fc91663d25ae31e2d0f06a979ab4c0cd0c15381` | Applied | OpenAI 桥接尊重 disabled thinking，保留本地兼容策略。 |
+| `b5298fdde8e9c5ba4503aca9bac34c1f87774273` | Applied | 合入PR #7538；子提交及本地适配按本表执行。 |
+| `68c2f5ae6d4db1c7288d2772298839309af6252b` | Applied | 保留显式 structured outputs beta，并兼容本地 API Key 模拟白名单与策略过滤。 |
+| `4c00df2e0183e2c70b7fa8ba45914205e36aad0c` | Applied | 合入PR #7638；子提交及本地适配按本表执行。 |
+| `9a62841fd124d026cf3694fcf9b79e98addcdbdc` | Applied + Overridden | 纳入上游0.2.9版本节点；本地发布版本保持0.1.246。 |
+| `8490a818678780e8301147c13696af94dea7dd07` | Applied | 接入 Sonnet 5.5 模型、定价、工具及协议；最终头过滤与本地模拟身份共存。 |
+| `2cc459e24fb58b6a8875d952deeb984a5136ec37` | Applied | 接入 Sonnet 5.5 静态检查修正。 |
+| `dd6cb410e6db51b5c5662f4edce562b3b68c271b` | Applied | 合入PR #7683；子提交及本地适配按本表执行。 |
+| `27a9421e6aca3c400e01a02511767a2d6b678467` | Applied | Anthropic 工具名一次遍历重写，保留边界及回归。 |
+| `1dca86f287ad6b20ece6e329856d1d9914bf6434` | Applied | 合入PR #7701；子提交及本地适配按本表执行。 |
+| `aa3a3ea7870e7ffaa3c9672a9f14e83114eb3917` | Applied | 管理员近期趋势可切换 Token 和支出，保留本地主题与路由。 |
+| `b35a611538ad713d1e39ce4e9dd3242a36f3cb15` | Applied | 合入PR #7646；子提交及本地适配按本表执行。 |
+| `bd48b2b2d2f037ef56e13ab246d912ce38aa901a` | Applied + Overridden | 保留参数化保活与错误处理，默认入口禁用15秒预内容保活及固定两分钟截止，新增不提前200及延迟内容回归。 |
+| `883a53fea0aeb26b1268f582e2676ed2fb21d5c2` | Applied | 合入PR #7643；子提交及本地适配按本表执行。 |
+| `e2c35cf394ac91c7e35f14d0fa837f630ca25e3f` | Applied | 拒绝白名单映射冲突，同时保留本地预览同步和复制功能。 |
+| `f50b99b66cccfe0d91cfd553b27f78eda78355e9` | Applied | 合入PR #7542；子提交及本地适配按本表执行。 |
+| `13fcfc0f3b841198afba71141d280768b04eefb5` | Applied + Overridden | WS 别名解析综合路由，客户费用始终按每轮请求模型；校准新回归的三种历史计费来源断言，不恢复上游型号收费。 |
+| `e878ab710f9df9f17f84e453929c8d6ac901d41e` | Applied | 账号型号路由仅能认领显式映射的公共模型。 |
+| `453b796df0bb2e1bf20f04f709ce8acb7f1480ba` | Applied | 旧调度路径同样执行综合模型所有权约束。 |
+| `ccb027b51506b2f64c16290ac33b185c547d8963` | Applied | 合入PR #7378；子提交及本地适配按本表执行。 |
+| `b13200d7a18486797f77b7833f4b2e35c00be7ff` | Applied | 透传已收到的 Chat usage，不再依赖 include_usage；保留首Token包装及完结。 |
+| `ece1ecccca842585c99bc738bb93115bd1455e3e` | Applied | 流式 Anthropic usage 归一化，与本地计费和首Token生命周期共存。 |
+| `0416c9ede47e8fbab4a705dc3eeb8b21bf928d73` | Applied | 避免迟到缓存字段导致不明确的输入 Token 扣减。 |
+| `1f955af353f0e0a3f6137aa26090e85aee1109cc` | Applied | 合入PR #7380；子提交及本地适配按本表执行。 |
+| `6a8f921650bbdccc7e0cc58415d9b2fe97aa1197` | Applied | 提供脱敏的 Claude 原生重置额度状态。 |
+| `f8984b8a93b2e9c3121e191eab19e8ab29ef7407` | Applied | 管理端按需查询 Claude 重置额度，不自动兑换。 |
+| `48970f61b4f1b6f6f744d514ee06be923a5f7927` | Applied | 明确关闭状态查询响应体。 |
+| `421da3f0d4ccf709f0d3b8149c21a1eb2e42aad2` | Applied | 重置次数按钮与 Codex 布局对齐。 |
+| `35232c3949f5c7b52ad05d9f5b8260171dcc9b0f` | Applied | 修复次数展示、槽位和回归，保留本地功能入口。 |
+| `860782e6fb0fc2ec1bd83ecd08ff68798029a7fe` | Applied | 加固重置状态投影与组件异步结果代次。 |
+| `052e08e764b8c1899202f1b81524cb4443317fb4` | Applied | 合入PR #7684；子提交及本地适配按本表执行。 |
+| `6073704fd7ddb0ed0f7ca395b7e0736c3d331412` | Applied | 普通 OpenAI 分组不附加 Codex 模型目录。 |
+| `41dcfec4895a868ee8b4a92526d0aecd9afb4418` | Applied | 合入PR #7680；子提交及本地适配按本表执行。 |
+| `6a69dd051a66a37ab2f0a9427f4b2bffcb878012` | Applied + Overridden | 白名单默认空且仅日志；保留本地作用域、邮件开关、独立审计、WS原子状态，并修复结果与Cyber兜底重复记账。 |
+| `fe9dadfc7d929957de908aba17c3fb0da76e8e86` | Applied | 合入PR #7679；子提交及本地适配按本表执行。 |
+| `2840cdeced31574e6007e2244d832689ee45d73d` | Applied | Claude Code 专用组隐藏不支持的客户端标签。 |
+| `2f3fed2fdb0787141294cec81487a5df30426f7f` | Applied | 合入PR #7678；子提交及本地适配按本表执行。 |
+| `a60a29549f488a854966aaec9541abbe006cac22` | Applied + Overridden | 上游来源记录0.2.10及固定SHA；二开VERSION保持0.1.246，不发布。 |
+
+### 2026-09-30 02:33 +08:00 测试契约适配补记
+
+- 候选 merge 为 `64e77f8c1432a6045a22cc45e156fb639ce59de2`，父提交分别为本地同步前 SHA 与固定新上游 SHA。首轮 unit 退出1（含已经校准、但该轮仍使用旧编译结果的综合WS费用断言），integration 退出1，Linux build 退出0；失败原始日志保留，复测结果另行追加。
+- 剩余两项失败均为上游测试假设与本地规则不一致：Cyber 留证必须显式开启内容审核且位于作用域；标准模式未知模型必须严格拒绝计费。仅完善测试夹具与断言，不放宽产品规则。
+- Cyber 留证用例开启审核、通知与自动封禁，仍要求仅记录证据而无副作用；新增五种开关及作用域排除回归。Free Fast 用例同时验证标准模式错误且零写入、简易模式真实用量与零费用日志。
+- 对执行阶段处置表作明确更正：`3c5ea297ffe82521e0209aea9cfb1cf397434cc6` 最终状态为 **Applied + Overridden**。零费用日志仅适用于本地既有允许缺价记录的路径，本次覆盖简易模式；标准模式仍拒绝未知定价。实现来自 merge，测试契约由后续适配提交补齐。
+- 据此最终处置计数为103项：Applied 102（普通 Applied 93，Applied + Overridden 9），Already Applied 1，Skipped/Deferred/Conflict 0。本段更正优先于上方执行阶段的8项覆盖统计；不删除原始阶段记录。
+- 后续适配提交只含两个测试文件及两份台账；其实际 SHA 和最终验收命令、退出码将在最终记录中给出。`main` 暂不移动。
+
+## 2026-09-30 上游同步 a60a29549（最终本地验收）
+
+- 验收时间：2026-09-30 02:56:05 +08:00。状态：代码集成及获批范围内的本地验收完成，相对同步前基线无新增未解决失败；保留如下既有安全问题和平台限制，不表示完整CI或生产验收通过。
+- 本地目标分支 `main`；`LOCAL_PRE_SYNC_SHA=8bef535b1df379fdddac734040b7017d5214e666`。本记录提交前 main 仍在此 SHA，候选同步分支为 `sync/upstream-20260930-a60a29549`，备份分支为 `backup/pre-upstream-sync-20260930-012102-8bef535b1`。本记录单独提交后按获批流程执行 `git switch main`、`git merge --ff-only sync/upstream-20260930-a60a29549`；记录提交自身及最终main的SHA只在交付总结报告，不在本文自引用。
+- 上游 `https://github.com/Wei-Shaw/sub2api`，默认分支 `main`；`UPSTREAM_OLD_SHA=a3eb7ef302961cba716dc78b39b93b60c467db0e`；`UPSTREAM_NEW_SHA=a60a29549f488a854966aaec9541abbe006cac22`；实际 merge-base 为旧基线。保持抓取时固定范围，不因之后远端更新扩大同步。
+- `LAST_FULLY_INTEGRATED_UPSTREAM_SHA=a60a29549f488a854966aaec9541abbe006cac22`。旧基线、新目标均已成为候选分支祖先；103项处置表和补记完整闭合，无跳过或延期。
+- 最后一个代码相关提交为 `74aed12274dfea757d8ada83dba11c4ae5b57461`。相对原main共217个文件有变化，无文件删除；源代码之外的本地补充仅为上游来源元数据、生产配对Compose和两份台账。上游版本文件被明确保留为二开0.1.246，来源记录上游0.2.10。
+
+### 提交映射与边界
+
+| 本地提交 | 内容与上游映射 |
+| --- | --- |
+| `64e77f8c1432a6045a22cc45e156fb639ce59de2` | 两父完整merge，父提交为原main及固定新上游；102项Applied的代码与获批覆盖集中映射到该提交，12处预期冲突逐块组合，含WS重复记账修复与二开台账。 |
+| `74aed12274dfea757d8ada83dba11c4ae5b57461` | 两个上游测试的本地契约适配及两份台账；补齐 `3c5ea297ffe82521e0209aea9cfb1cf397434cc6` 的标准模式严格缺价覆盖和 `6a69dd051a66a37ab2f0a9427f4b2bffcb878012` 的白名单开关/作用域回归，不改变产品门禁。 |
+| 本次最后的独立文档提交 | 追加本节与二开最终验收记录；不自引用其SHA。 |
+
+- 最终103项：**Applied 102，其中普通Applied 93、Applied + Overridden 9；Already Applied 1；Skipped 0、Deferred 0、Conflict 0**。唯一Already Applied为 `17ce21c03` 的快照倍率指针修正，原本地已用 `floatPtr(...)` 等价实现；完整SHA见前面的103项表。Free Fast处置以02:33补记为准，不能按执行阶段8项覆盖旧统计解释。
+- 63个稳定二开编号与原main完全一致，无新增、删除、复用或退役。保留首Token完整生命周期与安全重试、Kimi兼容、逐轮请求模型收费、严格缺价、Free Fast双成本、用户串行扣费、5秒usage任务、审核作用域和独立审计、版本来源只读、蓝绿资源及生产bind mount约束。
+- 按获批方案覆盖Antigravity默认15秒预内容保活及固定两分钟截止；保留参数化上游用例、空流切号与signature修复。默认入口30秒/3分钟的回归采用时间偏移夹具，不代表真实持续负载验证。
+- 图片输入/输出价留空继承，显式0免费；账号成本长上下文只受账号门禁控制，客户售价仍受分组与账号双门禁。标准模式未知定价不写零价用量；简易模式的Free Fast缺价行保留真实Token、priority与零费用。
+- 两份生产Compose的SHA-256均为 `D836D7E08E5190AC8C94A4F8E486C87089232E8875323A2FD411C5AE0CDD5EEE`。未读取实例秘密、未访问业务服务器、未改生产配置/数据、未push、未建PR、未打标签或部署。
+
+### 验证结果
+
+| 验证范围 | 基线 | 最终候选 |
+| --- | --- | --- |
+| Go全量unit、integration、Linux server build | 各退出0 | 修复后各退出0，最后完整重跑对应02:34至02:49日志 |
+| 前端lint、typecheck、test、build | 全0；362文件2729用例 | 全0；364文件2763用例 |
+| Canvas typecheck、test、build | 全0；8文件34用例 | 全0；8文件34用例 |
+| golangci-lint | 0 issues，退出0 | 0 issues，退出0 |
+| 两组Linux race | 流式与生命周期各0 | 流式与生命周期各0，覆盖用量任务、WS ingress和释放等相关路径 |
+| 实际前端产物的embed版本测试、Windows embed build | 各0 | 各0 |
+| 定向关键回归 | 以全量基线为参照 | FirstToken/Cyber/RiskControl/ClaudeReset/Sonnet/WS/定价/账号成本/Antigravity/Anthropic/Kimi/综合路由，退出0 |
+| Compose安全/环境/资源/simple-mode、Caddy、模拟远程部署 | 最终各0 | 各0；模拟远程部署12项，无真实SSH |
+| 蓝绿状态机、关停证据、预检、元数据 | 各0 | 各0；分别55、7、3和5项，元数据祖先校验0 |
+| Wire生成一致性、发布辅助脚本 | 辅助补验，不作为同步前执行结果 | Wire diff 0；发布辅助14项0；发布脚本语法0 |
+| 隔离启动与数据库 | PG18/Redis8空库初始化及health退出0 | 恢复同步前隔离空库SQL后启动，health最终为status=ok，退出0；启动等待中曾有超时/502重试 |
+| Go依赖安全扫描 | 基线归档补测：退出0 | 退出0；双方均无当前代码可达或直接导入包漏洞，模块层11项未显示可达，不代表全依赖无漏洞 |
+| 前端pnpm audit及现有豁免门禁 | audit 1，豁免检查0 | audit 1，豁免检查0；两项xlsx high及其他提示前后完全一致 |
+| Canvas pnpm audit及现有豁免门禁 | audit 1，豁免检查1 | audit 1，豁免检查1；两项fast-uri high及其他提示前后完全一致，没有新增豁免 |
+| Apple Container测试 | Linux平台退出1 | 同一BSD stat平台限制退出1，原生macOS未验证 |
+| Git及变更安全检查 | 原工作树干净 | diff --check、祖先/处置/编号、无意外删除、范围/版本/依赖/迁移检查均0；新增行秘密特征和冲突标记候选0 |
+
+### 失败、修复与未验证项
+
+- 首轮后端关键检查遇到Antigravity包内同名max函数类型遮蔽、新Gemini测试构造参数缺失及错误类型断言不匹配；在获批适配范围内修复。白名单WS连续请求测试暴露完整失败结果与Cyber兜底重复写用量，已修复，并断言两轮恰好两行及实际Token。新综合路由测试按本地请求模型计费校准，未把用户收费切回上游型号。
+- 首轮unit仍使用校准前编译结果，出现综合WS费用断言及两项测试夹具失败；首轮integration只剩Cyber审核配置和Free Fast标准模式缺价假设。适配提交后相同全量命令全部重跑通过，未删除断言、关闭检查或放宽产品门禁。
+- 新增测试的未检查Close返回值曾使golangci-lint失败，已补齐并复测0。同步前CRLF脚本匹配失败改用Git archive导出的LF快照验证，未改产品脚本或断言；Apple Container的BSD stat依赖在Linux上仍失败。
+- 同步前后端脚本的三个子命令均0，但当时辅助脚本在运行时被更新，外层shell曾因读取偏移导致EOF退出1；后续语法校验及完整重跑0。多次WSL会话在启动测试前静默退出1，未生成测试记录，不能视为测试运行；待WSL恢复后同命令已完成。Windows python别名退出9009，发布辅助改用已有WSL python3后14项通过。
+- 浏览器最初夹具的Tailwind扫描目录错误及早期文本空白断言已修正；初始未带样式截图不作为验收。最终只加载真实 `ClaudeResetCreditsCell` 和 `ModelWhitelistSelector`，接口全部本机模拟；验证按需查询显示2次和到期日、映射冲突拒绝、保存前预览同步追加模型。1440x1000及390x844亮/暗四张截图已查看，无横向溢出，最终控制台无JS错误。深色截图等待颜色过渡完成；夹具重启中的本地连接拒绝和旧CLI不支持network子命令均保留日志，后者改用requests成功。此为组件级夹具验收，不是全应用E2E、真实账号查询或实际兑换。
+- 安全扫描在代码合并后用固定原main归档补测基线，双方锁文件、Go依赖和豁免清单完全未变。Canvas现有 `GHSA-qw65-cvwx-89v3`、`GHSA-58mr-gqgx-xq4g` 两项fast-uri high未获豁免，仍是后续发布前必须处理的安全门禁问题；本地同步不是发布授权。前端xlsx现有两项豁免到期日为2026-10-06，本轮未延长。
+- 未验证：真实Provider/支付/邮件/重置额度、生产配置与历史业务数据、长时间大并发/峰值内存、原生macOS Apple Container、完整远端CI，以及20轮真实混合协议蓝绿集成与强制退役场景。隔离启动只恢复本轮生成的空业务库，不替代生产数据兼容验收；本次无新增迁移。
+- 本地签名扫描只查本次新增行的常见密钥/认证URL特征，不是全量秘密审计。构建的大chunk及过期Browserslist提示保留，未顺带升级依赖或重构。
+- 本轮Playwright浏览器与Vite验证进程已关闭；只归档2026-09-29T18时段的本轮文件，原有9月14日/19日浏览器日志留在原处。隔离PG/Redis容器、18983应用端口已清理；只卸载source为sub2api-sync-a60a29549的工作区tmpfs，未操作用户既有容器。
+
+### 实际命令与证据
+
+- 证据根目录：`output/upstream-sync-20260930-a60a29549`；浏览器产物：`output/playwright/sync-a60a29549`。辅助脚本和完整JSONL/原始日志保留在工作区，不混入产品提交。
+- 下表按每次实际验证尝试记录命令、时间、目录、退出码；重复行是失败后的复跑，不覆盖旧结果。before安全扫描是固定基线归档的补测，不伪装为写入前执行。构建及Windows工具使用已有Go 1.27.0、Node 20.20.2和pnpm 9.15.9；Linux使用已有Go工具链、CGO race与本地Docker socket。
+- PowerShell行以可重建的程序及参数形式列出；WSL行保留辅助脚本记录的实际shell参数。浏览器每个run-code的完整脚本也保留在命令中，接口夹具只含非生产测试值。控制台原始文件中工具升级/初始化错误不等同于产品回归。
+
+| 开始时间（含时区） | 阶段/验证 | 实际工作目录 | 实际命令 | 退出码 | 日志 |
+| --- | --- | --- | --- | --- | --- |
+| 2026-09-30T01:30:02.2524497+08:00 | before/frontend/lint | `D:/project/sub2api/frontend` | `D:/project/sub2api/output/upstream-sync-20260910-98d86915b/tools/node-v20.20.2-win-x64/node.exe D:/project/sub2api/output/upstream-sync-20260905-ab99d56e9/pnpm-9.15.9/package/bin/pnpm.cjs run lint:check` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/before-frontend-lint-013002252.log` |
+| 2026-09-30T01:30:02.6842546+08:00 | before/canvas/typecheck | `D:/project/sub2api/canvas` | `D:/project/sub2api/output/upstream-sync-20260910-98d86915b/tools/node-v20.20.2-win-x64/node.exe D:/project/sub2api/output/upstream-sync-20260905-ab99d56e9/pnpm-9.15.9/package/bin/pnpm.cjs run typecheck` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/before-canvas-typecheck-013002684.log` |
+| 2026-09-30T01:30:02.9301530+08:00 | before/lint/golangci | `D:/project/sub2api/backend` | `D:/project/sub2api/output/upstream-sync-20260905-ab99d56e9/go-tools/bin/golangci-lint.exe run ./... --timeout=30m` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/before-lint-golangci-013002930.log` |
+| 2026-09-30T01:30:10.0000000+08:00 | before/backend/unit | `/mnt/d/project/sub2api/backend` | `go test -tags=unit ./... -count=1 -timeout=20m ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-backend-unit-013011.log` |
+| 2026-09-30T01:30:20.3679445+08:00 | before/canvas/test | `D:/project/sub2api/canvas` | `D:/project/sub2api/output/upstream-sync-20260910-98d86915b/tools/node-v20.20.2-win-x64/node.exe D:/project/sub2api/output/upstream-sync-20260905-ab99d56e9/pnpm-9.15.9/package/bin/pnpm.cjs run test --maxWorkers=4 --minWorkers=1` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/before-canvas-test-013020367.log` |
+| 2026-09-30T01:30:36.2423399+08:00 | before/canvas/build | `D:/project/sub2api/canvas` | `D:/project/sub2api/output/upstream-sync-20260910-98d86915b/tools/node-v20.20.2-win-x64/node.exe D:/project/sub2api/output/upstream-sync-20260905-ab99d56e9/pnpm-9.15.9/package/bin/pnpm.cjs run build --outDir D:\project\sub2api\output\upstream-sync-20260930-a60a29549/artifacts/before-canvas` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/before-canvas-build-013036242.log` |
+| 2026-09-30T01:30:40.0000000+08:00 | before/static/docker-compose-security-test | `/mnt/d/project/sub2api` | `bash deploy/tests/docker-compose-security-test.sh ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-static-docker-compose-security-test-013040.log` |
+| 2026-09-30T01:30:41.0000000+08:00 | before/static/docker-compose-gateway-env-test | `/mnt/d/project/sub2api` | `bash deploy/tests/docker-compose-gateway-env-test.sh ` | 1 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-static-docker-compose-gateway-env-test-013041.log` |
+| 2026-09-30T01:30:43.0000000+08:00 | before/static/docker-runtime-resources-test | `/mnt/d/project/sub2api` | `bash deploy/tests/docker-runtime-resources-test.sh ` | 1 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-static-docker-runtime-resources-test-013043.log` |
+| 2026-09-30T01:30:43.0000000+08:00 | before/static/docker-compose-simple-mode-env-test | `/mnt/d/project/sub2api` | `bash deploy/tests/docker-compose-simple-mode-env-test.sh ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-static-docker-compose-simple-mode-env-test-013043.log` |
+| 2026-09-30T01:30:54.0000000+08:00 | before/static/remote-deploy-test | `/mnt/d/project/sub2api` | `bash deploy/tests/remote-deploy-test.sh ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-static-remote-deploy-test-013054.log` |
+| 2026-09-30T01:30:55.0000000+08:00 | before/static/apple-container-test | `/mnt/d/project/sub2api` | `bash deploy/tests/apple-container-test.sh ` | 1 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-static-apple-container-test-013055.log` |
+| 2026-09-30T01:30:56.0000000+08:00 | before/static/caddy | `/mnt/d/project/sub2api` | `bash deploy/test-caddyfile-cache.sh ` | 1 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-static-caddy-013056.log` |
+| 2026-09-30T01:30:56.0000000+08:00 | before/static/bluegreen | `/mnt/d/project/sub2api` | `python3 /mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/bluegreen.py ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-static-bluegreen-013056.log` |
+| 2026-09-30T01:30:56.0000000+08:00 | before/static/evidence | `/mnt/d/project/sub2api` | `python3 deploy/tests/blue-green-evidence-test.py ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-static-evidence-013056.log` |
+| 2026-09-30T01:30:57.0000000+08:00 | before/static/metadata-tests | `/mnt/d/project/sub2api` | `python3 -m unittest discover -s tools -p test_check_upstream_sync_metadata.py ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-static-metadata-tests-013057.log` |
+| 2026-09-30T01:30:57.0000000+08:00 | before/static/metadata | `/mnt/d/project/sub2api` | `python3 tools/check_upstream_sync_metadata.py ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-static-metadata-013057.log` |
+| 2026-09-30T01:30:57.0000000+08:00 | before/static/preflight | `/mnt/d/project/sub2api` | `python3 deploy/tests/blue-green-preflight-test.py ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-static-preflight-013057.log` |
+| 2026-09-30T01:31:19.2360869+08:00 | before/frontend/typecheck | `D:/project/sub2api/frontend` | `D:/project/sub2api/output/upstream-sync-20260910-98d86915b/tools/node-v20.20.2-win-x64/node.exe D:/project/sub2api/output/upstream-sync-20260905-ab99d56e9/pnpm-9.15.9/package/bin/pnpm.cjs run typecheck` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/before-frontend-typecheck-013119236.log` |
+| 2026-09-30T01:31:51.2962222+08:00 | before/frontend/test | `D:/project/sub2api/frontend` | `D:/project/sub2api/output/upstream-sync-20260910-98d86915b/tools/node-v20.20.2-win-x64/node.exe D:/project/sub2api/output/upstream-sync-20260905-ab99d56e9/pnpm-9.15.9/package/bin/pnpm.cjs run test:run --maxWorkers=4 --minWorkers=1` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/before-frontend-test-013151296.log` |
+| 2026-09-30T01:32:18.0000000+08:00 | before/race/stream | `/mnt/d/project/sub2api/backend` | `go test -race -tags=unit -count=1 -timeout=20m -run TestKimi\\|TestOpsErrorLoggerMiddleware_Kimi\\|TestAnthropicStreamSafeRetry\\|TestFirstTokenCleanup\\|TestGatewayService_AnthropicAPIKeyPassthrough_StreamingIdleTimeout\\|TestDecompressResponseBodyStreamClose\\|TestDecompressedBodyClose ./internal/service ./internal/handler ./internal/repository ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-race-stream-013218.log` |
+| 2026-09-30T01:32:19.0000000+08:00 | before/static/docker-compose-security-test | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/before-static-lf` | `bash deploy/tests/docker-compose-security-test.sh ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-static-docker-compose-security-test-013219.log` |
+| 2026-09-30T01:32:19.0000000+08:00 | before/static/docker-compose-gateway-env-test | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/before-static-lf` | `bash deploy/tests/docker-compose-gateway-env-test.sh ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-static-docker-compose-gateway-env-test-013219.log` |
+| 2026-09-30T01:32:22.0000000+08:00 | before/static/docker-runtime-resources-test | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/before-static-lf` | `bash deploy/tests/docker-runtime-resources-test.sh ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-static-docker-runtime-resources-test-013222.log` |
+| 2026-09-30T01:32:22.0000000+08:00 | before/static/docker-compose-simple-mode-env-test | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/before-static-lf` | `bash deploy/tests/docker-compose-simple-mode-env-test.sh ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-static-docker-compose-simple-mode-env-test-013222.log` |
+| 2026-09-30T01:32:33.0000000+08:00 | before/static/remote-deploy-test | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/before-static-lf` | `bash deploy/tests/remote-deploy-test.sh ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-static-remote-deploy-test-013233.log` |
+| 2026-09-30T01:32:35.0000000+08:00 | before/static/apple-container-test | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/before-static-lf` | `bash deploy/tests/apple-container-test.sh ` | 1 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-static-apple-container-test-013235.log` |
+| 2026-09-30T01:32:35.0000000+08:00 | before/static/caddy | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/before-static-lf` | `bash deploy/test-caddyfile-cache.sh ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-static-caddy-013235.log` |
+| 2026-09-30T01:32:35.0000000+08:00 | before/static/bluegreen | `/mnt/d/project/sub2api` | `python3 /mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/bluegreen.py ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-static-bluegreen-013235.log` |
+| 2026-09-30T01:32:36.0000000+08:00 | before/static/evidence | `/mnt/d/project/sub2api` | `python3 deploy/tests/blue-green-evidence-test.py ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-static-evidence-013236.log` |
+| 2026-09-30T01:32:36.0000000+08:00 | before/static/preflight | `/mnt/d/project/sub2api` | `python3 deploy/tests/blue-green-preflight-test.py ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-static-preflight-013236.log` |
+| 2026-09-30T01:32:37.0000000+08:00 | before/static/metadata-tests | `/mnt/d/project/sub2api` | `python3 -m unittest discover -s tools -p test_check_upstream_sync_metadata.py ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-static-metadata-tests-013237.log` |
+| 2026-09-30T01:32:37.0000000+08:00 | before/static/metadata | `/mnt/d/project/sub2api` | `python3 tools/check_upstream_sync_metadata.py ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-static-metadata-013237.log` |
+| 2026-09-30T01:34:49.4911480+08:00 | before/frontend/build | `D:/project/sub2api/frontend` | `D:/project/sub2api/output/upstream-sync-20260910-98d86915b/tools/node-v20.20.2-win-x64/node.exe D:/project/sub2api/output/upstream-sync-20260905-ab99d56e9/pnpm-9.15.9/package/bin/pnpm.cjs run build --outDir D:\project\sub2api\output\upstream-sync-20260930-a60a29549/artifacts/before-frontend` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/before-frontend-build-013449491.log` |
+| 2026-09-30T01:35:55.0000000+08:00 | before/race/lifecycle | `/mnt/d/project/sub2api/backend` | `go test -race -tags=unit -count=1 -timeout=20m -run TestPeer\\|TestAffinity\\|TestPublicPeer\\|TestLongSSE\\|TestHijacked\\|TestDetachedProducer\\|TestControl\\|TestDrain\\|TestNewInstance\\|TestLegacyWaits\\|TestRenewal\\|TestUsageRecordWorkerPool_StopRace\\|TestStoppedKeyed\\|TestOpenAIResponsesWebSocket_Ingress\\|TestUpstreamVersion\\|TestChannelMonitorRunnerRejected\\|TestBackup\\|TestUsageExport ./internal/pkg/lifecycle ./internal/service ./internal/repository ./internal/handler ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-race-lifecycle-013555.log` |
+| 2026-09-30T01:37:00.2665264+08:00 | before/embed/version | `D:/project/sub2api/backend` | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test -tags=unit,embed ./internal/handler -run TestBuildVersion -count=1` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/before-embed-version-013700266.log` |
+| 2026-09-30T01:37:31.4735386+08:00 | before/embed/build | `D:/project/sub2api/backend` | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe build -tags=embed -o D:\project\sub2api\output\upstream-sync-20260930-a60a29549/artifacts/before-server.exe ./cmd/server` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/before-embed-build-013731473.log` |
+| 2026-09-30T01:38:51.0000000+08:00 | before/backend/integration | `/mnt/d/project/sub2api/backend` | `go test -tags=integration ./... -count=1 -timeout=25m ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-backend-integration-013851.log` |
+| 2026-09-30T01:46:26.0000000+08:00 | before/backend/build | `/mnt/d/project/sub2api/backend` | `go build -o /mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/artifacts/before-server-linux ./cmd/server ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-backend-build-014626.log` |
+| 2026-09-30T01:48:03.0000000+08:00 | before/smoke/ | `` | `timeout 180s bash smoke.sh before` | 0 | `` |
+| 2026-09-30T01:56:19.0000000+08:00 | after/critical/critical | `/mnt/d/project/sub2api/backend` | `go test -tags=unit -count=1 -timeout=15m -run FirstToken\\|Cyber\\|RiskControl\\|ClaudeReset\\|Sonnet55\\|OpenAIResponsesWS\\|OpenAIResponsesWebSocket\\|AccountStats\\|Pricing\\|FreeFast\\|AntigravityCompat\\|AnthropicChat\\|ToolNameRewrite\\|Kimi\\|GroupModelAllowlist\\|Composite ./internal/service ./internal/handler ./internal/server ./internal/pkg/apicompat ./internal/pkg/antigravity ` | 1 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/after-critical-critical-015619.log` |
+| 2026-09-30T01:56:32.6613591+08:00 | after/frontend/lint | `D:/project/sub2api/frontend` | `D:/project/sub2api/output/upstream-sync-20260910-98d86915b/tools/node-v20.20.2-win-x64/node.exe D:/project/sub2api/output/upstream-sync-20260905-ab99d56e9/pnpm-9.15.9/package/bin/pnpm.cjs run lint:check` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/after-frontend-lint-015632661.log` |
+| 2026-09-30T01:57:08.8815270+08:00 | after/frontend/typecheck | `D:/project/sub2api/frontend` | `D:/project/sub2api/output/upstream-sync-20260910-98d86915b/tools/node-v20.20.2-win-x64/node.exe D:/project/sub2api/output/upstream-sync-20260905-ab99d56e9/pnpm-9.15.9/package/bin/pnpm.cjs run typecheck` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/after-frontend-typecheck-015708881.log` |
+| 2026-09-30T01:57:37.6571717+08:00 | after/frontend/test | `D:/project/sub2api/frontend` | `D:/project/sub2api/output/upstream-sync-20260910-98d86915b/tools/node-v20.20.2-win-x64/node.exe D:/project/sub2api/output/upstream-sync-20260905-ab99d56e9/pnpm-9.15.9/package/bin/pnpm.cjs run test:run --maxWorkers=4 --minWorkers=1` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/after-frontend-test-015737657.log` |
+| 2026-09-30T02:00:15.3065160+08:00 | after/frontend/build | `D:/project/sub2api/frontend` | `D:/project/sub2api/output/upstream-sync-20260910-98d86915b/tools/node-v20.20.2-win-x64/node.exe D:/project/sub2api/output/upstream-sync-20260905-ab99d56e9/pnpm-9.15.9/package/bin/pnpm.cjs run build --outDir D:\project\sub2api\output\upstream-sync-20260930-a60a29549/artifacts/after-frontend` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/after-frontend-build-020015306.log` |
+| 2026-09-30T02:02:47.3462576+08:00 | after/lint/golangci | `D:/project/sub2api/backend` | `D:/project/sub2api/output/upstream-sync-20260905-ab99d56e9/go-tools/bin/golangci-lint.exe run ./... --timeout=30m` | 7 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/after-lint-golangci-020247346.log` |
+| 2026-09-30T02:02:47.5759182+08:00 | after/canvas/typecheck | `D:/project/sub2api/canvas` | `D:/project/sub2api/output/upstream-sync-20260910-98d86915b/tools/node-v20.20.2-win-x64/node.exe D:/project/sub2api/output/upstream-sync-20260905-ab99d56e9/pnpm-9.15.9/package/bin/pnpm.cjs run typecheck` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/after-canvas-typecheck-020247575.log` |
+| 2026-09-30T02:02:52.5928554+08:00 | after/canvas/test | `D:/project/sub2api/canvas` | `D:/project/sub2api/output/upstream-sync-20260910-98d86915b/tools/node-v20.20.2-win-x64/node.exe D:/project/sub2api/output/upstream-sync-20260905-ab99d56e9/pnpm-9.15.9/package/bin/pnpm.cjs run test --maxWorkers=4 --minWorkers=1` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/after-canvas-test-020252592.log` |
+| 2026-09-30T02:02:54.0000000+08:00 | after/critical/critical | `/mnt/d/project/sub2api/backend` | `go test -tags=unit -count=1 -timeout=15m -run FirstToken\\|Cyber\\|RiskControl\\|ClaudeReset\\|Sonnet55\\|OpenAIResponsesWS\\|OpenAIResponsesWebSocket\\|AccountStats\\|Pricing\\|FreeFast\\|AntigravityCompat\\|AnthropicChat\\|ToolNameRewrite\\|Kimi\\|GroupModelAllowlist\\|Composite ./internal/service ./internal/handler ./internal/server ./internal/pkg/apicompat ./internal/pkg/antigravity ` | 1 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/after-critical-critical-020254.log` |
+| 2026-09-30T02:02:57.2418402+08:00 | after/canvas/build | `D:/project/sub2api/canvas` | `D:/project/sub2api/output/upstream-sync-20260910-98d86915b/tools/node-v20.20.2-win-x64/node.exe D:/project/sub2api/output/upstream-sync-20260905-ab99d56e9/pnpm-9.15.9/package/bin/pnpm.cjs run build --outDir D:\project\sub2api\output\upstream-sync-20260930-a60a29549/artifacts/after-canvas` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/after-canvas-build-020257241.log` |
+| 2026-09-30T02:07:49.8826648+08:00 | after/lint/golangci | `D:/project/sub2api/backend` | `D:/project/sub2api/output/upstream-sync-20260905-ab99d56e9/go-tools/bin/golangci-lint.exe run ./... --timeout=30m` | 1 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/after-lint-golangci-020749882.log` |
+| 2026-09-30T02:07:50.4481384+08:00 | after/embed/version | `D:/project/sub2api/backend` | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe test -tags=unit,embed ./internal/handler -run TestBuildVersion -count=1` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/after-embed-version-020750448.log` |
+| 2026-09-30T02:08:18.9407623+08:00 | after/embed/build | `D:/project/sub2api/backend` | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe build -tags=embed -o D:\project\sub2api\output\upstream-sync-20260930-a60a29549/artifacts/after-server.exe ./cmd/server` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/after-embed-build-020818940.log` |
+| 2026-09-30T02:13:24.7490036+08:00 | after/browser/open | `D:\project\sub2api` | `playwright-cli open http://127.0.0.1:18974` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-021324749.log` |
+| 2026-09-30T02:14:35.3441233+08:00 | after/browser/snapshot | `D:\project\sub2api` | `playwright-cli snapshot` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-021435344.log` |
+| 2026-09-30T02:15:03.0000000+08:00 | after/backend/unit | `/mnt/d/project/sub2api/backend` | `go test -tags=unit ./... -count=1 -timeout=20m ` | 1 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/after-backend-unit-021503.log` |
+| 2026-09-30T02:15:27.0000000+08:00 | after/race/stream | `/mnt/d/project/sub2api/backend` | `go test -race -tags=unit -count=1 -timeout=20m -run TestKimi\\|TestOpsErrorLoggerMiddleware_Kimi\\|TestAnthropicStreamSafeRetry\\|TestFirstTokenCleanup\\|TestGatewayService_AnthropicAPIKeyPassthrough_StreamingIdleTimeout\\|TestDecompressResponseBodyStreamClose\\|TestDecompressedBodyClose ./internal/service ./internal/handler ./internal/repository ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/after-race-stream-021527.log` |
+| 2026-09-30T02:15:29.9970481+08:00 | after/browser/click | `D:\project\sub2api` | `playwright-cli click e9` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-021529997.log` |
+| 2026-09-30T02:15:30.0213131+08:00 | after/lint/golangci | `D:/project/sub2api/backend` | `D:/project/sub2api/output/upstream-sync-20260905-ab99d56e9/go-tools/bin/golangci-lint.exe run ./... --timeout=30m` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/after-lint-golangci-021530021.log` |
+| 2026-09-30T02:16:16.0428372+08:00 | after/browser/snapshot | `D:\project\sub2api` | `playwright-cli snapshot` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-021616042.log` |
+| 2026-09-30T02:16:44.3825286+08:00 | after/browser/fill | `D:\project\sub2api` | `playwright-cli fill e32 gpt-latest` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-021644382.log` |
+| 2026-09-30T02:18:10.7879269+08:00 | after/browser/click | `D:\project\sub2api` | `playwright-cli click e33` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-021810787.log` |
+| 2026-09-30T02:18:31.1461879+08:00 | after/browser/snapshot | `D:\project\sub2api` | `playwright-cli snapshot` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-021831146.log` |
+| 2026-09-30T02:18:39.0000000+08:00 | after/race/lifecycle | `/mnt/d/project/sub2api/backend` | `go test -race -tags=unit -count=1 -timeout=20m -run TestPeer\\|TestAffinity\\|TestPublicPeer\\|TestLongSSE\\|TestHijacked\\|TestDetachedProducer\\|TestControl\\|TestDrain\\|TestNewInstance\\|TestLegacyWaits\\|TestRenewal\\|TestUsageRecordWorkerPool_StopRace\\|TestStoppedKeyed\\|TestOpenAIResponsesWebSocket_Ingress\\|TestUpstreamVersion\\|TestChannelMonitorRunnerRejected\\|TestBackup\\|TestUsageExport ./internal/pkg/lifecycle ./internal/service ./internal/repository ./internal/handler ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/after-race-lifecycle-021839.log` |
+| 2026-09-30T02:21:24.5420185+08:00 | after/browser/run-code | `D:\project\sub2api` | `playwright-cli run-code 'async (page) => { await page.getByRole("button", {name:"填入",exact:true}).click(); const messages=await page.getByRole("status").allTextContents(); if(!messages.some(x=>x.includes("gpt-latest")&&x.includes("deepseek-chat"))) throw new Error("未显示映射冲突"); const models=await page.getByTestId("models").textContent(); if(models.includes("gpt-latest")) throw new Error("冲突模型被加入"); await page.screenshot({path:"output/playwright/sync-a60a29549/screens/desktop-conflict.png",fullPage:true}); return {messages,models}; }'` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-022124542.log` |
+| 2026-09-30T02:21:56.0000000+08:00 | after/backend/integration | `/mnt/d/project/sub2api/backend` | `go test -tags=integration ./... -count=1 -timeout=25m ` | 1 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/after-backend-integration-022156.log` |
+| 2026-09-30T02:21:57.9204889+08:00 | after/browser/click | `D:\project\sub2api` | `playwright-cli click e28` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-022157920.log` |
+| 2026-09-30T02:22:56.9827634+08:00 | after/browser/run-code | `D:\project\sub2api` | `playwright-cli run-code 'async (page) => { const models=await page.getByTestId("models").textContent(); if(!models.includes("gpt-5.2")) throw new Error("预览同步未追加模型"); if(await page.getByTestId("claude-reset-count").textContent()!=="次数2") throw new Error("重置次数不符"); await page.screenshot({path:"output/playwright/sync-a60a29549/screens/desktop.png",fullPage:true}); return {models,count:await page.getByTestId("claude-reset-count").textContent()}; }'` | 1 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-022256982.log` |
+| 2026-09-30T02:23:37.0000000+08:00 | after/static/docker-compose-security-test | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/after-static-lf` | `bash deploy/tests/docker-compose-security-test.sh ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/after-static-docker-compose-security-test-022337.log` |
+| 2026-09-30T02:23:37.0000000+08:00 | after/static/docker-compose-gateway-env-test | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/after-static-lf` | `bash deploy/tests/docker-compose-gateway-env-test.sh ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/after-static-docker-compose-gateway-env-test-022337.log` |
+| 2026-09-30T02:23:38.6319440+08:00 | after/browser/run-code | `D:\project\sub2api` | `playwright-cli run-code 'async (page) => { const models=await page.getByTestId("models").textContent(); const count=(await page.getByTestId("claude-reset-count").textContent()).replace(/\s/g,""); if(!models.includes("gpt-5.2")) throw new Error("预览同步未追加模型"); if(count!=="次数2") throw new Error("重置次数不符: "+count); await page.screenshot({path:"output/playwright/sync-a60a29549/screens/desktop.png",fullPage:true}); return {models,count}; }'` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-022338631.log` |
+| 2026-09-30T02:23:41.0000000+08:00 | after/static/docker-runtime-resources-test | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/after-static-lf` | `bash deploy/tests/docker-runtime-resources-test.sh ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/after-static-docker-runtime-resources-test-022341.log` |
+| 2026-09-30T02:23:41.0000000+08:00 | after/static/docker-compose-simple-mode-env-test | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/after-static-lf` | `bash deploy/tests/docker-compose-simple-mode-env-test.sh ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/after-static-docker-compose-simple-mode-env-test-022341.log` |
+| 2026-09-30T02:23:52.0000000+08:00 | after/static/remote-deploy-test | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/after-static-lf` | `bash deploy/tests/remote-deploy-test.sh ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/after-static-remote-deploy-test-022352.log` |
+| 2026-09-30T02:23:54.0000000+08:00 | after/static/apple-container-test | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/after-static-lf` | `bash deploy/tests/apple-container-test.sh ` | 1 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/after-static-apple-container-test-022354.log` |
+| 2026-09-30T02:23:55.0000000+08:00 | after/static/bluegreen | `/mnt/d/project/sub2api` | `python3 /mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/bluegreen.py ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/after-static-bluegreen-022355.log` |
+| 2026-09-30T02:23:55.0000000+08:00 | after/static/caddy | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/after-static-lf` | `bash deploy/test-caddyfile-cache.sh ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/after-static-caddy-022355.log` |
+| 2026-09-30T02:23:55.0000000+08:00 | after/static/evidence | `/mnt/d/project/sub2api` | `python3 deploy/tests/blue-green-evidence-test.py ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/after-static-evidence-022355.log` |
+| 2026-09-30T02:23:56.0000000+08:00 | after/static/metadata-tests | `/mnt/d/project/sub2api` | `python3 -m unittest discover -s tools -p test_check_upstream_sync_metadata.py ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/after-static-metadata-tests-022356.log` |
+| 2026-09-30T02:23:56.0000000+08:00 | after/static/metadata | `/mnt/d/project/sub2api` | `python3 tools/check_upstream_sync_metadata.py ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/after-static-metadata-022356.log` |
+| 2026-09-30T02:23:56.0000000+08:00 | after/static/preflight | `/mnt/d/project/sub2api` | `python3 deploy/tests/blue-green-preflight-test.py ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/after-static-preflight-022356.log` |
+| 2026-09-30T02:24:08.6565552+08:00 | after/browser/resize | `D:\project\sub2api` | `playwright-cli resize 390 844` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-022408656.log` |
+| 2026-09-30T02:25:07.8696355+08:00 | after/browser/run-code | `D:\project\sub2api` | `playwright-cli run-code 'async (page) => { const result=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,rects:Array.from(document.querySelectorAll("input,button,output")).map(x=>({tag:x.tagName,left:x.getBoundingClientRect().left,right:x.getBoundingClientRect().right}))})); if(result.scroll>result.width\|\|result.rects.some(x=>x.left<0\|\|x.right>result.width)) throw new Error("移动端元素越界"); await page.screenshot({path:"output/playwright/sync-a60a29549/screens/mobile.png",fullPage:true}); return result; }'` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-022507869.log` |
+| 2026-09-30T02:28:57.0000000+08:00 | after/backend/build | `/mnt/d/project/sub2api/backend` | `go build -o /mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/artifacts/after-server-linux ./cmd/server ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/after-backend-build-022857.log` |
+| 2026-09-30T02:32:06.4399356+08:00 | after/lint/golangci | `D:/project/sub2api/backend` | `D:/project/sub2api/output/upstream-sync-20260905-ab99d56e9/go-tools/bin/golangci-lint.exe run ./... --timeout=30m` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/after-lint-golangci-023206439.log` |
+| 2026-09-30T02:32:06.5636985+08:00 | after/browser/reload | `D:\project\sub2api` | `playwright-cli reload` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-023206563.log` |
+| 2026-09-30T02:33:29.3950124+08:00 | after/browser/console | `D:\project\sub2api` | `playwright-cli console error` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-023329395.log` |
+| 2026-09-30T02:33:54.1404030+08:00 | after/browser/snapshot | `D:\project\sub2api` | `playwright-cli snapshot` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-023354140.log` |
+| 2026-09-30T02:34:21.2615206+08:00 | after/browser/resize | `D:\project\sub2api` | `playwright-cli resize 1440 1000` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-023421261.log` |
+| 2026-09-30T02:34:41.1353837+08:00 | after/browser/click | `D:\project\sub2api` | `playwright-cli click f2e9` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-023441135.log` |
+| 2026-09-30T02:34:44.0000000+08:00 | after/backend/unit | `/mnt/d/project/sub2api/backend` | `go test -tags=unit ./... -count=1 -timeout=20m ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/after-backend-unit-023444.log` |
+| 2026-09-30T02:35:17.0000000+08:00 | after/critical/critical | `/mnt/d/project/sub2api/backend` | `go test -tags=unit -count=1 -timeout=15m -run FirstToken\\|Cyber\\|RiskControl\\|ClaudeReset\\|Sonnet55\\|OpenAIResponsesWS\\|OpenAIResponsesWebSocket\\|AccountStats\\|Pricing\\|FreeFast\\|AntigravityCompat\\|AnthropicChat\\|ToolNameRewrite\\|Kimi\\|GroupModelAllowlist\\|Composite ./internal/service ./internal/handler ./internal/server ./internal/pkg/apicompat ./internal/pkg/antigravity ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/after-critical-critical-023517.log` |
+| 2026-09-30T02:35:18.3111607+08:00 | after/browser/snapshot | `D:\project\sub2api` | `playwright-cli snapshot` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-023518311.log` |
+| 2026-09-30T02:35:56.4000291+08:00 | after/browser/fill | `D:\project\sub2api` | `playwright-cli fill f2e37 gpt-latest` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-023556400.log` |
+| 2026-09-30T02:37:26.7745701+08:00 | after/browser/click | `D:\project\sub2api` | `playwright-cli click f2e38` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-023726774.log` |
+| 2026-09-30T02:37:28.3079014+08:00 | before/security/govulncheck | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/before-security-source/backend` | `D:/project/sub2api/output/upstream-sync-20260915-bdb42e22f/tools/govulncheck.exe ./...` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/before-security-govulncheck-023728307.log` |
+| 2026-09-30T02:37:28.5269456+08:00 | after/checks/wire-diff | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/after-wire-lf/backend` | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe run github.com/google/wire/cmd/wire diff ./cmd/server` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/after-checks-wire-diff-023728526.log` |
+| 2026-09-30T02:37:50.9262566+08:00 | after/browser/snapshot | `D:\project\sub2api` | `playwright-cli snapshot` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-023750926.log` |
+| 2026-09-30T02:37:52.5778379+08:00 | after/checks/release-helpers | `D:/project/sub2api` | `python -m unittest discover -s .github/release-tools -p test_release_matrix.py` | 9009 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/after-checks-release-helpers-023752577.log` |
+| 2026-09-30T02:37:52.8599594+08:00 | after/checks/release-syntax | `D:/project/sub2api` | `'C:/Program Files/Git/bin/bash.exe' -n .github/release-tools/release-images.sh` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/after-checks-release-syntax-023752859.log` |
+| 2026-09-30T02:38:06.3938351+08:00 | before/security/frontend-audit | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/before-security-source/frontend` | `D:/project/sub2api/output/upstream-sync-20260910-98d86915b/tools/node-v20.20.2-win-x64/node.exe D:/project/sub2api/output/upstream-sync-20260905-ab99d56e9/pnpm-9.15.9/package/bin/pnpm.cjs audit --prod --audit-level=high --json` | 1 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/before-security-frontend-audit-023806393.log` |
+| 2026-09-30T02:38:07.8386366+08:00 | after/browser/screenshot | `D:\project\sub2api` | `playwright-cli screenshot --filename=output/playwright/sync-a60a29549/desktop.png` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-023807838.log` |
+| 2026-09-30T02:38:09.2198330+08:00 | before/security/canvas-audit | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/before-security-source/canvas` | `D:/project/sub2api/output/upstream-sync-20260910-98d86915b/tools/node-v20.20.2-win-x64/node.exe D:/project/sub2api/output/upstream-sync-20260905-ab99d56e9/pnpm-9.15.9/package/bin/pnpm.cjs audit --prod --audit-level=high --json` | 1 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/before-security-canvas-audit-023809219.log` |
+| 2026-09-30T02:38:13.2181170+08:00 | after/security/govulncheck | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/after-security-source/backend` | `D:/project/sub2api/output/upstream-sync-20260915-bdb42e22f/tools/govulncheck.exe ./...` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/after-security-govulncheck-023813218.log` |
+| 2026-09-30T02:38:49.2174766+08:00 | after/security/frontend-audit | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/after-security-source/frontend` | `D:/project/sub2api/output/upstream-sync-20260910-98d86915b/tools/node-v20.20.2-win-x64/node.exe D:/project/sub2api/output/upstream-sync-20260905-ab99d56e9/pnpm-9.15.9/package/bin/pnpm.cjs audit --prod --audit-level=high --json` | 1 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/after-security-frontend-audit-023849217.log` |
+| 2026-09-30T02:38:52.1015077+08:00 | after/security/canvas-audit | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/after-security-source/canvas` | `D:/project/sub2api/output/upstream-sync-20260910-98d86915b/tools/node-v20.20.2-win-x64/node.exe D:/project/sub2api/output/upstream-sync-20260905-ab99d56e9/pnpm-9.15.9/package/bin/pnpm.cjs audit --prod --audit-level=high --json` | 1 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/after-security-canvas-audit-023852101.log` |
+| 2026-09-30T02:39:48.9300715+08:00 | after/browser/run-code | `D:\project\sub2api` | `playwright-cli run-code 'async (page) => { await page.getByRole(''button'', {name:''填入'', exact:true}).click(); await page.locator(''p[role=status]'').waitFor(); const message = await page.locator(''p[role=status]'').last().innerText(); if (!message.includes(''gpt-latest'') \|\| !message.includes(''deepseek-chat'')) throw new Error(''模型映射冲突提示缺失''); const before = await page.getByTestId(''models'').innerText(); if (before.includes(''gpt-latest'')) throw new Error(''冲突模型被错误加入''); await page.getByRole(''button'', {name:''同步上游支持的模型'', exact:true}).click(); await page.waitForFunction(() => document.querySelector(''[data-testid=models]'').textContent.includes(''gpt-5.2'')); const models = JSON.parse(await page.getByTestId(''models'').innerText()); if (JSON.stringify(models) !== JSON.stringify([''gpt-5.1'',''gpt-5.2''])) throw new Error(''保存前预览同步结果错误''); const count = (await page.getByTestId(''claude-reset-count'').textContent()).replace(/\s/g,''''); if (count !== ''次数2'') throw new Error(''Claude 重置次数显示错误''); console.log(JSON.stringify({conflictMessage:message,models,count})); }'` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-023948930.log` |
+| 2026-09-30T02:40:21.1277810+08:00 | after/browser/resize | `D:\project\sub2api` | `playwright-cli resize 390 844` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-024021127.log` |
+| 2026-09-30T02:40:44.0021315+08:00 | after/browser/run-code | `D:\project\sub2api` | `playwright-cli run-code 'async (page) => { const info = await page.evaluate(() => ({width:innerWidth,scroll:document.documentElement.scrollWidth,main:getComputedStyle(document.querySelector(''main'')).maxWidth,buttons:[...document.querySelectorAll(''button'')].map(el=>{const r=el.getBoundingClientRect();return {text:el.textContent.trim(),x:r.x,right:r.right,width:r.width,height:r.height}})})); if (info.scroll > info.width) throw new Error(''移动端横向溢出''); if (info.buttons.some(b=>b.width>0&&(b.x<0\|\|b.right>info.width))) throw new Error(''按钮超出视口''); if (info.main === ''none'') throw new Error(''Tailwind 未加载''); await page.screenshot({path:''D:/project/sub2api/output/playwright/sync-a60a29549/mobile.png'',fullPage:true}); return info; }'` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-024044002.log` |
+| 2026-09-30T02:41:11.0159206+08:00 | after/browser/run-code | `D:\project\sub2api` | `playwright-cli run-code 'async (page) => { await page.evaluate(() => document.documentElement.classList.add(''dark'')); await page.screenshot({path:''D:/project/sub2api/output/playwright/sync-a60a29549/mobile-dark.png'',fullPage:true}); const size=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth})); if(size.width!==size.scroll) throw new Error(''深色模式溢出''); await page.setViewportSize({width:1440,height:1000}); await page.screenshot({path:''D:/project/sub2api/output/playwright/sync-a60a29549/desktop-dark.png'',fullPage:true}); await page.evaluate(() => document.documentElement.classList.remove(''dark'')); await page.screenshot({path:''D:/project/sub2api/output/playwright/sync-a60a29549/desktop.png'',fullPage:true}); return {mobileDark:size,complete:true}; }'` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-024111015.log` |
+| 2026-09-30T02:41:32.0000000+08:00 | after/backend/integration | `/mnt/d/project/sub2api/backend` | `go test -tags=integration ./... -count=1 -timeout=25m ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/after-backend-integration-024132.log` |
+| 2026-09-30T02:42:24.6729630+08:00 | after/browser/console | `D:\project\sub2api` | `playwright-cli console error` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-024224672.log` |
+| 2026-09-30T02:42:24.7226051+08:00 | before/policy/frontend-audit-policy | `D:/project/sub2api` | `wsl -d Ubuntu-24.04 -u root --exec env PYTHONDONTWRITEBYTECODE=1 python3 /mnt/d/project/sub2api/tools/check_pnpm_audit_exceptions.py --audit /mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-security-frontend-audit-023806393.log --exceptions /mnt/d/project/sub2api/.github/audit-exceptions.yml` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/before-policy-frontend-audit-policy-024224722.log` |
+| 2026-09-30T02:42:24.8911021+08:00 | before/policy/canvas-audit-policy | `D:/project/sub2api` | `wsl -d Ubuntu-24.04 -u root --exec env PYTHONDONTWRITEBYTECODE=1 python3 /mnt/d/project/sub2api/tools/check_pnpm_audit_exceptions.py --audit /mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/before-security-canvas-audit-023809219.log --exceptions /mnt/d/project/sub2api/.github/audit-exceptions.yml` | 1 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/before-policy-canvas-audit-policy-024224891.log` |
+| 2026-09-30T02:42:25.0565154+08:00 | after/policy/frontend-audit-policy | `D:/project/sub2api` | `wsl -d Ubuntu-24.04 -u root --exec env PYTHONDONTWRITEBYTECODE=1 python3 /mnt/d/project/sub2api/tools/check_pnpm_audit_exceptions.py --audit /mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/after-security-frontend-audit-023849217.log --exceptions /mnt/d/project/sub2api/.github/audit-exceptions.yml` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/after-policy-frontend-audit-policy-024225056.log` |
+| 2026-09-30T02:42:25.1980826+08:00 | after/policy/canvas-audit-policy | `D:/project/sub2api` | `wsl -d Ubuntu-24.04 -u root --exec env PYTHONDONTWRITEBYTECODE=1 python3 /mnt/d/project/sub2api/tools/check_pnpm_audit_exceptions.py --audit /mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/after-security-canvas-audit-023852101.log --exceptions /mnt/d/project/sub2api/.github/audit-exceptions.yml` | 1 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/after-policy-canvas-audit-policy-024225198.log` |
+| 2026-09-30T02:42:27.5524676+08:00 | after/checks/wire-diff | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/after-wire-lf/backend` | `C:/Users/xk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.0.windows-amd64/bin/go.exe run github.com/google/wire/cmd/wire diff ./cmd/server` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/after-checks-wire-diff-024227552.log` |
+| 2026-09-30T02:42:44.6630987+08:00 | after/checks/release-helpers | `D:/project/sub2api` | `wsl -d Ubuntu-24.04 -u root --exec env PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s /mnt/d/project/sub2api/.github/release-tools -p test_release_matrix.py` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/after-checks-release-helpers-024244663.log` |
+| 2026-09-30T02:42:45.5263655+08:00 | after/checks/release-syntax | `D:/project/sub2api` | `'C:/Program Files/Git/bin/bash.exe' -n .github/release-tools/release-images.sh` | 0 | `D:\project\sub2api\output\upstream-sync-20260930-a60a29549/logs/after-checks-release-syntax-024245526.log` |
+| 2026-09-30T02:42:57.7153840+08:00 | after/browser/network | `D:\project\sub2api` | `playwright-cli network` | 1 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-024257715.log` |
+| 2026-09-30T02:43:20.4112360+08:00 | after/browser/requests | `D:\project\sub2api` | `playwright-cli requests` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-024320411.log` |
+| 2026-09-30T02:43:44.2686220+08:00 | after/browser/run-code | `D:\project\sub2api` | `playwright-cli run-code 'async (page) => { await page.evaluate(() => document.documentElement.classList.add(''dark'')); await page.waitForFunction(() => { const rgb = getComputedStyle(document.querySelector(''input'')).color.match(/\d+/g).map(Number); return rgb.slice(0,3).every(v=>v>200); }); await page.screenshot({path:''D:/project/sub2api/output/playwright/sync-a60a29549/desktop-dark.png'',fullPage:true,animations:''disabled''}); await page.setViewportSize({width:390,height:844}); await page.screenshot({path:''D:/project/sub2api/output/playwright/sync-a60a29549/mobile-dark.png'',fullPage:true,animations:''disabled''}); return await page.locator(''input'').evaluate(el=>({color:getComputedStyle(el).color,background:getComputedStyle(el).backgroundColor})); }'` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-024344268.log` |
+| 2026-09-30T02:45:33.0516310+08:00 | after/safety/changes | `` | `pwsh -NoProfile -File output/upstream-sync-20260930-a60a29549/audit-changes.ps1` | 0 | `` |
+| 2026-09-30T02:45:33.2942133+08:00 | after/browser/close | `D:\project\sub2api` | `playwright-cli close` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-024533294.log` |
+| 2026-09-30T02:48:15.0000000+08:00 | after/backend/build | `/mnt/d/project/sub2api/backend` | `go build -o /mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/artifacts/after-server-linux ./cmd/server ` | 0 | `/mnt/d/project/sub2api/output/upstream-sync-20260930-a60a29549/logs/after-backend-build-024815.log` |
+| 2026-09-30T02:50:03.0000000+08:00 | after/smoke/ | `` | `timeout 180s bash smoke.sh after` | 0 | `` |
+| 2026-09-30T02:51:56.0000000+08:00 | after/cleanup/isolated-resources | `` | `bash output/upstream-sync-20260930-a60a29549/cleanup.sh` | 0 | `` |
+
+### 最后收尾复核
+
+- 文档生成后发现EOF有多余空行，删除该行后再次执行 `git diff --check` 及本轮 `audit-changes.ps1`，退出码均0。该格式问题不涉及产品代码，失败及复验保留在本轮JSONL。
+- 最后查看亮色桌面截图时发现捕获了主题切换过渡态，重新打开同一隔离组件夹具，等待输入文字颜色稳定后重拍亮色桌面/移动截图；深色两张此前也已等待颜色稳定。四张最终截图均已查看，移动宽度与scrollWidth均390，控制台错误0。此补验未改产品代码；验证浏览器与Vite再次关闭，本轮新增两份CLI文件归档，历史日志不动。
+- 以下为记录生成后的补充浏览器命令，工作目录仍为 `D:/project/sub2api`，通过相同 `cli.ps1` 包装记录。
+
+| 开始时间（含时区） | 实际命令 | 退出码 | 日志 |
+| --- | --- | --- | --- |
+| 2026-09-30T02:59:30.1335943+08:00 | `playwright-cli open http://127.0.0.1:18974` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-025930133.log` |
+| 2026-09-30T02:59:49.1214807+08:00 | `playwright-cli snapshot` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-025949121.log` |
+| 2026-09-30T03:00:16.8067489+08:00 | `playwright-cli run-code 'async (page) => { await page.getByRole(''button'',{name:''次数'',exact:true}).click(); await page.waitForFunction(()=>document.querySelector(''[data-testid=claude-reset-count]'').textContent.replace(/\s/g,'''')===''次数2''); await page.getByRole(''button'',{name:''同步上游支持的模型'',exact:true}).click(); await page.waitForFunction(()=>document.querySelector(''[data-testid=models]'').textContent.includes(''gpt-5.2'')); await page.getByRole(''textbox'',{name:''输入自定义模型名称''}).fill(''gpt-latest''); await page.evaluate(()=>document.documentElement.classList.remove(''dark'')); await page.waitForFunction(()=>getComputedStyle(document.querySelector(''input'')).color.match(/\d+/g).slice(0,3).map(Number).every(v=>v<80)); await page.setViewportSize({width:1440,height:1000}); await page.screenshot({path:''D:/project/sub2api/output/playwright/sync-a60a29549/desktop.png'',fullPage:true,animations:''disabled''}); await page.setViewportSize({width:390,height:844}); await page.screenshot({path:''D:/project/sub2api/output/playwright/sync-a60a29549/mobile.png'',fullPage:true,animations:''disabled''}); const result=await page.evaluate(()=>({color:getComputedStyle(document.querySelector(''input'')).color,width:innerWidth,scroll:document.documentElement.scrollWidth})); if(result.width!==result.scroll) throw new Error(''移动端溢出''); return result; }'` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-030016806.log` |
+| 2026-09-30T03:00:29.9303899+08:00 | `playwright-cli console error` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-030029930.log` |
+| 2026-09-30T03:00:43.4274640+08:00 | `playwright-cli close` | 0 | `D:\project\sub2api\output\playwright\sync-a60a29549\screens\cli-030043427.log` |
+
+
+### 本次修改文件清单
+
+相对同步前main，共217项；A为新增、M为修改，无删除。
+
+```text
+M	backend/cmd/server/wire_gen.go
+M	backend/internal/domain/constants.go
+M	backend/internal/domain/constants_test.go
+M	backend/internal/handler/admin/account_handler.go
+A	backend/internal/handler/admin/claude_reset_handler.go
+M	backend/internal/handler/admin/dashboard_handler.go
+M	backend/internal/handler/admin/dashboard_handler_cache_test.go
+M	backend/internal/handler/admin/dashboard_query_cache.go
+M	backend/internal/handler/admin/dashboard_snapshot_v2_handler.go
+M	backend/internal/handler/admin/setting_handler.go
+M	backend/internal/handler/admin/setting_handler_audit.go
+M	backend/internal/handler/admin/setting_handler_update.go
+M	backend/internal/handler/concurrency_error_response_test.go
+M	backend/internal/handler/dto/settings.go
+M	backend/internal/handler/gateway_handler.go
+M	backend/internal/handler/gateway_handler_cancellation_test.go
+M	backend/internal/handler/gateway_handler_chat_completions.go
+M	backend/internal/handler/gateway_handler_error_fallback_test.go
+M	backend/internal/handler/gateway_handler_responses.go
+M	backend/internal/handler/gateway_models_test.go
+A	backend/internal/handler/gemini_client_cancel_test.go
+M	backend/internal/handler/gemini_v1beta_handler.go
+M	backend/internal/handler/model_plaza_handler.go
+M	backend/internal/handler/model_plaza_handler_test.go
+M	backend/internal/handler/openai_alpha_search.go
+A	backend/internal/handler/openai_cyber_allowlist.go
+A	backend/internal/handler/openai_cyber_allowlist_test.go
+M	backend/internal/handler/openai_gateway_handler.go
+M	backend/internal/handler/openai_gateway_handler_test.go
+A	backend/internal/handler/openai_gateway_ws_composite_test.go
+M	backend/internal/handler/openai_ws_v2_passthrough_cyber_test.go
+M	backend/internal/handler/ops_error_logger.go
+M	backend/internal/handler/ops_error_logger_test.go
+M	backend/internal/handler/wire.go
+M	backend/internal/pkg/antigravity/request_transformer.go
+M	backend/internal/pkg/antigravity/request_transformer_test.go
+M	backend/internal/pkg/antigravity/schema_cleaner.go
+A	backend/internal/pkg/antigravity/schema_const_test.go
+M	backend/internal/pkg/antigravity/stream_transformer.go
+M	backend/internal/pkg/apicompat/anthropic_responses_test.go
+M	backend/internal/pkg/apicompat/anthropic_to_responses.go
+M	backend/internal/pkg/apicompat/anthropic_to_responses_response.go
+A	backend/internal/pkg/apicompat/anthropic_to_responses_stream_tool_input_test.go
+A	backend/internal/pkg/apicompat/anthropic_to_responses_tool_input_restore_chain_test.go
+M	backend/internal/pkg/apicompat/chatcompletions_anthropic_bridge.go
+M	backend/internal/pkg/apicompat/chatcompletions_anthropic_bridge_test.go
+M	backend/internal/pkg/apicompat/chatcompletions_responses_test.go
+M	backend/internal/pkg/apicompat/chatcompletions_to_responses.go
+A	backend/internal/pkg/apicompat/reasoning_generation_test.go
+M	backend/internal/pkg/apicompat/responses_to_anthropic_invalid_blocks_test.go
+M	backend/internal/pkg/apicompat/responses_to_anthropic_request.go
+M	backend/internal/pkg/apicompat/responses_to_chatcompletions.go
+A	backend/internal/pkg/apicompat/responses_to_chatcompletions_text_recovery_test.go
+M	backend/internal/pkg/apicompat/types.go
+M	backend/internal/pkg/buildmeta/upstream-sync.json
+M	backend/internal/pkg/claude/constants.go
+M	backend/internal/pkg/claude/constants_model_test.go
+M	backend/internal/pkg/claude/effort_catalog.go
+M	backend/internal/pkg/claude/effort_catalog_test.go
+M	backend/internal/pkg/googleapi/status.go
+A	backend/internal/pkg/googleapi/status_test.go
+M	backend/internal/repository/content_moderation_repo.go
+M	backend/internal/repository/content_moderation_repo_test.go
+M	backend/internal/repository/scheduler_cache.go
+M	backend/internal/repository/scheduler_cache_unit_test.go
+M	backend/internal/repository/usage_log_repo_integration_test.go
+M	backend/internal/repository/usage_log_repo_trend.go
+M	backend/internal/server/api_contract_test.go
+M	backend/internal/server/routes/admin.go
+M	backend/internal/service/account_scheduling_threshold_eval.go
+M	backend/internal/service/account_scheduling_threshold_eval_test.go
+M	backend/internal/service/account_stats_pricing.go
+M	backend/internal/service/account_stats_pricing_test.go
+M	backend/internal/service/account_usage_service.go
+M	backend/internal/service/account_usage_service_batch_test.go
+M	backend/internal/service/admin_service_group_model_allowlist_test.go
+A	backend/internal/service/anthropic_chat_stream_usage_test.go
+M	backend/internal/service/antigravity_gateway_claude.go
+M	backend/internal/service/antigravity_gateway_compat.go
+M	backend/internal/service/antigravity_gateway_compat_stream.go
+M	backend/internal/service/antigravity_gateway_compat_test.go
+M	backend/internal/service/antigravity_gateway_gemini.go
+M	backend/internal/service/antigravity_gateway_streaming.go
+M	backend/internal/service/bedrock_request.go
+M	backend/internal/service/bedrock_request_test.go
+M	backend/internal/service/billing_service.go
+M	backend/internal/service/billing_service_test.go
+A	backend/internal/service/claude_reset_credits.go
+A	backend/internal/service/claude_reset_credits_test.go
+A	backend/internal/service/client_disconnect_status_test.go
+M	backend/internal/service/content_moderation.go
+A	backend/internal/service/cyber_policy_allowlist.go
+A	backend/internal/service/cyber_policy_allowlist_test.go
+M	backend/internal/service/dashboard_service.go
+M	backend/internal/service/domain_constants.go
+M	backend/internal/service/gateway_anthropic_apikey_passthrough_test.go
+M	backend/internal/service/gateway_anthropic_passthrough.go
+M	backend/internal/service/gateway_bedrock.go
+M	backend/internal/service/gateway_claude_oauth_body.go
+M	backend/internal/service/gateway_count_tokens.go
+M	backend/internal/service/gateway_forward.go
+M	backend/internal/service/gateway_forward_as_chat_completions.go
+M	backend/internal/service/gateway_forward_as_chat_completions_test.go
+M	backend/internal/service/gateway_forward_as_responses.go
+M	backend/internal/service/gateway_forward_as_responses_test.go
+M	backend/internal/service/gateway_hotpath_optimization_test.go
+M	backend/internal/service/gateway_request.go
+M	backend/internal/service/gateway_request_test.go
+M	backend/internal/service/gateway_service.go
+A	backend/internal/service/gateway_sonnet55_toolset_beta_test.go
+A	backend/internal/service/gateway_structured_outputs_beta_test.go
+M	backend/internal/service/gateway_tool_rewrite.go
+M	backend/internal/service/gateway_tool_rewrite_test.go
+M	backend/internal/service/gateway_upstream_request.go
+M	backend/internal/service/gateway_upstream_transport_error.go
+M	backend/internal/service/gateway_usage_billing.go
+M	backend/internal/service/gemini_upstream_transport_error.go
+M	backend/internal/service/group_model_allowlist.go
+M	backend/internal/service/group_model_allowlist_test.go
+M	backend/internal/service/model_plaza_service.go
+M	backend/internal/service/model_plaza_service_test.go
+M	backend/internal/service/model_pricing_resolver.go
+M	backend/internal/service/model_pricing_resolver_test.go
+M	backend/internal/service/openai_account_scheduler.go
+M	backend/internal/service/openai_account_scheduler_test.go
+M	backend/internal/service/openai_alpha_search.go
+A	backend/internal/service/openai_alpha_search_completion_test.go
+M	backend/internal/service/openai_alpha_search_test.go
+M	backend/internal/service/openai_apikey_responses_probe.go
+A	backend/internal/service/openai_apikey_responses_probe_model_unavailable_test.go
+M	backend/internal/service/openai_codex_models_service.go
+M	backend/internal/service/openai_codex_models_service_test.go
+M	backend/internal/service/openai_compat_model.go
+M	backend/internal/service/openai_compat_model_test.go
+M	backend/internal/service/openai_gateway_anthropic_native_pump_test.go
+M	backend/internal/service/openai_gateway_chat_completions_anthropic_native.go
+M	backend/internal/service/openai_gateway_cn_fixes_test.go
+M	backend/internal/service/openai_gateway_deepseek_chat_reasoning_test.go
+M	backend/internal/service/openai_gateway_forward.go
+M	backend/internal/service/openai_gateway_messages_anthropic_native.go
+M	backend/internal/service/openai_gateway_messages_chat_fallback_test.go
+M	backend/internal/service/openai_gateway_record_usage_test.go
+M	backend/internal/service/openai_gateway_responses_anthropic_native.go
+M	backend/internal/service/openai_gateway_responses_chat_fallback.go
+M	backend/internal/service/openai_gateway_scheduling.go
+M	backend/internal/service/openai_gateway_service.go
+M	backend/internal/service/openai_gateway_service_test.go
+M	backend/internal/service/openai_gateway_usage.go
+M	backend/internal/service/openai_images_json_keepalive_test.go
+M	backend/internal/service/openai_quota_auto_reset.go
+M	backend/internal/service/openai_quota_auto_reset_test.go
+M	backend/internal/service/openai_upstream_transport_error.go
+M	backend/internal/service/openai_ws_forwarder_ingress.go
+M	backend/internal/service/openai_ws_forwarder_ingress_test.go
+M	backend/internal/service/openai_ws_forwarder_payload.go
+M	backend/internal/service/pricing_service.go
+A	backend/internal/service/risk_control_allowlist_test.go
+A	backend/internal/service/setting_cyber_allowlist_test.go
+M	backend/internal/service/setting_gateway_runtime.go
+M	backend/internal/service/setting_parse.go
+M	backend/internal/service/setting_service.go
+M	backend/internal/service/setting_update.go
+M	backend/internal/service/settings_view.go
+M	backend/internal/service/wire.go
+M	backend/internal/setup/setup.go
+M	backend/internal/setup/setup_test.go
+M	backend/resources/model-pricing/model_prices_and_context_window.json
+M	deploy/docker-compose.dev.yml
+M	deploy/docker-compose.local.yml
+M	deploy/docker-compose.sub2api.yml
+M	deploy/docker-compose.yml
+M	docs/COMPOSITE_GROUPS.md
+M	docs/custom-development-history.md
+M	docs/upstream-sync-history.md
+A	frontend/src/api/admin/claudeResetCredits.ts
+M	frontend/src/api/admin/dashboard.ts
+M	frontend/src/api/admin/settings.ts
+M	frontend/src/api/modelPlaza.ts
+M	frontend/src/components/account/AccountStatusIndicator.vue
+M	frontend/src/components/account/AccountUsageCell.vue
+M	frontend/src/components/account/BulkEditAccountModal.vue
+A	frontend/src/components/account/ClaudeResetCreditsCell.vue
+M	frontend/src/components/account/CreateAccountModal.vue
+M	frontend/src/components/account/EditAccountModal.vue
+M	frontend/src/components/account/ModelWhitelistSelector.vue
+M	frontend/src/components/account/UsageProgressBar.vue
+M	frontend/src/components/account/__tests__/AccountStatusIndicator.spec.ts
+A	frontend/src/components/account/__tests__/ClaudeResetCreditsCell.spec.ts
+M	frontend/src/components/account/__tests__/EditAccountModal.spec.ts
+M	frontend/src/components/account/__tests__/ModelWhitelistSelector.spec.ts
+M	frontend/src/components/account/__tests__/UsageProgressBar.spec.ts
+M	frontend/src/components/admin/group/GroupRPMOverridesModal.vue
+M	frontend/src/components/admin/group/GroupRateMultipliersModal.vue
+A	frontend/src/components/admin/group/__tests__/GroupModal.cleanup.spec.ts
+M	frontend/src/components/keys/UseKeyModal.vue
+M	frontend/src/components/keys/__tests__/UseKeyModal.spec.ts
+M	frontend/src/components/modelPlaza/PlazaGroupSection.vue
+M	frontend/src/components/modelPlaza/PlazaModelPricingTable.vue
+M	frontend/src/components/modelPlaza/__tests__/PlazaGroupSection.spec.ts
+M	frontend/src/components/modelPlaza/__tests__/PlazaModelPricingTable.spec.ts
+M	frontend/src/composables/__tests__/useModelWhitelist.spec.ts
+M	frontend/src/composables/useModelWhitelist.ts
+M	frontend/src/i18n/locales/en/admin/accounts.ts
+M	frontend/src/i18n/locales/en/admin/overview.ts
+M	frontend/src/i18n/locales/en/admin/settings.ts
+M	frontend/src/i18n/locales/zh/admin/accounts.ts
+M	frontend/src/i18n/locales/zh/admin/overview.ts
+M	frontend/src/i18n/locales/zh/admin/settings.ts
+M	frontend/src/utils/__tests__/ccswitchImport.spec.ts
+M	frontend/src/utils/ccswitchImport.ts
+M	frontend/src/views/admin/DashboardView.vue
+M	frontend/src/views/admin/GroupsView.vue
+M	frontend/src/views/admin/SettingsView.vue
+M	frontend/src/views/admin/__tests__/DashboardView.spec.ts
+M	frontend/src/views/admin/__tests__/groupModelAllowlist.spec.ts
+M	frontend/src/views/admin/groupModelAllowlist.ts
+M	frontend/src/views/user/KeysView.vue
+```
+
+## 2026-09-30 上游同步后发布准备 v0.1.247
+
+- 用户在本地同步完成后追加明确授权：提交Git、通过CI后合入主线、更新tag并通过GitHub Actions自动蓝绿部署。历史本地阶段“不推送、不部署”的记录不变，后续发布操作以本节的新授权为依据。
+- 固定上游范围与103项处置、63个二开编号不变，`LAST_FULLY_INTEGRATED_UPSTREAM_SHA=a60a29549f488a854966aaec9541abbe006cac22`。候选基于本地同步结果 `7c08be26ee3971b59b27818bbe7564ac46e57391`，远端main开始时仍为 `8bef535b1df379fdddac734040b7017d5214e666`。
+- 为满足实际安全门禁，定向升级Canvas的fast-uri 3.1.6至3.1.8：解决本地阶段两项既有high，并纳入上游3.1.8额外的中危修复；不改豁免清单、生产默认值或发布保护策略。将最小锁文件变化与Canvas测试、构建、审计一同验证。
+- 拟使用尚未占用的 `v0.1.247`，推送前再次核对远端标签和固定SHA；候选、主线、标签分别核验CI和安全作业，Actions执行蓝绿部署，人工只读核验前后保护项。实际结果另行归档至 `docs/operations/2026-09-30-v0.1.247-release.md`，此节不提前声称发布完成。
+- 依赖补丁补充验证已完成：Canvas类型检查、34项测试、构建退出0，前端和Canvas的现有安全门禁退出0；两份原始审计均退出1，Canvas剩余9项中危，前端保留既有xlsx高危豁免，不宣称全部依赖无漏洞。
