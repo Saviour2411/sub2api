@@ -5836,3 +5836,136 @@ M	frontend/src/views/user/__tests__/UsageView.spec.ts
 - 完整账本逐项比较：309条旧迁移及摘要未变，新增239/240后共311条；倍率列、operation_id及部分唯一索引定义符合审批，临时约束数量为0。未修改上游原SQL、生产价格数据或历史账本，普通字段门禁不放宽。
 - 旧blue并非自然排空：一小时到期时HTTP=5、SSE=3、会话租约832，按既有策略强退，退出137且非OOM、clean_exit=false、usage_loss_unknown=true；清理817条旧归属。7012次连续健康探针无异常不证明旧请求无中断或账单完整，不能声称业务零错误或无损。
 - 生产健康、迁移结构、原配置与实际部署现已按上述范围验证，不再属于前述本地阶段的未验证项；真实Provider/支付/回调/提现、完整账单、备份恢复、原生多平台运行、全二开浏览器端到端及峰值负载仍未验证。完整证据及风险见`docs/operations/2026-09-24-v0.1.246-release.md`，两份台账同步更新，既有OOM预算风险保留。
+
+## 2026-09-30 上游同步 a60a29549（北京时间，执行阶段）
+
+- 用户在集中审批后明确“批准执行”。本次仅本地合并、适配、测试和提交；禁止推送、PR、标签、发布及远程生产操作。
+- 目标分支 `main`；`LOCAL_PRE_SYNC_SHA=8bef535b1df379fdddac734040b7017d5214e666`。备份分支 `backup/pre-upstream-sync-20260930-012102-8bef535b1`；同步分支 `sync/upstream-20260930-a60a29549`。
+- 上游 `https://github.com/Wei-Shaw/sub2api`，远端 HEAD 确认为 `main`。`UPSTREAM_OLD_SHA=a3eb7ef302961cba716dc78b39b93b60c467db0e`；固定 `UPSTREAM_NEW_SHA=a60a29549f488a854966aaec9541abbe006cac22`；实际 merge-base 与旧基线相同。旧基线是两侧祖先，完整同步范围闭合，不随远端后续更新扩大。
+- 同步前工作树干净，main 与已抓取 origin/main 一致，无未完成 Git 操作、stash、submodule 或 LFS 文件。本次 HTTPS 抓取遇到网络错误后使用既有 GitHub SSH，未改 remote，未连接业务服务器。
+- 完整范围103项（59普通、44合并），上游214个差异文件，92个与本地变更重叠；无新迁移、依赖清单变化、删除或重命名。59个普通提交 patch-id 均未直接匹配；17ce21c03 的测试指针修正已在本地等价存在。两处有 remerge 差异的合并节点另列说明。
+- 策略：在同步分支 `git merge --no-ff --no-commit a60a29549f488a854966aaec9541abbe006cac22`，逐块处理12个预期冲突，不整文件选 ours/theirs。代码、受影响二开清单和本阶段记录一起形成 merge commit；验证结果及实际代码 SHA 在最后的独立文档提交追加，避免自引用。
+- 本地 `VERSION=0.1.246` 不变；嵌入来源为上游0.2.10/固定SHA。原目标分支在完成门禁前不移动。完整集成基线与最终状态以本节后续验收记录为准。
+
+### 冲突与本地边界
+
+- `VERSION`、`wire_gen.go`：保留本地发布号及 customFeatureHandler，新增 ClaudeResetCreditService 注入。
+- `openai_gateway_handler.go` 及测试：接入综合别名路由、白名单；保留逐轮模型/用量、原子状态、响应体释放、失败去重和预计算会话阻断计划。白名单连续WS用例暴露 Cyber 兜底与正常逐轮记账重复，改为有结果的失败只走逐轮记账，新增两轮恰好两行及实际Token断言。
+- `content_moderation.go`：白名单默认空；显式配置后仅日志，不处罚、通知或新增会话阻断。保留 EmailOnHit、group/model scope、独立 prompt audit 和本地审计功能；不承诺能绕过上游拒绝。
+- `gateway_count_tokens.go`、`gateway_upstream_request.go`：模拟身份保持最终优先级，Sonnet工具集过滤在最终头后执行；显式 structured outputs beta 可保留，策略过滤仍优先。
+- `gateway_forward_as_chat_completions.go`：保留首Token包装、完结及取消，接入收到的usage事件与缓存归一化。Kimi兼容重试、已提交禁止重放、用户串行扣费和5秒usage任务不变。
+- `model_pricing_resolver.go`、`account_stats_pricing_test.go`：保留分组/渠道/默认定价、严格缺价、Fast/Flex和无渠道成本回退。图片留空继承，输入/输出显式0免费；账号成本只看账号开关，客户售价保留双门禁。综合路由的新测试按本地“请求模型收费”校准，保留三种配置的费用断言。
+- `ModelWhitelistSelector.spec.ts`：合入映射冲突用例，保留预览同步和复制回归。
+- 两份生产Compose采用相同Redis参数列表，保留bind mount、maxclients、回环监听与全部资源参数。本次不访问生产、不改持久化实例配置。
+- Antigravity 的15秒首内容前保活及固定两分钟截止按审批覆盖；默认入口仍在首内容前不提交200，并保留空流换号、signature修复和既有空闲超时。参数化上游测试保留，增加默认入口等待30秒/3分钟的回归（时间偏移夹具，不代表真实持续负载测试）。
+- 63个二开编号保留；受影响清单和变更记录同步更新 `docs/custom-development-history.md`，无新增、退役或复用编号。
+
+### 逐提交处置
+
+共103项：Applied 102（其中 Applied + Overridden 8），Already Applied 1，Skipped/Deferred/Conflict 0。合并节点也是完整范围的一部分；覆盖不是跳过。所有 Applied 提交统一映射到本次 merge commit，其实际SHA在最终验收记录中给出。
+
+| 上游完整SHA | 状态 | 原因与处理 |
+| --- | --- | --- |
+| `14483c9254d9cf026e292e43c19f58612e5eca09` | Applied | CC Switch 保留 Codex provider 根端点，沿用本地导入边界。 |
+| `f45126c8ec29914a9c266bbe7d0525f50f3cd7f2` | Applied | 合入PR #7622；子提交及本地适配按本表执行。 |
+| `512aa8bc93ded5658b7bf561fc21976fa64a21fa` | Applied | 安装配置不再生成废弃限流默认值，保留实际生效限流和生产配置。 |
+| `35d2ef0cbdd10ce6f493a934a5418548f83d0378` | Applied | 合入PR #7636；子提交及本地适配按本表执行。 |
+| `f652d0ed387b01b869959c7e7d9b27abdffca5e8` | Applied | Windows Codex 模型目录改用用户主目录路径。 |
+| `ec334fda2caa9b88aa55c41cc89102c76267cc69` | Applied | 合入PR #7628；子提交及本地适配按本表执行。 |
+| `994048e6a4cf1988ef7232cd4c5258dcb5c85e3a` | Applied | 已知重置时间的空闲用量窗口显示倒计时。 |
+| `99d86e41acb47d632de27598a727c671ed7fadb1` | Applied | 合入PR #7611；子提交及本地适配按本表执行。 |
+| `1af3269adb1bceea4e8d362ed5e55438f081ece8` | Applied | 分组弹窗清理监听和未完成搜索，保留本地交互。 |
+| `89e9976950a8928d0285fb7efd535cdf5c7a5b38` | Applied | 合入PR #7497；子提交及本地适配按本表执行。 |
+| `00f6f4e4a89a09b337dc2d83ea4394770e84cb9c` | Applied | 修复 CC Switch 用量查询重复 v1 路径。 |
+| `66f07efd264086258c25107932348fc6e19316ac` | Applied | 合入PR #7549；子提交及本地适配按本表执行。 |
+| `82d2552360bf7b7b267ecdc6320fef34b0e93ac7` | Applied | Responses 转换的角色项显式标记 message 类型。 |
+| `be64b553f99cd1f56f9c0ac91aa178197c4b7e4c` | Applied | 合入PR #7635；子提交及本地适配按本表执行。 |
+| `ef51690b5a71501a2ce76296d6979f4ea09f6779` | Applied | Antigravity 工具 schema 保留字符串 const 约束。 |
+| `f867e3e2ece67781d23cff532c64fcd8bbc90c73` | Applied | 补齐 schema properties 类型断言回归。 |
+| `afbe51abf8951a7df851fc897cf6a1b4cc33aa01` | Applied | 已审查 remerge-diff，保留字符串 const 与 enum 交集处理。 |
+| `6655f4ec0eee4e1313fb949a85c9e3a304cb9061` | Applied | 合入PR #7393；子提交及本地适配按本表执行。 |
+| `ca2746f3bba246a6cbd7dac3482965cae3c054d8` | Applied | Chat PDF 数据转为 Gemini inlineData。 |
+| `51a10e42f70e76aef8db2af5ef4fcea643baf00e` | Applied | 合入PR #7585；子提交及本地适配按本表执行。 |
+| `97bdde3135dd47f1fbb5c3bff6849d25dcd646b9` | Applied | 保留 content_block_start 携带的工具参数。 |
+| `00ae7c38e2886e687316603d40d8b622d92f1bf7` | Applied | 合入PR #7570；子提交及本地适配按本表执行。 |
+| `090b2cc00091e0bd4858a28d04143bb693366a1b` | Applied | 终态消息为空时恢复已接收的流式文本。 |
+| `8aa7fb8c2d28b5a6b9e17be037eb4bac72f3cde1` | Applied | 合入PR #7569；子提交及本地适配按本表执行。 |
+| `82b092ffc20f32b0d485fff57c65b88ab1dc5dcf` | Applied | GPT 第5代及以后按推理模型执行协议兼容。 |
+| `11608c51f0dd8b3de7ec9c8e3b849327bd94cec1` | Applied | 合入PR #7568；子提交及本地适配按本表执行。 |
+| `3c5ea297ffe82521e0209aea9cfb1cf397434cc6` | Applied | Free Fast 缺价保留零费用行；保留本地严格准入及双成本。 |
+| `dc4874a2f1766cb4a01753ac97c51e856a8863e7` | Applied | 合入PR #7613；子提交及本地适配按本表执行。 |
+| `11ffee55431c038771102f2996104b7f12c3b237` | Applied | 识别 OpenRouter Opus 5.5 别名定价，未放宽其他未知模型。 |
+| `630639f74797066d38f0d13235fc99b3c75a85f4` | Applied | 保留该别名的 thinking 回归。 |
+| `69060621872d80a66eed31324c0767bb82e3a810` | Applied | 合入PR #7597；子提交及本地适配按本表执行。 |
+| `1d126c833b848a677a14f35e9527a932dda5140c` | Applied | Alpha 搜索兜底仅在成功终态后记账。 |
+| `06f70a6232f4d764b367caca71cca4c9dedb24f1` | Applied | 合入PR #7572；子提交及本地适配按本表执行。 |
+| `9461196864191a9406bea0ca48fc14ffdc61df97` | Applied | 探测型号不可用不再错误标记 Responses 不支持。 |
+| `9375e288ba6f16798917193e5abb1f76d1c14161` | Applied | 合入PR #7571；子提交及本地适配按本表执行。 |
+| `02088be2d1a6b987ab39ba9534d3e71f49602721` | Applied | 已知未来重置时间到达前保持额度暂停。 |
+| `90ae81e9f8ecbcab633d3df1aa4813a8afffdf97` | Applied | 合入PR #7624；子提交及本地适配按本表执行。 |
+| `fd7af1d462a57a363af848354968b9f2d3b97670` | Applied + Overridden | 账号成本只看账号开关并设置 configured 标志；客户售价保留分组与账号双门禁，无渠道仍按上游型号计成本。 |
+| `e4b34446afc993552a414d40be4cfd74f4fa566c` | Applied | 合入PR #7619；子提交及本地适配按本表执行。 |
+| `b5b5f1f94bfcf0badfb49bd50cf38ae48e492f5d` | Applied | 模型广场应用独立视频计费倍率。 |
+| `17ce21c03801f7e4a867f24a25dc6fe8dff26eba` | Already Applied | 本地已通过 floatPtr 传入等价倍率指针；合并保留祖先关系，不重复修改测试。 |
+| `510b680fcac9badfde4659f924967fd9840414a7` | Applied | 已审查 remerge-diff，保留上游调度快照测试修正及本地等价指针调用。 |
+| `37f35b12ea21cc909c1220ec698be7e03abd3c19` | Applied | 合入PR #7524；子提交及本地适配按本表执行。 |
+| `f0ebc183e17d1353d479d8ed0bd1c8924a9341aa` | Applied | 分组模型白名单支持任意位置通配符，前后端校验一致。 |
+| `f592b336a3ea32ec799976260eb1117c4492f878` | Applied | 合入PR #7595；子提交及本地适配按本表执行。 |
+| `a2007db707b18b9f23d67762fcc8e9c0b2ca1b35` | Applied + Overridden | 图片留空继承目录价，保留本地定价优先级和 nil 防护；新增输入显式标志，使图片输入/输出显式0均免费。 |
+| `1ff2bd6d95989d7a8a457f7bb3ec22cb0fd2b899` | Applied | 合入PR #7573；子提交及本地适配按本表执行。 |
+| `c802c45e37557fe3f785fbc6bbcba575e63d9e7f` | Applied + Overridden | Redis 采用参数列表，同时保留生产 bind mount、maxclients、资源及双 Compose 一致性。 |
+| `790723e0402b1c9fa18434d7f42c72b32af2ec64` | Applied | 合入PR #7610；子提交及本地适配按本表执行。 |
+| `f4f8ff04db3ff7d27993869796aa14ae039b16af` | Applied | 客户端取消统一499；保留首Token、失败归因及部分用量，测试夹具补本地构造参数。 |
+| `79c18ec836c0f700ee41ced949d603c598cf368c` | Applied | 合入PR #7609；子提交及本地适配按本表执行。 |
+| `7626110d0b172e7b8154a5a99300fa056dd8893f` | Applied | 上下文滚动断开 WS 响应链，保留逐轮状态和安全重放边界。 |
+| `ff6b85e30b4add5bfda9af98c127d0a336b45012` | Applied | 合入PR #7615；子提交及本地适配按本表执行。 |
+| `1ca7b2a519471b452160917b6270a772065038d5` | Applied | 调度投影保留重置额度字段及本地投影资格字段。 |
+| `85810365a6df3ada0e107c370447e263d9f22941` | Applied | 确认无额度停止重复查询，查询失败退避。 |
+| `93c3da03eb5760fdc95f42415d422fb205b5fb6d` | Applied | 合入PR #7555；子提交及本地适配按本表执行。 |
+| `8b95dc94f8db0c258dfbd6c045ff6dd3a9a9b2d4` | Applied | 保留 Responses 多智能体 beta。 |
+| `8616d4e03610e399cba00f62528e16b1141c6b5c` | Applied | 合入PR #7617；子提交及本地适配按本表执行。 |
+| `ecba49f711d5f514cbc302a8c36d5c55a48c348c` | Applied | 透传账号补充模型发现结果，不隐藏已有映射模型。 |
+| `b3c7038cf418f374b207d22f8ac399ba508441e7` | Applied | 合入PR #7526；子提交及本地适配按本表执行。 |
+| `5979521309c77f2ca5f6195a0c79d4a1228678fa` | Applied | OpenCode Zen 的 DeepSeek 推理占位修复；本地 Kimi 策略保留。 |
+| `1df5c39311a4b7b808c354bbb151b662745e4065` | Applied | 合入PR #7562；子提交及本地适配按本表执行。 |
+| `52c2f4cb105a178b88a2ae04d5d32c895fd17e36` | Applied | MALFORMED_FUNCTION_CALL 空流触发安全换号。 |
+| `6b40449c3f31afffcbf76fddaa1c63f65f2a8608` | Applied | 纯 signature 事件不算有效内容。 |
+| `5a350108c43c3cbb1ec8d31c0c1b16c7a6cedd04` | Applied | 合入PR #7607；子提交及本地适配按本表执行。 |
+| `2fc91663d25ae31e2d0f06a979ab4c0cd0c15381` | Applied | OpenAI 桥接尊重 disabled thinking，保留本地兼容策略。 |
+| `b5298fdde8e9c5ba4503aca9bac34c1f87774273` | Applied | 合入PR #7538；子提交及本地适配按本表执行。 |
+| `68c2f5ae6d4db1c7288d2772298839309af6252b` | Applied | 保留显式 structured outputs beta，并兼容本地 API Key 模拟白名单与策略过滤。 |
+| `4c00df2e0183e2c70b7fa8ba45914205e36aad0c` | Applied | 合入PR #7638；子提交及本地适配按本表执行。 |
+| `9a62841fd124d026cf3694fcf9b79e98addcdbdc` | Applied + Overridden | 纳入上游0.2.9版本节点；本地发布版本保持0.1.246。 |
+| `8490a818678780e8301147c13696af94dea7dd07` | Applied | 接入 Sonnet 5.5 模型、定价、工具及协议；最终头过滤与本地模拟身份共存。 |
+| `2cc459e24fb58b6a8875d952deeb984a5136ec37` | Applied | 接入 Sonnet 5.5 静态检查修正。 |
+| `dd6cb410e6db51b5c5662f4edce562b3b68c271b` | Applied | 合入PR #7683；子提交及本地适配按本表执行。 |
+| `27a9421e6aca3c400e01a02511767a2d6b678467` | Applied | Anthropic 工具名一次遍历重写，保留边界及回归。 |
+| `1dca86f287ad6b20ece6e329856d1d9914bf6434` | Applied | 合入PR #7701；子提交及本地适配按本表执行。 |
+| `aa3a3ea7870e7ffaa3c9672a9f14e83114eb3917` | Applied | 管理员近期趋势可切换 Token 和支出，保留本地主题与路由。 |
+| `b35a611538ad713d1e39ce4e9dd3242a36f3cb15` | Applied | 合入PR #7646；子提交及本地适配按本表执行。 |
+| `bd48b2b2d2f037ef56e13ab246d912ce38aa901a` | Applied + Overridden | 保留参数化保活与错误处理，默认入口禁用15秒预内容保活及固定两分钟截止，新增不提前200及延迟内容回归。 |
+| `883a53fea0aeb26b1268f582e2676ed2fb21d5c2` | Applied | 合入PR #7643；子提交及本地适配按本表执行。 |
+| `e2c35cf394ac91c7e35f14d0fa837f630ca25e3f` | Applied | 拒绝白名单映射冲突，同时保留本地预览同步和复制功能。 |
+| `f50b99b66cccfe0d91cfd553b27f78eda78355e9` | Applied | 合入PR #7542；子提交及本地适配按本表执行。 |
+| `13fcfc0f3b841198afba71141d280768b04eefb5` | Applied + Overridden | WS 别名解析综合路由，客户费用始终按每轮请求模型；校准新回归的三种历史计费来源断言，不恢复上游型号收费。 |
+| `e878ab710f9df9f17f84e453929c8d6ac901d41e` | Applied | 账号型号路由仅能认领显式映射的公共模型。 |
+| `453b796df0bb2e1bf20f04f709ce8acb7f1480ba` | Applied | 旧调度路径同样执行综合模型所有权约束。 |
+| `ccb027b51506b2f64c16290ac33b185c547d8963` | Applied | 合入PR #7378；子提交及本地适配按本表执行。 |
+| `b13200d7a18486797f77b7833f4b2e35c00be7ff` | Applied | 透传已收到的 Chat usage，不再依赖 include_usage；保留首Token包装及完结。 |
+| `ece1ecccca842585c99bc738bb93115bd1455e3e` | Applied | 流式 Anthropic usage 归一化，与本地计费和首Token生命周期共存。 |
+| `0416c9ede47e8fbab4a705dc3eeb8b21bf928d73` | Applied | 避免迟到缓存字段导致不明确的输入 Token 扣减。 |
+| `1f955af353f0e0a3f6137aa26090e85aee1109cc` | Applied | 合入PR #7380；子提交及本地适配按本表执行。 |
+| `6a8f921650bbdccc7e0cc58415d9b2fe97aa1197` | Applied | 提供脱敏的 Claude 原生重置额度状态。 |
+| `f8984b8a93b2e9c3121e191eab19e8ab29ef7407` | Applied | 管理端按需查询 Claude 重置额度，不自动兑换。 |
+| `48970f61b4f1b6f6f744d514ee06be923a5f7927` | Applied | 明确关闭状态查询响应体。 |
+| `421da3f0d4ccf709f0d3b8149c21a1eb2e42aad2` | Applied | 重置次数按钮与 Codex 布局对齐。 |
+| `35232c3949f5c7b52ad05d9f5b8260171dcc9b0f` | Applied | 修复次数展示、槽位和回归，保留本地功能入口。 |
+| `860782e6fb0fc2ec1bd83ecd08ff68798029a7fe` | Applied | 加固重置状态投影与组件异步结果代次。 |
+| `052e08e764b8c1899202f1b81524cb4443317fb4` | Applied | 合入PR #7684；子提交及本地适配按本表执行。 |
+| `6073704fd7ddb0ed0f7ca395b7e0736c3d331412` | Applied | 普通 OpenAI 分组不附加 Codex 模型目录。 |
+| `41dcfec4895a868ee8b4a92526d0aecd9afb4418` | Applied | 合入PR #7680；子提交及本地适配按本表执行。 |
+| `6a69dd051a66a37ab2f0a9427f4b2bffcb878012` | Applied + Overridden | 白名单默认空且仅日志；保留本地作用域、邮件开关、独立审计、WS原子状态，并修复结果与Cyber兜底重复记账。 |
+| `fe9dadfc7d929957de908aba17c3fb0da76e8e86` | Applied | 合入PR #7679；子提交及本地适配按本表执行。 |
+| `2840cdeced31574e6007e2244d832689ee45d73d` | Applied | Claude Code 专用组隐藏不支持的客户端标签。 |
+| `2f3fed2fdb0787141294cec81487a5df30426f7f` | Applied | 合入PR #7678；子提交及本地适配按本表执行。 |
+| `a60a29549f488a854966aaec9541abbe006cac22` | Applied + Overridden | 上游来源记录0.2.10及固定SHA；二开VERSION保持0.1.246，不发布。 |
