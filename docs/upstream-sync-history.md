@@ -6408,3 +6408,11 @@ M	frontend/src/views/admin/__tests__/groupModelAllowlist.spec.ts
 M	frontend/src/views/admin/groupModelAllowlist.ts
 M	frontend/src/views/user/KeysView.vue
 ```
+
+## 2026-09-30 上游同步后发布准备 v0.1.247
+
+- 用户在本地同步完成后追加明确授权：提交Git、通过CI后合入主线、更新tag并通过GitHub Actions自动蓝绿部署。历史本地阶段“不推送、不部署”的记录不变，后续发布操作以本节的新授权为依据。
+- 固定上游范围与103项处置、63个二开编号不变，`LAST_FULLY_INTEGRATED_UPSTREAM_SHA=a60a29549f488a854966aaec9541abbe006cac22`。候选基于本地同步结果 `7c08be26ee3971b59b27818bbe7564ac46e57391`，远端main开始时仍为 `8bef535b1df379fdddac734040b7017d5214e666`。
+- 为满足实际安全门禁，定向升级Canvas的fast-uri 3.1.6至3.1.8：解决本地阶段两项既有high，并纳入上游3.1.8额外的中危修复；不改豁免清单、生产默认值或发布保护策略。将最小锁文件变化与Canvas测试、构建、审计一同验证。
+- 拟使用尚未占用的 `v0.1.247`，推送前再次核对远端标签和固定SHA；候选、主线、标签分别核验CI和安全作业，Actions执行蓝绿部署，人工只读核验前后保护项。实际结果另行归档至 `docs/operations/2026-09-30-v0.1.247-release.md`，此节不提前声称发布完成。
+- 依赖补丁补充验证已完成：Canvas类型检查、34项测试、构建退出0，前端和Canvas的现有安全门禁退出0；两份原始审计均退出1，Canvas剩余9项中危，前端保留既有xlsx高危豁免，不宣称全部依赖无漏洞。
