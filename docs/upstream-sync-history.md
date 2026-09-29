@@ -6428,3 +6428,11 @@ M	frontend/src/views/user/KeysView.vue
 
 - v0.1.247已完成部署，验收文档提交06164536b的候选CI成功，但主线复跑Security Scan 36631941272新检出Canvas间接依赖undici的两项high。本次修复7.29.0至7.29.1，不以此前成功记录掩盖新失败，不增加豁免。
 - 上游同步范围不扩大，`LAST_FULLY_INTEGRATED_UPSTREAM_SHA=a60a29549f488a854966aaec9541abbe006cac22`，103项处置和63个正式二开编号保持。修复通过CI后另发v0.1.248，原标签不移动，结果见 `docs/operations/2026-09-30-v0.1.248-release.md`。
+
+## 2026-09-30 v0.1.248 补充发布验收
+
+- undici安全修复提交 `211d3f29e9a8652e7f7323bda6bcada8ee7382c3` 经候选、main、标签三轮8项CI与2项安全检查全部成功后发布，未新增豁免。附注标签`v0.1.248`保持固定SHA，VERSION由Actions回写至0.1.248；不移动v0.1.247标签，不掩盖此前主线审计失败。
+- Release `36635585434` 首次因Windows构建下载依赖的HTTP/2网络错误失败，发布和部署均未执行；同一SHA完整重跑的attempt 2共10个作业全部成功。五个平台资产校验清单与GitHub摘要一致，未声称已运行所有平台二进制。
+- Actions于06:04:46从blue切至green，满一小时后07:04:47开始强退旧blue，07:05:52完成回收。强退前HTTP/SSE各1、会话租约111，最终退出137、非OOM，`usage_loss_unknown=true`；没有把本次退役描述为无损，也没有混用上次发布的强退证据。
+- 07:06至07:07最终只读核验与attempt 2部署归档比较通过：stable、pending为空，运行版本0.1.248，311条迁移账本、数据库/Redis身份、数据挂载、双Compose、配置及资源保护项不变；双入口各3506次健康探针无错误，首页/公开版本及8个静态资源符合预期。健康探针不代表全业务或用量完整性验证。
+- `LAST_FULLY_INTEGRATED_UPSTREAM_SHA=a60a29549f488a854966aaec9541abbe006cac22`；固定103项处置、9项本地覆盖和63个正式二开编号不变，没有拉入后续上游提交。最终部署证据、首次失败和验证边界见 `docs/operations/2026-09-30-v0.1.248-release.md`。
