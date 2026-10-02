@@ -53,37 +53,48 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	if s.notificationEmailService != nil {
 		s.notificationEmailService.RememberRecipientLocale(ctx, req.UserID, user.Email, req.Locale)
 	}
-	orderAmount := req.Amount
-	limitAmount := req.Amount
-	bonusRate := 0.0
-	bonusAmount := 0.0
-	var bonusRuleSnapshot map[string]any
-	if plan != nil {
-		orderAmount = plan.Price
-		limitAmount = plan.Price
-	} else if req.OrderType == payment.OrderTypeBalance {
-		quote := calculateEffectiveBalanceRechargeQuote(
-			req.Amount,
-			cfg,
-			s.IsBalanceRechargeBonusDisabled(ctx, req.UserID),
-		)
-		orderAmount = quote.CreditedAmount
-		bonusAmount = quote.BonusAmount
-		bonusRate = quote.BonusRate
-		if quote.Rule != nil {
-			bonusRuleSnapshot = map[string]any{
-				"min_amount": quote.Rule.MinAmount,
-				"bonus_rate": quote.Rule.BonusRate,
-				"max_amount": quote.Rule.MaxAmount,
-			}
-		}
-	}
 	feeRate := cfg.RechargeFeeRate
 	methodCurrency := payment.DefaultPaymentCurrency
 	if s.configService != nil {
 		methodCurrency, err = s.configService.ValidateMethodCurrencyConsistency(ctx, req.PaymentType)
 		if err != nil {
 			return nil, err
+		}
+	}
+	orderAmount := req.Amount
+	limitAmount := req.Amount
+	bonusAmount := 0.0
+	bonusRate := 0.0
+	var bonusRuleSnapshot map[string]any
+	if plan != nil {
+		orderAmount = plan.Price
+		limitAmount = plan.Price
+	} else if req.OrderType == payment.OrderTypeBalance {
+		bonusDisabled := s.IsBalanceRechargeBonusDisabled(ctx, req.UserID)
+		// 本地按区间返利规则优先；未配置本地规则时使用上游充值阶梯。
+		// 这样保留现有用户返利和禁用开关，同时接入上游的赠金/折扣模式。
+		if len(cfg.BalanceRechargeBonusRules) > 0 || bonusDisabled {
+			quote := calculateEffectiveBalanceRechargeQuote(
+				req.Amount,
+				cfg,
+				bonusDisabled,
+			)
+			orderAmount = quote.CreditedAmount
+			bonusAmount = quote.BonusAmount
+			bonusRate = quote.BonusRate
+			if quote.Rule != nil {
+				bonusRuleSnapshot = map[string]any{
+					"min_amount": quote.Rule.MinAmount,
+					"bonus_rate": quote.Rule.BonusRate,
+					"max_amount": quote.Rule.MaxAmount,
+				}
+			}
+		} else {
+			quote := quoteRechargeBonus(cfg, req.Amount, methodCurrency)
+			limitAmount = quote.PayBase
+			bonusAmount = quote.Bonus
+			bonusRate = quote.Percent
+			orderAmount = quote.Credited
 		}
 	}
 	payAmountStr, payAmount, err := calculateCreateOrderPayAmountForOrderType(limitAmount, feeRate, methodCurrency, req.OrderType, cfg.SubscriptionUSDToCNYRate)
@@ -494,6 +505,7 @@ func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.Paymen
 	s.writeAuditLog(ctx, order.ID, "ORDER_CREATED", fmt.Sprintf("user:%d", req.UserID), map[string]any{
 		"paymentAmount":  req.Amount,
 		"creditedAmount": order.Amount,
+		"bonusAmount":    order.BonusAmount,
 		"payAmount":      order.PayAmount,
 		"paymentType":    req.PaymentType,
 		"orderType":      req.OrderType,

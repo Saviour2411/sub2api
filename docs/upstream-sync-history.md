@@ -6,6 +6,36 @@
 - 本次仅结构化记录已有同步事实并增加只读版本检查，未合入新上游代码，`LAST_FULLY_INTEGRATED_UPSTREAM_SHA` 不变，不记为新一轮上游同步。
 - 此后完整同步上游时，必须在同一提交维护该 JSON 的仓库、原版版本、完整 SHA 和带时区同步时间，并同步更新本台账与二开台账。CI 校验 SHA 属于当前历史，且该提交的 `backend/cmd/server/VERSION` 与记录版本一致；不能用二开版本或最新 Release 冒充已同步版本。
 
+## 2026-10-02 上游增量同步至 b8dece900
+
+- 执行时间：2026-10-02T00:18:13+08:00
+- 执行状态：同步分支已完成固定上游合并、冲突适配和本地验证收尾；本记录提交后确认 `main` 仍保持同步前 SHA，再使用 `--ff-only` 更新本地 `main`
+- 本地目标分支：`main`
+- `LOCAL_PRE_SYNC_SHA`：`fb0319dc793fdd3049e0f1afb9367d316c90ed0d`
+- 上游仓库：`https://github.com/Wei-Shaw/sub2api.git`
+- 上游分支：`main`
+- `UPSTREAM_OLD_SHA`：`a60a29549f488a854966aaec9541abbe006cac22`
+- `UPSTREAM_NEW_SHA`：`b8dece9000c68815a5b867ca5a1e6f236e173905`
+- merge-base：`a60a29549f488a854966aaec9541abbe006cac22`
+- `LAST_FULLY_INTEGRATED_UPSTREAM_SHA`：`b8dece9000c68815a5b867ca5a1e6f236e173905`
+- 固定范围共 62 个上游提交，其中 43 个非合并提交、19 个合并提交；使用隔离同步分支 `sync/upstream-20261002-b8dece900` 完整执行 `git merge --no-ff --no-commit`，保留 63 项既有二次开发编号及本地版本 `0.1.248`
+- 备份分支：`backup/pre-upstream-sync-20261002-230941-fb0319dc7`
+
+### 上游适配与冲突处置
+
+- TypeSafe/System One 平台、账号测试、模型准入、错误策略和上游计费探测合并到本地网关；保留本地平台白名单、账号测试提示词和请求隔离约束。
+- API Key 创建数量/频率限制、排序和 Claude reset 幂等能力合入；保留本地托管密钥保护及管理端行为。
+- 充值赠金阶梯与折扣模式合入支付配置、订单和前端；本地既有区间返利规则或用户禁用开关优先，未配置本地规则时才使用上游阶梯，按用户串行扣费和 5 秒 usage task 超时不变。
+- Gateway 用量任务继续按用户串行提交；任务在队列丢弃时归还在途预留，避免合并后出现余额预留泄漏。
+- Ent/Wire 生成结果保留本地订单 `base_amount`、`bonus_rate`、`bonus_rule_snapshot` 等字段，并移除上游重复生成的 `bonus_amount` 声明；生产 bind mount、回环监听、HTTP upstream 开关、3600 秒响应头等待和实例性能参数未改。
+
+### 验证记录
+
+- 已执行 `git diff --check`、冲突路径检查、冲突标记扫描和上游元数据静态核对。
+- 前端将执行 lint、typecheck、Vitest 和生产构建；后端将执行可在当前 Go 工具链运行的格式检查、定向测试和构建检查。
+- 当前机器为 Go 1.26.3，而仓库声明 Go 1.27.0；`go generate ./ent` 因缺少 Go 1.27 标准库组件未能执行，已通过合并后 schema 与生成代码定点一致性检查处理，未宣称生成命令成功。
+- 未访问远程服务器、未执行生产操作、未推送或部署；完整退出码和剩余环境限制在同步提交前补记。
+
 ## 2026-07-26 发布核验补充（同步至 6d956bdc2）
 
 - `v0.1.210` 更新到同步后提交并自动发布时，生产服务器继续使用 bind mount 活动 Compose，镜像 revision 已更新为 `4957c7b5876643037e7744535705e213947312a1` 且健康检查通过。
