@@ -286,6 +286,10 @@ type SystemSettings struct {
 	PaymentProductNameSuffix         string                     `json:"payment_product_name_suffix"`
 	PaymentHelpImageURL              string                     `json:"payment_help_image_url"`
 	PaymentHelpText                  string                     `json:"payment_help_text"`
+	// 充值赠送阶梯与活动文案
+	PaymentRechargeBonusTiers  []RechargeBonusTier `json:"payment_recharge_bonus_tiers"`
+	PaymentRechargeBonusMode   string              `json:"payment_recharge_bonus_mode"`
+	PaymentRechargeBonusNotice string              `json:"payment_recharge_bonus_notice"`
 
 	// Cancel rate limit
 	PaymentCancelRateLimitEnabled bool   `json:"payment_cancel_rate_limit_enabled"`

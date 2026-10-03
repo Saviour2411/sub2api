@@ -89,6 +89,15 @@ func TestNormalizeKnownOpenAIPricingModel_OfficialFamilies(t *testing.T) {
 	}
 }
 
+func TestNormalizeKnownOpenAIPricingModelGPT61Sol(t *testing.T) {
+	for _, model := range []string{"gpt-6.1-sol", "openai/gpt-6.1-sol-max", "gpt-6.1-sol-high-openai-compact"} {
+		require.Equal(t, "gpt-6.1-sol", normalizeKnownOpenAIPricingModel(model))
+	}
+	for _, model := range []string{"gpt-6.1-sol-custom", "x-gpt-6.1-sol"} {
+		require.Empty(t, normalizeKnownOpenAIPricingModel(model))
+	}
+}
+
 func TestUsageBillingModelCandidates_BareGPT56IncludesSol(t *testing.T) {
 	require.Equal(t,
 		[]string{"gpt-5.6", "gpt-5.6-sol"},

@@ -18,3 +18,16 @@
 - 新增受操作白名单和用户确认约束的站内画布助手。
 
 除上述修改外，原项目的 MIT 许可权利与免责声明保持不变。
+
+## shadcn 静态样式
+
+- 来源：`shadcn@4.18.0` npm 包的 `dist/tailwind.css`。
+- 保留文件：`src/styles/vendor/shadcn.css`，仅翻译注释，样式规则未改动。
+- 原文件 SHA-256：`bc7d83425702955b4cb67cb14ede9d603f9d912376d57a2d81d661094d2a782a`。
+- 许可证：MIT License；版权：Copyright (c) 2023 shadcn。
+- 完整许可文本：`src/styles/vendor/LICENSE.shadcn`，保留上游原文。
+
+Canvas 只引用该静态样式，不调用 shadcn CLI、MCP 或源码生成工具。为移除
+CLI 间接引入的高危 braces 依赖，构建改用固定的本地样式副本，不再安装
+shadcn 包；未将该依赖移动到开发依赖或添加安全豁免。更新副本时须复核许可、
+来源摘要和生产构建的样式差异。
