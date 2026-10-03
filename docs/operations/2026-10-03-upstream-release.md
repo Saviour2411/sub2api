@@ -17,6 +17,14 @@
 - 候选`87886068b`的PR CI `37083191255`已确认仅有上述两个定价用例失败，其余7个CI作业成功；PR Security Scan `37083191259`成功。失败日志通过完整运行归档获取，未关闭TLS证书校验。
 - 名称规范化修复后，在工作区内tmpfs执行`go test -tags=unit ./internal/service ./internal/pkg/openai -count=1 -timeout=10m -run 'TestNormalizeKnownOpenAIPricingModel|TestNewModelPricing|TestBillingInflight|TestGPT61Sol'`退出0，上游同步元数据校验退出0。全量`go test -tags=unit ./... -count=1 -timeout=20m`及新提交的远端门禁结果仍待完成，不能沿用旧提交的成功检查。
 
+## 后续门禁与静态样式依赖
+
+- 规范化修复提交`7887a6c4d01d3cbe1e4aaab38a2bfeff8e99ae91`的push CI `37087589670`及PR CI `37087594263`各8项作业全部成功，包含单元、集成、竞态与隔离蓝绿协议验证。本地工作区tmpfs全量unit退出0，临时挂载已正常卸载。
+- 同提交的push Security Scan `37087589728`及PR Security Scan `37087594216`仍失败，原因是Canvas的braces 3.0.3：`GHSA-vfj7-8cjw-p6xm`。公告API显示UTC 2026-09-18发布、UTC 2026-10-02 22:36:34更新，受影响范围为`<=3.0.3`，未列出修复版本；npm当前发布版本也仍为3.0.3，不能编造升级版本或沿用此前审计通过的结论。
+- `pnpm why braces --prod`显示全部路径来自未调用的shadcn CLI，Canvas仅导入`shadcn/tailwind.css`。固定保留4.18.0的静态样式及MIT许可，将导入改为本地文件，再移除CLI及其依赖链；没有移动到开发依赖、覆盖不兼容实现、修改安全检查或新增豁免。
+- 修复后冻结安装退出0；8个Vitest文件34项测试、类型检查和Vite构建退出0。修改前后11个构建文件的SHA-256逐一一致，包含HTML、JS、CSS及图标；保留既有大包与动态导入构建警告，未顺便重构。
+- 生产依赖审计剩1项moderate、1项low、0项high/critical。原始pnpm审计退出1，既有`check_pnpm_audit_exceptions.py`退出0；完整结果见`canvas-audit-css-vendor.json`和`canvas-css-vendor-artifact-comparison.json`。锁文件不再包含braces、micromatch或fast-glob，新提交仍待远端完整门禁。
+
 ## 生产只读核验
 
 - 北京时间2026-10-03 08:24核验，生产状态`stable`、活动槽`green`、`pending=null`，版本仍为0.1.248、固定SHA为`211d3f29e9a8652e7f7323bda6bcada8ee7382c3`。历史强退记录属于上一轮发布，不是本轮结果。
