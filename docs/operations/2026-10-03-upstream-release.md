@@ -13,6 +13,9 @@
 - push Security Scan `37081979653`：后端通过，Canvas审计失败。brace-expansion的`GHSA-qhr7-859c-m2p7`和`GHSA-6j4f-fj2g-mc7p`于UTC 2026-09-29发布，axios相关高危公告于UTC 2026-09-30发布；按公告修复版本升级Canvas至brace-expansion 5.0.11、axios 1.20.0。
 - 本地冻结安装、Canvas 34项测试、类型检查、生产构建通过。修复后审计为0项high/critical、12项moderate、1项low；原始审计退出1，现有豁免门禁退出0，未增加或延长豁免。
 - 以上记录不预写后续CI、主线、tag或部署成功结论。
+- 修复后的全量unit测试进一步发现`gpt-6.1-sol`价格表与本地计费名称规范化衔接遗漏，已补齐严格匹配和正反例；其余本机Unix socket/文件权限失败来自WSL的Windows挂载目录，在工作区内tmpfs复验，不修改业务代码或弱化断言来掩盖环境失败。
+- 候选`87886068b`的PR CI `37083191255`已确认仅有上述两个定价用例失败，其余7个CI作业成功；PR Security Scan `37083191259`成功。失败日志通过完整运行归档获取，未关闭TLS证书校验。
+- 名称规范化修复后，在工作区内tmpfs执行`go test -tags=unit ./internal/service ./internal/pkg/openai -count=1 -timeout=10m -run 'TestNormalizeKnownOpenAIPricingModel|TestNewModelPricing|TestBillingInflight|TestGPT61Sol'`退出0，上游同步元数据校验退出0。全量`go test -tags=unit ./... -count=1 -timeout=20m`及新提交的远端门禁结果仍待完成，不能沿用旧提交的成功检查。
 
 ## 生产只读核验
 
