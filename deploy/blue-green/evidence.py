@@ -19,10 +19,24 @@ APPROVALS_PATH = "deploy/blue-green/expand-approvals.json"
 SPECIAL_MIGRATIONS = {
     "239_channel_reasoning_effort_multipliers.sql": ("reasoning-empty-239-v1", "66feb546785dfa385d8efd268a40276cd8ffdb0cead7026cd79e339a3b69edf1"),
     "240_affiliate_ledger_operation_id.sql": ("affiliate-operation-240-v1", "3823bfea5f64feb58f5fcebc341c6877eaefc97834b4cd652c8e83ad08ed78da"),
+    "241_add_payment_order_bonus_amount.sql": ("bonus-existing-241-v1", "18b6a524a9873d3e4a45e6f9bd03b6e69f4384b701825c659817e017f2e8244f"),
+    "241_add_typesafe_platform.sql": ("platform-guarded-241-v1", "b6559525bf8d0b5d7c617e7415944f0d1fae8c408e9131ace84139795f66dcd2"),
+}
+PLATFORM_SCHEMA = {
+    "path": "backend/ent/schema/user_platform_quota.go",
+    "from_checksum": "88511bf2651dcde080ecb915e7ee699bfb93a5ff6df66e6ea4ba0cc229ea00d3",
+    "to_checksum": "1b62bc2d0d95a67b4908d7615c032e0376d0ae890f15ca3f7019f0f2a75521a4",
 }
 ADD_COLUMN = re.compile(
     r"ALTER\s+TABLE\s+([a-z_][a-z0-9_]*)\s+ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+"
     r"([a-z_][a-z0-9_]*)\s+(jsonb|text|boolean|smallint|integer|bigint|uuid)\s*;", re.I)
+
+
+def reviewed_platform_schema(base, sha, changed, git):
+    require("A\tbackend/migrations/241_add_typesafe_platform.sql" in changed.splitlines()
+            and "M\t" + PLATFORM_SCHEMA["path"] in changed.splitlines(), "241平台SQL与固定Ent差异必须同时存在")
+    for ref, key in ((base, "from_checksum"), (sha, "to_checksum")):
+        require(checksum(git("show", ref+":"+PLATFORM_SCHEMA["path"])) == PLATFORM_SCHEMA[key], "241专项Ent差异摘要不符")
 
 
 def require(value, message):
@@ -68,6 +82,9 @@ def migration_evidence(base, sha, git):
         fields = line.split("\t")
         require(len(fields) == 2, "迁移差异格式不受支持")
         status, path = fields
+        if status == "M" and path == PLATFORM_SCHEMA["path"]:
+            reviewed_platform_schema(base, sha, changed, git)
+            continue
         if status in ("A", "M") and re.fullmatch(r"backend/migrations/[a-zA-Z0-9_]+_test\.go", path):
             continue
         require(status == "A" and re.fullmatch(r"backend/migrations/[0-9][a-zA-Z0-9_]+\.sql", path),
@@ -89,6 +106,9 @@ def migration_evidence(base, sha, git):
         require(approval.get("checksum") == checksum(content), "迁移内容与兼容审批摘要不符")
         if special:
             require(approval.get("profile") == special[0] and "column" not in approval, "专项迁移与兼容审批不符")
+            if special[0] == "platform-guarded-241-v1":
+                require(approval.get("schema_change") == PLATFORM_SCHEMA, "241平台审批缺少固定Ent差异")
+                reviewed_platform_schema(base, sha, changed, git)
         else:
             require(approval.get("column") == contract and "profile" not in approval, "新增字段与兼容审批不符")
         contracts = approval.get("legacy_contracts", [])
