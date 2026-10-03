@@ -331,8 +331,8 @@ type inflightEstimateDeps struct {
 	resolveMapping func(ctx context.Context, groupID int64, model string) ChannelMappingResult
 	userGroupRate  func(ctx context.Context, userID, groupID int64, groupDefault float64) float64
 	// accountMappedModels 返回调度器可选账号对 model 的账号级映射结果（去重，不含 model 本身）。
-	// 准入时账号尚未选定，计费侧 billableModelWithFallback 会回退到实际转发模型（UpstreamModel，
-	// 即账号映射后的模型），因此这里取所有候选映射模型的最高估算。
+	// 准入时账号尚未选定，预留可取所有候选映射模型的最高估算；
+	// 这不改变本地按请求模型计费或无价请求的独立准入校验。
 	// 仅在首选/渠道候选均无法定价（或 composite 分组）时才调用；实现只读调度器快照，
 	// 不在请求路径上直接查库，也不按模型名缓存（内存不随请求模型名增长）。
 	accountMappedModels func(ctx context.Context, apiKey *APIKey, model string) []string
@@ -400,10 +400,9 @@ func logInflightUnpriced(model string, groupID *int64) {
 	logger.LegacyPrintf("service.billing_cache", "Warning: inflight reservation cannot price model=%q group=%d; request admitted without reservation (fail-open, throttled log)", model, gid)
 }
 
-// inflightBillingModelCandidates 与计费路径一致地挑选计费模型：
-// 返回 primary（计费侧首选的计费模型）与 fallbacks（计费侧 billableModelWithFallback
-// 在首选模型查无价时回退到的实际转发模型：渠道映射模型 → 账号级映射模型）。
-//   - channel_mapped（默认）→ 映射后模型（同时估算请求模型，取较高者）；
+// inflightBillingModelCandidates 选择保守预留候选，不替代请求模型定价准入。
+// primary 为首选估算模型，fallbacks 仅用于首选无价时的预留估算。
+//   - channel_mapped → 映射后模型（同时估算请求模型，取较高者）；
 //   - requested → 请求模型；
 //   - upstream / response_model 在准入时未知 → 取请求模型与映射模型两者较高估算。
 func inflightBillingModelCandidates(ctx context.Context, deps inflightEstimateDeps, apiKey *APIKey, model string) (primary, fallbacks []string, upstreamInput string) {
@@ -601,7 +600,7 @@ func (d inflightEstimateDeps) estimate(ctx context.Context, apiKey *APIKey, req 
 	// 别名本身可能命中家族模糊价（低估），因此与候选具体模型一起取最高。
 	composite := apiKey.Group != nil && apiKey.Group.Platform == PlatformComposite
 	if best <= 0 || composite {
-		// 与 billableModelWithFallback 同口径：首选模型无价时回退到实际转发模型。
+		// 首选无价时以实际转发候选保守估算，不因此允许无价请求转发或计费。
 		if c := bestOf(fallbacks); c > best {
 			best = c
 		}

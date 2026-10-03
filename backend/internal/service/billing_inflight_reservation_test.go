@@ -325,9 +325,8 @@ func TestSyncBalanceCacheAfterDeduction_SynchronousWhenInflightEnabled(t *testin
 	require.InDelta(t, 0.75, bal, 1e-12)
 }
 
-// 计费侧：requested 来源下别名本身无价 → billableModelWithFallback 回退到映射模型。
-// 准入估算必须同口径地 > 0，且等于按回退模型的估算。
-func TestInflightEstimate_RequestedSourceUnpricedAliasFallsBackLikeBilling(t *testing.T) {
+// 预留可以用映射模型保守估算，但不能替代本地请求模型定价准入。
+func TestInflightEstimate_RequestedSourceUnpricedAliasDoesNotBypassPricing(t *testing.T) {
 	groupID := int64(30)
 	ch := Channel{
 		ID:                 3,
@@ -343,19 +342,18 @@ func TestInflightEstimate_RequestedSourceUnpricedAliasFallsBackLikeBilling(t *te
 	apiKey := &APIKey{User: &User{ID: 1}, GroupID: &groupID, Group: &Group{ID: groupID, Platform: PlatformAnthropic, RateMultiplier: 1}}
 	ctx := context.Background()
 
-	billed := svc.billableModelWithFallback(ctx, apiKey, "req-alias", "claude-sonnet-4-5", "req-alias")
-	require.Equal(t, "claude-sonnet-4-5", billed, "precondition: billing falls back to the mapped model")
+	require.ErrorIs(t, svc.ValidateRequestedModelPricing(ctx, apiKey, "req-alias", PricingUsageToken, ""), ErrModelPricingUnavailable)
 
 	est, priced := svc.EstimateInflightReservation(ctx, apiKey, InflightEstimateRequest{Model: "req-alias", BodyBytes: 4000, MaxTokens: 1000})
 	require.True(t, priced)
 	require.Greater(t, est, 0.0)
-	direct, _ := svc.EstimateInflightReservation(ctx, apiKey, InflightEstimateRequest{Model: billed, BodyBytes: 4000, MaxTokens: 1000})
+	direct, _ := svc.EstimateInflightReservation(ctx, apiKey, InflightEstimateRequest{Model: "claude-sonnet-4-5", BodyBytes: 4000, MaxTokens: 1000})
 	require.InDelta(t, direct, est, 1e-12)
+	require.ErrorIs(t, svc.ValidateRequestedModelPricing(ctx, apiKey, "req-alias", PricingUsageToken, ""), ErrModelPricingUnavailable)
 }
 
-// 计费侧：别名仅在账号级映射（无渠道映射）→ UpstreamModel 为账号映射模型，计费回退到它。
-// 准入时账号未选定：按分组内候选账号映射模型的最高估算。
-func TestInflightEstimate_AccountLevelMappingFallsBackLikeBilling(t *testing.T) {
+// 账号尚未选定时按候选映射模型保守预留，无价请求仍必须被本地准入拒绝。
+func TestInflightEstimate_AccountLevelMappingDoesNotBypassPricing(t *testing.T) {
 	groupID := int64(31)
 	svc := newInflightEstimateGateway(t, nil)
 	snap := &inflightSnapshotCacheStub{byBucket: map[string][]Account{inflightBucketKey(groupID, PlatformAnthropic): {
@@ -374,14 +372,13 @@ func TestInflightEstimate_AccountLevelMappingFallsBackLikeBilling(t *testing.T) 
 	req := InflightEstimateRequest{BodyBytes: 4000, MaxTokens: 1000}
 	best := 0.0
 	for _, upstream := range []string{"claude-sonnet-4-5", "claude-opus-4-1"} {
-		billed := svc.billableModelWithFallback(ctx, apiKey, "acct-alias-31", upstream, "acct-alias-31")
-		require.Equal(t, upstream, billed, "precondition: billing charges the account-mapped model")
-		req.Model = billed
+		req.Model = upstream
 		c, _ := svc.EstimateInflightReservation(ctx, apiKey, req)
 		require.Greater(t, c, 0.0)
 		best = math.Max(best, c)
 	}
 	require.InDelta(t, best, est, 1e-12, "estimate = max over candidate account-mapped billing models")
+	require.ErrorIs(t, svc.ValidateRequestedModelPricing(ctx, apiKey, "acct-alias-31", PricingUsageToken, ""), ErrModelPricingUnavailable)
 }
 
 type inflightSnapshotCacheStub struct {
