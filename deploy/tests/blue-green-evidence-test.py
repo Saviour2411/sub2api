@@ -118,11 +118,19 @@ class EvidenceTests(unittest.TestCase):
                 continue
             for contract in approval["legacy_contracts"]:
                 contract["checksum"] = e.checksum("旧版契约")
+            schema = (ROOT/e.PLATFORM_SCHEMA["path"]).read_text()
+            old_schema = schema.replace('"opencode_go", "typesafe":', '"opencode_go":')
+            for contract in approval["legacy_contracts"]:
+                if contract["path"] == e.PLATFORM_SCHEMA["path"]:
+                    contract["checksum"] = e.checksum(old_schema)
             base, sha = approval["compatible_from"], "b"*40
             path = approval["path"]
             content = (ROOT/path).read_text()
             def git(*args):
-                if args[0] == "diff": return "A\t"+path
+                if args[0] == "diff":
+                    return "A\t"+path + ("\nM\t"+e.PLATFORM_SCHEMA["path"] if approval["profile"] == "platform-guarded-241-v1" else "")
+                if args[0] == "show" and args[1] == base+":"+e.PLATFORM_SCHEMA["path"]: return old_schema
+                if args[0] == "show" and args[1] == sha+":"+e.PLATFORM_SCHEMA["path"]: return schema
                 if args[0] == "show" and args[1] == sha+":"+path: return content
                 if args[0] == "show" and args[1] == sha+":"+e.APPROVALS_PATH: return json.dumps(approvals)
                 return "旧版契约" if args[0] == "show" else ""
@@ -131,6 +139,33 @@ class EvidenceTests(unittest.TestCase):
             content += "\n-- 未经批准的变化"
             with self.assertRaisesRegex(RuntimeError, "固定 SQL"):
                 e.migration_evidence(base, sha, git)
+
+    def test_platform_schema_requires_exact_pair_and_approval(self):
+        approvals = json.loads((ROOT/e.APPROVALS_PATH).read_text())
+        approval = next(item for item in approvals["approvals"] if item.get("profile") == "platform-guarded-241-v1")
+        base, sha = approval["compatible_from"], "b"*40
+        path, schema_path = approval["path"], e.PLATFORM_SCHEMA["path"]
+        schema = (ROOT/schema_path).read_text()
+        old_schema = schema.replace('"opencode_go", "typesafe":', '"opencode_go":')
+        for contract in approval["legacy_contracts"]:
+            contract["checksum"] = e.checksum(old_schema if contract["path"] == schema_path else "旧版契约")
+        values = {"diff":"A\t"+path+"\nM\t"+schema_path, base+":"+schema_path:old_schema,
+                  sha+":"+schema_path:schema, sha+":"+path:(ROOT/path).read_text(),
+                  sha+":"+e.APPROVALS_PATH:json.dumps(approvals)}
+        def git(*args):
+            return values["diff"] if args[0] == "diff" else values.get(args[1], "旧版契约") if args[0] == "show" else ""
+        self.assertEqual("expand", e.migration_evidence(base,sha,git)["migration_class"])
+        for key, value in (("diff","M\t"+schema_path), ("diff","A\t"+path),
+                           (sha+":"+schema_path,schema+"\n// 未经批准"), (base+":"+schema_path,old_schema+"\n// 基线漂移")):
+            previous = values[key]
+            values[key] = value
+            with self.subTest(key=key), self.assertRaises(RuntimeError):
+                e.migration_evidence(base,sha,git)
+            values[key] = previous
+        approval.pop("schema_change")
+        values[sha+":"+e.APPROVALS_PATH] = json.dumps(approvals)
+        with self.assertRaisesRegex(RuntimeError,"固定Ent"):
+            e.migration_evidence(base,sha,git)
 
 
 if __name__ == "__main__":

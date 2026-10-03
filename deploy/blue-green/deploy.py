@@ -245,27 +245,55 @@ class Deployment:
         release = self.state.get("release", {})
         if not self.pricing_guard(release) or self.state.get("rollback"):
             return
-        # 先保留失败时的限制；旧槽/旧代码仍存在时绝不解除倍率写入保护。
-        require(self.state["phase"] == "stable" and not self.state.get("pending"), "旧实例尚未退役，保留239计费保护")
+        self.finish_migration_guard(release, self.pricing_guard_database, "pricing_guard_result")
+
+    def platform_guard(self, release):
+        return any(entry.get("profile") == "platform-guarded-241-v1"
+                   for entry in release.get("migration_policy", {}).get("migrations", []))
+
+    def platform_guard_database(self, mode):
+        spec = importlib.util.spec_from_file_location("platform_guard", Path(__file__).with_name("platform-guard.py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        sql = module.release_sql() if mode == "release" else "BEGIN READ ONLY; SET LOCAL statement_timeout='5s'; " + module.check_sql() + "; COMMIT;"
+        result = self.run("docker", "exec", "sub2api-postgres", "sh", "-c",
+                          'exec psql -X -qAt -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-sub2api}" -c "$1"', "guard", sql)
+        return json.loads(result.stdout) if mode == "check" else None
+
+    def verify_migration_guards(self, release):
+        self.verify_pricing_guard(release)
+        if self.platform_guard(release):
+            report = self.platform_guard_database("check")
+            require(all(report.get(key) is True for key in ("valid", "migrations", "schema")), "241平台保护或迁移账本不完整，禁止切流或回滚")
+
+    def finish_migration_guards(self):
+        self.finish_pricing_guard()
+        release = self.state.get("release", {})
+        if self.platform_guard(release) and not self.state.get("rollback"):
+            self.finish_migration_guard(release, self.platform_guard_database, "platform_guard_result")
+
+    def finish_migration_guard(self, release, database, result_key):
+        # 旧槽仍存在或身份、配置、健康异常时，必须保留新旧版本的写入兼容保护。
+        require(self.state["phase"] == "stable" and not self.state.get("pending"), "旧实例尚未退役，保留迁移兼容保护")
         active = self.state["active"]
         serving = self.state["slots"][active]
-        require(set(self.state["slots"]) == {active} and serving["sha"] == release["sha"], "活动提交不匹配，保留239计费保护")
-        require(self.machine_id() == self.config["machine_id"], "解除计费保护的目标机器不匹配")
+        require(set(self.state["slots"]) == {active} and serving["sha"] == release["sha"], "活动提交不匹配，保留迁移兼容保护")
+        require(self.machine_id() == self.config["machine_id"], "解除迁移兼容保护的目标机器不匹配")
         source = self.directory / "docker-compose.yml"
         require(source.read_bytes() == (self.directory / "docker-compose.sub2api.yml").read_bytes()
-                and hashlib.sha256(source.read_bytes()).hexdigest() == self.config["compose_sha256"], "生产Compose变化，保留239计费保护")
+                and hashlib.sha256(source.read_bytes()).hexdigest() == self.config["compose_sha256"], "生产Compose变化，保留迁移兼容保护")
         for slot in SLOTS:
             container = self.inspect("sub2api-" + slot)
             if slot == active:
                 require(container and container["Id"] == serving["container_id"] and container["State"]["Running"], "活动容器身份不匹配")
             else:
-                require(container is None, "旧容器仍存在，保留239计费保护")
-        require(self.inspect("sub2api") is None, "存在历史旧应用，保留239计费保护")
+                require(container is None, "旧容器仍存在，保留迁移兼容保护")
+        require(self.inspect("sub2api") is None, "存在历史旧应用，保留迁移兼容保护")
         self.mount("sub2api-postgres", self.directory / "postgres_data", "/var/lib/postgresql/data")
         self.mount("sub2api-" + active, self.directory / "data", "/app/data")
-        require(self.candidate_probe(active, serving["instance_id"]) and self.probe(serving["instance_id"]), "活动双入口不健康，保留239计费保护")
-        self.pricing_guard_database("release")
-        self.save(pricing_guard_result={"release_sha": release["sha"], "status": "released", "released_at": time.time()})
+        require(self.candidate_probe(active, serving["instance_id"]) and self.probe(serving["instance_id"]), "活动双入口不健康，保留迁移兼容保护")
+        database("release")
+        self.save(**{result_key: {"release_sha": release["sha"], "status": "released", "released_at": time.time()}})
 
     def run(self, *args, check=True):
         result = subprocess.run(args, cwd=self.directory, text=True, capture_output=True, check=False)
@@ -636,7 +664,7 @@ class Deployment:
         self.save(active=slot, pending=old, phase="switched", switched_at=time.time(), drain_started_at=time.time(), switch_seconds=time.monotonic()-switch_started, verified_instance=expected)
 
     def rollback(self, window=3600):
-        self.verify_pricing_guard(self.state.get("release", {}))
+        self.verify_migration_guards(self.state.get("release", {}))
         # 只能回到尚未封闭接入的保留实例；不是重新创建旧镜像。
         if self.state.get("rollback"):
             operation = self.state["rollback"]
@@ -880,7 +908,7 @@ class Deployment:
                 return
         if self.state["slots"][self.state["active"]]["sha"] == release["sha"] and self.state["phase"] == "stable":
             require(self.state["slots"][self.state["active"]]["image"] == release["image"], "同一提交的镜像摘要发生变化")
-            self.finish_pricing_guard()
+            self.finish_migration_guards()
             return
         active = self.state["active"]
         slot = "green" if active == "blue" else "blue"
@@ -922,10 +950,10 @@ class Deployment:
         self.save(slots=slots)
         if release["migration_class"] == "expand":
             self.run("docker", "update", "--restart=on-failure", "sub2api-"+slot)
-        self.verify_pricing_guard(release)
+        self.verify_migration_guards(release)
         self.switch(slot)
         if self.drain(window):
-            self.finish_pricing_guard()
+            self.finish_migration_guards()
 
 
 class HealthObserver:
@@ -988,7 +1016,7 @@ def main():
             require(args.window >= 0, "观察窗口不能为负数")
             if args.retire_pending:
                 if deployment.drain(args.window):
-                    deployment.finish_pricing_guard()
+                    deployment.finish_migration_guards()
             elif args.rollback:
                 deployment.rollback(args.window)
             else:

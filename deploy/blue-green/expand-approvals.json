@@ -41,6 +41,57 @@
         {"path": "backend/internal/repository/affiliate_repo.go", "checksum": "bf3a69334a6bc6439768361ba3a05658da9f5e11575c6a5edb022a663fb413e2"}
       ],
       "review": "2026-09-24 用户批准专项兼容适配。旧版流水明确列名读写，不提供operation_id，新增可空字段和只覆盖非NULL值的唯一索引不改变旧版流水。新增线下提现入口旧版不存在。普通索引短暂阻止写入，限普通小表、NOWAIT表锁、1秒锁等待/5秒语句/10秒事务预算，冲突立即回滚，不改历史SQL。"
+    },
+    {
+      "compatible_from": "211d3f29e9a8652e7f7323bda6bcada8ee7382c3",
+      "path": "backend/migrations/241_add_payment_order_bonus_amount.sql",
+      "checksum": "18b6a524a9873d3e4a45e6f9bd03b6e69f4384b701825c659817e017f2e8244f",
+      "profile": "bonus-existing-241-v1",
+      "legacy_contracts": [
+        {
+          "checksum": "43ad290d854bf183069dc63181d7d7277c8e0569a8fe39224a0a04b3e7a7c419",
+          "path": "backend/ent/schema/payment_order.go"
+        },
+        {
+          "checksum": "46f95ff944d2809416b90b002155885df1aa346b4cd5e4b00e800170539f1ad2",
+          "path": "backend/internal/service/payment_order.go"
+        },
+        {
+          "checksum": "6e1664bc32eb865c3d16a8b1b149cd01c5a64877efd60d7122a7e25aac604890",
+          "path": "backend/internal/service/payment_fulfillment.go"
+        }
+      ],
+      "review": "2026-10-03 用户批准241专项兼容适配。既有149已建立赠金列，旧版显式读写该列。仅在149账本及numeric(20,2)非空默认0定义一致时执行原SQL并登记241，不新增、回填或修改列。PostgreSQL18、16MiB普通无触发器表、NOWAIT表锁及1/5/10秒锁/语句/事务预算；不改历史SQL。"
+    },
+    {
+      "compatible_from": "211d3f29e9a8652e7f7323bda6bcada8ee7382c3",
+      "path": "backend/migrations/241_add_typesafe_platform.sql",
+      "checksum": "b6559525bf8d0b5d7c617e7415944f0d1fae8c408e9131ace84139795f66dcd2",
+      "profile": "platform-guarded-241-v1",
+      "schema_change": {
+        "path": "backend/ent/schema/user_platform_quota.go",
+        "from_checksum": "88511bf2651dcde080ecb915e7ee699bfb93a5ff6df66e6ea4ba0cc229ea00d3",
+        "to_checksum": "1b62bc2d0d95a67b4908d7615c032e0376d0ae890f15ca3f7019f0f2a75521a4"
+      },
+      "legacy_contracts": [
+        {
+          "checksum": "88511bf2651dcde080ecb915e7ee699bfb93a5ff6df66e6ea4ba0cc229ea00d3",
+          "path": "backend/ent/schema/user_platform_quota.go"
+        },
+        {
+          "checksum": "c9154dbaeace01d8b506f64a1aaf14071817033529d4b6b7fa0cc72826ae546f",
+          "path": "backend/internal/repository/user_platform_quota_repo.go"
+        },
+        {
+          "checksum": "099c98094d60d8d1f29a773e52ac1012a1c9c9f939df857b44f1adee568a76b6",
+          "path": "backend/internal/repository/composite_model_route_repo.go"
+        },
+        {
+          "checksum": "4f82cbb5887850c527ba9faaf1b2d64de36f1645509327b9c8681ab3b89abf3f",
+          "path": "backend/internal/service/composite_route_resolver.go"
+        }
+      ],
+      "review": "2026-10-03 用户批准241专项兼容适配。仅放行固定Ent校验增加typesafe及原SQL；锁内核验238账本、两表原CHECK精确定义，原SQL扩展后安装禁止typesafe的新旧兼容保护。旧槽完全退役、固定活动身份及健康复核后才解除，失败/回滚保留。PostgreSQL18、16MiB普通无触发器表、NOWAIT全部表锁及1/5/10秒预算，其他Ent变化继续拒绝。"
     }
   ]
 }

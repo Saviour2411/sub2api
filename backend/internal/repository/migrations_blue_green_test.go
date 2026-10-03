@@ -23,6 +23,8 @@ func TestBlueGreenSpecialPolicyBindsExactFileAndSQL(t *testing.T) {
 	for _, entry := range []blueGreenMigration{
 		{Filename: blueGreenReasoningFile, Checksum: blueGreenReasoningChecksum, Profile: blueGreenReasoningProfile},
 		{Filename: blueGreenAffiliateFile, Checksum: blueGreenAffiliateChecksum, Profile: blueGreenAffiliateProfile},
+		{Filename: blueGreenBonus241File, Checksum: blueGreenBonus241Checksum, Profile: blueGreenBonus241Profile},
+		{Filename: blueGreenPlatform241File, Checksum: blueGreenPlatform241Checksum, Profile: blueGreenPlatform241Profile},
 	} {
 		content, err := migrations.FS.ReadFile(entry.Filename)
 		require.NoError(t, err)
