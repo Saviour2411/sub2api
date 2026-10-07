@@ -6484,3 +6484,290 @@ M	frontend/src/views/user/KeysView.vue
 - Actions于06:04:46从blue切至green，满一小时后07:04:47开始强退旧blue，07:05:52完成回收。强退前HTTP/SSE各1、会话租约111，最终退出137、非OOM，`usage_loss_unknown=true`；没有把本次退役描述为无损，也没有混用上次发布的强退证据。
 - 07:06至07:07最终只读核验与attempt 2部署归档比较通过：stable、pending为空，运行版本0.1.248，311条迁移账本、数据库/Redis身份、数据挂载、双Compose、配置及资源保护项不变；双入口各3506次健康探针无错误，首页/公开版本及8个静态资源符合预期。健康探针不代表全业务或用量完整性验证。
 - `LAST_FULLY_INTEGRATED_UPSTREAM_SHA=a60a29549f488a854966aaec9541abbe006cac22`；固定103项处置、9项本地覆盖和63个正式二开编号不变，没有拉入后续上游提交。最终部署证据、首次失败和验证边界见 `docs/operations/2026-09-30-v0.1.248-release.md`。
+
+## 2026-10-07 上游同步 3f1a2ea0a（合并与兼容阶段）
+
+- 时间：`10/07/2026 12:23:17`；状态：本条随完整合并及兼容提交维护，候选验证和本地 main 更新结果另行追加。本轮尚未发布或部署。
+- 用户已回复“批准执行”，批准本地备份、同步分支、完整合并、两处冲突处理、回归验证和本地提交；明确包含两项 XLSX 豁免续期，不包含 push、PR、标签、远程服务器、生产数据或账务操作。
+- 本地目标分支：`main`；`LOCAL_PRE_SYNC_SHA=68eb5371204dde5cd18bd9d05f272585641105c3`。预检 Git 工作区干净，跟踪 origin/main 的 ahead/behind 为0/0，stash为0，无进行中的 Git 操作、submodule 或 LFS 跟踪文件。
+- 上游仓库：`https://github.com/Wei-Shaw/sub2api.git`；通过远端 HEAD 核实默认分支为 `main`。
+- `UPSTREAM_OLD_SHA=b8dece9000c68815a5b867ca5a1e6f236e173905`；`UPSTREAM_NEW_SHA=3f1a2ea0a760730e3bc528105c00b4ee4f23e469`；实际 merge-base 与旧基线相同。旧基线是本地和目标上游的祖先，本次不扩大固定范围。
+- `LAST_FULLY_INTEGRATED_UPSTREAM_SHA=3f1a2ea0a760730e3bc528105c00b4ee4f23e469`：本合并提交完整保留目标上游祖先关系；验证完成前不更新原 main，不把当前状态描述为完成发布。
+- 备份分支：`backup/pre-upstream-sync-20261007-113916-68eb53712`；同步分支：`sync/upstream-20261007-3f1a2ea0a`。
+- 策略：在同步分支执行 `git merge --no-ff --no-commit 3f1a2ea0a760730e3bc528105c00b4ee4f23e469`，处理已获批冲突与二开兼容后形成明确 merge commit。具体代码提交 SHA 在最终记录中引用，本条不自引用自身 SHA。
+
+### 固定范围逐提交处置
+
+| 上游提交 | 状态 | 内容与处置 |
+| --- | --- | --- |
+| `bbba01dae905f0036def71cb9fe4785fcab794c9` | Applied | Codex 远程目录启用 API Key 模型发现，保留本地配置分支并扩展断言。 |
+| `d1aac6b98989b79d66c0f52bd18dc8c3142e7601` | Applied | EasyPay 回调参数白名单、返回 URL 查询清除与攻击回归。 |
+| `33d9e72f9098baa58d3562fc632e26578cdbe9a9` | Applied | 保留 Codex 修复的上游合并历史。 |
+| `d97ccc952ff3b7f63b44c45079ee6a28422f1393` | Applied | 保留 EasyPay 安全修复的上游合并历史。 |
+| `6e315616edeeedf55cf477ab8f27cb8d7c68ebfb` | Applied | 首次安装随机管理员邮箱、密码和邮箱校验、配置模板及测试；同步两份本地生产 Compose，已有管理员不重置。 |
+| `0f9d460dc65d2509107aff542459e18677e06291` | Applied | Vue/source-map-js 修复与已批准的两项 XLSX 豁免续期；保留本地 axios/nanoid 安全约束。 |
+| `0363b8cdba8cec3e2ba4b2dbd49c4481143fa55d` | Applied | 保留初始化与依赖组的上游合并历史。 |
+| `3f1a2ea0a760730e3bc528105c00b4ee4f23e469` | Applied + Overridden | 保留上游0.2.14版本提交历史，但本地 VERSION仍为0.1.249；上游来源 JSON 单独记录0.2.14与固定SHA。 |
+
+共8项 Applied，其中1项同时 Overridden；没有 Already Applied、Skipped 或 Deferred。文本冲突仅 VERSION 与 package.json，均按审批方案处理，不以整文件 ours/theirs 覆盖本地功能。
+
+### 兼容与风险边界
+
+- 支付：保留本地 QueryOrder 的 WAITING 优先级、30秒门槛、每轮10条/10秒预算、赠送快照及幂等履约。此次没有数据库迁移，不修改历史订单、余额或封禁记录。
+- Codex：更新原有配置断言，并覆盖远程/文件、HTTP/WS、macOS/Linux/Windows、Composite与各路由平台；不删除原有鉴权、模型和路径断言。
+- 部署：两份生产 Compose 仅对齐 ADMIN_EMAIL 空默认值；不改变 bind mount、回环端口、现有资源和 HTTP upstream 开关。安装脚本仅作语法或隔离测试，不直接执行真实安装。
+- 依赖：合并 pnpm overrides 并集，保留 axios1.20.0与nanoid3.3.18约束，不跨主版本重解其他依赖。XLSX两项既有高危豁免延至2027-01-06，属于用户明确风险接受，不是漏洞修复；其他豁免不延期。
+- 二开：对应63项清单中5项适配已在同一提交更新，严格计费、串行扣费、5秒任务超时、流重试及蓝绿保护保持。
+
+### 同步前基线
+
+- Go 1.27.0/Linux、golangci-lint 2.13.0；Node20.20.2/Windows、pnpm9.15.9。所有临时脚本、工具与证据均位于工作区忽略目录。
+- `go test -count=1 ./...`、`go test -count=1 -tags=unit ./...`、`go test -count=1 -tags=integration ./...`、`make build`、支付/初始化定向测试和 `golangci-lint run --timeout=25m ./...` 均退出0。集成测试设置 `CI=true` 并真实使用本机 Docker 的隔离 PostgreSQL/Redis，不把缺少 Docker 的跳过当通过。
+- 前端冻结安装、lint:check、typecheck、全量Vitest（366文件/2832用例）和build均退出0；Canvas冻结安装、typecheck、测试（8文件/34用例）和build均退出0。
+- 部署语法、Compose安全/网关/简易模式/资源/Caddy检查、远程部署mock、蓝绿57项、证据8项、预检3项及元数据5项单测和来源校验均退出0；两份生产Compose一致。
+- 隔离启动：全新临时数据库的health与管理员登录通过；同库存在管理员、使用另一空配置目录及历史弱环境值时，health与原管理员登录仍通过。临时容器已清理，未访问生产。
+- 旧代码加入上游支付攻击测试的负对照：3项攻击拒绝断言失败、1项合法回调通过，原始退出码1，符合预期；不是一次成功的安全修复验证。
+- 前端安全基线：原始audit退出1，4项high（Vue、source-map-js、XLSX两项），豁免校验退出1。Canvas原始audit退出1但无high/critical，豁免门禁退出0；不把原始非零结果隐藏为零。
+- 初始试跑暴露NTFS Unix socket不支持、Windows CRLF、WSL Git所有权/跨文件系统发现及嵌套pnpm误选版本。原始日志全部保留；用工作区内tmpfs、固定Git内容/LF导出、进程内Git配置和固定pnpm入口修正后复测，不改业务代码规避测试。中止试跑生成的唯一.entc文件移入忽略证据目录，原工作区恢复干净后才合并。
+- 原始命令、退出码、起止时间和完整日志：`tmp/upstream-sync-20261007`，属于本地忽略证据，不提交其中的测试数据或二进制。候选测试与未验证项在最终记录追加。
+
+## 2026-10-07 上游同步 3f1a2ea0a（最终本地验收）
+
+- 验收时间：`2026-10-07T12:48:04+08:00`。执行状态：固定范围完整集成、本地候选验收通过；本记录提交后按下述条件快进原目标分支。未发布、未部署，不代表线上已修复。
+- 本地目标分支：`main`；`LOCAL_PRE_SYNC_SHA=68eb5371204dde5cd18bd9d05f272585641105c3`。合并及兼容提交：`12c67c7a3e21d17ee2b02dcb95510f9daae38013`，双父依次为同步前本地HEAD与固定上游目标。已验证提交树与测试候选树完全一致：`340dce70ccdfe01b7ce58d5e37f405dcb3c4c691`。
+- 上游：`https://github.com/Wei-Shaw/sub2api.git`，分支 `main`；`UPSTREAM_OLD_SHA=b8dece9000c68815a5b867ca5a1e6f236e173905`；`UPSTREAM_NEW_SHA=3f1a2ea0a760730e3bc528105c00b4ee4f23e469`。实际merge-base为旧基线，未扩大范围。
+- `LAST_FULLY_INTEGRATED_UPSTREAM_SHA=3f1a2ea0a760730e3bc528105c00b4ee4f23e469`。完整8项已逐项记载于上节：Applied=8，其中Applied + Overridden=1；Already Applied=0、Skipped=0、Deferred=0、未解决Conflict=0。
+- 备份分支：`backup/pre-upstream-sync-20261007-113916-68eb53712`；同步分支：`sync/upstream-20261007-3f1a2ea0a`。本轮本地新增一个merge提交和本最终记录提交；记录自身SHA及最终main SHA只在交付总结报告，不在文档自引用。
+- 最终代码与文档涉及29个文件（含本记录），新增1个上游支付回归文件，无删除、无数据库迁移。VERSION文本冲突保留本地0.1.249；package.json冲突合并安全约束并集，pnpm9离线定向核验后的锁文件与合并预演锁文件一致，没有额外解析升级。
+- 来源元数据记录上游0.2.14。两份生产Compose仅同步ADMIN_EMAIL空默认值，SHA-256均为`28C724AE4555CF6826E991560646A374B038DCD50E2CC590EA5A5E2F3A7E7876`；未改变挂载、端口、资源或安全开关。
+
+### 前后验证结果
+
+验证环境：Go1.27.0/Linux、golangci-lint2.13.0（由Go1.27.0构建）、Node20.20.2/Windows、pnpm9.15.9。Go源码使用工作区内tmpfs副本，静态脚本使用`git -c core.autocrlf=false archive`导出的LF内容；前后保持相同工具版本、临时配置和测试契约。候选的三个Go集合使用独立源码副本并发执行，避免生成夹具互相覆盖。没有将降级工具链或跳过测试作为通过依据。
+
+| 验证 | 同步前 | 同步后 |
+| --- | --- | --- |
+| `go test -count=1 ./...` | 退出0，54个通过包 | 退出0，54个通过包 |
+| `go test -count=1 -tags=unit ./...` | 退出0，60个通过包 | 退出0，60个通过包 |
+| `go test -count=1 -tags=integration ./...` | 退出0，54个通过包 | 退出0，54个通过包 |
+| `make build` | 退出0 | 退出0，本地版本0.1.249 |
+| 支付/初始化定向测试 | 退出0 | 退出0，新增攻击回归及旧账号兼容断言通过 |
+| `golangci-lint run --timeout=25m ./...` | 退出0，0 issues | 最终复跑退出0，0 issues |
+| 前端冻结安装、lint:check、typecheck、test:run、build | 均退出0；366文件/2832用例通过 | 均退出0；366文件/2832用例通过 |
+| Canvas冻结安装、typecheck、test、build | 均退出0；8文件/34用例通过 | 均退出0；8文件/34用例通过 |
+| 部署语法、Compose安全/网关/简易模式/资源、Caddy、部署mock | 退出0 | 退出0 |
+| 蓝绿单测、证据、预检及元数据单测 | 57/8/3/5项通过 | 57/8/3/5项通过 |
+| 隔离启动、health、测试管理员登录 | 全新库及已有管理员两场景通过 | 相同两场景通过 |
+| 上游来源元数据与祖先校验 | 退出0 | merge提交后复跑退出0 |
+| 原始前端`pnpm audit --prod --audit-level=high --json` | 退出1，4 high/0 critical | 退出1，2 high/0 critical，仅XLSX |
+| 前端审计豁免门禁 | 退出1，Vue/source-map-js缺豁免且XLSX豁免过期 | 退出0；Vue/source-map-js已修复，XLSX按批准续期 |
+| Canvas原始audit与豁免门禁 | 原始退出1，0 high/critical；门禁退出0 | 原始退出1，0 high/critical；门禁退出0 |
+| 首屏构建版本契约、E2E测试编译 | 同步前未单独补跑 | `unit,embed`版本契约退出0；`e2e`仅编译退出0 |
+| `git diff --check`、范围、冲突标记、常见秘密模式及删除检查 | 通过 | 通过；无未解决冲突、额外文件或删除 |
+
+### 支付验证与二开保护
+
+- 负对照在旧代码的隔离副本加入上游攻击用例：签名复用、下单URL重放和未知参数三项拒绝断言失败，合法回调通过，原始退出1。候选代码中相同四项用例全部通过；另验证客户端返回URL查询清除。所有请求使用本地模拟与测试凭据，没有对生产或真实商户发起攻击或支付。
+- 本地EasyPay查单9种状态映射全部通过，包含WAITING优先于status=1、显式空trade_status不当成已付、旧式纯数字状态兼容。充值赠送、主动补查、幂等履约和30秒/10条/10秒预算保持，相关现有服务用例通过。
+- 初始化新增随机邮箱/密码、邮箱合法性、8到72字节密码边界、已有管理员及已有普通用户时不覆盖账号的测试通过。实际本地启动同时验证已有管理员不会因历史无效环境值被重置或阻断。
+- Codex配置断言保留并补充远程/文件、HTTP/WS、macOS/Linux/Windows、Composite和各路由平台的发现开关差异，没有删除原有鉴权、模型或路径断言。
+- 63项二开编号仍完整且唯一；5项适配已随merge更新台账。严格计费、串行扣费、5秒usage任务超时、流重试、蓝绿保护、Go依赖与迁移目录、Canvas依赖清单均未改动。测试覆盖以现有可执行用例为准，不声称63项均经过真实生产逐项验收。
+
+### 原始失败与环境修正
+
+- 初次NTFS/WSL试跑的CRLF匹配失败、Unix socket不支持、Git安全目录/跨文件系统发现失败，以及嵌套pnpm误用系统版本均保留日志；调整的是临时测试环境，未通过修改业务代码、删除断言或关闭检查规避。首轮后端及lint包装进程主动中止，工具会话退出1，不作为通过计数。
+- 试跑中断生成的唯一`.entc`目录移入忽略证据目录，恢复干净工作区后才merge；没有清理或覆盖用户既有改动。
+- 候选首次lint子命令退出0，但执行期间临时验证脚本被补充分组，旧shell收尾读取偏移导致包装进程退出1。随后固定脚本独立复跑，子命令和包装进程均退出0；证据位于`candidate-lint-final`，不隐藏原包装失败。
+- 候选尚未commit时，来源检查因新上游尚非HEAD祖先退出1；真实merge提交后重跑所有15项静态检查均退出0，不放宽来源校验器。
+- 原始audit仍非零；只按项目既有high/critical豁免门禁判定。前端现有4 low/13 moderate及XLSX两项high仍保留，Canvas现有3 low/1 moderate仍保留，不以“安全门禁通过”描述为无任何漏洞。
+
+### 未验证与收尾边界
+
+- 本次未执行远端CI、安全扫描工作流、gosec/govulncheck、竞态检测、macOS原生容器工具、真实安装脚本、带付费Provider的完整E2E、真实支付渠道或生产数据库升级。E2E仅编译不能称为端到端业务通过。上线前仍需另行授权发布并通过远端门禁。
+- XLSX两项既有豁免仅延至2027-01-06，基于当前只导出、不读取外部表格的使用边界；这是风险接受，不是漏洞修复，其他豁免没有延期。
+- 回调补丁针对已识别攻击链；不能追回历史损失、修正既有异常余额或保证没有其他漏洞。本轮未推送、未创建PR/标签、未连接生产、未部署、未调整账务或封禁。
+- 本轮测试应用、临时PostgreSQL/Redis容器已停止并清理，工作区内tmpfs已卸载，WSL保持进程已结束；原有本机容器未清理。日志、源代码归档、工具链和测试二进制保留在忽略目录`tmp/upstream-sync-20261007`，不进入提交。
+- 本记录提交前再次确认main仍为LOCAL_PRE_SYNC_SHA，且除本最终记录外没有其他修改。记录单独提交并确认工作树干净后执行`git switch main`与`git merge --ff-only sync/upstream-20261007-3f1a2ea0a`，若任何条件变化则停止，不强推或强制合并。最终分支SHA和干净状态在交付总结报告。
+
+### 修改文件
+
+```text
+.github/audit-exceptions.yml
+README.md
+README_CN.md
+README_JA.md
+backend/internal/integration/e2e_user_flow_test.go
+backend/internal/payment/provider/easypay.go
+backend/internal/payment/provider/easypay_notify_security_test.go
+backend/internal/pkg/buildmeta/upstream-sync.json
+backend/internal/service/payment_resume_service.go
+backend/internal/service/payment_resume_service_test.go
+backend/internal/setup/cli.go
+backend/internal/setup/handler.go
+backend/internal/setup/setup.go
+backend/internal/setup/setup_test.go
+deploy/.env.example
+deploy/APPLE_CONTAINER.md
+deploy/README.md
+deploy/docker-compose.dev.yml
+deploy/docker-compose.local.yml
+deploy/docker-compose.standalone.yml
+deploy/docker-compose.sub2api.yml
+deploy/docker-compose.yml
+deploy/docker-deploy.sh
+docs/custom-development-history.md
+docs/upstream-sync-history.md
+frontend/package.json
+frontend/pnpm-lock.yaml
+frontend/src/components/keys/UseKeyModal.vue
+frontend/src/components/keys/__tests__/UseKeyModal.spec.ts
+```
+
+### 实际测试命令索引
+
+下表来自本轮保存的TSV记录，包含初始失败、修正复跑和候选验证；路径均相对于本地忽略证据目录。每个分组目录的同名`.log`保留完整输出，各`*-results.tsv`另保存带时区起止时间。表内`timeout`是实际使用的外部超时保护；候选独立Go包装器另统一使用2400秒外部上限，表内保留其记录的核心命令，不隐去非零退出码。
+
+| 证据分组 | 检查 | 退出码 | 实际命令 |
+| --- | --- | ---: | --- |
+| baseline | go-version | 0 | `go version` |
+| baseline | pnpm-version | 0 | `pnpm --version` |
+| baseline | apple-syntax | 0 | `bash -n deploy/apple-container.sh` |
+| baseline | compose-gateway | 1 | `sh deploy/tests/docker-compose-gateway-env-test.sh` |
+| baseline | compose-security | 0 | `sh deploy/tests/docker-compose-security-test.sh` |
+| baseline | docker-deploy-syntax | 0 | `bash -n deploy/docker-deploy.sh` |
+| baseline | remote-deploy-syntax | 0 | `sh -n deploy/remote-deploy.sh` |
+| baseline | frontend-install | 0 | `pnpm --dir frontend install --frozen-lockfile --store-dir tmp/upstream-sync-20261007\pnpm-store` |
+| baseline | compose-simple | 0 | `sh deploy/tests/docker-compose-simple-mode-env-test.sh` |
+| baseline | caddy-cache | 1 | `sh deploy/test-caddyfile-cache.sh` |
+| baseline | docker-resources | 1 | `sh deploy/tests/docker-runtime-resources-test.sh` |
+| baseline | remote-deploy-mock | 0 | `sh deploy/tests/remote-deploy-test.sh` |
+| baseline | bluegreen-unit | 1 | `python3 deploy/tests/blue-green-test.py` |
+| baseline | bluegreen-evidence | 0 | `python3 deploy/tests/blue-green-evidence-test.py` |
+| baseline | bluegreen-preflight | 0 | `python3 deploy/tests/blue-green-preflight-test.py` |
+| baseline | metadata-unit | 0 | `python3 -m unittest discover -s tools -p test_check_upstream_sync_metadata.py` |
+| baseline | metadata | 1 | `python3 tools/check_upstream_sync_metadata.py` |
+| baseline | compose-equal | 0 | `cmp deploy/docker-compose.yml deploy/docker-compose.sub2api.yml` |
+| baseline | diff-check | 129 | `git diff --check` |
+| baseline | lint-version | 0 | `golangci-lint version` |
+| baseline | frontend-lint | 0 | `pnpm --dir frontend run lint:check` |
+| baseline | frontend-typecheck | 0 | `pnpm --dir frontend run typecheck` |
+| baseline | frontend-test | 0 | `pnpm --dir frontend run test:run` |
+| baseline | frontend-build | 1 | `pnpm --dir frontend run build` |
+| baseline | canvas-install | 0 | `pnpm --dir canvas install --frozen-lockfile --store-dir tmp/upstream-sync-20261007\pnpm-store` |
+| baseline | canvas-typecheck | 0 | `pnpm --dir canvas run typecheck` |
+| baseline | canvas-test | 0 | `pnpm --dir canvas run test` |
+| baseline | canvas-build | 0 | `pnpm --dir canvas run build` |
+| baseline | frontend-audit | 1 | `pnpm --dir frontend audit --prod --audit-level=high --json` |
+| baseline | canvas-audit | 1 | `pnpm --dir canvas audit --prod --audit-level=high --json` |
+| baseline | frontend-audit-exceptions | 1 | `python3 tools/check_pnpm_audit_exceptions.py --audit baseline/frontend-audit.log --exceptions .github/audit-exceptions.yml` |
+| baseline | payment-security-negative-control | 1 | `go test -count=1 -v ./internal/payment/provider -run TestEasyPayNotify（旧代码加入上游攻击回归测试，预期失败）` |
+| baseline-fixed | pnpm-version | 0 | `pnpm --version` |
+| baseline-fixed | frontend-install | 0 | `pnpm --dir frontend install --frozen-lockfile --store-dir tmp/upstream-sync-20261007\pnpm-store` |
+| baseline-fixed | frontend-lint | 0 | `pnpm --dir frontend run lint:check` |
+| baseline-fixed | frontend-typecheck | 0 | `pnpm --dir frontend run typecheck` |
+| baseline-fixed | frontend-test | 0 | `pnpm --dir frontend run test:run` |
+| baseline-fixed | frontend-build | 0 | `pnpm --dir frontend run build` |
+| baseline-fixed | canvas-install | 0 | `pnpm --dir canvas install --frozen-lockfile --store-dir tmp/upstream-sync-20261007\pnpm-store` |
+| baseline-fixed | canvas-typecheck | 0 | `pnpm --dir canvas run typecheck` |
+| baseline-fixed | canvas-test | 0 | `pnpm --dir canvas run test` |
+| baseline-fixed | canvas-build | 0 | `pnpm --dir canvas run build` |
+| baseline-fixed | frontend-audit | 1 | `pnpm --dir frontend audit --prod --audit-level=high --json` |
+| baseline-fixed | canvas-audit | 1 | `pnpm --dir canvas audit --prod --audit-level=high --json` |
+| baseline-fixed | canvas-audit-exceptions | 0 | `python3 tools/check_pnpm_audit_exceptions.py --audit baseline-fixed/canvas-audit.log --exceptions .github/audit-exceptions.yml` |
+| baseline-linux | go-version | 0 | `go version` |
+| baseline-linux | apple-syntax | 0 | `bash -n deploy/apple-container.sh` |
+| baseline-linux | compose-gateway | 1 | `sh deploy/tests/docker-compose-gateway-env-test.sh` |
+| baseline-linux | compose-security | 0 | `sh deploy/tests/docker-compose-security-test.sh` |
+| baseline-linux | docker-deploy-syntax | 0 | `bash -n deploy/docker-deploy.sh` |
+| baseline-linux | go-default | 0 | `timeout 2400 go test -count=1 ./...` |
+| baseline-linux | golangci-lint | 0 | `timeout 1800 golangci-lint run --timeout=25m ./...` |
+| baseline-linux | lint-version | 0 | `golangci-lint version` |
+| baseline-linux | remote-deploy-syntax | 0 | `sh -n deploy/remote-deploy.sh` |
+| baseline-linux | compose-simple | 0 | `sh deploy/tests/docker-compose-simple-mode-env-test.sh` |
+| baseline-linux | caddy-cache | 1 | `sh deploy/test-caddyfile-cache.sh` |
+| baseline-linux | docker-resources | 1 | `sh deploy/tests/docker-runtime-resources-test.sh` |
+| baseline-linux | remote-deploy-mock | 0 | `sh deploy/tests/remote-deploy-test.sh` |
+| baseline-linux | bluegreen-unit | 0 | `python3 deploy/tests/blue-green-test.py` |
+| baseline-linux | bluegreen-evidence | 0 | `python3 deploy/tests/blue-green-evidence-test.py` |
+| baseline-linux | bluegreen-preflight | 0 | `python3 deploy/tests/blue-green-preflight-test.py` |
+| baseline-linux | compose-equal | 0 | `cmp deploy/docker-compose.yml deploy/docker-compose.sub2api.yml` |
+| baseline-linux | diff-check | 2 | `git -C /mnt/d/project/sub2api diff --check` |
+| baseline-linux | metadata | 1 | `python3 tools/check_upstream_sync_metadata.py` |
+| baseline-linux | metadata-unit | 0 | `python3 -m unittest discover -s tools -p test_check_upstream_sync_metadata.py` |
+| baseline-linux | go-unit | 0 | `timeout 2400 go test -count=1 -tags=unit ./...` |
+| baseline-linux | go-integration | 0 | `timeout 2400 go test -count=1 -tags=integration ./...` |
+| baseline-linux | go-build | 0 | `timeout 1200 make build` |
+| baseline-linux | go-payment-setup | 0 | `timeout 600 go test -count=1 -v -tags=unit ./internal/payment/provider ./internal/setup ./internal/service -run TestEasyPay\|Test.*Payment\|Test.*Resume\|Test.*Setup\|Test.*Admin\|Test.*Bootstrap\|Test.*Password\|Test.*Email\|TestCanonicalizeReturnURL` |
+| baseline-lf | apple-syntax | 0 | `bash -n deploy/apple-container.sh` |
+| baseline-lf | compose-gateway | 0 | `sh deploy/tests/docker-compose-gateway-env-test.sh` |
+| baseline-lf | compose-security | 0 | `sh deploy/tests/docker-compose-security-test.sh` |
+| baseline-lf | compose-simple | 0 | `sh deploy/tests/docker-compose-simple-mode-env-test.sh` |
+| baseline-lf | docker-deploy-syntax | 0 | `bash -n deploy/docker-deploy.sh` |
+| baseline-lf | remote-deploy-syntax | 0 | `sh -n deploy/remote-deploy.sh` |
+| baseline-lf | caddy-cache | 0 | `sh deploy/test-caddyfile-cache.sh` |
+| baseline-lf | docker-resources | 0 | `sh deploy/tests/docker-runtime-resources-test.sh` |
+| baseline-lf | remote-deploy-mock | 0 | `sh deploy/tests/remote-deploy-test.sh` |
+| baseline-lf | bluegreen-evidence | 0 | `python3 deploy/tests/blue-green-evidence-test.py` |
+| baseline-lf | bluegreen-preflight | 0 | `python3 deploy/tests/blue-green-preflight-test.py` |
+| baseline-lf | bluegreen-unit | 0 | `python3 deploy/tests/blue-green-test.py` |
+| baseline-lf | metadata | 0 | `python3 tools/check_upstream_sync_metadata.py` |
+| baseline-lf | metadata-unit | 0 | `python3 -m unittest discover -s tools -p test_check_upstream_sync_metadata.py` |
+| baseline-lf | compose-equal | 0 | `cmp deploy/docker-compose.yml deploy/docker-compose.sub2api.yml` |
+| candidate | lockfile-refresh | 0 | `pnpm --dir frontend install --lockfile-only --no-frozen-lockfile --ignore-scripts --offline --store-dir tmp/upstream-sync-20261007/pnpm-store` |
+| candidate | pnpm-version | 0 | `pnpm --version` |
+| candidate | frontend-install | 0 | `pnpm --dir frontend install --frozen-lockfile --store-dir tmp/upstream-sync-20261007\pnpm-store` |
+| candidate | frontend-lint | 0 | `pnpm --dir frontend run lint:check` |
+| candidate | apple-syntax | 0 | `bash -n deploy/apple-container.sh` |
+| candidate | compose-gateway | 0 | `sh deploy/tests/docker-compose-gateway-env-test.sh` |
+| candidate | compose-security | 0 | `sh deploy/tests/docker-compose-security-test.sh` |
+| candidate | docker-deploy-syntax | 0 | `bash -n deploy/docker-deploy.sh` |
+| candidate | go-default | 0 | `go test -count=1 ./...` |
+| candidate | go-integration | 0 | `go test -count=1 -tags=integration ./...` |
+| candidate | go-unit | 0 | `go test -count=1 -tags=unit ./...` |
+| candidate | remote-deploy-syntax | 0 | `sh -n deploy/remote-deploy.sh` |
+| candidate | compose-simple | 0 | `sh deploy/tests/docker-compose-simple-mode-env-test.sh` |
+| candidate | caddy-cache | 0 | `sh deploy/test-caddyfile-cache.sh` |
+| candidate | docker-resources | 0 | `sh deploy/tests/docker-runtime-resources-test.sh` |
+| candidate | remote-deploy-mock | 0 | `sh deploy/tests/remote-deploy-test.sh` |
+| candidate | bluegreen-evidence | 0 | `python3 deploy/tests/blue-green-evidence-test.py` |
+| candidate | bluegreen-preflight | 0 | `python3 deploy/tests/blue-green-preflight-test.py` |
+| candidate | bluegreen-unit | 0 | `python3 deploy/tests/blue-green-test.py` |
+| candidate | compose-equal | 0 | `cmp deploy/docker-compose.yml deploy/docker-compose.sub2api.yml` |
+| candidate | metadata | 1 | `python3 tools/check_upstream_sync_metadata.py` |
+| candidate | metadata-unit | 0 | `python3 -m unittest discover -s tools -p test_check_upstream_sync_metadata.py` |
+| candidate | frontend-typecheck | 0 | `pnpm --dir frontend run typecheck` |
+| candidate | golangci-lint | 0 | `timeout 1800 golangci-lint run --timeout=25m ./...` |
+| candidate | go-payment-setup | 0 | `go test -count=1 -v -tags=unit ./internal/payment/provider ./internal/setup ./internal/service -run TestEasyPay\|Test.*Payment\|Test.*Resume\|Test.*Setup\|Test.*Admin\|Test.*Bootstrap\|Test.*Password\|Test.*Email\|TestCanonicalizeReturnURL` |
+| candidate | lint-version | 0 | `golangci-lint version` |
+| candidate | frontend-test | 0 | `pnpm --dir frontend run test:run` |
+| candidate | frontend-build | 0 | `pnpm --dir frontend run build` |
+| candidate | go-build | 0 | `make build` |
+| candidate | canvas-install | 0 | `pnpm --dir canvas install --frozen-lockfile --store-dir tmp/upstream-sync-20261007\pnpm-store` |
+| candidate | canvas-typecheck | 0 | `pnpm --dir canvas run typecheck` |
+| candidate | canvas-test | 0 | `pnpm --dir canvas run test` |
+| candidate | canvas-build | 0 | `pnpm --dir canvas run build` |
+| candidate | frontend-audit | 1 | `pnpm --dir frontend audit --prod --audit-level=high --json` |
+| candidate | canvas-audit | 1 | `pnpm --dir canvas audit --prod --audit-level=high --json` |
+| candidate | build-version-contract | 0 | `timeout 600 go test -tags=unit,embed ./internal/handler -run TestBuildVersion -count=1` |
+| candidate | canvas-audit-exceptions | 0 | `python3 tools/check_pnpm_audit_exceptions.py --audit candidate/canvas-audit.log --exceptions .github/audit-exceptions.yml` |
+| candidate | frontend-audit-exceptions | 0 | `python3 tools/check_pnpm_audit_exceptions.py --audit candidate/frontend-audit.log --exceptions .github/audit-exceptions.yml` |
+| candidate | e2e-compile | 0 | `timeout 600 go test -c -tags=e2e -o tmp/upstream-sync-20261007/candidate/e2e-compile.test ./internal/integration` |
+| candidate-lint-final | lint-version | 0 | `golangci-lint version` |
+| candidate-lint-final | golangci-lint | 0 | `timeout 1800 golangci-lint run --timeout=25m ./...` |
+| candidate-postmerge | apple-syntax | 0 | `bash -n deploy/apple-container.sh` |
+| candidate-postmerge | compose-gateway | 0 | `sh deploy/tests/docker-compose-gateway-env-test.sh` |
+| candidate-postmerge | compose-security | 0 | `sh deploy/tests/docker-compose-security-test.sh` |
+| candidate-postmerge | docker-deploy-syntax | 0 | `bash -n deploy/docker-deploy.sh` |
+| candidate-postmerge | remote-deploy-syntax | 0 | `sh -n deploy/remote-deploy.sh` |
+| candidate-postmerge | compose-simple | 0 | `sh deploy/tests/docker-compose-simple-mode-env-test.sh` |
+| candidate-postmerge | caddy-cache | 0 | `sh deploy/test-caddyfile-cache.sh` |
+| candidate-postmerge | docker-resources | 0 | `sh deploy/tests/docker-runtime-resources-test.sh` |
+| candidate-postmerge | remote-deploy-mock | 0 | `sh deploy/tests/remote-deploy-test.sh` |
+| candidate-postmerge | bluegreen-evidence | 0 | `python3 deploy/tests/blue-green-evidence-test.py` |
+| candidate-postmerge | bluegreen-preflight | 0 | `python3 deploy/tests/blue-green-preflight-test.py` |
+| candidate-postmerge | bluegreen-unit | 0 | `python3 deploy/tests/blue-green-test.py` |
+| candidate-postmerge | compose-equal | 0 | `cmp deploy/docker-compose.yml deploy/docker-compose.sub2api.yml` |
+| candidate-postmerge | metadata | 0 | `python3 tools/check_upstream_sync_metadata.py` |
+| candidate-postmerge | metadata-unit | 0 | `python3 -m unittest discover -s tools -p test_check_upstream_sync_metadata.py` |
+
+隔离启动包装命令分别为`PYTHONDONTWRITEBYTECODE=1 python3 tmp/upstream-sync-20261007/run-smoke.py baseline`和`candidate`，均退出0，详细结果见各自`smoke-result.json`；它们包含测试二进制构建、临时库初始化、两次健康及登录检查，并在finally清理自身容器。Git结构、秘密模式、文件范围与Go格式检查均退出0；下载工具链校验、只读诊断命令不算业务测试用例。
