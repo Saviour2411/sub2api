@@ -6484,3 +6484,49 @@ M	frontend/src/views/user/KeysView.vue
 - Actions于06:04:46从blue切至green，满一小时后07:04:47开始强退旧blue，07:05:52完成回收。强退前HTTP/SSE各1、会话租约111，最终退出137、非OOM，`usage_loss_unknown=true`；没有把本次退役描述为无损，也没有混用上次发布的强退证据。
 - 07:06至07:07最终只读核验与attempt 2部署归档比较通过：stable、pending为空，运行版本0.1.248，311条迁移账本、数据库/Redis身份、数据挂载、双Compose、配置及资源保护项不变；双入口各3506次健康探针无错误，首页/公开版本及8个静态资源符合预期。健康探针不代表全业务或用量完整性验证。
 - `LAST_FULLY_INTEGRATED_UPSTREAM_SHA=a60a29549f488a854966aaec9541abbe006cac22`；固定103项处置、9项本地覆盖和63个正式二开编号不变，没有拉入后续上游提交。最终部署证据、首次失败和验证边界见 `docs/operations/2026-09-30-v0.1.248-release.md`。
+
+## 2026-10-07 上游同步 3f1a2ea0a（合并与兼容阶段）
+
+- 时间：`10/07/2026 12:23:17`；状态：本条随完整合并及兼容提交维护，候选验证和本地 main 更新结果另行追加。本轮尚未发布或部署。
+- 用户已回复“批准执行”，批准本地备份、同步分支、完整合并、两处冲突处理、回归验证和本地提交；明确包含两项 XLSX 豁免续期，不包含 push、PR、标签、远程服务器、生产数据或账务操作。
+- 本地目标分支：`main`；`LOCAL_PRE_SYNC_SHA=68eb5371204dde5cd18bd9d05f272585641105c3`。预检 Git 工作区干净，跟踪 origin/main 的 ahead/behind 为0/0，stash为0，无进行中的 Git 操作、submodule 或 LFS 跟踪文件。
+- 上游仓库：`https://github.com/Wei-Shaw/sub2api.git`；通过远端 HEAD 核实默认分支为 `main`。
+- `UPSTREAM_OLD_SHA=b8dece9000c68815a5b867ca5a1e6f236e173905`；`UPSTREAM_NEW_SHA=3f1a2ea0a760730e3bc528105c00b4ee4f23e469`；实际 merge-base 与旧基线相同。旧基线是本地和目标上游的祖先，本次不扩大固定范围。
+- `LAST_FULLY_INTEGRATED_UPSTREAM_SHA=3f1a2ea0a760730e3bc528105c00b4ee4f23e469`：本合并提交完整保留目标上游祖先关系；验证完成前不更新原 main，不把当前状态描述为完成发布。
+- 备份分支：`backup/pre-upstream-sync-20261007-113916-68eb53712`；同步分支：`sync/upstream-20261007-3f1a2ea0a`。
+- 策略：在同步分支执行 `git merge --no-ff --no-commit 3f1a2ea0a760730e3bc528105c00b4ee4f23e469`，处理已获批冲突与二开兼容后形成明确 merge commit。具体代码提交 SHA 在最终记录中引用，本条不自引用自身 SHA。
+
+### 固定范围逐提交处置
+
+| 上游提交 | 状态 | 内容与处置 |
+| --- | --- | --- |
+| `bbba01dae905f0036def71cb9fe4785fcab794c9` | Applied | Codex 远程目录启用 API Key 模型发现，保留本地配置分支并扩展断言。 |
+| `d1aac6b98989b79d66c0f52bd18dc8c3142e7601` | Applied | EasyPay 回调参数白名单、返回 URL 查询清除与攻击回归。 |
+| `33d9e72f9098baa58d3562fc632e26578cdbe9a9` | Applied | 保留 Codex 修复的上游合并历史。 |
+| `d97ccc952ff3b7f63b44c45079ee6a28422f1393` | Applied | 保留 EasyPay 安全修复的上游合并历史。 |
+| `6e315616edeeedf55cf477ab8f27cb8d7c68ebfb` | Applied | 首次安装随机管理员邮箱、密码和邮箱校验、配置模板及测试；同步两份本地生产 Compose，已有管理员不重置。 |
+| `0f9d460dc65d2509107aff542459e18677e06291` | Applied | Vue/source-map-js 修复与已批准的两项 XLSX 豁免续期；保留本地 axios/nanoid 安全约束。 |
+| `0363b8cdba8cec3e2ba4b2dbd49c4481143fa55d` | Applied | 保留初始化与依赖组的上游合并历史。 |
+| `3f1a2ea0a760730e3bc528105c00b4ee4f23e469` | Applied + Overridden | 保留上游0.2.14版本提交历史，但本地 VERSION仍为0.1.249；上游来源 JSON 单独记录0.2.14与固定SHA。 |
+
+共8项 Applied，其中1项同时 Overridden；没有 Already Applied、Skipped 或 Deferred。文本冲突仅 VERSION 与 package.json，均按审批方案处理，不以整文件 ours/theirs 覆盖本地功能。
+
+### 兼容与风险边界
+
+- 支付：保留本地 QueryOrder 的 WAITING 优先级、30秒门槛、每轮10条/10秒预算、赠送快照及幂等履约。此次没有数据库迁移，不修改历史订单、余额或封禁记录。
+- Codex：更新原有配置断言，并覆盖远程/文件、HTTP/WS、macOS/Linux/Windows、Composite与各路由平台；不删除原有鉴权、模型和路径断言。
+- 部署：两份生产 Compose 仅对齐 ADMIN_EMAIL 空默认值；不改变 bind mount、回环端口、现有资源和 HTTP upstream 开关。安装脚本仅作语法或隔离测试，不直接执行真实安装。
+- 依赖：合并 pnpm overrides 并集，保留 axios1.20.0与nanoid3.3.18约束，不跨主版本重解其他依赖。XLSX两项既有高危豁免延至2027-01-06，属于用户明确风险接受，不是漏洞修复；其他豁免不延期。
+- 二开：对应63项清单中5项适配已在同一提交更新，严格计费、串行扣费、5秒任务超时、流重试及蓝绿保护保持。
+
+### 同步前基线
+
+- Go 1.27.0/Linux、golangci-lint 2.13.0；Node20.20.2/Windows、pnpm9.15.9。所有临时脚本、工具与证据均位于工作区忽略目录。
+- `go test -count=1 ./...`、`go test -count=1 -tags=unit ./...`、`go test -count=1 -tags=integration ./...`、`make build`、支付/初始化定向测试和 `golangci-lint run --timeout=25m ./...` 均退出0。集成测试设置 `CI=true` 并真实使用本机 Docker 的隔离 PostgreSQL/Redis，不把缺少 Docker 的跳过当通过。
+- 前端冻结安装、lint:check、typecheck、全量Vitest（366文件/2832用例）和build均退出0；Canvas冻结安装、typecheck、测试（8文件/34用例）和build均退出0。
+- 部署语法、Compose安全/网关/简易模式/资源/Caddy检查、远程部署mock、蓝绿57项、证据8项、预检3项及元数据5项单测和来源校验均退出0；两份生产Compose一致。
+- 隔离启动：全新临时数据库的health与管理员登录通过；同库存在管理员、使用另一空配置目录及历史弱环境值时，health与原管理员登录仍通过。临时容器已清理，未访问生产。
+- 旧代码加入上游支付攻击测试的负对照：3项攻击拒绝断言失败、1项合法回调通过，原始退出码1，符合预期；不是一次成功的安全修复验证。
+- 前端安全基线：原始audit退出1，4项high（Vue、source-map-js、XLSX两项），豁免校验退出1。Canvas原始audit退出1但无high/critical，豁免门禁退出0；不把原始非零结果隐藏为零。
+- 初始试跑暴露NTFS Unix socket不支持、Windows CRLF、WSL Git所有权/跨文件系统发现及嵌套pnpm误选版本。原始日志全部保留；用工作区内tmpfs、固定Git内容/LF导出、进程内Git配置和固定pnpm入口修正后复测，不改业务代码规避测试。中止试跑生成的唯一.entc文件移入忽略证据目录，原工作区恢复干净后才合并。
+- 原始命令、退出码、起止时间和完整日志：`tmp/upstream-sync-20261007`，属于本地忽略证据，不提交其中的测试数据或二进制。候选测试与未验证项在最终记录追加。
