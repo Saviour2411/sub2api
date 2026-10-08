@@ -26,7 +26,7 @@ func (s *OpenAIGatewayService) PrepareKimiDynamicTools(ctx context.Context, c *g
 
 func normalizeKimiDynamicTools(body []byte) ([]byte, error) {
 	if !kimiUniqueJSONObject(body) {
-		return nil, fmt.Errorf("Kimi 请求必须是无重复字段的 JSON 对象")
+		return nil, fmt.Errorf("请求必须是无重复字段的 JSON 对象")
 	}
 	root := gjson.ParseBytes(body)
 	messages := root.Get("messages")
