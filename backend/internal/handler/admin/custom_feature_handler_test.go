@@ -212,6 +212,7 @@ func TestCustomFeatureHandler_KimiCompatibilityPartialUpdate(t *testing.T) {
 		service.SettingKeyGatewayKimiToolChoiceRetryEnabled:          "true",
 		service.SettingKeyGatewayKimiMaxCompletionTokensRetryEnabled: "true",
 		service.SettingKeyGatewayKimiThinkingTypeRetryEnabled:        "true",
+		service.SettingKeyGatewayKimiDynamicToolsEnabled:             "true",
 	}}
 	router := newCustomFeatureHandlerRouter(repo)
 	for _, body := range []string{`{"image_group_success_rate_visible":false}`, `{"kimi_tool_choice_retry_enabled":false}`} {
@@ -224,6 +225,7 @@ func TestCustomFeatureHandler_KimiCompatibilityPartialUpdate(t *testing.T) {
 		require.Equal(t, "true", repo.values[service.SettingKeyGatewayKimiReasoningEffortRetryEnabled])
 		require.Equal(t, "true", repo.values[service.SettingKeyGatewayKimiMaxCompletionTokensRetryEnabled])
 		require.Equal(t, "true", repo.values[service.SettingKeyGatewayKimiThinkingTypeRetryEnabled])
+		require.Equal(t, "true", repo.values[service.SettingKeyGatewayKimiDynamicToolsEnabled])
 	}
 	require.Equal(t, "false", repo.values[service.SettingKeyGatewayKimiToolChoiceRetryEnabled])
 	recorder := httptest.NewRecorder()
@@ -232,6 +234,15 @@ func TestCustomFeatureHandler_KimiCompatibilityPartialUpdate(t *testing.T) {
 	router.ServeHTTP(recorder, request)
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Equal(t, "false", repo.values[service.SettingKeyGatewayKimiThinkingTypeRetryEnabled])
+	for _, value := range []string{"false", "true"} {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPut, "/api/v1/admin/custom-features/gateway", bytes.NewBufferString(`{"kimi_dynamic_tools_enabled":`+value+`}`))
+		request.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(recorder, request)
+		require.Equal(t, http.StatusOK, recorder.Code)
+		require.Equal(t, value, repo.values[service.SettingKeyGatewayKimiDynamicToolsEnabled])
+		require.Contains(t, recorder.Body.String(), `"kimi_dynamic_tools_enabled":`+value)
+	}
 	require.Equal(t, "true", repo.values[service.SettingKeyGatewayKimiReasoningEffortRetryEnabled])
 }
 

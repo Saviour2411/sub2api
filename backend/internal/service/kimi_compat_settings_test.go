@@ -46,3 +46,25 @@ func TestKimiCompatibilitySettingsRoundTrip(t *testing.T) {
 		})
 	}
 }
+
+func TestKimiDynamicToolsSettingsRoundTrip(t *testing.T) {
+	repository := &customFeatureSettingsRepoStub{}
+	settingsService := NewSettingService(repository, &config.Config{})
+	settings, err := settingsService.GetGatewaySettings(context.Background())
+	require.NoError(t, err)
+	require.False(t, settings.KimiDynamicToolsEnabled)
+	for _, enabled := range []bool{true, false} {
+		settings.KimiDynamicToolsEnabled = enabled
+		_, err = settingsService.UpdateGatewaySettings(context.Background(), *settings)
+		require.NoError(t, err)
+		reloaded := NewSettingService(repository, &config.Config{})
+		stored, err := reloaded.GetGatewaySettings(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, enabled, stored.KimiDynamicToolsEnabled)
+		require.Equal(t, enabled, reloaded.GetGatewayRuntime(context.Background()).KimiDynamicToolsEnabled)
+		features, err := reloaded.GetCustomFeatureSettings(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, enabled, features.Gateway.KimiDynamicToolsEnabled)
+		require.False(t, features.Gateway.KimiToolChoiceRetryEnabled)
+	}
+}

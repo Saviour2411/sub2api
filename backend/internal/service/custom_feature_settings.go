@@ -104,6 +104,7 @@ type GatewaySettings struct {
 	KimiToolChoiceRetryEnabled                         bool     `json:"kimi_tool_choice_retry_enabled"`
 	KimiMaxCompletionTokensRetryEnabled                bool     `json:"kimi_max_completion_tokens_retry_enabled"`
 	KimiThinkingTypeRetryEnabled                       bool     `json:"kimi_thinking_type_retry_enabled"`
+	KimiDynamicToolsEnabled                            bool     `json:"kimi_dynamic_tools_enabled"`
 	DisableRechargeBonusForCustomRateUsers             bool     `json:"disable_recharge_bonus_for_custom_rate_users"`
 	FailurePolicyRevision                              int64    `json:"-"`
 }
@@ -159,6 +160,7 @@ var gatewaySettingKeys = []string{
 	SettingKeyGatewayKimiToolChoiceRetryEnabled,
 	SettingKeyGatewayKimiMaxCompletionTokensRetryEnabled,
 	SettingKeyGatewayKimiThinkingTypeRetryEnabled,
+	SettingKeyGatewayKimiDynamicToolsEnabled,
 	SettingKeyGatewayDisableRechargeBonusForCustomRateUsers,
 	SettingKeyGatewayFailurePolicyRevision,
 }
@@ -202,6 +204,7 @@ var customFeatureSettingKeys = []string{
 	SettingKeyGatewayKimiToolChoiceRetryEnabled,
 	SettingKeyGatewayKimiMaxCompletionTokensRetryEnabled,
 	SettingKeyGatewayKimiThinkingTypeRetryEnabled,
+	SettingKeyGatewayKimiDynamicToolsEnabled,
 	SettingKeyGatewayDisableRechargeBonusForCustomRateUsers,
 	SettingKeyGatewayFailurePolicyRevision,
 }
@@ -414,6 +417,7 @@ func (s *SettingService) UpdateGatewaySettings(ctx context.Context, input Gatewa
 		SettingKeyGatewayKimiToolChoiceRetryEnabled:                         strconv.FormatBool(input.KimiToolChoiceRetryEnabled),
 		SettingKeyGatewayKimiMaxCompletionTokensRetryEnabled:                strconv.FormatBool(input.KimiMaxCompletionTokensRetryEnabled),
 		SettingKeyGatewayKimiThinkingTypeRetryEnabled:                       strconv.FormatBool(input.KimiThinkingTypeRetryEnabled),
+		SettingKeyGatewayKimiDynamicToolsEnabled:                            strconv.FormatBool(input.KimiDynamicToolsEnabled),
 		SettingKeyGatewayDisableRechargeBonusForCustomRateUsers:             strconv.FormatBool(input.DisableRechargeBonusForCustomRateUsers),
 	}
 	var revision int64
@@ -575,6 +579,7 @@ func parseGatewaySettings(values map[string]string) GatewaySettings {
 	settings.KimiToolChoiceRetryEnabled = strings.EqualFold(strings.TrimSpace(values[SettingKeyGatewayKimiToolChoiceRetryEnabled]), "true")
 	settings.KimiMaxCompletionTokensRetryEnabled = strings.EqualFold(strings.TrimSpace(values[SettingKeyGatewayKimiMaxCompletionTokensRetryEnabled]), "true")
 	settings.KimiThinkingTypeRetryEnabled = strings.EqualFold(strings.TrimSpace(values[SettingKeyGatewayKimiThinkingTypeRetryEnabled]), "true")
+	settings.KimiDynamicToolsEnabled = strings.EqualFold(strings.TrimSpace(values[SettingKeyGatewayKimiDynamicToolsEnabled]), "true")
 	if raw, ok := values[SettingKeyGatewayAnthropicSamplingParameterFilterModels]; ok && strings.TrimSpace(raw) != "" {
 		var models []string
 		if err := json.Unmarshal([]byte(raw), &models); err == nil {

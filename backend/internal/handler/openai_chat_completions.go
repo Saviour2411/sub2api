@@ -110,6 +110,12 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 
+	// 入口只校验，审计、计费预估和会话识别继续使用原始请求；转发层再转换工具。
+	if _, err := h.gatewayService.PrepareKimiDynamicTools(c.Request.Context(), c, body); err != nil {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return
+	}
+
 	if h.rejectIfCyberSessionBlocked(c, apiKey, body, reqModel, cyberBlockFormatChat) {
 		return
 	}

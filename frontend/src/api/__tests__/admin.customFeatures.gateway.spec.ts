@@ -39,6 +39,7 @@ const gatewaySettings: GatewaySettings = {
   kimi_tool_choice_retry_enabled: false,
   kimi_max_completion_tokens_retry_enabled: false,
   kimi_thinking_type_retry_enabled: false,
+  kimi_dynamic_tools_enabled: false,
   disable_recharge_bonus_for_custom_rate_users: false,
 }
 
@@ -75,6 +76,7 @@ describe('admin custom features gateway API', () => {
       kimi_tool_choice_retry_enabled: true,
       kimi_max_completion_tokens_retry_enabled: false,
       kimi_thinking_type_retry_enabled: true,
+      kimi_dynamic_tools_enabled: true,
     }
     put.mockResolvedValue({ data: { ...gatewaySettings, ...partialSettings } })
     await expect(updateGateway(partialSettings)).resolves.toEqual({
