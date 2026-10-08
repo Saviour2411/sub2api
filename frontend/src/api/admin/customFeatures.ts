@@ -68,6 +68,7 @@ export interface GatewaySettings {
   kimi_tool_choice_retry_enabled: boolean
   kimi_max_completion_tokens_retry_enabled: boolean
   kimi_thinking_type_retry_enabled: boolean
+  kimi_dynamic_tools_enabled: boolean
   disable_recharge_bonus_for_custom_rate_users: boolean
 }
 

@@ -71,6 +71,12 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	defaultMappedModel string,
 	compatPromptCacheTenantIsolated bool,
 ) (*OpenAIForwardResult, error) {
+	preparedBody, prepareErr := s.PrepareKimiDynamicTools(ctx, c, body)
+	if prepareErr != nil {
+		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", prepareErr.Error())
+		return nil, prepareErr
+	}
+	body = preparedBody
 	rememberOpenCodeInboundBody(c, body)
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)

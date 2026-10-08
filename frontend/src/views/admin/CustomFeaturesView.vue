@@ -290,6 +290,19 @@
             </div>
           </section>
 
+          <section class="border-t border-gray-100 pt-8 dark:border-dark-700" aria-labelledby="gateway-kimi-dynamic-tools-title">
+            <div class="flex items-center justify-between gap-4">
+              <h3 id="gateway-kimi-dynamic-tools-title" class="min-w-0 font-semibold text-gray-900 dark:text-white">
+                {{ t('admin.customFeatures.gateway.kimiDynamicTools.title') }}
+              </h3>
+              <Toggle
+                v-model="gateway.kimi_dynamic_tools_enabled"
+                aria-labelledby="gateway-kimi-dynamic-tools-title"
+                data-test="gateway-kimi-dynamic-tools-enabled"
+              />
+            </div>
+          </section>
+
           <section class="border-t border-gray-100 pt-8 dark:border-dark-700" aria-labelledby="gateway-custom-rate-recharge-bonus-title">
             <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -984,6 +997,7 @@ const gateway = reactive<GatewaySettings>({
   kimi_tool_choice_retry_enabled: false,
   kimi_max_completion_tokens_retry_enabled: false,
   kimi_thinking_type_retry_enabled: false,
+  kimi_dynamic_tools_enabled: false,
   disable_recharge_bonus_for_custom_rate_users: false
 })
 const gatewayRetryStatusCodesInput = ref(gateway.default_pool_mode_retry_status_codes.join(', '))
@@ -1069,6 +1083,7 @@ function cloneGateway(settings?: Partial<GatewaySettings>): GatewaySettings {
     kimi_tool_choice_retry_enabled: settings?.kimi_tool_choice_retry_enabled ?? false,
     kimi_max_completion_tokens_retry_enabled: settings?.kimi_max_completion_tokens_retry_enabled ?? false,
     kimi_thinking_type_retry_enabled: settings?.kimi_thinking_type_retry_enabled ?? false,
+    kimi_dynamic_tools_enabled: settings?.kimi_dynamic_tools_enabled ?? false,
     disable_recharge_bonus_for_custom_rate_users:
       settings?.disable_recharge_bonus_for_custom_rate_users ?? false
   }
@@ -1334,6 +1349,7 @@ async function saveGateway() {
       kimi_tool_choice_retry_enabled: gateway.kimi_tool_choice_retry_enabled,
       kimi_max_completion_tokens_retry_enabled: gateway.kimi_max_completion_tokens_retry_enabled,
       kimi_thinking_type_retry_enabled: gateway.kimi_thinking_type_retry_enabled,
+      kimi_dynamic_tools_enabled: gateway.kimi_dynamic_tools_enabled,
       anthropic_sampling_parameter_filter_models:
         validation.samplingParameterFilterModels,
       disable_recharge_bonus_for_custom_rate_users:

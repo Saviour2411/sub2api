@@ -95,7 +95,7 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 - 本次同步范围：`a60a29549..b8dece9000`，62个上游提交（43个非合并、19个合并）；63项既有能力族编号全部保留，无跳过或延期提交；本地覆盖、实际验证和未覆盖范围见本轮同步记录
 - 历史识别统计（2026-09-02，`5097b3145..35c28e324`）：919 个差异文件，新增130491行、删除5976行、本地独有512个提交；此为历史快照，不代表本次同步后的统计
 - 2026-09-05 历史代码基线差异（`ab99d56e9..289a00a46`）：926个文件，新增130999行、删除6037行；本地独有517个提交（不含最后记录补记）
-- 当前能力族：63 项，分布在 9 个功能域；2026-09-20核对59项已有清单（含`CUST-GW-014`）并新增`CUST-OPS-006`，2026-09-21新增`CUST-OPS-007`，2026-09-22新增`CUST-GW-015`，2026-09-23新增`CUST-OPS-008`；全部编号保留，不复用或删除
+- 当前能力族：64 项，分布在 9 个功能域；2026-09-20核对59项已有清单（含`CUST-GW-014`）并新增`CUST-OPS-006`，2026-09-21新增`CUST-OPS-007`，2026-09-22新增`CUST-GW-015`，2026-09-23新增`CUST-OPS-008`，2026-10-09新增`CUST-GW-016`；全部编号保留，不复用或删除
 
 这组数字只用于确认分析边界，不能直接等同于功能数量。生成代码、测试、文案、上游提交的本地适配和同一能力的连续修复均会放大差异规模。
 
@@ -159,6 +159,7 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 | `CUST-GW-013` | Claude 透传流安全重试 | 仅对 Anthropic API Key HTTP 透传流提供独立开关，默认关闭，额外重试默认2次（0–5）、总预算默认300秒（1–3600）。首次成功流响应头到达后跨尝试累计预算；仅缓存可证明无有效内容的前导事件（含待判定帧，累计上限256 KiB），先原号再换号，无替代时允许仍可调度且允许同号重试的原号使用剩余额度。交付任何不可撤销内容前关闭重放资格；完整终止帧立即收尾，缺终止、半帧、协议错误不伪装成功。保留首 Token 分组语义、取消、账号资格与按请求用量去重，错误详情展示脱敏尝试诊断。可选提前保活见 `CUST-GW-014`，HTTP 响应开始与内容提交独立判断，原有首字统计不变。 | `backend/internal/service/anthropic_stream_safe_retry.go`、`backend/internal/service/anthropic_stream_guard.go`、`backend/internal/handler/anthropic_stream_safe_retry.go`、`frontend/src/views/admin/CustomFeaturesView.vue` | 生效中（默认关闭） |
 | `CUST-GW-014` | Claude 安全重试提前 JSON 保活 | 在安全重试开启时，可选于首次成功流响应后立即发送标准 JSON `ping`，流读取期间按保活间隔继续发送（间隔未配置时使用10秒）。只发送无尝试身份的保活，暂存 `message_start` 与空前导；交付有效内容或未知不可撤销事件后禁止重放。保活不延长有效内容、空闲、首 Token 或总等待预算，不改变原有上游首事件统计。提前响应后的最终失败以 SSE 错误结束，非重试 HTTP 错误不得混写 JSON；失败尝试的响应头、消息身份与用量不得混入成功输出。 | `backend/internal/service/anthropic_stream_guard.go`、`backend/internal/service/anthropic_stream_safe_retry.go`、`backend/internal/service/custom_feature_settings.go`、`frontend/src/views/admin/CustomFeaturesView.vue` | 已发布v0.1.241（默认关闭） |
 | `CUST-GW-015` | Kimi 思考模式类型兼容重试 | 在既有 Kimi 参数兼容重试中新增默认关闭的独立开关，仅对 Kimi 类型分组的 Chat Completions 出站、明确400枚举报错及实际非法 `thinking.type` 生效。剥离整个 `thinking`，保留独立思考强度与输出上限，每请求最多一次；嵌套预算/keep 随之移除，已提交响应或取消不重放。五项规则累计最多额外五次，修正沿用至外层重试与换号，不影响其他分组及原生其他协议。 | `backend/internal/service/kimi_parameter_compat.go`、`backend/internal/service/custom_feature_settings.go`、`frontend/src/views/admin/CustomFeaturesView.vue` | 待发布，默认关闭 |
+| `CUST-GW-016` | Kimi 动态工具契约与渠道兼容 | 新增默认关闭的独立网关开关，仅 Kimi 类型分组的 Chat Completions 入站生效。在并发排队和协议转换前拒绝错误角色、非空正文、非法定义及重名；接纳 KVV 空正文声明并合并到顶层工具，保留普通消息、工具历史与上游 usage。支持既有 CC/Responses/Anthropic 出站路由，开关请求级冻结，重试不重复合并；不修正 Token 基准，不宣称原生动态工具缓存语义等价。 | `backend/internal/service/kimi_dynamic_tools.go`、`backend/internal/handler/openai_chat_completions.go`、`frontend/src/views/admin/CustomFeaturesView.vue`、`docs/kimi-dynamic-tools.md` | 待发布，默认关闭 |
 
 ### 协议与上游兼容
 
@@ -255,6 +256,18 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 | `CUST-OPS-008` | 构建版本与上游来源提示 | 当前二开版本来自运行程序构建信息，启动时统一注入 HTML、公共设置及管理员接口；旧首屏配置缺版本时仅补查一次公共设置。管理员显示二开版本、已同步原版版本及原版更新状态，普通用户只看二开版本。来源由随二进制嵌入的 `upstream-sync.json` 记录，缺失时显示未记录，不与二开版本比较。最新正式 Release 只读检查采用8秒超时、30分钟成功缓存、60秒失败退避和并发合并；失败保留旧结果并标记缓存，无历史显示暂不可用。可见页定时检查，后台暂停，退出或换用户清理请求和计时器；支持折叠详情、移动端、深浅主题与长版本换行。 2026-09-24 上游适配：随合并更新嵌入来源为0.2.8/a3eb7ef302961cba716dc78b39b93b60c467db0e，二开版本保持0.1.245；只读提示、缓存、身份差异及禁止自更新边界不变。 2026-09-30 上游适配：嵌入来源更新为0.2.10/a60a29549f488a854966aaec9541abbe006cac22，本地二开版本保留0.1.246，不创建发布或开放自更新。 2026-10-07 上游适配：嵌入来源更新为0.2.14/3f1a2ea0a760730e3bc528105c00b4ee4f23e469；本地版本仍为0.1.249。本轮仅本地合并，不创建标签、发布或部署，版本提示的身份隔离、缓存与禁止自更新边界不变。 | `backend/internal/pkg/buildmeta/upstream-sync.json`、`backend/internal/handler/wire.go`、`backend/internal/service/upstream_version.go`、`frontend/src/composables/useVersionInfo.ts`、`frontend/src/components/common/VersionBadge.vue`、`tools/check_upstream_sync_metadata.py` | 生效中 |
 
 ## 变更记录
+
+### 2026-10-09 Kimi 动态工具契约与渠道兼容
+
+- 新增 `CUST-GW-016`，按用户授权实现“二开功能 → 网关配置”独立开关 `kimi_dynamic_tools_enabled`，默认关闭。旧配置、旧管理客户端部分更新、请求级配置快照和其他平台分组行为保留。
+- 依据 KVV 固定提交 `66092cf444c97356c0e11c5078c67116390615d9`，校验动态工具的原始角色、正文、结构、命名和重复声明。合法工具合并到顶层，非法请求在并发排队及 SSE 响应提交前返回400；普通工具执行结果保留正文和调用编号。
+- 保留输出额度、tool_choice、思考历史、流式工具事件、用量记录及现有五项参数重试开关。`assistant_hello` Token 基准不修改，不通过合成工具响应或补 Token 数获取测试通过。
+- 入口只校验，保留原始请求供审计、计费预估和会话识别使用；转发层在协议转换前合并工具。无需数据库迁移。
+- 验证通过：Go 1.27 的 `-tags=unit` 服务层、请求入口和管理接口三个包整包测试；`TestKimiDynamicTools|TestCustomFeatureHandler_Kimi` 三个包的 `-race` 回归；前端定向29项测试、类型检查、改动文件 ESLint 和生产构建。新增 Kimi 用例自动纳入现有 `TestKimi` 流竞态 CI 选择范围，远端 CI 与主线合并结果以对应 PR 的检查及合并记录为准。
+- 浏览器验证通过：桌面1440×1000和手机390×844布局检查，开关启用、关闭、保存及刷新回显，控制台0错误、0警告。使用本地模拟管理接口，不连接生产。截图及日志保存在 `output/playwright/kimi-dynamic-tools-20261009/`。
+- 环境说明：WSL 挂载盘不提供测试所需的 Unix socket 和文件权限语义，初轮四个既有用例失败；改用工作区内 Linux tmpfs 后服务层整包通过，未修改既有断言。本地模拟上游不代表真实渠道 KVV 或完整认证；未发布、未修改生产配置。
+- PR #30 首轮 CI 发现新增错误文案的英文大写首字符不符合 Staticcheck ST1005，改为中文开头后重新验证；不改变错误状态码、契约或兼容行为，不放宽静态检查。
+- 合并到顶层会改变历史工具位置及前缀缓存，使用边界与回退方式见 `docs/kimi-dynamic-tools.md`。
 
 ### 2026-09-24 v0.1.246发布验收
 

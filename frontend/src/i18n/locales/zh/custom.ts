@@ -444,6 +444,9 @@ export default {
             description: '上游明确要求 type 为 enabled、disabled 或 auto，且出站 thinking.type 非法时，移除整个 thinking 后重试一次。保留 reasoning_effort 和输出上限；thinking 内的预算及历史思考保留设置会一并移除，改用渠道默认行为。',
           },
         },
+        kimiDynamicTools: {
+          title: 'Kimi 动态工具契约与渠道兼容',
+        },
         customRateRechargeBonus: {
           title: '专属倍率用户充值不返利',
           description: '开启后，只要用户在任意分组配置了专属倍率，余额充值就按原始充值金额入账，不应用阶梯返利或旧版充值倍率。',

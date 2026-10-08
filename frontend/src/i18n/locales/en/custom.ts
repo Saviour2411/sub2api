@@ -444,6 +444,9 @@ export default {
             description: 'When the upstream explicitly requires type to be enabled, disabled or auto and the outbound thinking.type is invalid, remove the entire thinking object and retry once. Preserve reasoning_effort and output limits. Nested thinking budgets and preserved-thinking settings are also removed, using channel defaults instead.',
           },
         },
+        kimiDynamicTools: {
+          title: 'Kimi 动态工具契约与渠道兼容',
+        },
         customRateRechargeBonus: {
           title: 'Disable Top-up Bonuses for Custom-rate Users',
           description: 'When enabled, users with a custom multiplier in any group receive only the original top-up amount, without tier bonuses or the legacy recharge multiplier.',
