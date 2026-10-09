@@ -6771,3 +6771,20 @@ frontend/src/components/keys/__tests__/UseKeyModal.spec.ts
 | candidate-postmerge | metadata-unit | 0 | `python3 -m unittest discover -s tools -p test_check_upstream_sync_metadata.py` |
 
 隔离启动包装命令分别为`PYTHONDONTWRITEBYTECODE=1 python3 tmp/upstream-sync-20261007/run-smoke.py baseline`和`candidate`，均退出0，详细结果见各自`smoke-result.json`；它们包含测试二进制构建、临时库初始化、两次健康及登录检查，并在finally清理自身容器。Git结构、秘密模式、文件范围与Go格式检查均退出0；下载工具链校验、只读诊断命令不算业务测试用例。
+
+## 2026-10-09 固定上游增量同步执行记录
+
+- 开始时间：`2026-10-09T20:56:07+08:00`；本条随代码合并提交保留，最终验收、逐提交处置和提交映射另作最后的本地记录提交。
+- 本地目标分支：`main`；`LOCAL_PRE_SYNC_SHA=a335cbcc59c343278174e5382256b0fd641015f5`。备份分支：`backup/pre-upstream-sync-20261009-205607-a335cbcc5`；同步分支：`sync/upstream-20261009-3a6fd1c9d`。
+- 上游：`Wei-Shaw/sub2api`，默认分支经远端 HEAD 确认是 `main`。`UPSTREAM_OLD_SHA=3f1a2ea0a760730e3bc528105c00b4ee4f23e469`；固定 `UPSTREAM_NEW_SHA=3a6fd1c9db07203ca308aaba69e502bc1f35b307`；实际 merge-base 等于旧 SHA，不扩大目标。
+- 旧 SHA 同时为本地与目标上游祖先，固定增量共 146 个提交（86 个普通提交、60 个 merge），278 个上游变更文件（77 新增、0 删除），79 个与本地变更重叠。未发现完整等价普通提交，采用获批的 `git merge --no-ff --no-commit`，完整保留上游历史。
+- 本次完整合并的 `LAST_FULLY_INTEGRATED_UPSTREAM_SHA=3a6fd1c9db07203ca308aaba69e502bc1f35b307`；仅在合并提交形成后才满足祖先检查，提交前失败不能通过放宽检查消除。
+- 15 个文本冲突按获批方案合并：保留本地 VERSION 0.1.251、测试默认模型/提示词/恢复探测、流式监控、白名单预览接口、首字后速率与自定义用量表测试，同时接入上游 Provider profile、日志归属及关键用例。
+- 缓存 TTL 不采用出口全局把显式 5m 升为 1h；仅在生成 tools/system 自动断点时按后续客户端 1h 决定 TTL，默认仍显式 5m，客户端断点和显式系统块配置不改。无效客户端自身 TTL 顺序不由网关覆盖修复。
+- Command Code/Cline 测试列表与前端默认请求接入平台目录；有映射时保留确定性选择与单次映射，无映射时使用 profile 默认，Cline 继续按订阅/钱包冷却动态选择。既有 OpenAI/Anthropic/Gemini/Grok/Antigravity 默认与可配置提示词保留。
+- `CUST-GW-016` Kimi 动态工具、参数兼容重试、首语义输出与安全流重试、严格请求模型计费、逐用户串行扣费和 5 秒 usage task 超时保留。两份台账同提交更新，64 项二开编号全部保留。
+- 新增 242 平台 CHECK 移除迁移原样保留；本地隔离验证不等同于蓝绿生产兼容批准，不更改门禁。未来发布须另行审批，不以本轮同步授权执行生产 DDL。
+- 5 个未跟踪文件经批准移入忽略的证据目录并逐个核对 SHA256；未读取内容、未提交、未自动恢复。没有 stash、实际 submodule/LFS 或自定义 hook。
+- 基线与候选使用同一 Go 1.27.2、golangci-lint 2.14.0、Node 20.20.2、pnpm 9.15.9 和工作区内隔离 tmpfs。基线 Go 默认/unit/integration 的共同失败是旧 x/tools 不支持 Go 1.27.2 导出格式；范围内 d85cebecc 已升级导入器。其他已完成基线检查与候选结果在最终验收中按原始退出码记录。
+- 操作边界：仅本地代码、测试和提交；未 push、未创建 PR/标签、未部署、未连接远程服务器，未操作生产数据库。
+- 后端 unit 复验发现上游新增缺价用例与本地既有返回错误契约不一致；先将新增测试对齐 `ErrModelPricingUnavailable`，保留零费用审计和不扣费断言并补充请求模型断言，随后修复 OpenCode Go 候选模型被过滤后未进入零费用审计分支的问题；仍返回严格缺价错误且不扣费。对应上游 `926441461` 记为 `Applied + Overridden`；原失败日志保留。

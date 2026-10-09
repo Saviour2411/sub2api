@@ -111,6 +111,14 @@ class EvidenceTests(unittest.TestCase):
             else:
                 self.assertEqual(entry["column"],e.additive_column(content))
 
+    def platform_schema_fixture(self):
+        # 241 专项绑定固定历史版本，不能随当前平台目录或 schema 漂移。
+        schema = (ROOT/"deploy/tests/fixtures/user-platform-quota-241.go.txt").read_text()
+        old_schema = schema.replace('"opencode_go", "typesafe":', '"opencode_go":')
+        self.assertEqual(e.PLATFORM_SCHEMA["to_checksum"], e.checksum(schema))
+        self.assertEqual(e.PLATFORM_SCHEMA["from_checksum"], e.checksum(old_schema))
+        return old_schema, schema
+
     def test_special_profiles_require_exact_baseline_code_and_content(self):
         approvals = json.loads((ROOT/e.APPROVALS_PATH).read_text())
         for approval in approvals["approvals"]:
@@ -118,8 +126,7 @@ class EvidenceTests(unittest.TestCase):
                 continue
             for contract in approval["legacy_contracts"]:
                 contract["checksum"] = e.checksum("旧版契约")
-            schema = (ROOT/e.PLATFORM_SCHEMA["path"]).read_text()
-            old_schema = schema.replace('"opencode_go", "typesafe":', '"opencode_go":')
+            old_schema, schema = self.platform_schema_fixture()
             for contract in approval["legacy_contracts"]:
                 if contract["path"] == e.PLATFORM_SCHEMA["path"]:
                     contract["checksum"] = e.checksum(old_schema)
@@ -145,8 +152,7 @@ class EvidenceTests(unittest.TestCase):
         approval = next(item for item in approvals["approvals"] if item.get("profile") == "platform-guarded-241-v1")
         base, sha = approval["compatible_from"], "b"*40
         path, schema_path = approval["path"], e.PLATFORM_SCHEMA["path"]
-        schema = (ROOT/schema_path).read_text()
-        old_schema = schema.replace('"opencode_go", "typesafe":', '"opencode_go":')
+        old_schema, schema = self.platform_schema_fixture()
         for contract in approval["legacy_contracts"]:
             contract["checksum"] = e.checksum(old_schema if contract["path"] == schema_path else "旧版契约")
         values = {"diff":"A\t"+path+"\nM\t"+schema_path, base+":"+schema_path:old_schema,
@@ -166,6 +172,19 @@ class EvidenceTests(unittest.TestCase):
         values[sha+":"+e.APPROVALS_PATH] = json.dumps(approvals)
         with self.assertRaisesRegex(RuntimeError,"固定Ent"):
             e.migration_evidence(base,sha,git)
+
+    def test_242_platform_constraint_removal_remains_blocked(self):
+        base, sha = "a"*40, "b"*40
+        path = "backend/migrations/242_drop_platform_check_constraints.sql"
+        content = (ROOT/path).read_text()
+        def git(*args):
+            if args[0] == "diff":
+                return "A\t"+path
+            if args[0] == "show" and args[1] == sha+":"+path:
+                return content
+            return ""
+        with self.assertRaisesRegex(RuntimeError, "仅允许单条新增可空字段"):
+            e.migration_evidence(base, sha, git)
 
 
 if __name__ == "__main__":
