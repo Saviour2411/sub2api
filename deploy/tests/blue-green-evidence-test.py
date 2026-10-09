@@ -124,6 +124,9 @@ class EvidenceTests(unittest.TestCase):
         for approval in approvals["approvals"]:
             if "profile" not in approval:
                 continue
+            if approval["profile"] == "platform-guarded-242-v1":
+                # 242的双schema与全部审批边界在专用夹具中验证。
+                continue
             for contract in approval["legacy_contracts"]:
                 contract["checksum"] = e.checksum("旧版契约")
             old_schema, schema = self.platform_schema_fixture()
@@ -173,7 +176,7 @@ class EvidenceTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError,"固定Ent"):
             e.migration_evidence(base,sha,git)
 
-    def test_242_platform_constraint_removal_remains_blocked(self):
+    def test_242_platform_constraint_removal_without_schema_pair_remains_blocked(self):
         base, sha = "a"*40, "b"*40
         path = "backend/migrations/242_drop_platform_check_constraints.sql"
         content = (ROOT/path).read_text()
@@ -183,8 +186,52 @@ class EvidenceTests(unittest.TestCase):
             if args[0] == "show" and args[1] == sha+":"+path:
                 return content
             return ""
-        with self.assertRaisesRegex(RuntimeError, "仅允许单条新增可空字段"):
+        with self.assertRaisesRegex(RuntimeError, "两处固定Ent"):
             e.migration_evidence(base, sha, git)
+
+    def platform242_fixture(self):
+        approval = copy.deepcopy(next(item for item in json.loads((ROOT/e.APPROVALS_PATH).read_text())["approvals"]
+                                     if item.get("profile") == "platform-guarded-242-v1"))
+        base, sha = approval["compatible_from"], "b"*40
+        fixtures = ("user-platform-quota-241.go.txt", "composite-model-route-242.go.txt")
+        values = {sha+":"+approval["path"]: (ROOT/approval["path"]).read_text()}
+        for item, fixture in zip(e.PLATFORM242_SCHEMAS, fixtures):
+            values[base+":"+item["path"]] = (ROOT/"deploy/tests/fixtures"/fixture).read_text()
+            values[sha+":"+item["path"]] = (ROOT/item["path"]).read_text()
+        approval["legacy_contracts"] = [{"path":item["path"], "checksum":item["from_checksum"]} for item in e.PLATFORM242_SCHEMAS]
+        values["diff"] = "\n".join(["A\t"+approval["path"], *["M\t"+item["path"] for item in e.PLATFORM242_SCHEMAS]])
+        values[sha+":"+e.APPROVALS_PATH] = json.dumps({"version":1, "approvals":[approval]})
+        def git(*args):
+            if args[0] == "diff": return values["diff"]
+            if args[0] == "show": return values[args[1]]
+            return ""
+        return base, sha, approval, values, git
+
+    def test_242_fixed_schema_pair_and_approval(self):
+        base, sha, approval, values, git = self.platform242_fixture()
+        result = e.migration_evidence(base, sha, git)
+        self.assertEqual("expand", result["migration_class"])
+        self.assertEqual([{"filename":Path(approval["path"]).name,"checksum":approval["checksum"],"profile":approval["profile"]}], result["migration_policy"]["migrations"])
+        for key in [sha+":"+approval["path"], *[ref+":"+item["path"] for item in e.PLATFORM242_SCHEMAS for ref in (base,sha)]]:
+            original = values[key]
+            values[key] += "\n// 未经审批的改变"
+            with self.subTest(key=key), self.assertRaises(RuntimeError):
+                e.migration_evidence(base, sha, git)
+            values[key] = original
+
+    def test_242_does_not_allow_other_baseline_schema_or_incomplete_approval(self):
+        base, sha, original, values, git = self.platform242_fixture()
+        for field, value in (("compatible_from","c"*40),("schema_changes",[]),("checksum","0"*64),("legacy_contracts",[])):
+            values[sha+":"+e.APPROVALS_PATH] = json.dumps({"version":1,"approvals":[dict(original, **{field:value})]})
+            with self.subTest(field=field), self.assertRaises(RuntimeError):
+                e.migration_evidence(base, sha, git)
+        values[sha+":"+e.APPROVALS_PATH] = json.dumps({"version":1,"approvals":[original]})
+        before = values["diff"]
+        for diff in (before.replace("M\t"+e.PLATFORM242_SCHEMAS[1]["path"],""), before+"\nM\tbackend/ent/schema/account.go",
+                     before.replace("A\t"+original["path"], "M\t"+original["path"])):
+            values["diff"] = diff
+            with self.subTest(diff=diff), self.assertRaises(RuntimeError):
+                e.migration_evidence(base, sha, git)
 
 
 if __name__ == "__main__":

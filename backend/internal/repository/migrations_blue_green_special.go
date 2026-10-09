@@ -37,12 +37,17 @@ func approvedBlueGreenSpecial(entry blueGreenMigration) bool {
 		return entry.Filename == blueGreenBonus241File && entry.Checksum == blueGreenBonus241Checksum
 	case blueGreenPlatform241Profile:
 		return entry.Filename == blueGreenPlatform241File && entry.Checksum == blueGreenPlatform241Checksum
+	case blueGreenPlatform242Profile:
+		return entry.Filename == blueGreenPlatform242File && entry.Checksum == blueGreenPlatform242Checksum
 	default:
 		return false
 	}
 }
 
 func applyBlueGreenSpecial(ctx context.Context, conn *sql.Conn, entry blueGreenMigration, content string) error {
+	if entry.Profile == blueGreenPlatform242Profile {
+		return applyBlueGreen242(ctx, conn, entry, content)
+	}
 	if entry.Profile == blueGreenBonus241Profile || entry.Profile == blueGreenPlatform241Profile {
 		return applyBlueGreen241(ctx, conn, entry, content)
 	}

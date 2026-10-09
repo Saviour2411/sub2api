@@ -17,6 +17,7 @@ REQUIRED = {
 MIGRATION_PATHS = ["backend/migrations", "backend/ent/schema"]
 APPROVALS_PATH = "deploy/blue-green/expand-approvals.json"
 SPECIAL_MIGRATIONS = {
+    "242_drop_platform_check_constraints.sql": ("platform-guarded-242-v1", "a7725f31f637208d200e0f37d5270e9f263743d99fa9e4f1bb9a7387e8be5a61"),
     "239_channel_reasoning_effort_multipliers.sql": ("reasoning-empty-239-v1", "66feb546785dfa385d8efd268a40276cd8ffdb0cead7026cd79e339a3b69edf1"),
     "240_affiliate_ledger_operation_id.sql": ("affiliate-operation-240-v1", "3823bfea5f64feb58f5fcebc341c6877eaefc97834b4cd652c8e83ad08ed78da"),
     "241_add_payment_order_bonus_amount.sql": ("bonus-existing-241-v1", "18b6a524a9873d3e4a45e6f9bd03b6e69f4384b701825c659817e017f2e8244f"),
@@ -30,6 +31,28 @@ PLATFORM_SCHEMA = {
 ADD_COLUMN = re.compile(
     r"ALTER\s+TABLE\s+([a-z_][a-z0-9_]*)\s+ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+"
     r"([a-z_][a-z0-9_]*)\s+(jsonb|text|boolean|smallint|integer|bigint|uuid)\s*;", re.I)
+
+PLATFORM242_SCHEMAS = [
+    {
+        "path": "backend/ent/schema/user_platform_quota.go",
+        "from_checksum": "1b62bc2d0d95a67b4908d7615c032e0376d0ae890f15ca3f7019f0f2a75521a4",
+        "to_checksum": "6f4fbb9b052bc3dcc7bcb89c898712063e51851ff0afcea012bcd345bbe7ab86"
+    },
+    {
+        "path": "backend/ent/schema/composite_model_route.go",
+        "from_checksum": "1334a714ec4e7efbb9686b94086c26a3d72af4660e7521af528dfe3968255633",
+        "to_checksum": "cc2e48c8fe7305805f106de7b8cec77a94aee3650cb0009ae5d60cba2434f6d6"
+    }
+]
+
+
+def reviewed_platform242_schemas(base, sha, changed, git):
+    lines = changed.splitlines()
+    require("A\tbackend/migrations/242_drop_platform_check_constraints.sql" in lines
+            and all("M\t" + item["path"] in lines for item in PLATFORM242_SCHEMAS), "242原SQL与两处固定Ent差异必须同时存在")
+    for item in PLATFORM242_SCHEMAS:
+        for ref, key in ((base, "from_checksum"), (sha, "to_checksum")):
+            require(checksum(git("show", ref+":"+item["path"])) == item[key], "242专项Ent差异摘要不符")
 
 
 def reviewed_platform_schema(base, sha, changed, git):
@@ -82,6 +105,9 @@ def migration_evidence(base, sha, git):
         fields = line.split("\t")
         require(len(fields) == 2, "迁移差异格式不受支持")
         status, path = fields
+        if status == "M" and path in {item["path"] for item in PLATFORM242_SCHEMAS} and "A\tbackend/migrations/242_drop_platform_check_constraints.sql" in changed.splitlines():
+            reviewed_platform242_schemas(base, sha, changed, git)
+            continue
         if status == "M" and path == PLATFORM_SCHEMA["path"]:
             reviewed_platform_schema(base, sha, changed, git)
             continue
@@ -95,6 +121,8 @@ def migration_evidence(base, sha, git):
         if special:
             require(checksum(content) == special[1], "专项迁移固定 SQL 摘要不符")
             contract = {"profile": special[0]}
+            if special[0] == "platform-guarded-242-v1":
+                reviewed_platform242_schemas(base, sha, changed, git)
         else:
             contract = additive_column(content)
         if approvals is None:
@@ -109,6 +137,8 @@ def migration_evidence(base, sha, git):
             if special[0] == "platform-guarded-241-v1":
                 require(approval.get("schema_change") == PLATFORM_SCHEMA, "241平台审批缺少固定Ent差异")
                 reviewed_platform_schema(base, sha, changed, git)
+            if special[0] == "platform-guarded-242-v1":
+                require(approval.get("schema_changes") == PLATFORM242_SCHEMAS, "242平台审批缺少两处固定Ent差异")
         else:
             require(approval.get("column") == contract and "profile" not in approval, "新增字段与兼容审批不符")
         contracts = approval.get("legacy_contracts", [])

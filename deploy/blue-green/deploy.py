@@ -265,12 +265,30 @@ class Deployment:
         if self.platform_guard(release):
             report = self.platform_guard_database("check")
             require(all(report.get(key) is True for key in ("valid", "migrations", "schema")), "241平台保护或迁移账本不完整，禁止切流或回滚")
+        if self.platform242_guard(release):
+            report = self.platform242_guard_database("check")
+            require(all(report.get(key) is True for key in ("valid", "migrations", "schema")), "242平台保护或迁移账本不完整，禁止切流或回滚")
+
+    def platform242_guard(self, release):
+        return any(entry.get("profile") == "platform-guarded-242-v1"
+                   for entry in release.get("migration_policy", {}).get("migrations", []))
+
+    def platform242_guard_database(self, mode):
+        spec = importlib.util.spec_from_file_location("platform242_guard", Path(__file__).with_name("platform242-guard.py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        sql = module.release_sql() if mode == "release" else "BEGIN READ ONLY; SET LOCAL statement_timeout='5s'; " + module.check_sql() + "; COMMIT;"
+        result = self.run("docker", "exec", "sub2api-postgres", "sh", "-c",
+                          'exec psql -X -qAt -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-sub2api}" -c "$1"', "guard", sql)
+        return json.loads(result.stdout) if mode == "check" else None
 
     def finish_migration_guards(self):
         self.finish_pricing_guard()
         release = self.state.get("release", {})
         if self.platform_guard(release) and not self.state.get("rollback"):
             self.finish_migration_guard(release, self.platform_guard_database, "platform_guard_result")
+        if self.platform242_guard(release) and not self.state.get("rollback"):
+            self.finish_migration_guard(release, self.platform242_guard_database, "platform242_guard_result")
 
     def finish_migration_guard(self, release, database, result_key):
         # 旧槽仍存在或身份、配置、健康异常时，必须保留新旧版本的写入兼容保护。
