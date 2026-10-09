@@ -63,11 +63,11 @@ func resolveDefaultAccountTestModel(account *Account) (string, bool, error) {
 	if account.IsCNProvider() {
 		return selectCNAccountTestModel(account)
 	}
-	if account.IsOpenCodeGo() {
+	if model := account.providerDefaultTestModel(); model != "" {
 		if len(account.GetModelMapping()) > 0 {
 			return selectCNAccountTestModel(account)
 		}
-		return DefaultOpenCodeGoTestModel, false, nil
+		return model, false, nil
 	}
 	switch account.Platform {
 	case PlatformOpenAI:

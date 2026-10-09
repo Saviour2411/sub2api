@@ -560,6 +560,7 @@ func injectClaudeCodePrompt(body []byte, system any) []byte {
 		logger.LegacyPrintf("service.gateway", "Warning: failed to build Claude Code prompt block: %v", err)
 		return body
 	}
+	claudeCodeBlock, _ = sjson.SetBytes(claudeCodeBlock, "cache_control.ttl", automaticAnthropicCacheTTL(body))
 	// Opencode plugin applies an extra safeguard: it not only prepends the Claude Code
 	// banner, it also prefixes the next system instruction with the same banner plus
 	// a blank line. This helps when upstream concatenates system instructions.
@@ -797,7 +798,8 @@ func buildClaudeOAuthSystemPromptBlocksJSON(body []byte, expansionPrompt string,
 	if err != nil {
 		return nil, err
 	}
-	if len(blocks) == 0 {
+	defaultBlocks := len(blocks) == 0
+	if defaultBlocks {
 		blocks = defaultClaudeOAuthSystemPromptBlockConfig()
 	}
 
@@ -823,6 +825,10 @@ func buildClaudeOAuthSystemPromptBlocksJSON(body []byte, expansionPrompt string,
 		cacheControl, err := decodeClaudeOAuthSystemPromptCacheControl(block.CacheControl)
 		if err != nil {
 			return nil, fmt.Errorf("system block %d cache_control: %w", i, err)
+		}
+		// 默认块及布尔开关生成的断点由网关选择 TTL；显式配置对象保持不变。
+		if cacheControl != nil && (defaultBlocks || bytes.Equal(bytes.TrimSpace(block.CacheControl), []byte("true"))) {
+			cacheControl = map[string]string{"type": "ephemeral", "ttl": automaticAnthropicCacheTTL(body)}
 		}
 		raw, err := marshalAnthropicSystemTextBlockWithCacheControl(text, cacheControl)
 		if err != nil {
@@ -1035,9 +1041,14 @@ func collectCacheControlPaths(body []byte) (invalidThinking []cacheControlPath, 
 	return invalidThinking, messagePaths, toolPaths, systemPaths
 }
 
-// enforceCacheControlLimit 强制执行 cache_control 块数量限制（最多 4 个）
-// 超限时优先移除工具断点，再移除 messages 断点，最后才移除 system 断点。
+// enforceCacheControlLimit 仅清理非法块并限制断点数量，不改写客户端 TTL。
 func enforceCacheControlLimit(body []byte) []byte {
+	return enforceCacheControlBlockLimit(body)
+}
+
+// enforceCacheControlBlockLimit 强制执行 cache_control 块数量限制（最多 4 个）
+// 超限时优先移除工具断点，再移除 messages 断点，最后才移除 system 断点。
+func enforceCacheControlBlockLimit(body []byte) []byte {
 	if len(body) == 0 {
 		return body
 	}
@@ -1135,6 +1146,26 @@ func enforceCacheControlLimit(body []byte) []byte {
 		return out
 	}
 	return body
+}
+
+// automaticAnthropicCacheTTL 仅供新建的 tools/system 自动断点使用。
+// 原 system 可能稍后迁入 messages，因此连同 messages 和顶层断点一起检查；
+// 只决定新断点的 TTL，不依据最终 TTL 猜测断点来源，也不修复客户端自身的无效顺序。
+func automaticAnthropicCacheTTL(body []byte) string {
+	_, messagePaths, _, systemPaths := collectCacheControlPaths(body)
+	paths := make([]string, 0, len(systemPaths)+len(messagePaths)+1)
+	paths = append(paths, systemPaths...)
+	paths = append(paths, messagePaths...)
+	if gjson.GetBytes(body, "cache_control").Exists() {
+		paths = append(paths, "cache_control")
+	}
+	for _, path := range paths {
+		cc := gjson.GetBytes(body, path)
+		if cc.Get("type").String() == "ephemeral" && cc.Get("ttl").String() == cacheTTLTarget1h {
+			return cacheTTLTarget1h
+		}
+	}
+	return claude.DefaultCacheControlTTL
 }
 
 // injectAnthropicCacheControlTTL1h 只为未声明 TTL 的 ephemeral cache_control 补 1h。

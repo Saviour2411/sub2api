@@ -131,6 +131,13 @@ func TestFirstTokenAttemptBuffersDownstreamUntilMeaningfulDelta(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, recorder.Body.String())
 
+	_, err = c.Writer.WriteString(": ping\n\n")
+	require.NoError(t, err)
+	c.Writer.Flush()
+	require.Empty(t, recorder.Body.String(), "心跳刷新不能提交首个语义输出前的暂存响应")
+	require.False(t, attempt.originalWriter.Written())
+	require.Equal(t, firstTokenAttemptWaiting, attempt.currentState())
+
 	go func() {
 		_, _ = io.WriteString(writer, "data: {\"type\":\"response.created\"}\n\n"+
 			"data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n")
@@ -140,6 +147,7 @@ func TestFirstTokenAttemptBuffersDownstreamUntilMeaningfulDelta(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(buf[:n]), "response.output_text.delta")
 	require.Contains(t, recorder.Body.String(), "message_start")
+	require.Contains(t, recorder.Body.String(), ": ping\n\n")
 	require.NoError(t, attempt.finish(nil))
 	require.Same(t, attempt.originalWriter, c.Writer)
 	_ = writer.Close()

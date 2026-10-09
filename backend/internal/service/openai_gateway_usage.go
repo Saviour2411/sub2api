@@ -238,7 +238,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	billingModels := usageBillingModelCandidates(billingModel)
 	hadBillingModels := len(billingModels) > 0
 	billingModels = s.filterCNProviderBillingModelCandidates(ctx, account, apiKey, billingModels)
-	cnPricingCandidatesFiltered := account != nil && account.IsCNProvider() && hadBillingModels && len(billingModels) == 0
+	providerPricingCandidatesFiltered := account != nil &&
+		(account.IsCNProvider() || account.IsOpenCodeGo()) &&
+		hadBillingModels && len(billingModels) == 0
 
 	var cost *CostBreakdown
 	var pricingErr error
@@ -271,10 +273,10 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 				zap.String("requested_model", requestedModel),
 			).Warn("openai_usage.simple_mode_pricing_missing", zap.Error(err))
 			cost = &CostBreakdown{BillingMode: string(BillingModeToken)}
-		case cnPricingCandidatesFiltered && isUsagePricingUnavailableError(err):
-			// CN Anthropic 兼容端点可能接受 claude-* 名称，但没有显式分组/渠道价时
-			// 不能套用 Claude 内置价。保留缺价错误供异步计费告警，同时继续以零成本
-			// 写入 usage 与幂等账单，避免成功请求从审计链路消失。
+		case providerPricingCandidatesFiltered && isUsagePricingUnavailableError(err):
+			// 国产和 OpenCode 的 Anthropic 兼容端点可能接受 claude-* 名称，但没有显式
+			// 分组/渠道价时不能套用 Claude 内置价。保留缺价错误供异步计费告警，同时
+			// 继续以零成本写入 usage 与幂等账单，避免成功请求从审计链路消失。
 			pricingErr = err
 			logger.L().With(
 				zap.String("component", "service.openai_gateway"),

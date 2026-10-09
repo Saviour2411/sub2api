@@ -20,6 +20,8 @@ func Test账号测试默认模型与受限接入(t *testing.T) {
 	}{
 		{"OpenAI", PlatformOpenAI, AccountTypeAPIKey, "", "gpt-6-astra"},
 		{"OpenCode", PlatformOpenCodeGo, AccountTypeAPIKey, "", "glm-5.3"},
+		{"Command Code", PlatformCommandCode, AccountTypeAPIKey, "", DefaultCommandCodeTestModel},
+		{"Cline", PlatformCline, AccountTypeAPIKey, "", DefaultClineTestModel},
 		{"OpenAI OAuth", PlatformOpenAI, AccountTypeOAuth, "", "gpt-6-astra"},
 		{"Anthropic", PlatformAnthropic, AccountTypeAPIKey, "", "claude-opus-5"},
 		{"Gemini", PlatformGemini, AccountTypeAPIKey, "", "gemini-3.8-flash"},
@@ -47,7 +49,7 @@ func Test账号测试默认模型与受限接入(t *testing.T) {
 }
 
 func Test国产测试模型确定性选择与单次映射(t *testing.T) {
-	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo} {
+	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformCommandCode, PlatformCline} {
 		t.Run(platform, func(t *testing.T) {
 			account := &Account{Platform: platform, Type: AccountTypeAPIKey, Credentials: map[string]any{
 				"model_mapping": map[string]any{

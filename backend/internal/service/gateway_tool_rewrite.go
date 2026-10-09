@@ -268,7 +268,8 @@ func applyToolNameRewriteToBody(body []byte, rw *ToolNameRewrite) []byte {
 // `tools[-1]["cache_control"] = {"type":"ephemeral","ttl":"1h"}`，
 // 但 ttl 按本仓规则：
 //   - 客户端已为该 tool 显式设置 cache_control.ttl → 完全透传不覆盖
-//   - 否则注入 {"type":"ephemeral","ttl": claude.DefaultCacheControlTTL}
+//   - 客户端已有但未指定 TTL 的断点补显式 5m
+//   - 新建自动断点按后续断点选择 5m/1h，避免在客户端 1h 前插入 5m
 //
 // 纯副作用函数，tools 不存在或为空数组时 no-op。
 func applyToolsLastCacheBreakpoint(body []byte) []byte {
@@ -305,7 +306,7 @@ func applyToolsLastCacheBreakpoint(body []byte) []byte {
 		return body
 	}
 
-	raw := fmt.Sprintf(`{"type":"ephemeral","ttl":%q}`, claude.DefaultCacheControlTTL)
+	raw := fmt.Sprintf(`{"type":"ephemeral","ttl":%q}`, automaticAnthropicCacheTTL(body))
 	if next, err := sjson.SetRawBytes(body, fmt.Sprintf("tools.%d.cache_control", lastIdx), []byte(raw)); err == nil {
 		body = next
 	}
