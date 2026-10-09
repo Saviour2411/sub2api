@@ -902,5 +902,48 @@ class BlueGreenTests(unittest.TestCase):
         self.assertEqual("released",self.deployment.state["platform_guard_result"]["status"])
 
 
+    def test_platform242_guard_blocks_switch_and_preserves_rollback(self):
+        release = self.special_release()
+        release["migration_policy"]["migrations"] = [{"profile":"platform-guarded-242-v1"}]
+        for field in ("valid", "migrations", "schema"):
+            report = {"valid":True,"migrations":True,"schema":True,field:False}
+            with patch.object(self.deployment,"platform242_guard_database",return_value=report):
+                with self.assertRaisesRegex(bg.Refused,"242平台保护"):
+                    self.deployment.verify_migration_guards(release)
+        self.deployment.busy.add("blue")
+        with patch.object(self.deployment,"platform242_guard_database",return_value={"valid":True,"migrations":True,"schema":True}) as database:
+            self.deployment.deploy(release,window=0)
+            with self.assertRaisesRegex(bg.Refused,"尚未退役"):
+                self.deployment.finish_migration_guards()
+            self.deployment.rollback(window=0)
+            self.deployment.finish_migration_guards()
+            self.assertTrue(all(call.args == ("check",) for call in database.call_args_list))
+        self.assertEqual("blue",self.deployment.routed)
+
+    def test_platform242_guard_release_retries_only_after_retirement(self):
+        release = self.special_release()
+        release["migration_policy"]["migrations"] = [{"profile":"platform-guarded-242-v1"}]
+        events = []
+        def database(mode):
+            events.append((mode,self.deployment.state["phase"],self.deployment.state.get("pending")))
+            if mode == "check": return {"valid":True,"migrations":True,"schema":True}
+            raise bg.Refused("解除锁冲突")
+        with patch.object(self.deployment,"platform242_guard_database",side_effect=database):
+            with self.assertRaisesRegex(bg.Refused,"解除锁冲突"):
+                self.deployment.deploy(release,window=0)
+        self.assertEqual("stable",self.deployment.state["phase"])
+        self.assertNotIn("platform242_guard_result",self.deployment.state)
+        self.assertTrue(all(phase=="stable" and pending is None for mode,phase,pending in events if mode=="release"))
+        with patch.object(self.deployment,"platform242_guard_database",return_value=None) as database:
+            self.deployment.deploy(release,window=0)
+            database.assert_called_once_with("release")
+        self.assertEqual("released",self.deployment.state["platform242_guard_result"]["status"])
+        self.deployment.containers["sub2api-blue"] = {"Id":"unexpected-old"}
+        with patch.object(self.deployment,"platform242_guard_database") as database:
+            with self.assertRaisesRegex(bg.Refused,"旧容器仍存在"):
+                self.deployment.finish_migration_guards()
+            database.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

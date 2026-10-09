@@ -25,6 +25,7 @@ func TestBlueGreenSpecialPolicyBindsExactFileAndSQL(t *testing.T) {
 		{Filename: blueGreenAffiliateFile, Checksum: blueGreenAffiliateChecksum, Profile: blueGreenAffiliateProfile},
 		{Filename: blueGreenBonus241File, Checksum: blueGreenBonus241Checksum, Profile: blueGreenBonus241Profile},
 		{Filename: blueGreenPlatform241File, Checksum: blueGreenPlatform241Checksum, Profile: blueGreenPlatform241Profile},
+		{Filename: blueGreenPlatform242File, Checksum: blueGreenPlatform242Checksum, Profile: blueGreenPlatform242Profile},
 	} {
 		content, err := migrations.FS.ReadFile(entry.Filename)
 		require.NoError(t, err)
