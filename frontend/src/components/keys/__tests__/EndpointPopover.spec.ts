@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 
 const copyToClipboard = vi.fn().mockResolvedValue(true)
 
@@ -26,12 +26,15 @@ vi.mock('@/composables/useClipboard', () => ({
 
 import EndpointPopover from '../EndpointPopover.vue'
 
+enableAutoUnmount(afterEach)
+afterEach(() => { document.body.innerHTML = '' })
+
 describe('EndpointPopover', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('将说明提示渲染到 URL 上方而不是旧的 title 图标上', () => {
+  it('说明提示挂载到页面根节点并可由 URL 聚焦触发', async () => {
     const wrapper = mount(EndpointPopover, {
       props: {
         apiBaseUrl: 'https://default.example.com/v1',
@@ -45,8 +48,12 @@ describe('EndpointPopover', () => {
       },
     })
 
-    expect(wrapper.text()).toContain('自定义说明')
-    expect(wrapper.text()).toContain('点击可复制此端点')
+    await wrapper.findAll('[role="button"]')[1].trigger('focusin')
+    const tooltip = document.body.querySelectorAll<HTMLElement>('[role="tooltip"]')[1]
+    expect(tooltip.parentElement).toBe(document.body)
+    expect(tooltip.style.display).not.toBe('none')
+    expect(tooltip.textContent).toContain('自定义说明')
+    expect(tooltip.textContent).toContain('点击可复制此端点')
     expect(wrapper.find('[role="button"]').attributes('title')).toBeUndefined()
     expect(wrapper.find('[title="自定义说明"]').exists()).toBe(false)
   })
@@ -63,7 +70,7 @@ describe('EndpointPopover', () => {
     await flushPromises()
 
     expect(copyToClipboard).toHaveBeenCalledWith('https://default.example.com/v1', '已复制')
-    expect(wrapper.text()).toContain('已复制到剪贴板')
+    expect(document.body.querySelector('[role="tooltip"]')?.textContent).toContain('已复制到剪贴板')
     expect(wrapper.find('button[aria-label="已复制到剪贴板"]').exists()).toBe(true)
   })
 })

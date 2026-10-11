@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { enableAutoUnmount, mount, DOMWrapper } from '@vue/test-utils'
 import AccountStatusIndicator from '../AccountStatusIndicator.vue'
 import type { Account } from '@/types'
 
@@ -49,6 +49,9 @@ function makeAccount(overrides: Partial<Account>): Account {
     ...overrides,
   }
 }
+
+enableAutoUnmount(afterEach)
+afterEach(() => { document.body.innerHTML = '' })
 
 describe('AccountStatusIndicator', () => {
   it('Claude 5 系列模型限流时显示 Opus 和 Sonnet 的短别名', () => {
@@ -257,15 +260,15 @@ describe('AccountStatusIndicator', () => {
 
     expect(wrapper.text()).toContain('admin.accounts.status.unschedulable')
     expect(wrapper.text()).not.toContain('admin.accounts.status.paused')
-    expect(wrapper.get('[data-test="account-unschedulable-reason-value"]').text()).toBe(
+    expect(new DOMWrapper(document.body).get('[data-test="account-unschedulable-reason-value"]').text()).toBe(
       'first token timeout after 25 seconds'
     )
-    expect(wrapper.get('[data-test="account-unschedulable-status-code"]').text()).toBe('504')
-    expect(wrapper.get('[data-test="account-unschedulable-consecutive-count"]').text()).toBe('3')
-    expect(wrapper.get('[data-test="account-unschedulable-threshold"]').text()).toBe('3')
-    expect(wrapper.get('[data-test="account-unschedulable-model"]').text()).toBe('gpt-5.6-terra')
-    expect(wrapper.get('[data-test="account-unschedulable-timeout-seconds"]').text()).toBe('25')
-    expect(wrapper.get('[data-test="account-unschedulable-occurred-at"]').text()).toContain('2026')
+    expect(new DOMWrapper(document.body).get('[data-test="account-unschedulable-status-code"]').text()).toBe('504')
+    expect(new DOMWrapper(document.body).get('[data-test="account-unschedulable-consecutive-count"]').text()).toBe('3')
+    expect(new DOMWrapper(document.body).get('[data-test="account-unschedulable-threshold"]').text()).toBe('3')
+    expect(new DOMWrapper(document.body).get('[data-test="account-unschedulable-model"]').text()).toBe('gpt-5.6-terra')
+    expect(new DOMWrapper(document.body).get('[data-test="account-unschedulable-timeout-seconds"]').text()).toBe('25')
+    expect(new DOMWrapper(document.body).get('[data-test="account-unschedulable-occurred-at"]').text()).toContain('2026')
   })
 
   it('持久事故主状态优先于残留的临时限流状态', () => {
@@ -315,10 +318,11 @@ describe('AccountStatusIndicator', () => {
       }
     })
 
-    expect(wrapper.get('[data-test="account-unschedulable-reason-value"]').text()).toBe(
+    expect(wrapper.find('[data-test="account-unschedulable-reason"]').exists()).toBe(true)
+    expect(new DOMWrapper(document.body).get('[data-test="account-unschedulable-reason-value"]').text()).toBe(
       'legacy upstream failure'
     )
-    expect(wrapper.get('[data-test="account-unschedulable-status-code"]').text()).toBe('503')
+    expect(new DOMWrapper(document.body).get('[data-test="account-unschedulable-status-code"]').text()).toBe('503')
   })
 
   it('marker 字段异常时保留原始 reason 并忽略无效详情', () => {
@@ -345,14 +349,14 @@ describe('AccountStatusIndicator', () => {
     })
 
     expect(wrapper.get('.badge').text()).toBe('admin.accounts.status.unschedulable')
-    expect(wrapper.get('[data-test="account-unschedulable-reason-value"]').text()).toBe(
+    expect(new DOMWrapper(document.body).get('[data-test="account-unschedulable-reason-value"]').text()).toBe(
       'legacy raw reason'
     )
-    expect(wrapper.find('[data-test="account-unschedulable-status-code"]').exists()).toBe(false)
-    expect(wrapper.find('[data-test="account-unschedulable-consecutive-count"]').exists()).toBe(
+    expect(new DOMWrapper(document.body).find('[data-test="account-unschedulable-status-code"]').exists()).toBe(false)
+    expect(new DOMWrapper(document.body).find('[data-test="account-unschedulable-consecutive-count"]').exists()).toBe(
       false
     )
-    expect(wrapper.find('[data-test="account-unschedulable-occurred-at"]').exists()).toBe(false)
+    expect(new DOMWrapper(document.body).find('[data-test="account-unschedulable-occurred-at"]').exists()).toBe(false)
   })
 
   it('管理员手动暂停且没有 marker 时仍显示暂停且不显示原因问号', () => {
