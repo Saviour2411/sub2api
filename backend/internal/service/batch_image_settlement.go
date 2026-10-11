@@ -402,6 +402,34 @@ func (p *BatchImagePipelineProcessor) recordSuccessRate(ctx context.Context, job
 		}
 		failureCount = 1
 	}
+	if failureCount > 0 {
+		if job.Status == BatchImageJobStatusFailed && successCount == 0 && IsImageGroupExcludedError(
+			0, batchImageDerefString(job.LastErrorCode), "", batchImageDerefString(job.LastErrorMessage),
+		) {
+			return nil
+		}
+		if p.ProviderProcessor != nil && p.ProviderProcessor.Repo != nil {
+			const pageSize = 500
+			for offset := 0; failureCount > 0; offset += pageSize {
+				items, err := p.ProviderProcessor.Repo.ListBatchImageItems(ctx, job.BatchID, BatchImageItemFilter{
+					Status: BatchImageItemStatusFailed, Limit: pageSize, Offset: offset,
+				})
+				if err != nil {
+					return fmt.Errorf("读取生图失败条目以统计成功率: %w", err)
+				}
+				for _, item := range items {
+					if item != nil && failureCount > 0 && IsImageGroupExcludedError(
+						0, batchImageDerefString(item.ErrorCode), "", batchImageDerefString(item.ErrorMessage),
+					) {
+						failureCount--
+					}
+				}
+				if len(items) < pageSize {
+					break
+				}
+			}
+		}
+	}
 	return p.SuccessRates.RecordBatchResult(ctx, *job.GroupID, job.BatchID, successCount, failureCount)
 }
 
