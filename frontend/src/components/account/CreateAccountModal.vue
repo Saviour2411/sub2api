@@ -992,79 +992,75 @@
           </div>
 
           <!-- Custom OAuth Client (Advanced) -->
-          <div v-if="showAdvancedOAuth" class="mt-3 group relative">
-            <button
-              type="button"
-              :disabled="!geminiAIStudioOAuthEnabled"
-              @click="handleSelectGeminiOAuthType('ai_studio')"
-              :class="[
-                'flex w-full items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
-                !geminiAIStudioOAuthEnabled ? 'cursor-not-allowed opacity-60' : '',
-                geminiOAuthType === 'ai_studio'
-                  ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20'
-                  : 'border-gray-200 hover:border-amber-300 dark:border-dark-600 dark:hover:border-amber-700'
-              ]"
-            >
-              <div
+          <HelpTooltip v-if="showAdvancedOAuth" class="mt-3 group relative !block !ml-0" width-class="w-80" :disabled="!(!geminiAIStudioOAuthEnabled)" tabindex="-1">
+            <template #trigger>
+              <button
+                type="button"
+                :disabled="!geminiAIStudioOAuthEnabled"
+                @click="handleSelectGeminiOAuthType('ai_studio')"
                 :class="[
-                  'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                  'flex w-full items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+                  !geminiAIStudioOAuthEnabled ? 'cursor-not-allowed opacity-60' : '',
                   geminiOAuthType === 'ai_studio'
-                    ? 'bg-amber-500 text-white'
-                    : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+                    ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20'
+                    : 'border-gray-200 hover:border-amber-300 dark:border-dark-600 dark:hover:border-amber-700'
                 ]"
               >
-                <svg
-                  class="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  stroke-width="1.5"
+                <div
+                  :class="[
+                    'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                    geminiOAuthType === 'ai_studio'
+                      ? 'bg-amber-500 text-white'
+                      : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+                  ]"
                 >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"
-                  />
-                </svg>
-              </div>
-              <div class="min-w-0">
-                <span class="block text-sm font-medium text-gray-900 dark:text-white">
-                  {{ t('admin.accounts.gemini.oauthType.customTitle') }}
-                </span>
-                <span class="text-xs text-gray-500 dark:text-gray-400">
-                  {{ t('admin.accounts.gemini.oauthType.customDesc') }}
-                </span>
-                <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  {{ t('admin.accounts.gemini.oauthType.customRequirement') }}
-                </div>
-                <div class="mt-2 flex flex-wrap gap-1">
-                  <span
-                    class="rounded bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                  <svg
+                    class="h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="1.5"
                   >
-                    {{ t('admin.accounts.gemini.oauthType.badges.orgManaged') }}
-                  </span>
-                  <span
-                    class="rounded bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
-                  >
-                    {{ t('admin.accounts.gemini.oauthType.badges.adminRequired') }}
-                  </span>
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"
+                    />
+                  </svg>
                 </div>
-              </div>
-              <span
-                v-if="!geminiAIStudioOAuthEnabled"
-                class="ml-auto shrink-0 rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
-              >
-                {{ t('admin.accounts.oauth.gemini.aiStudioNotConfiguredShort') }}
-              </span>
-            </button>
-
-            <div
-              v-if="!geminiAIStudioOAuthEnabled"
-              class="pointer-events-none absolute right-0 top-full z-50 mt-2 w-80 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 opacity-0 shadow-lg transition-opacity group-hover:opacity-100 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
-            >
-              {{ t('admin.accounts.oauth.gemini.aiStudioNotConfiguredTip') }}
-            </div>
-          </div>
+                <div class="min-w-0">
+                  <span class="block text-sm font-medium text-gray-900 dark:text-white">
+                    {{ t('admin.accounts.gemini.oauthType.customTitle') }}
+                  </span>
+                  <span class="text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.accounts.gemini.oauthType.customDesc') }}
+                  </span>
+                  <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.accounts.gemini.oauthType.customRequirement') }}
+                  </div>
+                  <div class="mt-2 flex flex-wrap gap-1">
+                    <span
+                      class="rounded bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                    >
+                      {{ t('admin.accounts.gemini.oauthType.badges.orgManaged') }}
+                    </span>
+                    <span
+                      class="rounded bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                    >
+                      {{ t('admin.accounts.gemini.oauthType.badges.adminRequired') }}
+                    </span>
+                  </div>
+                </div>
+                <span
+                  v-if="!geminiAIStudioOAuthEnabled"
+                  class="ml-auto shrink-0 rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                >
+                  {{ t('admin.accounts.oauth.gemini.aiStudioNotConfiguredShort') }}
+                </span>
+              </button>
+            </template>
+            {{ t('admin.accounts.oauth.gemini.aiStudioNotConfiguredTip') }}
+          </HelpTooltip>
         </div>
 
         <!-- Tier selection (used as fallback when auto-detection is unavailable/fails) -->
@@ -3610,22 +3606,16 @@
               {{ t('admin.accounts.mixedScheduling') }}
             </span>
           </label>
-          <div class="group relative">
-            <span
-              class="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-200 text-xs text-gray-500 hover:bg-gray-300 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500"
-            >
-              ?
-            </span>
-            <!-- Tooltip（向下显示避免被弹窗裁剪） -->
-            <div
-              class="pointer-events-none absolute left-0 top-full z-[100] mt-1.5 w-72 rounded bg-gray-900 px-3 py-2 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
-            >
-              {{ t('admin.accounts.mixedSchedulingTooltip') }}
-              <div
-                class="absolute bottom-full left-3 border-4 border-transparent border-b-gray-900 dark:border-b-gray-700"
-              ></div>
-            </div>
-          </div>
+          <HelpTooltip class="group relative !block !ml-0" width-class="w-72">
+            <template #trigger>
+              <span
+                class="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-200 text-xs text-gray-500 hover:bg-gray-300 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500"
+              >
+                ?
+              </span>
+            </template>
+            {{ t('admin.accounts.mixedSchedulingTooltip') }}
+          </HelpTooltip>
         </div>
         <div v-if="form.platform === 'antigravity'" class="mt-3 flex items-center gap-2">
           <label class="flex cursor-pointer items-center gap-2">
@@ -3638,21 +3628,16 @@
               {{ t('admin.accounts.allowOverages') }}
             </span>
           </label>
-          <div class="group relative">
-            <span
-              class="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-200 text-xs text-gray-500 hover:bg-gray-300 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500"
-            >
-              ?
-            </span>
-            <div
-              class="pointer-events-none absolute left-0 top-full z-[100] mt-1.5 w-72 rounded bg-gray-900 px-3 py-2 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
-            >
-              {{ t('admin.accounts.allowOveragesTooltip') }}
-              <div
-                class="absolute bottom-full left-3 border-4 border-transparent border-b-gray-900 dark:border-b-gray-700"
-              ></div>
-            </div>
-          </div>
+          <HelpTooltip class="group relative !block !ml-0" width-class="w-72">
+            <template #trigger>
+              <span
+                class="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-200 text-xs text-gray-500 hover:bg-gray-300 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500"
+              >
+                ?
+              </span>
+            </template>
+            {{ t('admin.accounts.allowOveragesTooltip') }}
+          </HelpTooltip>
         </div>
 
         <!-- Group Selection - 仅标准模式显示 -->

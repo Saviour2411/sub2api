@@ -342,59 +342,54 @@
           <template #cell-groups="{ row }">
             <div v-if="allGroups.length > 0" class="flex flex-col gap-1">
               <!-- 专属分组行 -->
-              <span
+              <HelpTooltip
                 v-if="getUserGroups(row).exclusive.length > 0"
-                class="group/ex relative inline-flex cursor-pointer items-center gap-1 whitespace-nowrap text-xs"
+                class="group/ex relative inline-flex cursor-pointer items-center gap-1 whitespace-nowrap text-xs !ml-0"
                 @click.stop="toggleExpandedGroup(row.id)"
+                width-class="w-80"
+                :disabled="!(expandedGroupUserId !== row.id)"
               >
-                <Icon name="shield" size="xs" class="h-3.5 w-3.5 text-purple-500 dark:text-purple-400" />
-                <span class="font-medium text-purple-600 dark:text-purple-400">{{ getUserGroups(row).exclusive.length }}</span>
-                <span class="text-gray-500 dark:text-dark-400">{{ t('admin.users.exclusiveLabel') }}</span>
-                <!-- Hover tooltip（操作菜单未打开时显示） -->
-                <div
-                  v-if="expandedGroupUserId !== row.id"
-                  class="pointer-events-none absolute left-0 top-full z-50 mt-1.5 rounded bg-gray-900 px-2.5 py-1.5 text-xs text-white opacity-0 shadow-lg transition-opacity duration-75 group-hover/ex:opacity-100 dark:bg-dark-600"
-                >
-                  <div class="absolute left-4 bottom-full border-4 border-transparent border-b-gray-900 dark:border-b-dark-600"></div>
-                  <div class="flex flex-col gap-0.5 whitespace-nowrap">
-                    <span v-for="g in getUserGroups(row).exclusive" :key="g.id">{{ g.name }}</span>
-                  </div>
-                </div>
-                <!-- 点击展开分组操作菜单 -->
-                <div
-                  v-if="expandedGroupUserId === row.id"
-                  class="absolute left-0 top-full z-50 mt-1.5 min-w-[160px] overflow-hidden rounded-lg border border-gray-200 bg-white py-1 text-xs shadow-xl dark:border-dark-600 dark:bg-dark-700"
-                >
-                  <div class="border-b border-gray-100 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-gray-400 dark:border-dark-600 dark:text-dark-400">
-                    {{ t('admin.users.clickToReplace') }}
-                  </div>
+                <template #trigger>
+                  <Icon name="shield" size="xs" class="h-3.5 w-3.5 text-purple-500 dark:text-purple-400" />
+                  <span class="font-medium text-purple-600 dark:text-purple-400">{{ getUserGroups(row).exclusive.length }}</span>
+                  <span class="text-gray-500 dark:text-dark-400">{{ t('admin.users.exclusiveLabel') }}</span>
                   <div
-                    v-for="g in getUserGroups(row).exclusive"
-                    :key="g.id"
-                    class="flex cursor-pointer items-center gap-2 px-3 py-2 text-gray-700 transition-colors hover:bg-primary-50 hover:text-primary-600 dark:text-dark-200 dark:hover:bg-primary-900/30 dark:hover:text-primary-400"
-                    @click.stop="openGroupReplace(row, g)"
+                    v-if="expandedGroupUserId === row.id"
+                    class="absolute left-0 top-full z-50 mt-1.5 min-w-[160px] overflow-hidden rounded-lg border border-gray-200 bg-white py-1 text-xs shadow-xl dark:border-dark-600 dark:bg-dark-700"
                   >
-                    <Icon name="swap" size="xs" class="h-3.5 w-3.5 flex-shrink-0 opacity-50" />
-                    <span class="flex-1">{{ g.name }}</span>
+                    <div class="border-b border-gray-100 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-gray-400 dark:border-dark-600 dark:text-dark-400">
+                      {{ t('admin.users.clickToReplace') }}
+                    </div>
+                    <div
+                      v-for="g in getUserGroups(row).exclusive"
+                      :key="g.id"
+                      class="flex cursor-pointer items-center gap-2 px-3 py-2 text-gray-700 transition-colors hover:bg-primary-50 hover:text-primary-600 dark:text-dark-200 dark:hover:bg-primary-900/30 dark:hover:text-primary-400"
+                      @click.stop="openGroupReplace(row, g)"
+                    >
+                      <Icon name="swap" size="xs" class="h-3.5 w-3.5 flex-shrink-0 opacity-50" />
+                      <span class="flex-1">{{ g.name }}</span>
+                    </div>
                   </div>
+                </template>
+                <div class="flex flex-col gap-0.5 whitespace-normal">
+                  <span v-for="g in getUserGroups(row).exclusive" :key="g.id">{{ g.name }}</span>
                 </div>
-              </span>
+              </HelpTooltip>
               <!-- 公开分组行 -->
-              <span
+              <HelpTooltip
                 v-if="getUserGroups(row).publicGroups.length > 0"
-                class="group/pub relative inline-flex cursor-default items-center gap-1 whitespace-nowrap text-xs"
+                class="group/pub relative inline-flex cursor-default items-center gap-1 whitespace-nowrap text-xs !ml-0"
+                width-class="w-80"
               >
-                <Icon name="globe" size="xs" class="h-3.5 w-3.5 text-gray-400 dark:text-dark-500" />
-                <span class="font-medium text-gray-600 dark:text-dark-300">{{ getUserGroups(row).publicGroups.length }}</span>
-                <span class="text-gray-400 dark:text-dark-500">{{ t('admin.users.publicLabel') }}</span>
-                <!-- Tooltip: 向下弹出 -->
-                <div class="pointer-events-none absolute left-0 top-full z-50 mt-1.5 rounded bg-gray-900 px-2.5 py-1.5 text-xs text-white opacity-0 shadow-lg transition-opacity duration-75 group-hover/pub:opacity-100 dark:bg-dark-600">
-                  <div class="absolute left-4 bottom-full border-4 border-transparent border-b-gray-900 dark:border-b-dark-600"></div>
-                  <div class="flex flex-col gap-0.5 whitespace-nowrap">
-                    <span v-for="g in getUserGroups(row).publicGroups" :key="g.id">{{ g.name }}</span>
-                  </div>
+                <template #trigger>
+                  <Icon name="globe" size="xs" class="h-3.5 w-3.5 text-gray-400 dark:text-dark-500" />
+                  <span class="font-medium text-gray-600 dark:text-dark-300">{{ getUserGroups(row).publicGroups.length }}</span>
+                  <span class="text-gray-400 dark:text-dark-500">{{ t('admin.users.publicLabel') }}</span>
+                </template>
+                <div class="flex flex-col gap-0.5 whitespace-normal">
+                  <span v-for="g in getUserGroups(row).publicGroups" :key="g.id">{{ g.name }}</span>
                 </div>
-              </span>
+              </HelpTooltip>
               <!-- 都没有 -->
               <span
                 v-if="getUserGroups(row).exclusive.length === 0 && getUserGroups(row).publicGroups.length === 0"
@@ -431,19 +426,17 @@
 
           <template #cell-balance="{ value, row }">
             <div class="flex items-center gap-2">
-              <div class="group relative">
-                <button
-                  class="font-medium text-gray-900 underline decoration-dashed decoration-gray-300 underline-offset-4 transition-colors hover:text-primary-600 dark:text-white dark:decoration-dark-500 dark:hover:text-primary-400"
-                  @click="handleBalanceHistory(row)"
-                >
-                  ${{ value.toFixed(2) }}
-                </button>
-                <!-- Instant tooltip -->
-                <div class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 shadow-lg transition-opacity duration-75 group-hover:opacity-100 dark:bg-dark-600">
-                  {{ t('admin.users.balanceHistoryTip') }}
-                  <div class="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-dark-600"></div>
-                </div>
-              </div>
+              <HelpTooltip class="group relative !block !ml-0" width-class="w-80" tabindex="-1">
+                <template #trigger>
+                  <button
+                    class="font-medium text-gray-900 underline decoration-dashed decoration-gray-300 underline-offset-4 transition-colors hover:text-primary-600 dark:text-white dark:decoration-dark-500 dark:hover:text-primary-400"
+                    @click="handleBalanceHistory(row)"
+                  >
+                    ${{ value.toFixed(2) }}
+                  </button>
+                </template>
+                {{ t('admin.users.balanceHistoryTip') }}
+              </HelpTooltip>
               <button
                 @click.stop="handleDeposit(row)"
                 class="rounded px-2 py-0.5 text-xs font-medium text-emerald-600 transition-colors hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-900/20"
@@ -796,6 +789,7 @@ import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useTableSelection } from '@/composables/useTableSelection'
 import { formatDateTime } from '@/utils/format'
 import Icon from '@/components/icons/Icon.vue'
+import HelpTooltip from '@/components/common/HelpTooltip.vue'
 
 const { t } = useI18n()
 import { adminAPI } from '@/api/admin'

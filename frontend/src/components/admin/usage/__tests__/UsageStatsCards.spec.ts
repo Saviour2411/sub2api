@@ -1,5 +1,7 @@
-import { describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { enableAutoUnmount, mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
+import HelpTooltip from '@/components/common/HelpTooltip.vue'
 
 import UsageStatsCards from '../UsageStatsCards.vue'
 
@@ -43,47 +45,44 @@ const stats = {
   average_duration_ms: 250,
 }
 
-describe('UsageStatsCards', () => {
-  it('shows cache token breakdown values', () => {
-    const wrapper = mount(UsageStatsCards, {
-      props: {
-        stats,
-      },
-      global: {
-        stubs: {
-          Icon: true,
-        },
-      },
-    })
+enableAutoUnmount(afterEach)
+afterEach(() => { document.body.innerHTML = '' })
 
-    const text = wrapper.text()
-    expect(text).toContain('Cache: 34')
-    expect(text).toContain('Cache Token Breakdown')
-    expect(text).toContain('Cache Creation')
-    expect(text).toContain('12')
-    expect(text).toContain('Cache Read')
-    expect(text).toContain('22')
+describe('UsageStatsCards', () => {
+  it('悬停时在卡片外展示完整缓存明细', async () => {
+    const wrapper = mount(UsageStatsCards, {
+      attachTo: document.body,
+      props: { stats },
+      global: { stubs: { Icon: true } },
+    })
+    expect(wrapper.text()).toContain('Cache: 34')
+    const trigger = wrapper.getComponent(HelpTooltip)
+    await trigger.trigger('mouseenter')
+    await nextTick()
+    const tooltip = document.body.querySelector<HTMLElement>('[role="tooltip"]')!
+    expect(tooltip.parentElement).toBe(document.body)
+    expect(tooltip.style.display).not.toBe('none')
+    expect(tooltip.textContent).toContain('Cache Token Breakdown')
+    expect(tooltip.textContent).toContain('Cache Creation')
+    expect(tooltip.textContent).toContain('12')
+    expect(tooltip.textContent).toContain('Cache Read')
+    expect(tooltip.textContent).toContain('22')
+    expect(wrapper.element.contains(tooltip)).toBe(false)
   })
 
-  it('keeps the cache tooltip out of the layout while it is hidden', () => {
+  it('隐藏时不占布局空间，键盘聚焦也能打开并关闭明细', async () => {
     const wrapper = mount(UsageStatsCards, {
-      props: {
-        stats,
-      },
-      global: {
-        stubs: {
-          Icon: true,
-        },
-      },
+      attachTo: document.body,
+      props: { stats },
+      global: { stubs: { Icon: true } },
     })
-
-    const tooltip = wrapper.findAll('span').find((el) => el.classes().includes('group-hover:block'))
-
-    expect(tooltip).toBeDefined()
-    // `opacity-0` hides the tooltip visually but keeps it in the layout, so its
-    // fixed width still widens the document and causes horizontal scrolling on
-    // narrow screens. `hidden` (display: none) takes it out of the flow.
-    expect(tooltip?.classes()).toContain('hidden')
-    expect(tooltip?.classes()).not.toContain('opacity-0')
+    const tooltip = document.body.querySelector<HTMLElement>('[role="tooltip"]')!
+    expect(tooltip.style.display).toBe('none')
+    const trigger = wrapper.getComponent(HelpTooltip)
+    await trigger.trigger('focusin')
+    await nextTick()
+    expect(tooltip.style.display).not.toBe('none')
+    await trigger.trigger('focusout')
+    expect(tooltip.style.display).toBe('none')
   })
 })
