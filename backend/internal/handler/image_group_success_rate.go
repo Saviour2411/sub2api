@@ -63,6 +63,7 @@ func (h *ChannelMonitorUserHandler) TrackImageGroupRequestResult() gin.HandlerFu
 			return
 		}
 
+		capture, _ := c.Writer.(*opsCaptureWriter)
 		c.Next()
 		if c.Request == nil || c.Request.Context().Err() != nil || c.Writer.Status() == statusClientClosedRequest {
 			return
@@ -76,9 +77,9 @@ func (h *ChannelMonitorUserHandler) TrackImageGroupRequestResult() gin.HandlerFu
 		}
 
 		status := c.Writer.Status()
-		succeeded := status >= http.StatusOK && status < http.StatusMultipleChoices
-		if _, streamFailed := service.GetOpsStreamError(c); streamFailed {
-			succeeded = false
+		succeeded, excluded := imageGroupRequestResult(c, capture)
+		if excluded {
+			return
 		}
 		writeCtx, cancel := context.WithTimeout(context.WithoutCancel(c.Request.Context()), imageGroupSuccessRateWriteTimeout)
 		defer cancel()
@@ -90,6 +91,89 @@ func (h *ChannelMonitorUserHandler) TrackImageGroupRequestResult() gin.HandlerFu
 			)
 		}
 	}
+}
+
+func imageGroupRequestResult(c *gin.Context, capture *opsCaptureWriter) (succeeded, excluded bool) {
+	status := c.Writer.Status()
+	var result parsedOpsError
+	if capture != nil {
+		capture.finalizeCapture()
+		result = parseOpsErrorResponse(capture.capturedBytes())
+		if terminal, ok := capture.capturedTerminalError(); ok {
+			result = terminal
+		}
+	}
+	streamError, streamFailed := service.GetOpsStreamError(c)
+	if status >= http.StatusOK && status < http.StatusMultipleChoices && !streamFailed && !result.StreamFailure {
+		return true, false
+	}
+	if streamFailed {
+		result = parsedOpsError{Code: streamError.Code, ErrorType: streamError.ErrType, Message: streamError.Message}
+		if streamError.IntendedStatus > 0 {
+			status = streamError.IntendedStatus
+		}
+	} else if result.StatusCode > 0 {
+		status = result.StatusCode
+	}
+	if service.IsImageGroupExcludedError(status, result.Code, result.ErrorType, result.Message) {
+		return false, true
+	}
+	// 请求级带内拒绝不能继承此前重试的上游错误。
+	if streamFailed && streamError.RequestScoped {
+		return false, false
+	}
+
+	upstreamStatus, upstream := imageGroupFinalUpstreamError(c)
+	if streamFailed {
+		upstreamStatus, upstream = imageGroupUpstreamError(streamError.UpstreamStatus, streamError.UpstreamMessage, streamError.UpstreamDetail)
+		if event := imageGroupLastUpstreamEvent(streamError.UpstreamErrors); event != nil {
+			upstreamStatus, upstream = imageGroupUpstreamEventError(event)
+		}
+	}
+	if upstreamStatus > 0 {
+		status = upstreamStatus
+	}
+	message := result.Message + "\n" + upstream.Message
+	return false, service.IsImageGroupExcludedError(status, upstream.Code, upstream.ErrorType, message)
+}
+
+func imageGroupFinalUpstreamError(c *gin.Context) (int, parsedOpsError) {
+	if value, ok := c.Get(service.OpsUpstreamErrorsKey); ok {
+		if events, ok := value.([]*service.OpsUpstreamErrorEvent); ok {
+			if event := imageGroupLastUpstreamEvent(events); event != nil {
+				return imageGroupUpstreamEventError(event)
+			}
+		}
+	}
+	status := opsJSONInt(c.Value(service.OpsUpstreamStatusCodeKey))
+	return imageGroupUpstreamError(status, c.GetString(service.OpsUpstreamErrorMessageKey), c.GetString(service.OpsUpstreamErrorDetailKey))
+}
+
+func imageGroupLastUpstreamEvent(events []*service.OpsUpstreamErrorEvent) *service.OpsUpstreamErrorEvent {
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i] != nil {
+			return events[i]
+		}
+	}
+	return nil
+}
+
+func imageGroupUpstreamEventError(event *service.OpsUpstreamErrorEvent) (int, parsedOpsError) {
+	detail := event.UpstreamResponseBody
+	if detail == "" {
+		detail = event.Detail
+	}
+	return imageGroupUpstreamError(event.UpstreamStatusCode, event.Message, detail)
+}
+
+func imageGroupUpstreamError(status int, message, detail string) (int, parsedOpsError) {
+	result := parseOpsErrorResponse([]byte(detail))
+	if result.Message == "" {
+		result.Message = message
+	} else if message != "" {
+		result.Message = message + "\n" + result.Message
+	}
+	return status, result
 }
 
 func isImageGroupSuccessRateEndpoint(c *gin.Context) bool {

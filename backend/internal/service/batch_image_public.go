@@ -296,7 +296,7 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 			code = "INSUFFICIENT_BALANCE"
 		}
 		_ = s.Repo.RecordBatchImageJobSubmitFailure(ctx, job.BatchID, code, sanitizeBatchImagePublicMessage(err.Error()), true)
-		s.recordFailedBatchResult(ctx, job)
+		s.recordFailedBatchResult(ctx, job, err)
 		s.hidePreUpstreamSubmitFailure(ctx, owner, job)
 		return nil, err
 	}
@@ -306,7 +306,7 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 			return nil, releaseErr
 		}
 		_ = s.Repo.RecordBatchImageJobSubmitFailure(ctx, job.BatchID, "ITEM_CREATE_FAILED", sanitizeBatchImagePublicMessage(err.Error()), true)
-		s.recordFailedBatchResult(ctx, job)
+		s.recordFailedBatchResult(ctx, job, err)
 		s.hidePreUpstreamSubmitFailure(ctx, owner, job)
 		return nil, ErrBatchImageQueueFailed
 	}
@@ -346,7 +346,7 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 		// 并发 Cancel 等导致的非法转换：job 已处于终态，不再覆盖其状态。
 		if !errors.Is(err, ErrBatchImageInvalidTransition) {
 			_ = s.Repo.RecordBatchImageJobSubmitFailure(ctx, job.BatchID, "UPLOAD_TRANSITION_FAILED", sanitizeBatchImagePublicMessage(err.Error()), true)
-			s.recordFailedBatchResult(ctx, job)
+			s.recordFailedBatchResult(ctx, job, err)
 			s.hidePreUpstreamSubmitFailure(ctx, owner, job)
 		}
 		return nil, err
@@ -366,7 +366,7 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 		publicErr := batchImageProviderSubmitPublicError(err)
 		reason := batchImageProviderSubmitRecordCode(publicErr)
 		_ = s.Repo.RecordBatchImageJobSubmitFailure(ctx, job.BatchID, reason, sanitizeBatchImagePublicMessage(err.Error()), true)
-		s.recordFailedBatchResult(ctx, job)
+		s.recordFailedBatchResult(ctx, job, err)
 		s.hidePreUpstreamSubmitFailure(ctx, owner, job)
 		return nil, publicErr
 	}
@@ -375,7 +375,7 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 			return nil, releaseErr
 		}
 		_ = s.Repo.RecordBatchImageJobSubmitFailure(ctx, job.BatchID, "PROVIDER_SUBMIT_FAILED", "provider job name missing", true)
-		s.recordFailedBatchResult(ctx, job)
+		s.recordFailedBatchResult(ctx, job, ErrBatchImageProviderSubmitFailed)
 		s.hidePreUpstreamSubmitFailure(ctx, owner, job)
 		return nil, ErrBatchImageProviderSubmitFailed
 	}
@@ -412,7 +412,7 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 func (s *BatchImagePublicService) releaseFailedSubmitHold(ctx context.Context, job *BatchImageJob, requestHash string) error {
 	if err := releaseBatchImageBalanceHold(ctx, s.BillingRepo, job, requestHash); err != nil {
 		_ = s.Repo.RecordBatchImageJobSubmitFailure(ctx, job.BatchID, "BILLING_RELEASE_FAILED", sanitizeBatchImagePublicMessage(err.Error()), true)
-		s.recordFailedBatchResult(ctx, job)
+		s.recordFailedBatchResult(ctx, job, err)
 		s.enqueueBillingRetry(ctx, job.BatchID)
 		return ErrBatchImageBillingHoldFailed
 	}
@@ -420,12 +420,15 @@ func (s *BatchImagePublicService) releaseFailedSubmitHold(ctx context.Context, j
 	return nil
 }
 
-func (s *BatchImagePublicService) recordFailedBatchResult(ctx context.Context, job *BatchImageJob) {
+func (s *BatchImagePublicService) recordFailedBatchResult(ctx context.Context, job *BatchImageJob, cause error) {
 	if s == nil || s.SuccessRates == nil || job == nil || job.GroupID == nil || *job.GroupID <= 0 {
 		return
 	}
 	// 客户端主动取消提交时不计入失败率。
 	if ctx == nil || ctx.Err() != nil {
+		return
+	}
+	if isExcludedBatchImageError(cause) {
 		return
 	}
 	if err := s.SuccessRates.RecordBatchResult(ctx, *job.GroupID, job.BatchID, 0, 1); err != nil {
