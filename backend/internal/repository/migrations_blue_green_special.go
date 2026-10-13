@@ -29,6 +29,13 @@ func approvedBlueGreenSpecial(entry blueGreenMigration) bool {
 		return false
 	}
 	switch entry.Profile {
+	case blueGreen216Profile:
+		for _, expected := range blueGreen216Migrations {
+			if entry == expected {
+				return true
+			}
+		}
+		return false
 	case blueGreenReasoningProfile:
 		return entry.Filename == blueGreenReasoningFile && entry.Checksum == blueGreenReasoningChecksum
 	case blueGreenAffiliateProfile:
@@ -45,6 +52,9 @@ func approvedBlueGreenSpecial(entry blueGreenMigration) bool {
 }
 
 func applyBlueGreenSpecial(ctx context.Context, conn *sql.Conn, entry blueGreenMigration, content string) error {
+	if entry.Profile == blueGreen216Profile {
+		return applyBlueGreen216(ctx, conn, entry)
+	}
 	if entry.Profile == blueGreenPlatform242Profile {
 		return applyBlueGreen242(ctx, conn, entry, content)
 	}

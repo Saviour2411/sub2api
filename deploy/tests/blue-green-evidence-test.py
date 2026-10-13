@@ -124,8 +124,8 @@ class EvidenceTests(unittest.TestCase):
         for approval in approvals["approvals"]:
             if "profile" not in approval:
                 continue
-            if approval["profile"] == "platform-guarded-242-v1":
-                # 242的双schema与全部审批边界在专用夹具中验证。
+            if approval["profile"] in ("platform-guarded-242-v1", e.UPSTREAM216_PROFILE):
+                # 关联多个结构或迁移的审批边界在专用夹具中验证。
                 continue
             for contract in approval["legacy_contracts"]:
                 contract["checksum"] = e.checksum("旧版契约")
@@ -231,6 +231,60 @@ class EvidenceTests(unittest.TestCase):
                      before.replace("A\t"+original["path"], "M\t"+original["path"])):
             values["diff"] = diff
             with self.subTest(diff=diff), self.assertRaises(RuntimeError):
+                e.migration_evidence(base, sha, git)
+
+
+    def upstream216_fixture(self):
+        base, sha = e.UPSTREAM216_BASE, "b" * 40
+        approvals = [item for item in json.loads((ROOT/e.APPROVALS_PATH).read_text())["approvals"]
+                     if item.get("profile") == e.UPSTREAM216_PROFILE]
+        schema = (ROOT/"deploy/tests/fixtures/group-i18n-216.go.txt").read_text()
+        lines = schema.splitlines(keepends=True)
+        start = next(i for i, line in enumerate(lines) if "added by migration 242" in line)
+        old_schema = "".join(lines[:start] + lines[start+5:])
+        self.assertEqual(e.UPSTREAM216_SCHEMA["from_checksum"], e.checksum(old_schema))
+        self.assertEqual(e.UPSTREAM216_SCHEMA["to_checksum"], e.checksum(schema))
+        values = {"diff": "\n".join("A\tbackend/migrations/"+name for name in e.UPSTREAM216_FILES)
+                  + "\nM\t"+e.UPSTREAM216_SCHEMA["path"],
+                  base+":"+e.UPSTREAM216_SCHEMA["path"]: old_schema,
+                  sha+":"+e.UPSTREAM216_SCHEMA["path"]: schema}
+        for approval in approvals:
+            values[sha+":"+approval["path"]] = (ROOT/approval["path"]).read_text()
+            for contract in approval["legacy_contracts"]:
+                content = old_schema if contract["path"] == e.UPSTREAM216_SCHEMA["path"] else "固定旧版读写实现"
+                contract["checksum"] = e.checksum(content)
+                values[base+":"+contract["path"]] = content
+        values[sha+":"+e.APPROVALS_PATH] = json.dumps({"version": 1, "approvals": approvals})
+        def git(*args):
+            return values["diff"] if args[0] == "diff" else values[args[1]] if args[0] == "show" else ""
+        return base, sha, approvals, values, git
+
+    def test_216_binds_all_four_original_migrations_and_group_schema(self):
+        base, sha, _, values, git = self.upstream216_fixture()
+        result = e.migration_evidence(base, sha, git)
+        self.assertEqual("expand", result["migration_class"])
+        self.assertEqual(set(e.UPSTREAM216_FILES), {item["filename"] for item in result["migration_policy"]["migrations"]})
+        for name in e.UPSTREAM216_FILES:
+            original = values["diff"]
+            values["diff"] = original.replace("A\tbackend/migrations/"+name, "M\tbackend/migrations/"+name)
+            with self.subTest(name=name), self.assertRaises(RuntimeError):
+                e.migration_evidence(base, sha, git)
+            values["diff"] = original
+        with self.assertRaises(RuntimeError):
+            e.migration_evidence("c"*40, sha, git)
+
+    def test_216_rejects_incomplete_approval_and_code_or_schema_drift(self):
+        base, sha, approvals, values, git = self.upstream216_fixture()
+        for key in (base+":"+e.UPSTREAM216_SCHEMA["path"], sha+":"+e.UPSTREAM216_SCHEMA["path"],
+                    sha+":"+approvals[0]["path"], base+":"+approvals[0]["legacy_contracts"][-1]["path"]):
+            original = values[key]
+            values[key] += "\n未经审查的变化"
+            with self.subTest(key=key), self.assertRaises(RuntimeError):
+                e.migration_evidence(base, sha, git)
+            values[key] = original
+        for changed in (approvals[1:], [dict(item, schema_change={}) for item in approvals]):
+            values[sha+":"+e.APPROVALS_PATH] = json.dumps({"version": 1, "approvals": changed})
+            with self.assertRaises(RuntimeError):
                 e.migration_evidence(base, sha, git)
 
 
