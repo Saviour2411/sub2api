@@ -7462,3 +7462,337 @@ M	frontend/src/views/user/__tests__/UsageView.spec.ts
 - 上游 `679a7186f`（北京时间 2026-10-04 08:43:47）引入账号列表的“更多筛选”。它由 `85665a068`（2026-10-09 23:36:50）同步，并经 `aa4ec3ea1`（2026-10-10 01:36:24，PR #32）合入主线。按用户要求将该项标记为后续本地覆盖：取消折叠按钮和计数状态，所有筛选项默认可见，查询条件、选项和事件保留。
 - 本地机甲主题对卡片/弹窗设置 clip-path，与内部绝对定位提示不兼容。本次将缓存明细及同类共 33 处提示复用页面根节点浮层，修正公共定位的滚动偏移与视口边界，并保留键盘、点击、复制和条件显示行为。后续同步不得恢复这些提示的父容器内定位或隐藏常用账号筛选。
 - 初始修复的本地验证及 PR #34 的 8 项 CI、2 项安全扫描均通过。用户随后授权合入主线并以 `v0.1.253` 自动蓝绿发布；本次版本更新不扩大上游范围、不新增数据库迁移，发布前基线与执行约束见 `docs/operations/2026-10-11-v0.1.253-release.md`。
+
+## 2026-10-13 上游增量同步执行记录
+
+- 用户批准固定范围的本地同步、适配、验证和验收后快进本地 main。同步前 main 为 `a4543b8de1d6f257504f50efa512f25bb8505c20`；备份分支为 `backup/pre-upstream-sync-20261013-222524-a4543b8de`，同步分支为 `sync/upstream-20261013-4d9ac3e48`。
+- 上游 `Wei-Shaw/sub2api` 的固定范围为 `3a6fd1c9db07203ca308aaba69e502bc1f35b307..4d9ac3e482106d2da3a39fe3e546d8d6801f1cc1`，共 79 个提交（51 个普通提交、28 个 merge），merge-base 等于旧上游 SHA；无范围外未审查提交。本地版本保持 `0.1.254`，上游来源为 `0.2.16`。
+- 18 个预期冲突按审批方案逐块合并。保留 Wire 本地 worker、临时授信与同步服务，叠加 Gemini 缓存清理；保留提示审计、插件错误处理、Claude beta 过滤、Kimi 动态工具、用户串行扣费与 5 秒任务超时；缓存报价和入账统一为请求模型严格计费，完整性检测不改变原调用契约；分组本地化、页面根节点浮层和监控生图统计共存。
+- 与 `docs/custom-development-history.md` 同提交更新 18 项既有能力的适配说明，正式编号保持 64 项。4 条新增迁移原文不变，不放宽生产迁移门禁；依赖和安全豁免保持本地基线，没有声称已升级 SheetJS。
+- 当前记录为代码适配阶段，完整候选验证尚待完成；不在此阶段推进完整集成验收状态。逐提交处置、基线与候选命令、退出码、代码提交映射及残余风险在最终独立记录提交追加。本轮禁止推送、PR、标签、部署和连接远程服务器。
+
+### 分组本地化与本地导出的交叉回归
+
+- 完整默认测试发现 `TestUserFacingGroupDTOsAreLocalized` 在本地 `UsageHandler.Export` 报错：导出尚未调用本地化转换。保留上游检查，复用列表的 `Localized(Accept-Language)`，并扩展既有导出测试验证译名和完整译文表不外泄；权限、筛选及管理字段脱敏不变。
+- 对应上游 `9a51333101a849bb948abf94c5ed53682e373edd` 继续记为 `Applied + Overridden`，没有新增范围或跳过项；同步更新 `CUST-BILL-005` 清单及变更记录。本轮累计适配 19 项既有能力，64 个编号不变。首次失败与最终复验均在验收表中保留。
+
+### Gemini 缓存真实入口的用户队列键适配
+
+- 验收核对发现 Google 鉴权只向 Gin 写入用户标识；新缓存接口调用的必记账队列从请求上下文读取，因此需要在其公共前置校验中传入已鉴权用户 ID。该适配限于本轮新增缓存接口，保留请求上下文和 5 秒回退，不修改通用鉴权或扩大业务取舍。
+- 补充缺失/陈旧请求用户标识两种场景的回归，并与既有队列串行和预留交接用例交叉验证。关联 `CUST-BILL-003` 和上游 `26b31a83e4190a3b38bce112fc597defbfb9515b`，仍记 `Applied + Overridden`；累计 19 项既有能力、64 个编号不变。
+
+## 2026-10-14 上游增量同步本地验收
+
+### 范围、状态与提交映射
+
+- 执行开始于北京时间 2026-10-13，验收记录时间为 `2026-10-14T01:21:47.0169630+08:00`。状态：`本地验收成功；固定上游已完整集成，原 main 核对后仅快进`。本轮只在本地同步和验证，没有 push、PR、标签、部署、远程服务器访问或生产数据库操作。
+- 仓库 `D:/project/sub2api`，目标分支 `main`，`LOCAL_PRE_SYNC_SHA=a4543b8de1d6f257504f50efa512f25bb8505c20`。预检工作树干净，无未完成 Git 操作；fetch 后与 `origin/main` 的 ahead/behind 为 `0/0`。收尾直接核验 `git stash list` 为 0 条、无 `refs/stash` 或其 reflog；此前汇总中的 1 条缺少原始证据，不沿用为事实，本轮未操作 stash。没有 submodule 或 Git LFS 管理文件，本轮未自动 pull 或清理。
+- 上游 URL：`https://github.com/Wei-Shaw/sub2api`，remote 为 `upstream`，远端默认分支为 `main`；固定 `UPSTREAM_OLD_SHA=3a6fd1c9db07203ca308aaba69e502bc1f35b307`、`UPSTREAM_NEW_SHA=4d9ac3e482106d2da3a39fe3e546d8d6801f1cc1`。`ACTUAL_MERGE_BASE=3a6fd1c9db07203ca308aaba69e502bc1f35b307`，旧基线是本地主线祖先，记录范围和实际 merge 范围一致，没有追加后续上游提交。
+- `LAST_FULLY_INTEGRATED_UPSTREAM_SHA: 4d9ac3e482106d2da3a39fe3e546d8d6801f1cc1`。79 个提交均保留祖先关系：51 个普通提交、28 个 merge；63 项 `Applied`、16 项 `Applied + Overridden`，`Already Applied / Skipped / Deferred / Conflict` 均为 0。安全侧枝的两个历史提交已合入，但最终上游树无依赖净变化，不声称完成 Vue 或 SheetJS 升级。
+- 策略为完整 merge 后本地补充适配；备份分支 `backup/pre-upstream-sync-20261013-222524-a4543b8de`，同步分支 `sync/upstream-20261013-4d9ac3e48`。原 main 必须仍等于同步前 SHA，记录提交完成后仅通过 `git merge --ff-only sync/upstream-20261013-4d9ac3e48` 更新；最终记录提交与 main 的 SHA 在交付消息报告，本文不自引用。
+- 合并提交 `da93526494a30ff86def85a625841c79e8ea2251` 的双父分别为本地主线和固定新上游，以下 79 项均映射到该合并；补充代码提交 `79e836db9334e29112cf9f75149bf4c3e22dfc3a` 为用量导出本地化适配，关联 `9a51333101a849bb948abf94c5ed53682e373edd`。最后代码提交 `b86a962d015146e4f7c4ff66f4b44b1932513a59` 补齐新增 Gemini 缓存入口的用户记账上下文，关联 `26b31a83e4190a3b38bce112fc597defbfb9515b`。二开版本仍为 `0.1.254`，嵌入上游来源为 `0.2.16`。
+- 上游净差异 213 文件（新增 48、修改 165）；最终本地净差异 `219 文件（新增 49、修改 170、删除 0）`。变更集中在 Gemini 显式缓存与 Vertex、Haiku 5.5、Responses 错误降级、长上下文计费、分组多语言、运维与监控前端，以及对应生成代码、回归和台账。依赖清单、锁文件、版本号和审计例外未修改。完整路径可用 `git diff --name-status a4543b8de1d6f257504f50efa512f25bb8505c20 b86a962d015146e4f7c4ff66f4b44b1932513a59` 重建。
+
+### 冲突与二开边界
+
+18 个文本冲突全部按批准方案逐块处理，没有整文件取 ours/theirs；下表按相关行为归并，未解决路径数为 0。
+
+| 冲突文件 | 最终处理 |
+| --- | --- |
+| `backend/cmd/server/VERSION` | 保持二开版本 0.1.254，上游来源另行记录 |
+| `backend/cmd/server/wire_gen.go` | 保留临时授信与上游同步 worker，合入 Gemini 缓存清理；Ent/Wire 生成后与当前内容一致，go.mod/go.sum 不变 |
+| `backend/internal/handler/gemini_v1beta_handler.go` | 保留请求审计、最终归因、固定缓存账号，新增缓存引用与生命周期处理 |
+| `backend/internal/repository/scheduler_cache.go`、`setting_repo.go`、`wire.go` | 导入与 ProviderSet 取必要并集；Pool 与上游 base_url/auth_mode/缓存资格并存，保留本地设置字段 |
+| `backend/internal/service/billing_service.go` | 保留账号/分组双门禁及显式区间，叠加实际订阅凭据对应的模型附加费豁免 |
+| `backend/internal/service/gateway_upstream_request.go`、`gateway_upstream_response.go` | 保留 Claude 模拟 beta 过滤、首字与提前保活边界；向错误规则传递请求模型 |
+| `backend/internal/service/gateway_usage_billing.go` | 缓存报价与入账共享严格请求模型规则，不按响应或映射模型改价；显式渠道价、图片与 simple 模式原边界保留 |
+| `backend/internal/service/openai_gateway_cc_pipeline.go`、`openai_gateway_chat_completions.go` | 保留三返回值兼容入口与插件读取错误；新增完整性 helper，只有完整 400、尚未提交、未取消且插件未接管才允许结构降级 |
+| `backend/internal/service/openai_gateway_usage.go` | 不恢复上游响应模型改价；实际凭据的长上下文豁免与用户/账号独立成本、Free Fast 共存 |
+| `frontend/src/components/account/AccountUsageCell.vue`、`CreateAccountModal.vue`、`__tests__/ModelWhitelistSelector.spec.ts` | 保留页面根节点 HelpTooltip、Pool 继承、失败策略及既有白名单断言，缓存默认关闭 |
+| `frontend/src/views/admin/GroupsView.vue`、`frontend/src/views/user/ChannelStatusV1View.vue` | 分组翻译与本地浮层共存；监控刷新保留取消、清缓存、生图成功率，并丢弃旧明细响应 |
+
+- 同代码提交更新两份台账，累计涉及 19 项既有能力：`CUST-GW-001/003/004/006/008/013/014/015/016`、`CUST-BILL-001/002/003/004/005/006`、`CUST-UI-004`、`CUST-OPS-004/007/008`。64 个正式编号与同步前集合完全一致，无新增、重复、删除或退役。
+- Gemini 缓存只对明确型号或显式配置取存储价；未配置别名与未知系列不猜价，缺价返回错误；纯存储续期不重复收 token 或按次费。必记账任务按用户提交，满队列和停止时仍执行，5 秒超时、取消隔离、请求上下文与在途预留交接均有回归。
+- 保留 Kimi 动态工具与参数兼容、Claude beta 模拟及安全重试、首输出生命周期、提示词审计、用户严格计费、用户串行扣费、支付/赠金/临时授信、Canvas 与蓝绿退役边界。用量导出按 Accept-Language 返回分组译名，移除完整译文表，认证、所有者、游标、筛选及管理字段脱敏不变。
+- 生产 Compose、示例环境、usage worker、蓝绿 deploy.py 与 expand-approvals.json、VERSION 均与基线完全一致。4 条新增迁移 `242_group_i18n.sql`、`243_gemini_cached_contents.sql`、`244_gemini_cached_contents_channel_usage.sql`、`245_gemini_cached_contents_mutation_lease.sql` 与固定上游 blob 一致；不重命名重复的 242 前缀，不新增生产放行证据或放宽通用门禁。
+- 不更改生产 bind mount、回环监听、允许 HTTP upstream 的业务开关、3600 秒响应头等待、5 秒 usage task、实例资源配置。静态比较不能证明实际生产状态，本轮未连接生产。
+
+### 验证环境与结果
+
+- 基线与候选采用同一 Windows/WSL Ubuntu 24.04 环境，Go 1.27.2、golangci-lint 2.14.0、Node 20.20.2、pnpm 9.15.9；Go 使用 `GOMAXPROCS=2`、`GOMEMLIMIT=4GiB`、`GOFLAGS=-p=2`。所有测试数据、下载和缓存位于工作区，测试容器仅连接本机 Docker，使用隔离临时数据库与虚构凭据。
+- 基线归档为 `baseline-tree.tar`；首轮合并归档为 `candidate-tree.tar`，导出修复归档为 `candidate-final-tree.tar`，均保留原文件和摘要。随后发现 Windows 导出的部分非代码文本为 CRLF，以同一 `79e836d` 和 `git -c core.autocrlf=false archive` 生成 `candidate-final-lf-tree.tar`，重新运行完整后端矩阵和部署静态检查。最后的缓存上下文补丁以 `candidate-context-lf-tree.tar` 验证，独立索引确认全部受控文件与最后代码提交一致；用其构建完成最终隔离启动。所有首次失败日志保留，具体矩阵与复验结果如下。
+- 前端：基线 391 文件 / 3046 测试通过；候选最终 402 文件 / 3125 测试通过，lint/typecheck/build 通过。Canvas 前后均为 8 文件 / 34 测试，typecheck/build 通过。实际前端嵌入、版本契约及 E2E 编译通过；E2E 编译不等同于完整端到端运行。
+- 后端及部署：`合并快照首次完整 default/unit/integration 均退出 1，唯一失败为导出本地化检查；修复后 handler 三种模式均通过。79e836d 的 LF 完整 default/integration 退出 0，unit 退出 1（内存阈值和 OAuth 时序两项），lint 为 0 issues、build 与网关竞态退出 0。最终 b86a962d 的源码除 handler 和台账外没有再变动，handler 三种模式、上下文定向/竞态、完整所有包 unit、全量 lint/build 均退出 0，复用其余未变化部分已通过的验证。部署语法与 Compose/mock、蓝绿 unit/evidence/preflight、工作流/发布/元数据检查均通过。所有失败记录保留`。
+- 隔离启动：`导出修复构建和最终 b86a962d LF 构建分别验证空库、既有管理员兼容、从基线 SQL 夹具升级三种场景，均健康且原管理员可登录，四条新迁移均入账（每场景 4 条），既有平台约束状态仍为 0；两次脚本均退出 0，最终源码位于 /current/backend，分开保留结果与日志，隔离容器已由脚本清理`。
+- `govulncheck ./...` 前后退出 0，调用符号和导入包未检出漏洞；依赖模块仍有 7 项未调用告警。原始 pnpm audit 前后均退出 1：frontend 高危 2、中危 13、低危 4，Canvas 高危 0、中危 1、低危 3；现有审计例外校验均退出 0。既有 XLSX 两项高危豁免截至 2027-01-06，不是漏洞修复，本轮不新增或延期豁免。
+
+同步前已有失败与实际复验：
+
+1. 基线首次完整 unit 的 `TestInflightEstimate_AccountMappingNoDBAndBoundedMemory` 堆增量 8410448 超过 8388608 字节约 21 KiB；单独 5 次通过，完整 unit 复跑该项也通过。
+2. 基线完整 unit 复跑出现 `TestOpenAIResponseFlush_BareErrorTimeoutSynthesizesFailed/stream_interval_timeout` 的 3 秒等待超时；独立 5 次仍有 1 次失败，退出 1。保留该既有波动，未修改超时、删除断言或宣称已消除。
+3. 基线 integration 的 `TestEmailCacheSuite/TestVerificationCode_TTL` 得到 122 秒，大于 120 秒；独立 3 次通过。第一次 WSL 跨 shell 诊断调用因变量转义失败，测试未执行、工具退出 1，results.tsv 残缺行保留；之后独立脚本执行成功，不能把前一次当成通过。
+4. `候选第二轮完整 unit 重现内存阈值波动，堆增量 8937528 大于 8388608；随后独立 5 次退出 0，最终完整 unit 也退出 0。流式超时及 Redis TTL 基线波动未在候选完整测试复现。没有修改这些用例，不能因复验通过宣称波动已消除`。
+
+OAuth 超时专项：`候选第二轮完整 unit 的 TestRefreshIfNeeded_LateSuccessAfterDeadlineDoesNotPersist 曾预期 DeadlineExceeded 却得到 nil；实现与该测试文件均与同步前完全相同。基线及候选独立各重复 1000 次均退出 0，最终完整 unit 通过。测试使用 10ms deadline 与 30ms sleep，现象可能与定时器调度有关，但根因尚未确认；没有将其写成基线已复现，也未改 OAuth 实现或测试。保留单次失败并列为残余时序风险`。
+
+候选中新发现并在批准范围修复的问题：
+
+1. 两次前端测试均只有 Gemini 模拟配额用例失败：上游断言在组件内部查找标题；标题实际位于本地根节点浮层。最终分别检查浮层标题与单元格说明，所有断言保留，第 3 次完整测试通过。
+2. 首次定向 Go 测试有 3 处新测试构造函数缺少本地 SettingService 参数，并有 1 项 custom 别名夹具未提供可解析价格；补齐参数与显式价格目录，严格请求模型业务规则不改动，定向复跑通过。
+3. 合并快照的完整测试检出本地用量导出遗漏分组本地化；补充提交复用已有 DTO 转换，同时检查译名、译文表不外泄与既有权限。`整个 handler 包 default/unit/integration 通过，79e836d 的 LF 全量 default/integration 通过；最后上下文补丁后的 handler 三种模式和完整 unit 再次通过。保留首轮三个完整命令的退出 1、导出失败名，以及随后 unit 的两项波动记录`。
+4. 秘密模式初扫退出 1：命中两处固定上游 Vertex 测试里的私钥标记。人工核对中间内容均仅 3 字符，不是有效私钥；仅识别与固定上游一致的占位文本，其他模式继续扫描。最终无已识别秘密、意外删除、冲突标记或 diff 格式问题；不把模式扫描等同于绝对无秘密证明。
+5. 首轮 `compose-gateway`、`docker-resources`、`caddy-cache` 均退出 1；Git 保护文件与基线一致，但 Windows `core.autocrlf=true` 导出的 `.env.example`、Dockerfile、Caddyfile 带 CRLF，影响 Linux 逐行匹配。通过 `file` 命令核对并使用 LF 归档复验，三项和完整部署静态检查均退出 0；没有修改生产配置或削弱断言，随后重新跑完整后端矩阵。
+6. LF 归档的独立索引校验首次未刷新索引 stat 缓存，`diff-files` 将所有路径列为差异并退出 1；补上 `update-index --refresh` 后逐文件内容校验退出 0。使用工作区内独立 `GIT_INDEX_FILE`，没有修改主索引或源码，首次日志保留；这属于临时验证脚本修正。
+7. Google 鉴权仅向 Gin 写入用户标识，而新增缓存接口的必记账队列从请求上下文取键。公共前置校验补齐已鉴权用户 ID，覆盖陈旧值并保留请求 ID；缺失/陈旧标识与队列串行、满队列回退、预留交接的定向及竞态测试、handler 三种模式、完整 unit、全量 lint/build 均按命令表复验。
+8. 临时脚本另有两次调用错误：运行中追加后续验证分支导致 context-race 外层 Bash 续读解析失败，测试原日志保留且独立重跑；OAuth/内存诊断外层汇总因 WSL 参数传递失败退出 1，两个子脚本已各自记录退出 0。外层错误单独入表，未改测试源码、断言或覆盖失败日志。
+
+### 证据与未验证项
+
+- 本轮日志和每次运行的命令、时间、退出码均保存在忽略目录 `tmp/upstream-sync-20261013`，基线与候选分开；失败日志没有覆盖。基线测试完成后 WSL 曾自动关闭导致 tmpfs 丢失，普通工作区日志及升级夹具未丢失；候选重新解包相同工具与源码，并用本轮保持进程避免再次丢失。
+- 归档 SHA256：基线 `BC1C188C888C46703BCDF198E68C942EB0E37C47481B67837260C8265D2A65D5`；合并候选 `C72E29EF811B6E22E0AAC0DE98E5256AC37582E6117D7E4001C4EBFE233F5D09`；导出修复候选 `842C9FFAF970A0E9E8CA01A83CB91BBB0A7F7700029FC663B3CB9EA0903B6EB4`；导出修复 LF 候选 `9E3C4EB4C3A19D4D67BE4160498F9E793C1F3C830FB49C66A4327B621414BE69`；最终上下文修复 LF 候选 `EAE15854E86ADE8CAE8250AE58505FA7EE6DBF352787A7BA954E53197BA328A8`。最终代码树 `fd746941781ea12ff7b62a6af75c7792be046498`；生成代码和依赖摘要经核对无意外差异。
+- 未验证：真实 Gemini/Vertex/Claude/OpenAI 供应商、真实账务与支付/消息发送、线上迁移与蓝绿部署、生产数据恢复、峰值压力、macOS Apple Container 专属执行、完整业务 E2E、二十轮真实混合协议切换及强制退役 Docker 专项。本轮使用现有自动化用例和静态检查，不能承诺所有 64 项功能在真实生产环境绝对不受影响。
+- 既有单测时序波动、XLSX 风险接受和模块未调用漏洞仍需后续维护；上游内置优惠价的到期行为未进行真实供应商核价或跨日期验收。新迁移仅本地验证通过，不构成生产放行授权。
+- 收尾仅停止本轮临时验证进程、检查本轮隔离容器清理并卸载本轮 tmpfs，保留工作区证据与备份/同步分支；不停止或删除其他项目容器。最终原 main 未变化核验、上游祖先、工作树清洁与快进结果见交付总结。
+
+### 逐提交处置
+
+| 上游提交完整 SHA | 类型 | 处置 | 原因及本地覆盖 |
+| --- | --- | --- | --- |
+| `f48866958b1ddcda57dab6844b6a3ade7783bc2d` | 普通 | Applied | 仅 OpenAI 账号注入图片生成桥 |
+| `a56720855cf0c3ca38aea6da2a24c73e57ec1342` | 普通 | Applied | 页面重新可见时刷新倒计时 |
+| `27de27ac6496e647c59866d9ba57de61ac356771` | 普通 | Applied | 删除分组时清理审核范围 |
+| `c4224045dc5cbf16f40c7b31aeb639aa0e211101` | 普通 | Applied | 支付二维码按真实经过时间倒计时 |
+| `69d6d106fd365d8ed23b5a1c82eb3a968acc1454` | 普通 | Applied | 监控设置允许补充缺失平台 |
+| `983cf297da59e3be23b5e3f2c4eded945b53f408` | 普通 | Applied + Overridden | Responses 明确结构错误回退；保留本地首输出和插件错误传播 |
+| `5a25507dcbb33fc40e3ef0659af210f206229a31` | 普通 | Applied | 临时停调度规则支持模型与账号范围 |
+| `a46249aac5611fca71fb0d955ad19be7602aca71` | 普通 | Applied | 新增停调度范围回归 |
+| `c15d858eca81b269c41ba3bc161f923b179a860c` | 普通 | Applied + Overridden | 回退保留 Responses 语义；兼容本地读取错误返回值 |
+| `f7f1112cdab09e9bee982d77ae253d5d20a56e73` | 普通 | Applied | 安全侧枝历史已合入；最终上游树无依赖净变化，不宣称依赖升级 |
+| `63800c50d462efc6436e96b9dd46ae8f98a054bc` | 普通 | Applied + Overridden | 回退要求完整错误体、未提交输出且未取消；保留本地生命周期 |
+| `daa79157491f25939b502f5c040eb11768a46e30` | 普通 | Applied | 安全侧枝历史已合入；最终上游树无 SheetJS 升级，沿用既有审计例外 |
+| `07d51a6aeff41824730aa8276afef150e3d03a03` | merge | Applied | 保留上游合并拓扑；具体行为按关联普通提交的处置执行 |
+| `df3c38e10f80deb226f61c9fd3cc0c818b185bb4` | merge | Applied | 保留上游合并拓扑；具体行为按关联普通提交的处置执行 |
+| `ba280b3d5ea4d71e2f15fdb56ce60c4a05f422c1` | 普通 | Applied | 请求明细显示账号名称 |
+| `d56f5e787976c8b2a7bd471b9a3c30b0ccee50c1` | 普通 | Applied + Overridden | 适配 Haiku 5.5；保留本地 Claude 模拟 beta 过滤 |
+| `9a51333101a849bb948abf94c5ed53682e373edd` | 普通 | Applied + Overridden | 分组多语言及迁移；用户导出同步本地化，保留根节点 HelpTooltip 和发布门禁 |
+| `b68684271670b4b301abb9ca61a8fd41750c9448` | merge | Applied | 保留上游合并拓扑；具体行为按关联普通提交的处置执行 |
+| `2bfc49477c0860058d2ff27d8ca40b0c3a1ca31c` | 普通 | Applied | 运维自定义时间范围按本地时区初始化 |
+| `d01628975d9f4d2d3ac9f9792df1bc5946a87061` | 普通 | Applied | 选择框兼容输入法组合输入 |
+| `bd2f53b855b79c6c20f9dee2187c78fa4ab7158c` | 普通 | Applied | 拒绝非正分组倍率编辑 |
+| `8e3d75b57b59b6bf8e9e695af27dab70ac360109` | 普通 | Applied + Overridden | 自动刷新监控明细；保留旧请求取消、清缓存和生图成功率 |
+| `5753552b958084a7695fec7dfd923e30304ee108` | 普通 | Applied | 保留 Gemini 授权地址错误原因 |
+| `29b2d721f46bddf5dc2555aad4adc063e0181d3b` | 普通 | Applied | 嵌入前端测试使用实际 SVG 资源 |
+| `66b7ce08e710ec5f9c5206c292ffcf3972fbe8cc` | 普通 | Applied | 账号分组显示完整名称 |
+| `ce6242fca1ef84da4855a92cd80117028b3a99c0` | 普通 | Applied | 识别国际编码额度端点 |
+| `0f189af8de8374cca7ddd4095a39135fe4725814` | 普通 | Applied | 忽略过期分组 RPM 加载结果 |
+| `3bfd40f5afd820ff7fae32f3f26c75fe3e0dd504` | 普通 | Applied | 引用缓存不存在的 403 不停用账号或换号 |
+| `d5a802f84a6ae3405bee2a6e0160675785abf237` | 普通 | Applied + Overridden | 显式缓存绑定、清理与计费；保留请求模型严格计费及最终归因 |
+| `3abd64658297f5ec47ad09120a0a26d6081d42de` | 普通 | Applied + Overridden | Gemini 错误分类接入运维；保留 Google ErrorInfo reason |
+| `64331a97921bd5a43e7b54ba6a517476c985e8e5` | 普通 | Applied | 更新 Vertex 显示名称 |
+| `81e6ec5346c645fa03d794495198e32e4b910598` | 普通 | Applied | Vertex 支持 API Key 认证 |
+| `2588675ce7c0fa13189379489cc4edabe48f6fcd` | 普通 | Applied + Overridden | 第三方与 Vertex 不显示模拟配额；保留根节点提示 |
+| `1c68f9996df8e0bd7933d94d4ca826bc3dc570c7` | 普通 | Applied | 支持 AI Studio AQ. 格式密钥 |
+| `6f9b02f12c3d414ed324460a0e82d7793a471f72` | 普通 | Applied | Vertex 服务账号同步上游模型 |
+| `c9e4b267b6fac1f00060eab983e606f7a2b2d4fc` | 普通 | Applied + Overridden | 模型同步错误显示后端原因；保留本地翻译和白名单断言 |
+| `05d7946af84228589e5a6a8d8b6bc08d686ba778` | 普通 | Applied + Overridden | 缓存续期沿用创建口径；统一严格报价、预留和最终计费 |
+| `f0ee427f0ad2f7eab6ab8f095ba05041af3a48f8` | 普通 | Applied + Overridden | 保留明确型号和显式存储价；删除未知 Pro/Flash 系列猜价及映射回退 |
+| `4426593e9d7dc38a009f28da038ac2906a57c17e` | 普通 | Applied | 合入明确型号的 3.6 Flash 存储价 |
+| `daebb7a80c720763a01e5cef8799c030aed0b058` | 普通 | Applied | Vertex 账号支持模型列表与详情 |
+| `b63dafa426a721562db4c5b0d91b9129098f3d8b` | merge | Applied | 保留上游合并拓扑；具体行为按关联普通提交的处置执行 |
+| `6977bb63bb1a20a8f70c57df4f1691f83e2c55a4` | merge | Applied | 保留上游合并拓扑；具体行为按关联普通提交的处置执行 |
+| `da9799542db251badcee0c6cfc08f85adfcab8cd` | merge | Applied | 保留上游合并拓扑；具体行为按关联普通提交的处置执行 |
+| `0ae1b371fae6d399eabe6391bd4fc675549549d6` | merge | Applied | 保留上游合并拓扑；具体行为按关联普通提交的处置执行 |
+| `f2b1556bd4136d3d40fb582737fb1298ec37e72f` | merge | Applied | 保留上游合并拓扑；具体行为按关联普通提交的处置执行 |
+| `d70265306bb21d0194cf8f668d80d808539ffaec` | merge | Applied | 保留上游合并拓扑；具体行为按关联普通提交的处置执行 |
+| `20b0be5b05c22730db78747fe49ce7e898040d0c` | merge | Applied | 保留上游合并拓扑；具体行为按关联普通提交的处置执行 |
+| `59fb22791ea7e5987312750cc2ce8bbd91ec8a65` | merge | Applied | 保留上游合并拓扑；具体行为按关联普通提交的处置执行 |
+| `c2885c430fe01d0d88b23d52e062ccbb073d0905` | merge | Applied | 保留上游合并拓扑；具体行为按关联普通提交的处置执行 |
+| `832677a5e6e817f3589130d568a40384f7893228` | merge | Applied | 保留上游合并拓扑；具体行为按关联普通提交的处置执行 |
+| `6a6d4728a093022c08070046151dec993d11b825` | merge | Applied | 保留上游合并拓扑；具体行为按关联普通提交的处置执行 |
+| `6d509c632d1e03351ae3dacc84fb8dc4aee4f709` | merge | Applied | 保留上游合并拓扑；具体行为按关联普通提交的处置执行 |
+| `5dbb8f7085936def28c9db74a8e6fa0a56086b93` | merge | Applied | 保留上游合并拓扑；具体行为按关联普通提交的处置执行 |
+| `e468262294eb962206ce2d6e4b83f2e8bc43ef02` | merge | Applied | 保留上游合并拓扑；具体行为按关联普通提交的处置执行 |
+| `07185812655ec2e0740ca76882879c0b9ae5ee0a` | 普通 | Applied | 生成 GPT-6.1 Sol 配置的上下文默认值为 500k |
+| `43768680d38ccdbd8fffc2cb91d3c1fc778a61c6` | 普通 | Applied + Overridden | 实际 OAuth 类账号 GPT-6.1 Sol 内置长上下文豁免；保留双门禁和实际区间判断 |
+| `7b03b1f75a659c4b63f89948a16e04bb00a38180` | merge | Applied | 保留上游合并拓扑；具体行为按关联普通提交的处置执行 |
+| `26b31a83e4190a3b38bce112fc597defbfb9515b` | 普通 | Applied + Overridden | 缓存修改租约和确定金额预留；真实鉴权上下文传递用户队列键，按用户提交必记账任务、5 秒同步回退 |
+| `9591136d45cef26453348ed9532a7ebbce7cf99c` | merge | Applied | 保留上游合并拓扑；具体行为按关联普通提交的处置执行 |
+| `fc82e831026a15eaf609cc1f7cd4d4a3690e5cad` | 普通 | Applied | 模型级 401 规则接入故障转移 |
+| `8b74741efe35a42c67bbb35b821af9a12aca2c24` | 普通 | Applied | 分组译文语言代码规范化并保留 Vary Origin |
+| `ba2a71733272b75e948c28a6fb41ffa506a40edc` | 普通 | Applied | Gemini 工具结果保留图片 |
+| `492c63059980ea5797cc2c34ba642ffee9a56aee` | 普通 | Applied | Gemini 测试静态检查修正 |
+| `ab80abc6d1f929a6864c8804fd077b509d21fda2` | merge | Applied | 保留上游合并拓扑；具体行为按关联普通提交的处置执行 |
+| `2023c290e1bbfa63e3f05bdddeeae1f264b8e637` | 普通 | Applied + Overridden | 计数、Bedrock、重试耗尽传递模型；保留提前保活的提交状态边界 |
+| `43a3c197cb7663582ad1b6b21c761b84776193c9` | 普通 | Applied | 缓存恢复区分账号删除与临时不支持，保留未过期修改意图 |
+| `cfbbfd6b3b41bbdeee748e25d8aa3de866b811c7` | 普通 | Applied | Antigravity 图片模型限流隔离 |
+| `26f70c6a873bbeed126f1944068a7eb183c89f16` | 普通 | Applied | Responses 桥支持 Haiku 5.5 |
+| `c4bdc484753acc95f9a775854af303146389286c` | 普通 | Applied | Haiku 采样边界、默认模型配置和静态检查 |
+| `b669dc6daf1a9909b02ecf1f9cb692d88875e086` | 普通 | Applied | 模型白名单回归加入前端关键检查 |
+| `7c5afa4c361b7b69afeb9aaf5b47c0bbe9af0180` | merge | Applied | 保留上游合并拓扑；具体行为按关联普通提交的处置执行 |
+| `53c21fed252cec522035cfc2d4dd890a8c47140b` | merge | Applied | 保留上游合并拓扑；具体行为按关联普通提交的处置执行 |
+| `9d5e63a598c827dde2d8b864ac7719125615bd82` | merge | Applied | 保留上游合并拓扑；具体行为按关联普通提交的处置执行 |
+| `49dc6e236380a7198e0658054b0d7c595b597387` | merge | Applied | 保留上游合并拓扑；具体行为按关联普通提交的处置执行 |
+| `bba85923b96c277b9cbe4a2d21c661ff741c7e29` | merge | Applied | 保留上游合并拓扑；具体行为按关联普通提交的处置执行 |
+| `8d7d3185e987f0241f4cd99c2bc2b220378b4860` | merge | Applied | 保留上游合并拓扑；具体行为按关联普通提交的处置执行 |
+| `49b2122dc623f7f2face4a2f89dbd6bceffb781a` | merge | Applied | 保留上游合并拓扑；具体行为按关联普通提交的处置执行 |
+| `01842576b3d5c1e2545b5a99ad555d36e28ed306` | merge | Applied | 保留上游合并拓扑；具体行为按关联普通提交的处置执行 |
+| `4d9ac3e482106d2da3a39fe3e546d8d6801f1cc1` | 普通 | Applied + Overridden | 上游来源记录为 0.2.16；本地二开 VERSION 保持 0.1.254 |
+
+### 实际验证命令与退出码
+
+| 阶段 | 检查及日志文件 | 退出码 | 完成时间 | 实际命令 |
+| --- | --- | --- | --- | --- |
+| baseline | pnpm-version / `pnpm-version.log` | 0 | `2026-10-13T22:30:37.4704406+08:00` | `pnpm --version` |
+| baseline | frontend-install / `frontend-install.log` | 0 | `2026-10-13T22:30:39.3737836+08:00` | `pnpm --dir frontend install --frozen-lockfile --store-dir D:\project\sub2api\tmp\upstream-sync-20261007\pnpm-store` |
+| baseline | frontend-lint / `frontend-lint.log` | 0 | `2026-10-13T22:31:48.4778859+08:00` | `pnpm --dir frontend run lint:check` |
+| baseline | frontend-typecheck / `frontend-typecheck.log` | 0 | `2026-10-13T22:32:20.8939319+08:00` | `pnpm --dir frontend run typecheck` |
+| baseline | frontend-test / `frontend-test.log` | 0 | `2026-10-13T22:34:18.6344071+08:00` | `pnpm --dir frontend run test:run` |
+| baseline | frontend-build / `frontend-build.log` | 0 | `2026-10-13T22:36:26.3564982+08:00` | `pnpm --dir frontend run build` |
+| baseline | canvas-install / `canvas-install.log` | 0 | `2026-10-13T22:36:28.5618490+08:00` | `pnpm --dir canvas install --frozen-lockfile --store-dir D:\project\sub2api\tmp\upstream-sync-20261007\pnpm-store` |
+| baseline | canvas-typecheck / `canvas-typecheck.log` | 0 | `2026-10-13T22:36:47.8001735+08:00` | `pnpm --dir canvas run typecheck` |
+| baseline | canvas-test / `canvas-test.log` | 0 | `2026-10-13T22:36:56.9093597+08:00` | `pnpm --dir canvas run test` |
+| baseline | canvas-build / `canvas-build.log` | 0 | `2026-10-13T22:37:38.9941876+08:00` | `pnpm --dir canvas run build` |
+| baseline | frontend-audit / `frontend-audit.log` | 1 | `2026-10-13T22:37:44.0463481+08:00` | `pnpm --dir frontend audit --prod --audit-level=high --json` |
+| baseline | canvas-audit / `canvas-audit.log` | 1 | `2026-10-13T22:37:46.3725283+08:00` | `pnpm --dir canvas audit --prod --audit-level=high --json` |
+| baseline | frontend-audit-exceptions / `frontend-audit-exceptions.log` | 0 | `2026-10-13T22:38:52+08:00` | `python3 tools/check_pnpm_audit_exceptions.py --audit /mnt/d/project/sub2api/tmp/upstream-sync-20261013/baseline/frontend-audit.log --exceptions .github/audit-exceptions.yml` |
+| baseline | canvas-audit-exceptions / `canvas-audit-exceptions.log` | 0 | `2026-10-13T22:38:52+08:00` | `python3 tools/check_pnpm_audit_exceptions.py --audit /mnt/d/project/sub2api/tmp/upstream-sync-20261013/baseline/canvas-audit.log --exceptions .github/audit-exceptions.yml` |
+| baseline | build-version-contract / `build-version-contract.log` | 0 | `2026-10-13T22:41:27+08:00` | `timeout 600 go test -tags=unit,embed ./internal/handler -run 'TestBuildVersion' -count=1` |
+| baseline | e2e-compile / `e2e-compile.log` | 0 | `2026-10-13T22:41:32+08:00` | `timeout 600 go test -c -tags=e2e -o /mnt/d/project/sub2api/tmp/upstream-sync-20261013/baseline/e2e-compile.test ./internal/integration` |
+| baseline | go-default / `go-default.log` | 0 | `2026-10-13T22:42:30+08:00` | `timeout 2400 go test -count=1 ./...` |
+| baseline | govulncheck / `govulncheck.log` | 0 | `2026-10-13T22:47:22+08:00` | `timeout 1800 govulncheck ./...` |
+| baseline | middleware-diagnostic / `middleware-diagnostic.log` | 0 | `2026-10-13T22:51:17+08:00` | `timeout 120 go test -tags=unit -count=1 -timeout=45s -v ./internal/server/middleware` |
+| baseline | go-unit / `go-unit.log` | 1 | `2026-10-13T22:53:08+08:00` | `timeout 2400 go test -tags=unit -count=1 ./...` |
+| baseline | memory-diagnostic / `memory-diagnostic.log` | 0 | `2026-10-13T22:55:37+08:00` | `timeout 300 go test -tags=unit -count=5 -run '^TestInflightEstimate_AccountMappingNoDBAndBoundedMemory$' ./internal/service` |
+| baseline | go-integration / `go-integration.log` | 1 | `2026-10-13T23:01:24+08:00` | `timeout 2400 go test -tags=integration -count=1 ./...` |
+| baseline | ttl-diagnostic（脚本调用失败，测试未执行） / `results.tsv 中残缺行` | 1（工具） | `2026-10-13T23:02:33+08:00` | `WSL 跨 shell 调用因变量转义失败；后续独立脚本重跑，原行保留` |
+| baseline | ttl-diagnostic / `ttl-diagnostic.log` | 0 | `2026-10-13T23:05:04+08:00` | `timeout 600 go test -tags=integration -count=3 -run 'TestEmailCacheSuite/TestVerificationCode_TTL' ./internal/repository` |
+| baseline | go-lint / `go-lint.log` | 0 | `2026-10-13T23:05:27+08:00` | `timeout 2400 golangci-lint run --timeout=30m ./...` |
+| baseline | unit-repeat / `unit-repeat.log` | 1 | `2026-10-13T23:05:46+08:00` | `timeout 2400 go test -tags=unit -count=1 ./...` |
+| baseline | go-build / `go-build.log` | 0 | `2026-10-13T23:07:36+08:00` | `timeout 1200 make build` |
+| baseline | smoke / `smoke.log` | 0 | `2026-10-13T23:08:29+08:00` | `timeout 600 python3 /mnt/d/project/sub2api/tmp/upstream-sync-20261013/run-smoke.py baseline` |
+| baseline | flush-diagnostic / `flush-diagnostic.log` | 1 | `2026-10-13T23:08:35+08:00` | `timeout 300 go test -tags=unit -count=5 -run '^TestOpenAIResponseFlush_BareErrorTimeoutSynthesizesFailed$' ./internal/service` |
+| baseline | gateway-race / `gateway-race.log` | 0 | `2026-10-13T23:10:42+08:00` | `timeout 2400 go test -race -tags=unit -count=1 -run 'TestKimi\|TestOpsErrorLoggerMiddleware_Kimi\|TestAnthropicStreamSafeRetry\|TestFirstToken\|TestDecompress\|TestUsageRecordWorkerPool\|TestStoppedKeyed\|Test.*MandatoryUsage\|Test.*GeminiCachedContent\|Test.*TempUnsched\|Test.*GPT61Sol\|TestCalculateCostUnified_ModelLongContext' ./internal/service ./internal/handler ./internal/repository` |
+| baseline | apple-syntax / `apple-syntax.log` | 0 | `2026-10-13T23:10:42+08:00` | `bash -n deploy/apple-container.sh` |
+| baseline | docker-deploy-syntax / `docker-deploy-syntax.log` | 0 | `2026-10-13T23:10:42+08:00` | `bash -n deploy/docker-deploy.sh` |
+| baseline | remote-deploy-syntax / `remote-deploy-syntax.log` | 0 | `2026-10-13T23:10:42+08:00` | `sh -n deploy/remote-deploy.sh` |
+| baseline | compose-security / `compose-security.log` | 0 | `2026-10-13T23:10:42+08:00` | `sh deploy/tests/docker-compose-security-test.sh` |
+| baseline | compose-gateway / `compose-gateway.log` | 0 | `2026-10-13T23:10:43+08:00` | `sh deploy/tests/docker-compose-gateway-env-test.sh` |
+| baseline | caddy-cache / `caddy-cache.log` | 0 | `2026-10-13T23:10:49+08:00` | `sh deploy/test-caddyfile-cache.sh` |
+| baseline | compose-simple / `compose-simple.log` | 0 | `2026-10-13T23:10:49+08:00` | `sh deploy/tests/docker-compose-simple-mode-env-test.sh` |
+| baseline | docker-resources / `docker-resources.log` | 0 | `2026-10-13T23:10:49+08:00` | `sh deploy/tests/docker-runtime-resources-test.sh` |
+| baseline | remote-deploy-mock / `remote-deploy-mock.log` | 0 | `2026-10-13T23:10:50+08:00` | `sh deploy/tests/remote-deploy-test.sh` |
+| baseline | bluegreen-unit / `bluegreen-unit.log` | 0 | `2026-10-13T23:10:50+08:00` | `python3 deploy/tests/blue-green-test.py` |
+| baseline | bluegreen-evidence / `bluegreen-evidence.log` | 0 | `2026-10-13T23:10:50+08:00` | `python3 deploy/tests/blue-green-evidence-test.py` |
+| baseline | bluegreen-preflight / `bluegreen-preflight.log` | 0 | `2026-10-13T23:10:50+08:00` | `python3 deploy/tests/blue-green-preflight-test.py` |
+| baseline | metadata-unit / `metadata-unit.log` | 0 | `2026-10-13T23:10:50+08:00` | `python3 -m unittest discover -s tools -p test_check_upstream_sync_metadata.py` |
+| baseline | workflow-unit / `workflow-unit.log` | 0 | `2026-10-13T23:10:50+08:00` | `python3 -m unittest discover -s tools -p test_workflow_usage_policy.py` |
+| baseline | compose-equal / `compose-equal.log` | 0 | `2026-10-13T23:10:51+08:00` | `cmp deploy/docker-compose.yml deploy/docker-compose.sub2api.yml` |
+| baseline | release-unit / `release-unit.log` | 0 | `2026-10-13T23:10:51+08:00` | `python3 -m unittest discover -s .github/release-tools -p test_release_matrix.py` |
+| baseline | metadata / `metadata.log` | 0 | `2026-10-13T23:10:51+08:00` | `python3 tools/check_upstream_sync_metadata.py` |
+| baseline | oauth-diagnostic / `oauth-diagnostic.log` | 0 | `2026-10-14T01:01:41+08:00` | `timeout 300 go test -tags=unit -count=1000 -run '^TestRefreshIfNeeded_LateSuccessAfterDeadlineDoesNotPersist$' ./internal/service` |
+| candidate | pnpm-version / `pnpm-version.log` | 0 | `2026-10-13T23:24:28.9950927+08:00` | `pnpm --version` |
+| candidate | frontend-install / `frontend-install.log` | 0 | `2026-10-13T23:24:30.6016050+08:00` | `pnpm --dir frontend install --frozen-lockfile --store-dir D:\project\sub2api\tmp\upstream-sync-20261007\pnpm-store` |
+| candidate | frontend-lint / `frontend-lint.log` | 0 | `2026-10-13T23:25:25.6438139+08:00` | `pnpm --dir frontend run lint:check` |
+| candidate | frontend-typecheck / `frontend-typecheck.log` | 0 | `2026-10-13T23:25:57.1457042+08:00` | `pnpm --dir frontend run typecheck` |
+| candidate | frontend-test / `frontend-test.log` | 1 | `2026-10-13T23:27:29.9796484+08:00` | `pnpm --dir frontend run test:run` |
+| candidate | frontend-build / `frontend-build.log` | 0 | `2026-10-13T23:28:52.4947863+08:00` | `pnpm --dir frontend run build` |
+| candidate | canvas-install / `canvas-install.log` | 0 | `2026-10-13T23:28:53.9115305+08:00` | `pnpm --dir canvas install --frozen-lockfile --store-dir D:\project\sub2api\tmp\upstream-sync-20261007\pnpm-store` |
+| candidate | canvas-typecheck / `canvas-typecheck.log` | 0 | `2026-10-13T23:29:05.7996800+08:00` | `pnpm --dir canvas run typecheck` |
+| candidate | canvas-test / `canvas-test.log` | 0 | `2026-10-13T23:29:12.5811710+08:00` | `pnpm --dir canvas run test` |
+| candidate | canvas-build / `canvas-build.log` | 0 | `2026-10-13T23:29:44.3180222+08:00` | `pnpm --dir canvas run build` |
+| candidate | frontend-audit / `frontend-audit.log` | 1 | `2026-10-13T23:29:47.4061259+08:00` | `pnpm --dir frontend audit --prod --audit-level=high --json` |
+| candidate | canvas-audit / `canvas-audit.log` | 1 | `2026-10-13T23:29:49.7835114+08:00` | `pnpm --dir canvas audit --prod --audit-level=high --json` |
+| candidate | pnpm-version / `pnpm-version.retry2.log` | 0 | `2026-10-13T23:36:00.2076769+08:00` | `pnpm --version` |
+| candidate | frontend-install / `frontend-install.retry2.log` | 0 | `2026-10-13T23:36:01.5193206+08:00` | `pnpm --dir frontend install --frozen-lockfile --store-dir D:\project\sub2api\tmp\upstream-sync-20261007\pnpm-store` |
+| candidate | frontend-lint / `frontend-lint.retry2.log` | 0 | `2026-10-13T23:36:42.7398964+08:00` | `pnpm --dir frontend run lint:check` |
+| candidate | generate / `generate.log` | 0 | `2026-10-13T23:36:58+08:00` | `timeout 1200 go generate ./ent ./cmd/server` |
+| candidate | frontend-typecheck / `frontend-typecheck.retry2.log` | 0 | `2026-10-13T23:37:13.1543637+08:00` | `pnpm --dir frontend run typecheck` |
+| candidate | frontend-test / `frontend-test.retry2.log` | 1 | `2026-10-13T23:38:30.0911779+08:00` | `pnpm --dir frontend run test:run` |
+| candidate | pnpm-version / `pnpm-version.retry3.log` | 0 | `2026-10-13T23:41:45.7106823+08:00` | `pnpm --version` |
+| candidate | frontend-install / `frontend-install.retry3.log` | 0 | `2026-10-13T23:41:46.8750768+08:00` | `pnpm --dir frontend install --frozen-lockfile --store-dir D:\project\sub2api\tmp\upstream-sync-20261007\pnpm-store` |
+| candidate | frontend-lint / `frontend-lint.retry3.log` | 0 | `2026-10-13T23:42:24.3471111+08:00` | `pnpm --dir frontend run lint:check` |
+| candidate | frontend-typecheck / `frontend-typecheck.retry3.log` | 0 | `2026-10-13T23:42:53.1894751+08:00` | `pnpm --dir frontend run typecheck` |
+| candidate | frontend-test / `frontend-test.retry3.log` | 0 | `2026-10-13T23:44:09.6476600+08:00` | `pnpm --dir frontend run test:run` |
+| candidate | sync-focused / `sync-focused.log` | 1 | `2026-10-13T23:45:39+08:00` | `timeout 1200 go test -tags=unit -count=1 -run 'Test.*GeminiCachedContent\|Test.*CacheStorage\|TestBuiltinGeminiCache\|Test.*MandatoryUsage\|TestStoppedKeyed\|TestOpenAISubscription\|Test.*GPT61Sol\|TestCalculateCostUnified\|Test.*StructuredInput\|Test.*RequestedModel\|Test.*GroupAndAccountLongContext\|Test.*ReadOpenAIUpstreamError' ./internal/service ./internal/handler ./internal/repository` |
+| candidate | canvas-audit-exceptions / `canvas-audit-exceptions.log` | 0 | `2026-10-13T23:48:40+08:00` | `python3 tools/check_pnpm_audit_exceptions.py --audit /mnt/d/project/sub2api/tmp/upstream-sync-20261013/candidate/canvas-audit.log --exceptions .github/audit-exceptions.yml` |
+| candidate | frontend-audit-exceptions / `frontend-audit-exceptions.log` | 0 | `2026-10-13T23:48:40+08:00` | `python3 tools/check_pnpm_audit_exceptions.py --audit /mnt/d/project/sub2api/tmp/upstream-sync-20261013/candidate/frontend-audit.log --exceptions .github/audit-exceptions.yml` |
+| candidate | sync-focused / `sync-focused.retry2.log` | 0 | `2026-10-13T23:50:36+08:00` | `timeout 1200 go test -tags=unit -count=1 -run 'Test.*GeminiCachedContent\|Test.*CacheStorage\|TestBuiltinGeminiCache\|Test.*MandatoryUsage\|TestStoppedKeyed\|TestOpenAISubscription\|Test.*GPT61Sol\|TestCalculateCostUnified\|Test.*StructuredInput\|Test.*RequestedModel\|Test.*GroupAndAccountLongContext\|Test.*ReadOpenAIUpstreamError' ./internal/service ./internal/handler ./internal/repository` |
+| candidate | govulncheck / `govulncheck.log` | 0 | `2026-10-13T23:52:17+08:00` | `timeout 1800 govulncheck ./...` |
+| candidate | build-version-contract / `build-version-contract.log` | 0 | `2026-10-13T23:54:23+08:00` | `timeout 600 go test -tags=unit,embed ./internal/handler -run 'TestBuildVersion' -count=1` |
+| candidate | e2e-compile / `e2e-compile.log` | 0 | `2026-10-13T23:54:28+08:00` | `timeout 600 go test -c -tags=e2e -o /mnt/d/project/sub2api/tmp/upstream-sync-20261013/candidate/e2e-compile.test ./internal/integration` |
+| candidate | go-default / `go-default.log` | 1 | `2026-10-14T00:00:32+08:00` | `timeout 2400 go test -count=1 ./...` |
+| candidate | current-export-focused / `current-export-focused.log` | 0 | `2026-10-14T00:01:24+08:00` | `timeout 600 go test -count=1 -run 'TestUserUsageExport\|TestUserFacingGroupDTOsAreLocalized\|TestToLocalizedModelPlazaGroups\|TestLocalizeUserAvailableGroups' ./internal/handler` |
+| candidate | current-handler-default / `current-handler-default.log` | 0 | `2026-10-14T00:04:43+08:00` | `timeout 900 go test -count=1 ./internal/handler` |
+| candidate | embed / `embed.log` | 0 | `2026-10-14T00:05:55+08:00` | `timeout 600 go test -tags=unit,embed -count=1 ./internal/web` |
+| candidate | current-handler-unit / `current-handler-unit.log` | 0 | `2026-10-14T00:06:46+08:00` | `timeout 900 go test -tags=unit -count=1 ./internal/handler` |
+| candidate | current-handler-integration / `current-handler-integration.log` | 0 | `2026-10-14T00:08:24+08:00` | `timeout 900 go test -tags=integration -count=1 ./internal/handler` |
+| candidate | go-unit / `go-unit.log` | 1 | `2026-10-14T00:09:22+08:00` | `timeout 2400 go test -tags=unit -count=1 ./...` |
+| candidate | sync-race / `sync-race.log` | 0 | `2026-10-14T00:13:05+08:00` | `timeout 1200 go test -race -tags=unit -count=1 -run 'Test.*MandatoryUsage\|TestStoppedKeyed\|Test.*GeminiCachedContent\|Test.*StructuredInput\|Test.*ReadOpenAIUpstreamError\|Test.*RequestedModel\|Test.*GroupAndAccountLongContext\|Test.*GPT61Sol\|TestBuiltinGeminiCache\|TestCacheStorage\|TestCalculateCostUnified' ./internal/service ./internal/handler ./internal/repository` |
+| candidate | current-lint / `current-lint.log` | 0 | `2026-10-14T00:14:58+08:00` | `timeout 2400 golangci-lint run --timeout=30m ./...` |
+| candidate | go-integration / `go-integration.log` | 1 | `2026-10-14T00:18:08+08:00` | `timeout 2400 go test -tags=integration -count=1 ./...` |
+| candidate | current-build / `current-build.log` | 0 | `2026-10-14T00:18:14+08:00` | `timeout 1200 make build` |
+| candidate | final-invariants / `final-invariants.log` | 0 | `2026-10-14T00:19:29.8453324+08:00` | `./tmp/upstream-sync-20261013/check-final.ps1` |
+| candidate | smoke-current / `smoke-current.log` | 0 | `2026-10-14T00:19:42+08:00` | `timeout 600 python3 /mnt/d/project/sub2api/tmp/upstream-sync-20261013/run-smoke.py candidate current` |
+| candidate | go-lint / `go-lint.log` | 0 | `2026-10-14T00:20:06+08:00` | `timeout 2400 golangci-lint run --timeout=30m ./...` |
+| candidate | go-build / `go-build.log` | 0 | `2026-10-14T00:21:10+08:00` | `timeout 1200 make build` |
+| candidate | gateway-race / `gateway-race.log` | 0 | `2026-10-14T00:22:32+08:00` | `timeout 2400 go test -race -tags=unit -count=1 -run 'TestKimi\|TestOpsErrorLoggerMiddleware_Kimi\|TestAnthropicStreamSafeRetry\|TestFirstToken\|TestDecompress\|TestUsageRecordWorkerPool\|TestStoppedKeyed\|Test.*MandatoryUsage\|Test.*GeminiCachedContent\|Test.*TempUnsched\|Test.*GPT61Sol\|TestCalculateCostUnified_ModelLongContext' ./internal/service ./internal/handler ./internal/repository` |
+| candidate | apple-syntax / `apple-syntax.log` | 0 | `2026-10-14T00:22:32+08:00` | `bash -n deploy/apple-container.sh` |
+| candidate | docker-deploy-syntax / `docker-deploy-syntax.log` | 0 | `2026-10-14T00:22:32+08:00` | `bash -n deploy/docker-deploy.sh` |
+| candidate | remote-deploy-syntax / `remote-deploy-syntax.log` | 0 | `2026-10-14T00:22:32+08:00` | `sh -n deploy/remote-deploy.sh` |
+| candidate | compose-security / `compose-security.log` | 0 | `2026-10-14T00:22:32+08:00` | `sh deploy/tests/docker-compose-security-test.sh` |
+| candidate | compose-gateway / `compose-gateway.log` | 1 | `2026-10-14T00:22:33+08:00` | `sh deploy/tests/docker-compose-gateway-env-test.sh` |
+| candidate | caddy-cache / `caddy-cache.log` | 1 | `2026-10-14T00:22:38+08:00` | `sh deploy/test-caddyfile-cache.sh` |
+| candidate | compose-simple / `compose-simple.log` | 0 | `2026-10-14T00:22:38+08:00` | `sh deploy/tests/docker-compose-simple-mode-env-test.sh` |
+| candidate | docker-resources / `docker-resources.log` | 1 | `2026-10-14T00:22:38+08:00` | `sh deploy/tests/docker-runtime-resources-test.sh` |
+| candidate | remote-deploy-mock / `remote-deploy-mock.log` | 0 | `2026-10-14T00:22:39+08:00` | `sh deploy/tests/remote-deploy-test.sh` |
+| candidate | bluegreen-unit / `bluegreen-unit.log` | 0 | `2026-10-14T00:22:39+08:00` | `python3 deploy/tests/blue-green-test.py` |
+| candidate | bluegreen-evidence / `bluegreen-evidence.log` | 0 | `2026-10-14T00:22:39+08:00` | `python3 deploy/tests/blue-green-evidence-test.py` |
+| candidate | bluegreen-preflight / `bluegreen-preflight.log` | 0 | `2026-10-14T00:22:39+08:00` | `python3 deploy/tests/blue-green-preflight-test.py` |
+| candidate | metadata-unit / `metadata-unit.log` | 0 | `2026-10-14T00:22:39+08:00` | `python3 -m unittest discover -s tools -p test_check_upstream_sync_metadata.py` |
+| candidate | workflow-unit / `workflow-unit.log` | 0 | `2026-10-14T00:22:39+08:00` | `python3 -m unittest discover -s tools -p test_workflow_usage_policy.py` |
+| candidate | release-unit / `release-unit.log` | 0 | `2026-10-14T00:22:40+08:00` | `python3 -m unittest discover -s .github/release-tools -p test_release_matrix.py` |
+| candidate | metadata / `metadata.log` | 0 | `2026-10-14T00:22:40+08:00` | `python3 tools/check_upstream_sync_metadata.py` |
+| candidate | compose-equal / `compose-equal.log` | 0 | `2026-10-14T00:22:40+08:00` | `cmp deploy/docker-compose.yml deploy/docker-compose.sub2api.yml` |
+| candidate | compose-security / `compose-security.retry2.log` | 0 | `2026-10-14T00:28:03+08:00` | `sh deploy/tests/docker-compose-security-test.sh` |
+| candidate | apple-syntax / `apple-syntax.retry2.log` | 0 | `2026-10-14T00:28:03+08:00` | `bash -n deploy/apple-container.sh` |
+| candidate | docker-deploy-syntax / `docker-deploy-syntax.retry2.log` | 0 | `2026-10-14T00:28:03+08:00` | `bash -n deploy/docker-deploy.sh` |
+| candidate | remote-deploy-syntax / `remote-deploy-syntax.retry2.log` | 0 | `2026-10-14T00:28:03+08:00` | `sh -n deploy/remote-deploy.sh` |
+| candidate | compose-gateway / `compose-gateway.retry2.log` | 0 | `2026-10-14T00:28:04+08:00` | `sh deploy/tests/docker-compose-gateway-env-test.sh` |
+| candidate | compose-simple / `compose-simple.retry2.log` | 0 | `2026-10-14T00:28:12+08:00` | `sh deploy/tests/docker-compose-simple-mode-env-test.sh` |
+| candidate | docker-resources / `docker-resources.retry2.log` | 0 | `2026-10-14T00:28:12+08:00` | `sh deploy/tests/docker-runtime-resources-test.sh` |
+| candidate | caddy-cache / `caddy-cache.retry2.log` | 0 | `2026-10-14T00:28:12+08:00` | `sh deploy/test-caddyfile-cache.sh` |
+| candidate | remote-deploy-mock / `remote-deploy-mock.retry2.log` | 0 | `2026-10-14T00:28:12+08:00` | `sh deploy/tests/remote-deploy-test.sh` |
+| candidate | metadata-unit / `metadata-unit.retry2.log` | 0 | `2026-10-14T00:28:13+08:00` | `python3 -m unittest discover -s tools -p test_check_upstream_sync_metadata.py` |
+| candidate | workflow-unit / `workflow-unit.retry2.log` | 0 | `2026-10-14T00:28:13+08:00` | `python3 -m unittest discover -s tools -p test_workflow_usage_policy.py` |
+| candidate | bluegreen-evidence / `bluegreen-evidence.retry2.log` | 0 | `2026-10-14T00:28:13+08:00` | `python3 deploy/tests/blue-green-evidence-test.py` |
+| candidate | bluegreen-preflight / `bluegreen-preflight.retry2.log` | 0 | `2026-10-14T00:28:13+08:00` | `python3 deploy/tests/blue-green-preflight-test.py` |
+| candidate | bluegreen-unit / `bluegreen-unit.retry2.log` | 0 | `2026-10-14T00:28:13+08:00` | `python3 deploy/tests/blue-green-test.py` |
+| candidate | compose-equal / `compose-equal.retry2.log` | 0 | `2026-10-14T00:28:14+08:00` | `cmp deploy/docker-compose.yml deploy/docker-compose.sub2api.yml` |
+| candidate | release-unit / `release-unit.retry2.log` | 0 | `2026-10-14T00:28:14+08:00` | `python3 -m unittest discover -s .github/release-tools -p test_release_matrix.py` |
+| candidate | metadata / `metadata.retry2.log` | 0 | `2026-10-14T00:28:14+08:00` | `python3 tools/check_upstream_sync_metadata.py` |
+| candidate | final-lf-tree / `final-lf-tree.log` | 1 | `2026-10-14T00:32:02+08:00` | `bash tmp/upstream-sync-20261013/check-lf-tree.sh（独立索引校验最终 LF 归档）` |
+| candidate | final-lf-tree / `final-lf-tree.retry2.log` | 0 | `2026-10-14T00:33:01+08:00` | `bash tmp/upstream-sync-20261013/check-lf-tree.sh（独立索引校验最终 LF 归档）` |
+| candidate | build-version-contract / `build-version-contract.retry2.log` | 0 | `2026-10-14T00:33:48+08:00` | `timeout 600 go test -tags=unit,embed ./internal/handler -run 'TestBuildVersion' -count=1` |
+| candidate | e2e-compile / `e2e-compile.retry2.log` | 0 | `2026-10-14T00:33:52+08:00` | `timeout 600 go test -c -tags=e2e -o /mnt/d/project/sub2api/tmp/upstream-sync-20261013/candidate/e2e-compile.test ./internal/integration` |
+| candidate | go-default / `go-default.retry2.log` | 0 | `2026-10-14T00:36:48+08:00` | `timeout 2400 go test -count=1 ./...` |
+| candidate | go-unit / `go-unit.retry2.log` | 1 | `2026-10-14T00:46:29+08:00` | `timeout 2400 go test -tags=unit -count=1 ./...` |
+| candidate | go-integration / `go-integration.retry2.log` | 0 | `2026-10-14T00:54:13+08:00` | `timeout 2400 go test -tags=integration -count=1 ./...` |
+| candidate | go-lint / `go-lint.retry2.log` | 0 | `2026-10-14T00:58:24+08:00` | `timeout 2400 golangci-lint run --timeout=30m ./...` |
+| candidate | go-build / `go-build.retry2.log` | 0 | `2026-10-14T01:00:02+08:00` | `timeout 1200 make build` |
+| candidate | current-context-focused / `current-context-focused.log` | 0 | `2026-10-14T01:01:11+08:00` | `timeout 600 go test -tags=unit -count=1 -run 'Test.*GeminiCachedContent\|Test.*MandatoryUsage\|TestStoppedKeyed' ./internal/handler` |
+| candidate | oauth-diagnostic / `oauth-diagnostic.log` | 0 | `2026-10-14T01:01:38+08:00` | `timeout 300 go test -tags=unit -count=1000 -run '^TestRefreshIfNeeded_LateSuccessAfterDeadlineDoesNotPersist$' ./internal/service` |
+| candidate | memory-diagnostic / `memory-diagnostic.log` | 0 | `2026-10-14T01:02:35+08:00` | `timeout 300 go test -tags=unit -count=5 -run '^TestInflightEstimate_AccountMappingNoDBAndBoundedMemory$' ./internal/service` |
+| candidate | diagnostic-wrapper / `diagnostic-wrapper-error.log` | 1 | `2026-10-14T01:02:35+08:00` | `WSL bash -lc 顺序执行 OAuth/内存诊断并合并退出码（完整命令见日志）` |
+| candidate | gateway-race / `gateway-race.retry2.log` | 0 | `2026-10-14T01:03:30+08:00` | `timeout 2400 go test -race -tags=unit -count=1 -run 'TestKimi\|TestOpsErrorLoggerMiddleware_Kimi\|TestAnthropicStreamSafeRetry\|TestFirstToken\|TestDecompress\|TestUsageRecordWorkerPool\|TestStoppedKeyed\|Test.*MandatoryUsage\|Test.*GeminiCachedContent\|Test.*TempUnsched\|Test.*GPT61Sol\|TestCalculateCostUnified_ModelLongContext' ./internal/service ./internal/handler ./internal/repository` |
+| candidate | final-lf-tree / `final-lf-tree.retry3.log` | 0 | `2026-10-14T01:03:40+08:00` | `bash tmp/upstream-sync-20261013/check-lf-tree.sh（独立索引校验最终 LF 归档）` |
+| candidate | current-context-race-wrapper / `context-race-wrapper-error.log` | 2 | `2026-10-14T01:03:53+08:00` | `bash tmp/upstream-sync-20261013/run-current.sh context-race（外层续读解析失败）` |
+| candidate | current-handler-default / `current-handler-default.retry2.log` | 0 | `2026-10-14T01:06:07+08:00` | `timeout 900 go test -count=1 ./internal/handler` |
+| candidate | current-context-race / `current-context-race.retry2.log` | 0 | `2026-10-14T01:06:13+08:00` | `timeout 900 go test -race -tags=unit -count=1 -run 'Test.*GeminiCachedContent\|Test.*MandatoryUsage\|TestStoppedKeyed' ./internal/handler` |
+| candidate | current-handler-unit / `current-handler-unit.retry2.log` | 0 | `2026-10-14T01:07:45+08:00` | `timeout 900 go test -tags=unit -count=1 ./internal/handler` |
+| candidate | final-invariants / `final-invariants.retry2.log` | 0 | `2026-10-14T01:07:53.6847224+08:00` | `./tmp/upstream-sync-20261013/check-final.ps1` |
+| candidate | current-handler-integration / `current-handler-integration.retry2.log` | 0 | `2026-10-14T01:09:43+08:00` | `timeout 900 go test -tags=integration -count=1 ./internal/handler` |
+| candidate | current-lint / `current-lint.retry2.log` | 0 | `2026-10-14T01:12:59+08:00` | `timeout 2400 golangci-lint run --timeout=30m ./...` |
+| candidate | current-build / `current-build.retry2.log` | 0 | `2026-10-14T01:15:09+08:00` | `timeout 1200 make build` |
+| candidate | smoke-final / `smoke-final.log` | 0 | `2026-10-14T01:15:55+08:00` | `timeout 600 python3 /mnt/d/project/sub2api/tmp/upstream-sync-20261013/run-smoke.py candidate current lf` |
+| candidate | current-unit-all / `current-unit-all.log` | 0 | `2026-10-14T01:20:57+08:00` | `timeout 2400 go test -tags=unit -count=1 ./...` |
+| candidate | final-acceptance / `final-acceptance.log` | 0 | `2026-10-14T01:21:45.5949913+08:00` | `./tmp/upstream-sync-20261013/check-results.ps1` |

@@ -25,7 +25,9 @@ func (r *usageExportCapture) ListExport(_ context.Context, options usagestats.Ex
 	r.options, r.filters = options, filters
 	r.calls++
 	upstreamModel := "private-model"
-	return []service.UsageLog{{ID: 7, UserID: 42, AccountID: 3, UpstreamModel: &upstreamModel}}, "7", nil
+	return []service.UsageLog{{ID: 7, UserID: 42, AccountID: 3, UpstreamModel: &upstreamModel,
+		Group: &service.Group{ID: 4, Name: "默认分组", I18n: service.GroupI18n{"en": {Name: "Standard"}}},
+	}}, "7", nil
 }
 
 func TestUserUsageExportEnforcesOwnerAndProjection(t *testing.T) {
@@ -36,7 +38,9 @@ func TestUserUsageExportEnforcesOwnerAndProjection(t *testing.T) {
 	router.Use(func(c *gin.Context) { c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 42}) })
 	router.GET("/usage/export", h.Export)
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/usage/export?user_id=99&account_id=3&cursor=9&page_size=1000&model=test&group_id=4&request_type=ws_v2&billing_mode=token&native_compaction_v2=true", nil))
+	req := httptest.NewRequest(http.MethodGet, "/usage/export?user_id=99&account_id=3&cursor=9&page_size=1000&model=test&group_id=4&request_type=ws_v2&billing_mode=token&native_compaction_v2=true", nil)
+	req.Header.Set("Accept-Language", "en")
+	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, int64(42), repo.filters.UserID)
 	require.Zero(t, repo.filters.AccountID)
@@ -47,13 +51,21 @@ func TestUserUsageExportEnforcesOwnerAndProjection(t *testing.T) {
 	require.NotContains(t, rec.Body.String(), "private-model")
 	require.NotContains(t, rec.Body.String(), `"account":`)
 	require.NotContains(t, rec.Body.String(), "account_stats_cost")
+	require.NotContains(t, rec.Body.String(), `"i18n"`, "用户导出不能暴露完整译文表")
 	var payload struct {
 		Data struct {
-			Next string `json:"next_cursor"`
+			Next  string `json:"next_cursor"`
+			Items []struct {
+				Group struct {
+					Name string `json:"name"`
+				} `json:"group"`
+			} `json:"items"`
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
 	require.Equal(t, "7", payload.Data.Next)
+	require.Len(t, payload.Data.Items, 1)
+	require.Equal(t, "Standard", payload.Data.Items[0].Group.Name)
 }
 
 func TestUserUsageExportRejectsInvalidOrUnauthenticatedRequests(t *testing.T) {
