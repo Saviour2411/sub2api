@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -52,6 +53,8 @@ func (h *GatewayHandler) geminiCachedContentsPreamble(c *gin.Context, component 
 		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 		return nil, middleware.AuthSubject{}, nil, false
 	}
+	// Google 鉴权将用户存入 Gin，必记账队列需要请求上下文中的用户标识。
+	c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), ctxkey.UserID, authSubject.UserID))
 	reqLog := requestLogger(
 		c,
 		component,

@@ -7475,3 +7475,8 @@ M	frontend/src/views/user/__tests__/UsageView.spec.ts
 
 - 完整默认测试发现 `TestUserFacingGroupDTOsAreLocalized` 在本地 `UsageHandler.Export` 报错：导出尚未调用本地化转换。保留上游检查，复用列表的 `Localized(Accept-Language)`，并扩展既有导出测试验证译名和完整译文表不外泄；权限、筛选及管理字段脱敏不变。
 - 对应上游 `9a51333101a849bb948abf94c5ed53682e373edd` 继续记为 `Applied + Overridden`，没有新增范围或跳过项；同步更新 `CUST-BILL-005` 清单及变更记录。本轮累计适配 19 项既有能力，64 个编号不变。首次失败与最终复验均在验收表中保留。
+
+### Gemini 缓存真实入口的用户队列键适配
+
+- 验收核对发现 Google 鉴权只向 Gin 写入用户标识；新缓存接口调用的必记账队列从请求上下文读取，因此需要在其公共前置校验中传入已鉴权用户 ID。该适配限于本轮新增缓存接口，保留请求上下文和 5 秒回退，不修改通用鉴权或扩大业务取舍。
+- 补充缺失/陈旧请求用户标识两种场景的回归，并与既有队列串行和预留交接用例交叉验证。关联 `CUST-BILL-003` 和上游 `26b31a83e4190a3b38bce112fc597defbfb9515b`，仍记 `Applied + Overridden`；累计 19 项既有能力、64 个编号不变。

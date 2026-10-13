@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	middleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -112,6 +113,24 @@ func seedGeminiCachedContent(repo *geminiCachedContentHandlerRepoStub, publicID 
 	}
 	_ = repo.Create(context.Background(), record)
 	return record
+}
+
+func TestGeminiCachedContentPreamble_UsesAuthenticatedUsageUser(t *testing.T) {
+	for _, staleUserID := range []int64{0, 99} {
+		h := newGeminiCachedContentHandlerForTest(&geminiCachedContentHandlerRepoStub{})
+		apiKey := geminiCachedContentTestAPIKey(service.PlatformGemini)
+		c, _ := newGeminiCachedContentTestContext(http.MethodPost, "/v1beta/cachedContents", apiKey)
+		parent := context.WithValue(c.Request.Context(), ctxkey.RequestID, "cached-content-charge")
+		if staleUserID != 0 {
+			parent = context.WithValue(parent, ctxkey.UserID, staleUserID)
+		}
+		c.Request = c.Request.WithContext(parent)
+		_, subject, _, ok := h.geminiCachedContentsPreamble(c, "test.cached_content")
+		require.True(t, ok)
+		require.Equal(t, subject.UserID, usageRecordUserID(c.Request.Context()), "队列必须使用已鉴权的用户标识")
+		require.Equal(t, apiKey.UserID, usageRecordUserID(c.Request.Context()))
+		require.Equal(t, "cached-content-charge", c.Request.Context().Value(ctxkey.RequestID))
+	}
 }
 
 func TestResolveGeminiCachedContentBinding(t *testing.T) {
