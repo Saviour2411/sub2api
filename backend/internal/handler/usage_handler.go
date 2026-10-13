@@ -277,7 +277,7 @@ func (h *UsageHandler) Export(c *gin.Context) {
 	}
 	out := make([]dto.UsageLog, 0, len(records))
 	for i := range records {
-		out = append(out, *dto.UsageLogFromService(&records[i]))
+		out = append(out, *dto.UsageLogFromService(&records[i]).Localized(c.GetHeader("Accept-Language")))
 	}
 	response.Success(c, gin.H{"items": out, "next_cursor": next})
 }
