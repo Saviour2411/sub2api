@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -161,6 +162,39 @@ func TestWrapUsageRecordTaskContext_HandsReservationToBillingTask(t *testing.T) 
 	require.Equal(t, 1, cache.count())
 	abandon2()
 	require.Equal(t, 0, cache.count())
+}
+
+func TestGatewayMandatoryUsageRecordTask_FullQueueHandsOffReservation(t *testing.T) {
+	cache := newHandlerInflightCache(1)
+	cfg := &config.Config{}
+	cfg.Billing.InflightReservation = config.InflightReservationConfig{Enabled: true, TTLSeconds: 60}
+	billing := service.NewBillingCacheService(cache, nil, nil, nil, nil, nil, cfg, nil)
+	t.Cleanup(billing.Stop)
+	apiKey := &service.APIKey{User: &service.User{ID: 5}}
+	c := newInflightTestGinContext()
+	c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), ctxkey.UserID, int64(5)))
+	done, err := reserveInflightBalance(c, billing, &countingEstimator{cost: 0.9, priced: true}, apiKey, nil, tokenInflightEstimate("m", nil))
+	require.NoError(t, err)
+	defer done()
+	pool := service.NewUsageRecordWorkerPoolWithOptions(service.UsageRecordWorkerPoolOptions{
+		WorkerCount: 1, QueueSize: 1, TaskTimeout: time.Second, OverflowPolicy: "drop",
+	})
+	t.Cleanup(pool.Stop)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	defer close(release)
+	pool.Submit(func(context.Context) { close(started); <-release })
+	<-started
+	pool.Submit(func(context.Context) {})
+	called, reservationHeld := false, false
+	(&GatewayHandler{usageRecordWorkerPool: pool}).submitMandatoryUsageRecordTask(c.Request.Context(), func(context.Context) {
+		called = true
+		done()
+		reservationHeld = cache.count() == 1
+	})
+	require.True(t, called, "满队列仍须完成必记账任务")
+	require.True(t, reservationHeld, "handler 结束后预留仍由计费任务持有")
+	require.Zero(t, cache.count(), "计费任务结束后释放预留")
 }
 
 // 新接入的端点（独立 web_search）：在途预留超过余额时拒绝，且不残留预留。

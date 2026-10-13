@@ -7,7 +7,7 @@
       :loading="loading"
       :auto-refresh="autoRefresh"
       @update:window="handleWindowChange"
-      @refresh="manualReload"
+      @refresh="refresh()"
     />
 
     <MonitorCardGrid
@@ -64,13 +64,14 @@ const showDetail = ref(false)
 const detailTarget = ref<UserMonitorView | null>(null)
 
 let abortController: AbortController | null = null
+let detailGeneration = 0
 
 const autoRefresh = useAutoRefresh({
   storageKey: 'channel-status-auto-refresh',
   intervals: [30, 60, 120] as const,
   defaultInterval: DEFAULT_INTERVAL_SECONDS,
   defaultEnabled: true,
-  onRefresh: () => reload(true),
+  onRefresh: () => refresh(true),
   shouldPause: () => document.hidden || loading.value,
 })
 const countdown = autoRefresh.countdown
@@ -99,18 +100,21 @@ async function reload(silent = false) {
   if (!silent) loading.value = true
   try {
     const res = await listChannelMonitorViews({ signal: ctrl.signal })
-    if (ctrl.signal.aborted || abortController !== ctrl) return
+    if (ctrl.signal.aborted || abortController !== ctrl) return false
     items.value = res.items || []
     // 刷新后丢弃旧窗口统计，防止 15/30 天数据一直停留在首次加载时。
+    detailGeneration++
     for (const id of Object.keys(detailCache)) delete detailCache[Number(id)]
     imageGroupSuccessRates.value = {
       visible: res.image_group_success_rates?.visible === true,
       items: res.image_group_success_rates?.items || [],
     }
+    return true
   } catch (err: unknown) {
     const e = err as { name?: string; code?: string }
-    if (e?.name === 'AbortError' || e?.code === 'ERR_CANCELED') return
+    if (e?.name === 'AbortError' || e?.code === 'ERR_CANCELED') return false
     appStore.showError(extractApiErrorMessage(err, t('channelStatus.loadError')))
+    return false
   } finally {
     if (abortController === ctrl) {
       if (!silent) loading.value = false
@@ -120,16 +124,20 @@ async function reload(silent = false) {
   }
 }
 
-async function manualReload() {
-  await reload(false)
+async function refresh(silent = false) {
+  if (await reload(silent)) await ensureDetailsForWindow()
 }
 
 async function loadDetail(id: number, force = false) {
   if (!force && detailCache[id]) return
+  const generation = detailGeneration
   try {
-    detailCache[id] = await fetchChannelMonitorDetail(id)
+    const detail = await fetchChannelMonitorDetail(id)
+    if (generation === detailGeneration) detailCache[id] = detail
   } catch (err: unknown) {
-    appStore.showError(extractApiErrorMessage(err, t('channelStatus.detailLoadError')))
+    if (generation === detailGeneration) {
+      appStore.showError(extractApiErrorMessage(err, t('channelStatus.detailLoadError')))
+    }
   }
 }
 
@@ -154,10 +162,6 @@ function closeDetail() {
   detailTarget.value = null
 }
 
-watch(items, () => {
-  void ensureDetailsForWindow()
-})
-
 watch(
   () => appStore.cachedPublicSettings?.channel_monitor_enabled,
   (enabled) => {
@@ -167,13 +171,14 @@ watch(
 )
 
 onMounted(() => {
-  void reload(false)
+  void refresh(false)
   if (appStore.cachedPublicSettings?.channel_monitor_enabled !== false) {
     autoRefresh.setEnabled(autoRefresh.enabled.value)
   }
 })
 
 onBeforeUnmount(() => {
+  detailGeneration++
   if (abortController) abortController.abort()
 })
 </script>

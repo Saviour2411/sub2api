@@ -506,12 +506,13 @@ func mergeAPIKeyMimicAccountBeta(base string, account *Account, dropSet map[stri
 	return mergeAnthropicBetaDropping(strings.Split(base, ","), override, dropSet)
 }
 
-// 旧流式 beta 与稳定版电脑和浏览器工具集不兼容，工具级 eager_input_streaming 仍可用。
+// Sonnet 5.5 与 Haiku 5.5 的稳定版电脑和浏览器工具集不兼容旧流式 beta。
+// 工具级 eager_input_streaming 仍可用。
 func filterSonnet55ToolsetBeta(header string, body []byte, modelID string) string {
 	if at := strings.IndexByte(modelID, '@'); at >= 0 {
 		modelID = modelID[:at] // Vertex's dated model ID
 	}
-	if !claude.IsSonnet55(modelID) {
+	if !claude.IsSonnet55(modelID) && !claude.IsHaiku55(modelID) {
 		return header
 	}
 	for _, tool := range gjson.GetBytes(body, "tools").Array() {

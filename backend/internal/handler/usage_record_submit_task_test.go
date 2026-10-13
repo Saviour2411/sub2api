@@ -228,6 +228,7 @@ func TestStoppedKeyedUsageRunsFallbackExactlyOnce(t *testing.T) {
 	parent := context.WithValue(context.Background(), ctxkey.UserID, int64(42))
 	for _, submit := range []func(context.Context, service.UsageRecordTask){
 		(&GatewayHandler{usageRecordWorkerPool: pool}).submitUsageRecordTask,
+		(&GatewayHandler{usageRecordWorkerPool: pool}).submitMandatoryUsageRecordTask,
 		(&OpenAIGatewayHandler{usageRecordWorkerPool: pool}).submitUsageRecordTask,
 		(&OpenAIGatewayHandler{usageRecordWorkerPool: pool}).submitMandatoryUsageRecordTask,
 	} {
@@ -235,4 +236,56 @@ func TestStoppedKeyedUsageRunsFallbackExactlyOnce(t *testing.T) {
 		submit(parent, func(context.Context) { calls.Add(1) })
 		require.Equal(t, int32(1), calls.Load())
 	}
+}
+
+func TestGatewayHandlerSubmitMandatoryUsageRecordTask_SerializesUser(t *testing.T) {
+	pool := service.NewUsageRecordWorkerPoolWithOptions(service.UsageRecordWorkerPoolOptions{
+		WorkerCount: 2, QueueSize: 8, TaskTimeout: 5 * time.Second, OverflowPolicy: "drop",
+	})
+	t.Cleanup(pool.Stop)
+	h := &GatewayHandler{usageRecordWorkerPool: pool}
+	parent := context.WithValue(context.Background(), ctxkey.UserID, int64(42))
+	started := make(chan struct{})
+	release := make(chan struct{})
+	defer close(release)
+	h.submitUsageRecordTask(parent, func(context.Context) {
+		close(started)
+		<-release
+	})
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("首个用户任务未启动")
+	}
+	second := make(chan struct{})
+	h.submitMandatoryUsageRecordTask(parent, func(context.Context) { close(second) })
+	other := make(chan struct{})
+	h.submitMandatoryUsageRecordTask(context.WithValue(context.Background(), ctxkey.UserID, int64(43)),
+		func(context.Context) { close(other) })
+	select {
+	case <-other:
+	case <-time.After(time.Second):
+		t.Fatal("其他用户应能并行记账")
+	}
+	select {
+	case <-second:
+		t.Fatal("同一用户的必记账任务不能越过尚未结束的前一个任务")
+	default:
+	}
+}
+
+func TestGatewayHandlerSubmitMandatoryUsageRecordTask_FallbackDeadline(t *testing.T) {
+	parent, cancel := context.WithCancel(context.WithValue(context.Background(), ctxkey.RequestID, "mandatory-fallback"))
+	cancel()
+	called := false
+	(&GatewayHandler{}).submitMandatoryUsageRecordTask(parent, func(ctx context.Context) {
+		called = true
+		require.NoError(t, ctx.Err(), "客户端取消不得跳过必记账任务")
+		require.Equal(t, "mandatory-fallback", ctx.Value(ctxkey.RequestID))
+		deadline, ok := ctx.Deadline()
+		require.True(t, ok)
+		require.Greater(t, time.Until(deadline), 4*time.Second)
+		require.LessOrEqual(t, time.Until(deadline), 5*time.Second)
+	})
+	require.True(t, called)
 }

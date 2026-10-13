@@ -52,12 +52,14 @@ type GatewayHandler struct {
 	errorPassthroughService   *service.ErrorPassthroughService
 	contentModerationService  *service.ContentModerationService
 	securityAuditCoordinator  *securityaudit.Coordinator
-	concurrencyHelper         *ConcurrencyHelper
-	userMsgQueueHelper        *UserMsgQueueHelper
-	maxAccountSwitches        int
-	maxAccountSwitchesGemini  int
-	cfg                       *config.Config
-	settingService            *service.SettingService
+	// geminiCachedContentService 管理 Gemini 显式缓存；为 nil 时相关接口不可用。
+	geminiCachedContentService *service.GeminiCachedContentService
+	concurrencyHelper          *ConcurrencyHelper
+	userMsgQueueHelper         *UserMsgQueueHelper
+	maxAccountSwitches         int
+	maxAccountSwitchesGemini   int
+	cfg                        *config.Config
+	settingService             *service.SettingService
 }
 
 // NewGatewayHandler creates a new GatewayHandler
@@ -2755,21 +2757,21 @@ func (h *GatewayHandler) submitUsageRecordTask(parent context.Context, task serv
 	task(ctx)
 }
 
-// submitMandatoryUsageRecordTask never silently drops billing work on pool overflow.
+// submitMandatoryUsageRecordTask 按用户提交必记账任务，队列满或已停止时同步执行。
 func (h *GatewayHandler) submitMandatoryUsageRecordTask(parent context.Context, task service.UsageRecordTask) {
 	if task == nil {
 		return
 	}
 	task, _ = wrapUsageRecordTaskContext(parent, task)
 	if h.usageRecordWorkerPool != nil {
-		if mode := h.usageRecordWorkerPool.Submit(task); !mode.Dropped() {
+		if mode := h.usageRecordWorkerPool.SubmitKeyed(usageRecordUserID(parent), task); !mode.Dropped() {
 			return
 		}
 		logger.L().With(
 			zap.String("component", "handler.gateway.usage"),
 		).Warn("gateway.usage_record_task_mandatory_sync_fallback")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	defer func() {
 		if recovered := recover(); recovered != nil {
