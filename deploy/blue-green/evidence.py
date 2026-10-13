@@ -23,6 +23,20 @@ SPECIAL_MIGRATIONS = {
     "241_add_payment_order_bonus_amount.sql": ("bonus-existing-241-v1", "18b6a524a9873d3e4a45e6f9bd03b6e69f4384b701825c659817e017f2e8244f"),
     "241_add_typesafe_platform.sql": ("platform-guarded-241-v1", "b6559525bf8d0b5d7c617e7415944f0d1fae8c408e9131ace84139795f66dcd2"),
 }
+UPSTREAM216_BASE = "aa3fc09e3009a307e37f2b244aea4c81b1e631a3"
+UPSTREAM216_PROFILE = "upstream216-additive-v1"
+UPSTREAM216_FILES = {
+    "242_group_i18n.sql": "e81c6818cc806bc54365c993f4cec1634f16a311451faf5cb1a875a1358774cd",
+    "243_gemini_cached_contents.sql": "2d345cff5c64b01e705f04ec972e5d5ec3d618fe71dc7d45bc80fdd38c6a89d5",
+    "244_gemini_cached_contents_channel_usage.sql": "9072cb37752a23c3a29cc0330a69837f09c5102375ee053d7bccf14634d3da29",
+    "245_gemini_cached_contents_mutation_lease.sql": "75434a7beeb8aad09b3339708ed520604d153e99c7fe680a376e8c958aadb1e8",
+}
+SPECIAL_MIGRATIONS.update({name: (UPSTREAM216_PROFILE, digest) for name, digest in UPSTREAM216_FILES.items()})
+UPSTREAM216_SCHEMA = {
+    "path": "backend/ent/schema/group.go",
+    "from_checksum": "ab46f4e37b0287cd795622eb89d5841f76838c9dccedf88361e27fc045ea4881",
+    "to_checksum": "c9e1e2ef48143693fc9cba92e123998d7b508d50b79ea735164d56d56afa4776",
+}
 PLATFORM_SCHEMA = {
     "path": "backend/ent/schema/user_platform_quota.go",
     "from_checksum": "88511bf2651dcde080ecb915e7ee699bfb93a5ff6df66e6ea4ba0cc229ea00d3",
@@ -60,6 +74,16 @@ def reviewed_platform_schema(base, sha, changed, git):
             and "M\t" + PLATFORM_SCHEMA["path"] in changed.splitlines(), "241平台SQL与固定Ent差异必须同时存在")
     for ref, key in ((base, "from_checksum"), (sha, "to_checksum")):
         require(checksum(git("show", ref+":"+PLATFORM_SCHEMA["path"])) == PLATFORM_SCHEMA[key], "241专项Ent差异摘要不符")
+
+
+def reviewed_upstream216_schema(base, sha, changed, git):
+    required = {"A\tbackend/migrations/" + name for name in UPSTREAM216_FILES}
+    required.add("M\t" + UPSTREAM216_SCHEMA["path"])
+    require(base == UPSTREAM216_BASE and required <= set(changed.splitlines()),
+            "0.2.16专项必须绑定v0.1.254、四条原SQL和固定分组Ent差异")
+    for ref, key in ((base, "from_checksum"), (sha, "to_checksum")):
+        require(checksum(git("show", ref+":"+UPSTREAM216_SCHEMA["path"])) == UPSTREAM216_SCHEMA[key],
+                "0.2.16专项分组Ent摘要不符")
 
 
 def require(value, message):
@@ -105,6 +129,9 @@ def migration_evidence(base, sha, git):
         fields = line.split("\t")
         require(len(fields) == 2, "迁移差异格式不受支持")
         status, path = fields
+        if status == "M" and path == UPSTREAM216_SCHEMA["path"]:
+            reviewed_upstream216_schema(base, sha, changed, git)
+            continue
         if status == "M" and path in {item["path"] for item in PLATFORM242_SCHEMAS} and "A\tbackend/migrations/242_drop_platform_check_constraints.sql" in changed.splitlines():
             reviewed_platform242_schemas(base, sha, changed, git)
             continue
@@ -121,6 +148,8 @@ def migration_evidence(base, sha, git):
         if special:
             require(checksum(content) == special[1], "专项迁移固定 SQL 摘要不符")
             contract = {"profile": special[0]}
+            if special[0] == UPSTREAM216_PROFILE:
+                reviewed_upstream216_schema(base, sha, changed, git)
             if special[0] == "platform-guarded-242-v1":
                 reviewed_platform242_schemas(base, sha, changed, git)
         else:
@@ -134,6 +163,8 @@ def migration_evidence(base, sha, git):
         require(approval.get("checksum") == checksum(content), "迁移内容与兼容审批摘要不符")
         if special:
             require(approval.get("profile") == special[0] and "column" not in approval, "专项迁移与兼容审批不符")
+            if special[0] == UPSTREAM216_PROFILE:
+                require(approval.get("schema_change") == UPSTREAM216_SCHEMA, "0.2.16审批缺少固定分组Ent差异")
             if special[0] == "platform-guarded-241-v1":
                 require(approval.get("schema_change") == PLATFORM_SCHEMA, "241平台审批缺少固定Ent差异")
                 reviewed_platform_schema(base, sha, changed, git)

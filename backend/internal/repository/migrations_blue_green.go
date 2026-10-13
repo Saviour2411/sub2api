@@ -67,6 +67,9 @@ func parseBlueGreenMigrationPolicy(raw string) (*blueGreenMigrationPolicy, error
 			return nil, fmt.Errorf("蓝绿迁移字段类型未经批准")
 		}
 	}
+	if err := validateBlueGreen216Policy(&policy); err != nil {
+		return nil, err
+	}
 	return &policy, nil
 }
 
@@ -155,7 +158,7 @@ func validateBlueGreenPendingMigrations(ctx context.Context, conn *sql.Conn, fsy
 			return fmt.Errorf("蓝绿待执行迁移未获批准：%s", name)
 		}
 	}
-	return nil
+	return validateBlueGreen216Applied(ctx, conn, policy, applied)
 }
 
 func applyBlueGreenExpansion(ctx context.Context, conn *sql.Conn, entry blueGreenMigration, content string) error {

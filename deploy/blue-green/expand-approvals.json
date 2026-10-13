@@ -133,6 +133,174 @@
         }
       ],
       "review": "2026-10-10 用户批准242专项兼容适配及v0.1.252蓝绿发布。绑定v0.1.251固定旧提交、原始242 SQL和两处Ent前后摘要；先安装与241完全相同的十一平台CHECK保护，再在同事务执行原SQL并记账。仅PostgreSQL18、16MiB以内无自定义触发器/RLS/继承的普通表；NOWAIT双表锁及1/5/10秒预算。新平台在共存期不能写入这两张表；失败或回滚保留保护，仅旧槽退役且固定身份、挂载、配置和双入口健康复核后解除，不反向删除迁移账本、不修改历史SQL或放宽普通迁移规则。"
+    },
+    {
+      "compatible_from": "aa3fc09e3009a307e37f2b244aea4c81b1e631a3",
+      "path": "backend/migrations/242_group_i18n.sql",
+      "checksum": "e81c6818cc806bc54365c993f4cec1634f16a311451faf5cb1a875a1358774cd",
+      "profile": "upstream216-additive-v1",
+      "schema_change": {
+        "path": "backend/ent/schema/group.go",
+        "from_checksum": "ab46f4e37b0287cd795622eb89d5841f76838c9dccedf88361e27fc045ea4881",
+        "to_checksum": "c9e1e2ef48143693fc9cba92e123998d7b508d50b79ea735164d56d56afa4776"
+      },
+      "legacy_contracts": [
+        {
+          "path": "backend/ent/schema/group.go",
+          "checksum": "ab46f4e37b0287cd795622eb89d5841f76838c9dccedf88361e27fc045ea4881"
+        },
+        {
+          "path": "backend/internal/repository/group_repo.go",
+          "checksum": "b78584cdc0e531f2c132ebefc89afbc4cbb95524b817a340cfcea5f726c23488"
+        },
+        {
+          "path": "backend/ent/group/group.go",
+          "checksum": "09a097e2ebb1d63e59be027b02d5ca3bcadc83224eb1c31f530bc50080e6d332"
+        },
+        {
+          "path": "backend/ent/group_create.go",
+          "checksum": "7e18b88851263decdc8bdbc3a6ec4f7c2d2aa5b1c84b3801c8db98a94efdc7e8"
+        },
+        {
+          "path": "backend/ent/group_query.go",
+          "checksum": "7ddebed10fd6e5408404b7e1dfb5cb169e473fd0421e96688fc67b619ee7de32"
+        },
+        {
+          "path": "backend/ent/group_update.go",
+          "checksum": "bd79ff56c2c8be80f36c2479a6406afd779738573e4f3964686997ab89e8b5c7"
+        },
+        {
+          "path": "backend/internal/handler/gemini_v1beta_handler.go",
+          "checksum": "45266b6a066aefa797d417924cc63bbe13c7db10c5ce010db70a136379391b48"
+        }
+      ],
+      "review": "2026-10-14按用户更新tag并自动蓝绿部署的要求完成固定兼容适配。仅v0.1.254及四条0.2.16原始SQL和分组Ent固定差异；旧分组Ent显式列名读写，旧Gemini路径不访问新缓存表。PostgreSQL18、16MiB分组表、固定既有触发器、NOWAIT和1/5/10秒预算。四条原文及账本同一事务，拒绝同名对象、部分账本和结构漂移；不重写分组表、不修改余额或价格，失败保留旧流量，回退保留新结构。"
+    },
+    {
+      "compatible_from": "aa3fc09e3009a307e37f2b244aea4c81b1e631a3",
+      "path": "backend/migrations/243_gemini_cached_contents.sql",
+      "checksum": "2d345cff5c64b01e705f04ec972e5d5ec3d618fe71dc7d45bc80fdd38c6a89d5",
+      "profile": "upstream216-additive-v1",
+      "schema_change": {
+        "path": "backend/ent/schema/group.go",
+        "from_checksum": "ab46f4e37b0287cd795622eb89d5841f76838c9dccedf88361e27fc045ea4881",
+        "to_checksum": "c9e1e2ef48143693fc9cba92e123998d7b508d50b79ea735164d56d56afa4776"
+      },
+      "legacy_contracts": [
+        {
+          "path": "backend/ent/schema/group.go",
+          "checksum": "ab46f4e37b0287cd795622eb89d5841f76838c9dccedf88361e27fc045ea4881"
+        },
+        {
+          "path": "backend/internal/repository/group_repo.go",
+          "checksum": "b78584cdc0e531f2c132ebefc89afbc4cbb95524b817a340cfcea5f726c23488"
+        },
+        {
+          "path": "backend/ent/group/group.go",
+          "checksum": "09a097e2ebb1d63e59be027b02d5ca3bcadc83224eb1c31f530bc50080e6d332"
+        },
+        {
+          "path": "backend/ent/group_create.go",
+          "checksum": "7e18b88851263decdc8bdbc3a6ec4f7c2d2aa5b1c84b3801c8db98a94efdc7e8"
+        },
+        {
+          "path": "backend/ent/group_query.go",
+          "checksum": "7ddebed10fd6e5408404b7e1dfb5cb169e473fd0421e96688fc67b619ee7de32"
+        },
+        {
+          "path": "backend/ent/group_update.go",
+          "checksum": "bd79ff56c2c8be80f36c2479a6406afd779738573e4f3964686997ab89e8b5c7"
+        },
+        {
+          "path": "backend/internal/handler/gemini_v1beta_handler.go",
+          "checksum": "45266b6a066aefa797d417924cc63bbe13c7db10c5ce010db70a136379391b48"
+        }
+      ],
+      "review": "2026-10-14按用户更新tag并自动蓝绿部署的要求完成固定兼容适配。仅v0.1.254及四条0.2.16原始SQL和分组Ent固定差异；旧分组Ent显式列名读写，旧Gemini路径不访问新缓存表。PostgreSQL18、16MiB分组表、固定既有触发器、NOWAIT和1/5/10秒预算。四条原文及账本同一事务，拒绝同名对象、部分账本和结构漂移；不重写分组表、不修改余额或价格，失败保留旧流量，回退保留新结构。"
+    },
+    {
+      "compatible_from": "aa3fc09e3009a307e37f2b244aea4c81b1e631a3",
+      "path": "backend/migrations/244_gemini_cached_contents_channel_usage.sql",
+      "checksum": "9072cb37752a23c3a29cc0330a69837f09c5102375ee053d7bccf14634d3da29",
+      "profile": "upstream216-additive-v1",
+      "schema_change": {
+        "path": "backend/ent/schema/group.go",
+        "from_checksum": "ab46f4e37b0287cd795622eb89d5841f76838c9dccedf88361e27fc045ea4881",
+        "to_checksum": "c9e1e2ef48143693fc9cba92e123998d7b508d50b79ea735164d56d56afa4776"
+      },
+      "legacy_contracts": [
+        {
+          "path": "backend/ent/schema/group.go",
+          "checksum": "ab46f4e37b0287cd795622eb89d5841f76838c9dccedf88361e27fc045ea4881"
+        },
+        {
+          "path": "backend/internal/repository/group_repo.go",
+          "checksum": "b78584cdc0e531f2c132ebefc89afbc4cbb95524b817a340cfcea5f726c23488"
+        },
+        {
+          "path": "backend/ent/group/group.go",
+          "checksum": "09a097e2ebb1d63e59be027b02d5ca3bcadc83224eb1c31f530bc50080e6d332"
+        },
+        {
+          "path": "backend/ent/group_create.go",
+          "checksum": "7e18b88851263decdc8bdbc3a6ec4f7c2d2aa5b1c84b3801c8db98a94efdc7e8"
+        },
+        {
+          "path": "backend/ent/group_query.go",
+          "checksum": "7ddebed10fd6e5408404b7e1dfb5cb169e473fd0421e96688fc67b619ee7de32"
+        },
+        {
+          "path": "backend/ent/group_update.go",
+          "checksum": "bd79ff56c2c8be80f36c2479a6406afd779738573e4f3964686997ab89e8b5c7"
+        },
+        {
+          "path": "backend/internal/handler/gemini_v1beta_handler.go",
+          "checksum": "45266b6a066aefa797d417924cc63bbe13c7db10c5ce010db70a136379391b48"
+        }
+      ],
+      "review": "2026-10-14按用户更新tag并自动蓝绿部署的要求完成固定兼容适配。仅v0.1.254及四条0.2.16原始SQL和分组Ent固定差异；旧分组Ent显式列名读写，旧Gemini路径不访问新缓存表。PostgreSQL18、16MiB分组表、固定既有触发器、NOWAIT和1/5/10秒预算。四条原文及账本同一事务，拒绝同名对象、部分账本和结构漂移；不重写分组表、不修改余额或价格，失败保留旧流量，回退保留新结构。"
+    },
+    {
+      "compatible_from": "aa3fc09e3009a307e37f2b244aea4c81b1e631a3",
+      "path": "backend/migrations/245_gemini_cached_contents_mutation_lease.sql",
+      "checksum": "75434a7beeb8aad09b3339708ed520604d153e99c7fe680a376e8c958aadb1e8",
+      "profile": "upstream216-additive-v1",
+      "schema_change": {
+        "path": "backend/ent/schema/group.go",
+        "from_checksum": "ab46f4e37b0287cd795622eb89d5841f76838c9dccedf88361e27fc045ea4881",
+        "to_checksum": "c9e1e2ef48143693fc9cba92e123998d7b508d50b79ea735164d56d56afa4776"
+      },
+      "legacy_contracts": [
+        {
+          "path": "backend/ent/schema/group.go",
+          "checksum": "ab46f4e37b0287cd795622eb89d5841f76838c9dccedf88361e27fc045ea4881"
+        },
+        {
+          "path": "backend/internal/repository/group_repo.go",
+          "checksum": "b78584cdc0e531f2c132ebefc89afbc4cbb95524b817a340cfcea5f726c23488"
+        },
+        {
+          "path": "backend/ent/group/group.go",
+          "checksum": "09a097e2ebb1d63e59be027b02d5ca3bcadc83224eb1c31f530bc50080e6d332"
+        },
+        {
+          "path": "backend/ent/group_create.go",
+          "checksum": "7e18b88851263decdc8bdbc3a6ec4f7c2d2aa5b1c84b3801c8db98a94efdc7e8"
+        },
+        {
+          "path": "backend/ent/group_query.go",
+          "checksum": "7ddebed10fd6e5408404b7e1dfb5cb169e473fd0421e96688fc67b619ee7de32"
+        },
+        {
+          "path": "backend/ent/group_update.go",
+          "checksum": "bd79ff56c2c8be80f36c2479a6406afd779738573e4f3964686997ab89e8b5c7"
+        },
+        {
+          "path": "backend/internal/handler/gemini_v1beta_handler.go",
+          "checksum": "45266b6a066aefa797d417924cc63bbe13c7db10c5ce010db70a136379391b48"
+        }
+      ],
+      "review": "2026-10-14按用户更新tag并自动蓝绿部署的要求完成固定兼容适配。仅v0.1.254及四条0.2.16原始SQL和分组Ent固定差异；旧分组Ent显式列名读写，旧Gemini路径不访问新缓存表。PostgreSQL18、16MiB分组表、固定既有触发器、NOWAIT和1/5/10秒预算。四条原文及账本同一事务，拒绝同名对象、部分账本和结构漂移；不重写分组表、不修改余额或价格，失败保留旧流量，回退保留新结构。"
     }
   ]
 }
