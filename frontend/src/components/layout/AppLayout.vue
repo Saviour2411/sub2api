@@ -1,8 +1,8 @@
 <template>
-  <div class="mecha-app-shell min-h-screen bg-[#edf3fa] text-slate-900 dark:bg-[#03070d] dark:text-slate-100">
+  <div class="min-h-screen text-slate-900 dark:text-slate-100" :class="quiet ? 'quality-quiet-layout' : 'mecha-app-shell bg-[#edf3fa] dark:bg-[#03070d]'">
     <!-- Background Decoration -->
-    <div class="pointer-events-none fixed inset-0 bg-mesh-gradient dark:bg-none"></div>
-    <div class="pointer-events-none fixed inset-0 opacity-90 dark:opacity-100">
+    <div v-if="!quiet" class="pointer-events-none fixed inset-0 bg-mesh-gradient dark:bg-none"></div>
+    <div v-if="!quiet" class="pointer-events-none fixed inset-0 opacity-90 dark:opacity-100">
       <div class="hud-grid absolute inset-0"></div>
       <div class="absolute inset-0 bg-[linear-gradient(115deg,transparent_0%,transparent_42%,rgba(23,152,242,0.12)_42.2%,transparent_43.1%,transparent_72%,rgba(255,111,56,0.09)_72.2%,transparent_73%)]"></div>
       <div class="absolute right-0 top-0 h-40 w-[52vw] bg-[linear-gradient(135deg,rgba(255,255,255,0.74),rgba(75,181,255,0.16),transparent)] dark:bg-[linear-gradient(135deg,rgba(75,181,255,0.1),transparent)]"></div>
@@ -13,10 +13,10 @@
     </div>
 
     <!-- Animated background (canvas particles + scanlines) -->
-    <BackgroundFX variant="app" :density="0.7" />
+    <BackgroundFX v-if="!quiet" variant="app" :density="0.7" />
 
     <!-- Top energy band (sweeps across) -->
-    <div class="app-energy-band pointer-events-none fixed inset-x-0 top-16 z-10 hidden h-px lg:block">
+    <div v-if="!quiet" class="app-energy-band pointer-events-none fixed inset-x-0 top-16 z-10 hidden h-px lg:block">
       <div class="app-energy-beam"></div>
     </div>
 
@@ -53,7 +53,7 @@ import AppSidebar from './AppSidebar.vue'
 import AppHeader from './AppHeader.vue'
 import BackgroundFX from '@/components/common/BackgroundFX.vue'
 
-withDefaults(defineProps<{ fullscreen?: boolean }>(), { fullscreen: false })
+withDefaults(defineProps<{ fullscreen?: boolean; quiet?: boolean }>(), { fullscreen: false, quiet: false })
 
 const appStore = useAppStore()
 const authStore = useAuthStore()
@@ -75,6 +75,8 @@ defineExpose({ replayTour })
 </script>
 
 <style scoped>
+.quality-quiet-layout { background: #f6f8fa; }
+:global(.dark .quality-quiet-layout) { background: #1b2326; }
 .app-energy-band {
   overflow: hidden;
   background: linear-gradient(

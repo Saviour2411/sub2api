@@ -20,6 +20,11 @@ import { resolveRouteDocumentTitle } from './title'
  */
 const routes: RouteRecordRaw[] = [
   {
+    path: '/model-quality', name: 'ModelQuality',
+    component: () => import('@/views/user/ModelQualityView.vue'),
+    meta: { requiresAuth: true, requiresModelQuality: true, title: '降智检测' }
+  },
+  {
     path: '/balance-query',
     name: 'BalanceQuery',
     component: () => import('@/views/public/BalanceQueryView.vue'),
@@ -972,7 +977,7 @@ router.beforeEach(async (to, _from, next) => {
   // 公共设置可能尚未加载（App.vue 的 onMounted 异步拉取晚于首次导航，且纯静态部署
   // 无 __APP_CONFIG__ 注入）。此时 cachedPublicSettings 为空会把 payment/risk_control
   // 误判为“未启用”而错误拦截，故这里先确保设置加载完成。
-  if ((to.meta.requiresPayment || to.meta.requiresRiskControl || to.meta.requiresCanvas || to.meta.requiresSubscription) && !appStore.publicSettingsLoaded) {
+  if ((to.meta.requiresModelQuality || to.meta.requiresPayment || to.meta.requiresRiskControl || to.meta.requiresCanvas || to.meta.requiresSubscription) && !appStore.publicSettingsLoaded) {
     try {
       await appStore.fetchPublicSettings()
     } catch (error) {
@@ -981,6 +986,10 @@ router.beforeEach(async (to, _from, next) => {
   }
 
   // Only an explicit value from successfully loaded settings can disable a route.
+  if (to.meta.requiresModelQuality && appStore.cachedPublicSettings?.model_quality_enabled !== true) {
+    next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
+    return
+  }
   // A transient settings failure is unknown state, not a confirmed feature toggle.
   if (
     to.meta.requiresPayment &&

@@ -983,6 +983,8 @@ var ProviderSet = wire.NewSet(
 	ProvideChannelMonitorRunner,
 	NewUpstreamService,
 	ProvideUpstreamSyncRunner,
+	NewModelQualityService,
+	ProvideModelQualityRunner,
 	ProvideChannelMonitorV2Service,
 	ProvideChannelMonitorV2Aggregator,
 	NewChannelMonitorRequestTemplateService,

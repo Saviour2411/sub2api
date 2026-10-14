@@ -120,6 +120,7 @@ func provideCleanup(
 	temporaryCreditWorker *service.TemporaryCreditWorker,
 	channelMonitorRunner *service.ChannelMonitorRunner,
 	upstreamSyncRunner *service.UpstreamSyncRunner,
+	modelQualityRunner *service.ModelQualityRunner,
 	channelMonitorV2Aggregator *service.ChannelMonitorV2Aggregator,
 	quotaFlusher *service.UserPlatformQuotaUsageFlusher,
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
@@ -384,6 +385,12 @@ func provideCleanup(
 				}
 				return nil
 			}},
+			{"ModelQualityRunner", func() error {
+				if modelQualityRunner != nil {
+					modelQualityRunner.Stop()
+				}
+				return nil
+			}},
 			{"UserPlatformQuotaUsageFlusher", func() error {
 				if quotaFlusher != nil {
 					quotaFlusher.Stop()
@@ -460,6 +467,7 @@ func provideCleanup(
 			"SubscriptionExpiryService": true, "UsageCleanupService": true, "IdempotencyCleanupService": true,
 			"BatchImageCleanupService": true, "ScheduledTestRunnerService": true, "BackupService": true,
 			"PaymentOrderExpiryService": true, "ChannelMonitorRunner": true, "UpstreamSyncRunner": true,
+			"ModelQualityRunner":          true,
 			"UpstreamBillingProbeService": true, "OllamaCloudUsageService": true,
 		}
 		var producerSteps, remainingSteps []cleanupStep

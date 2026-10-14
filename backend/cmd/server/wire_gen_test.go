@@ -94,6 +94,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // 临时授信后台任务
 		nil, // channelMonitorRunner
 		nil, // upstreamSyncRunner
+		nil, // 降智检测后台任务
 		nil, // channelMonitorV2Aggregator
 		nil, // quotaFlusher
 		nil, // upstreamBillingProbe

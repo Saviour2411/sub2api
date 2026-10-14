@@ -200,6 +200,9 @@ describe('admin CustomFeaturesView', () => {
     await flushPromises()
 
     expect(wrapper.findAll('[role="tab"]')[0].attributes('data-test')).toBe('custom-feature-tab-upstream')
+    const tabOrder = wrapper.findAll('[role="tab"]').map(tab => tab.attributes('data-test'))
+    expect(tabOrder.indexOf('custom-feature-tab-model-quality')).toBe(tabOrder.indexOf('custom-feature-tab-gateway') + 1)
+    expect(tabOrder.indexOf('custom-feature-tab-daily-checkin')).toBe(tabOrder.indexOf('custom-feature-tab-model-quality') + 1)
     const content = wrapper.get('[data-test="custom-features-content"]')
     expect(content.classes()).toContain('max-w-[1600px]')
     expect(content.classes()).toContain('space-y-4')

@@ -442,6 +442,7 @@ type PublicSettings struct {
 
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 	CanvasEnabled            bool `json:"canvas_enabled"`
+	ModelQualityEnabled      bool `json:"model_quality_enabled"`
 
 	SubscriptionEnabled bool `json:"subscription_enabled"`
 

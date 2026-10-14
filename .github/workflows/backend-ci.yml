@@ -34,6 +34,20 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    services:
+      model-quality-postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: quality-ci-test
+          POSTGRES_DB: modelquality
+        ports:
+          - 15467:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d modelquality"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v6
       - name: Check Docker Compose simple mode environment
@@ -52,6 +66,8 @@ jobs:
         run: make test-unit
       - name: Integration tests
         working-directory: backend
+        env:
+          MODEL_QUALITY_TEST_DSN: postgres://postgres:quality-ci-test@127.0.0.1:15467/modelquality?sslmode=disable&connect_timeout=10
         run: make test-integration
 
   stream-race:

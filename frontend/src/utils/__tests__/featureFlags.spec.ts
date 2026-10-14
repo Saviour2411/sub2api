@@ -59,3 +59,13 @@ describe('resolveFeatureFlag', () => {
     expect(isFeatureFlagEnabled(FeatureFlags.subscription)).toBe(false)
   })
 })
+
+describe('降智检测入口', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+  it('默认隐藏，仅在明确开启后显示', () => {
+    expect(resolveFeatureFlag(null, FeatureFlags.modelQuality)).toBe(false)
+    expect(resolveFeatureFlag({} as PublicSettings, FeatureFlags.modelQuality)).toBe(false)
+    expect(resolveFeatureFlag({ model_quality_enabled: false } as PublicSettings, FeatureFlags.modelQuality)).toBe(false)
+    expect(resolveFeatureFlag({ model_quality_enabled: true } as PublicSettings, FeatureFlags.modelQuality)).toBe(true)
+  })
+})
