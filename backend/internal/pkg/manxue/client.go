@@ -104,7 +104,7 @@ func (c *Client) call(ctx context.Context, method, path string, body []byte, key
 	if err != nil {
 		return nil, &Error{Ambiguous: method == http.MethodPost}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, &Error{Status: resp.StatusCode, RetryAfter: ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now()), Ambiguous: method == http.MethodPost && resp.StatusCode != 429 && resp.StatusCode != 503 && resp.StatusCode >= 500}
 	}

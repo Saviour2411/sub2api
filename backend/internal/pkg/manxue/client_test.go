@@ -84,7 +84,12 @@ func TestClientDoesNotReplayUncertainPost(t *testing.T) {
 		}
 		_, _ = io.Copy(io.Discard, r.Body)
 		if submissions.Add(1) == 1 {
-			connection, _, err := w.(http.Hijacker).Hijack()
+			hijacker, ok := w.(http.Hijacker)
+			if !ok {
+				t.Error("测试服务不支持连接接管")
+				return
+			}
+			connection, _, err := hijacker.Hijack()
 			if err != nil {
 				t.Error(err)
 				return

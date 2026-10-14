@@ -186,7 +186,7 @@ func TestModelQualityEndpoint(t *testing.T) {
 	require.Contains(t, c.PauseReason, "非公网")
 }
 func TestModelQualityConfigAndKeyOwnership(t *testing.T) {
-	s, repo, keys, _, _ := qualityFixture()
+	s, repo, _, _, _ := qualityFixture()
 	ctx := context.Background()
 	c, _ := repo.Config(ctx)
 	c.Groups[0].Models = []string{" model-a ", "model-a"}
@@ -198,7 +198,7 @@ func TestModelQualityConfigAndKeyOwnership(t *testing.T) {
 	require.Equal(t, "待绑定密钥", states[0].PauseReason)
 	c.Groups[0].Models = nil
 	require.Error(t, s.SaveConfig(ctx, 3, c))
-	s, repo, keys, _, _ = qualityFixture()
+	s, repo, keys, _, _ := qualityFixture()
 	c, _ = repo.Config(ctx)
 	require.Error(t, s.SaveConfig(ctx, 99, c))
 	c, _ = repo.Config(ctx)

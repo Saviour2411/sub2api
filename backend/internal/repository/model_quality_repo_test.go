@@ -21,7 +21,7 @@ import (
 func TestModelQualitySlotsRequireConfigRowLock(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewModelQualityRepository(db)
 	mock.ExpectBegin()
 	mock.ExpectQuery("SELECT enabled,version.*FOR UPDATE").WillReturnRows(sqlmock.NewRows([]string{"enabled", "version"}).AddRow(true, 3))
@@ -40,7 +40,7 @@ func TestModelQualityPostgresLifecycle(t *testing.T) {
 	}
 	base, err := sql.Open("postgres", dsn)
 	require.NoError(t, err)
-	defer base.Close()
+	defer func() { _ = base.Close() }()
 	schema := "quality_" + uuid.NewString()[:8]
 	_, err = base.Exec(`CREATE SCHEMA ` + schema)
 	require.NoError(t, err)
@@ -52,7 +52,7 @@ func TestModelQualityPostgresLifecycle(t *testing.T) {
 	u.RawQuery = query.Encode()
 	db, err := sql.Open("postgres", u.String())
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	db.SetMaxOpenConns(12)
 	_, err = db.Exec(`CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)`)
 	require.NoError(t, err)

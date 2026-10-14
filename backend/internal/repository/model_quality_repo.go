@@ -68,7 +68,7 @@ func (r *modelQualityRepository) States(ctx context.Context) (map[int64]service.
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := map[int64]service.ModelQualityGroupState{}
 	for rows.Next() {
 		var s service.ModelQualityGroupState
@@ -144,7 +144,7 @@ func (r *modelQualityRepository) Tasks(ctx context.Context) ([]service.ModelQual
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []service.ModelQualityTask{}
 	for rows.Next() {
 		var t service.ModelQualityTask
@@ -261,13 +261,15 @@ func (r *modelQualityRepository) Runs(ctx context.Context, f service.ModelQualit
 	for rows.Next() {
 		item, e := scanQualityRun(rows)
 		if e != nil {
-			rows.Close()
+			_ = rows.Close()
 			return nil, 0, e
 		}
 		out = append(out, item)
 	}
 	err = rows.Err()
-	rows.Close()
+	if closeErr := rows.Close(); err == nil {
+		err = closeErr
+	}
 	if err != nil {
 		return nil, 0, err
 	}
@@ -310,7 +312,7 @@ func (r *modelQualityRepository) loadTests(ctx context.Context, runs []service.M
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var id int64
 		var t service.ModelQualityTest
