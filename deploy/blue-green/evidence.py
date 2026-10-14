@@ -16,7 +16,10 @@ REQUIRED = {
 }
 MIGRATION_PATHS = ["backend/migrations", "backend/ent/schema"]
 APPROVALS_PATH = "deploy/blue-green/expand-approvals.json"
+MODEL_QUALITY_BASE = "49e3f64067f5a3340d8e9ae1c561c808206273dd"
+MODEL_QUALITY_PROFILE = "model-quality-additive-246-v1"
 SPECIAL_MIGRATIONS = {
+    "246_model_quality.sql": (MODEL_QUALITY_PROFILE, "1bb3d0dd89a9e48f4c524f306b3c248873581b6a33aa1f37f1e24fc3caab545e"),
     "242_drop_platform_check_constraints.sql": ("platform-guarded-242-v1", "a7725f31f637208d200e0f37d5270e9f263743d99fa9e4f1bb9a7387e8be5a61"),
     "239_channel_reasoning_effort_multipliers.sql": ("reasoning-empty-239-v1", "66feb546785dfa385d8efd268a40276cd8ffdb0cead7026cd79e339a3b69edf1"),
     "240_affiliate_ledger_operation_id.sql": ("affiliate-operation-240-v1", "3823bfea5f64feb58f5fcebc341c6877eaefc97834b4cd652c8e83ad08ed78da"),
@@ -148,6 +151,10 @@ def migration_evidence(base, sha, git):
         if special:
             require(checksum(content) == special[1], "专项迁移固定 SQL 摘要不符")
             contract = {"profile": special[0]}
+            if special[0] == MODEL_QUALITY_PROFILE:
+                require(base == MODEL_QUALITY_BASE and all(item == "A\t"+path
+                    or re.fullmatch(r"[AM]\tbackend/migrations/[a-zA-Z0-9_]+_test\.go", item)
+                    for item in changed.splitlines()), "降智检测专项仅覆盖v0.1.255到固定246迁移")
             if special[0] == UPSTREAM216_PROFILE:
                 reviewed_upstream216_schema(base, sha, changed, git)
             if special[0] == "platform-guarded-242-v1":

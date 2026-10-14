@@ -2,6 +2,23 @@
   "version": 1,
   "approvals": [
     {
+      "compatible_from": "49e3f64067f5a3340d8e9ae1c561c808206273dd",
+      "path": "backend/migrations/246_model_quality.sql",
+      "checksum": "1bb3d0dd89a9e48f4c524f306b3c248873581b6a33aa1f37f1e24fc3caab545e",
+      "profile": "model-quality-additive-246-v1",
+      "legacy_contracts": [
+        {
+          "path": "backend/internal/repository/setting_repo.go",
+          "checksum": "54d60367b1595bfac41713e91a82c248abfa8ac1e151d4b21315726e8e480954"
+        },
+        {
+          "path": "backend/internal/service/setting_public.go",
+          "checksum": "d4b3e7cd1322ef04f48b813c0ae8b45ed671d6f58a4a83b4fff9f469c7d5395d"
+        }
+      ],
+      "review": "2026-10-15按用户更新tag并自动部署的要求完成固定兼容适配。仅从v0.1.255新增五张检测专用表及默认关闭的独立设置键；旧版按键读写设置，公共设置使用明确字段，不访问新增表。绑定原始SQL和旧设置读写实现摘要。仅PostgreSQL18，settings与迁移账本须为至多16MiB的无附加行为普通表，SHARE ROW EXCLUSIVE NOWAIT及1/5/10秒预算；拒绝已有检测对象、开关、账本和DDL触发器。原始SQL及账本同事务提交，核验完整表、字段、索引、约束和序列结构，重复启动只读重验；失败保留旧流量，回退不删除新表或记录。"
+    },
+    {
       "compatible_from": "ee1c56f75a38c8678ed338a4a1fecad51b08593c",
       "path": "backend/migrations/238b_content_moderation_engine_meta.sql",
       "checksum": "420af91eec85bdb60474640612a0f4d069db6ddfb21e6ed702b89713f3599287",
