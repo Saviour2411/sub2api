@@ -58,6 +58,7 @@ type Handlers struct {
 	Announcement     *AnnouncementHandler
 	ChannelMonitor   *ChannelMonitorUserHandler
 	ChannelMonitorV2 *ChannelMonitorV2Handler
+	ModelQuality     *ModelQualityHandler
 	Admin            *AdminHandlers
 	Gateway          *GatewayHandler
 	OpenAIGateway    *OpenAIGatewayHandler

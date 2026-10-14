@@ -187,6 +187,9 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	channelMonitorV2Repository := repository.NewChannelMonitorV2Repository(db)
 	channelMonitorV2Service := service.ProvideChannelMonitorV2Service(channelMonitorV2Repository, settingService)
 	channelMonitorV2Handler := handler.NewChannelMonitorV2Handler(channelMonitorV2Service, apiKeyService)
+	modelQualityRepository := repository.NewModelQualityRepository(db)
+	modelQualityService := service.NewModelQualityService(modelQualityRepository, settingService, apiKeyRepository, groupRepository)
+	modelQualityHandler := handler.NewModelQualityHandler(modelQualityService)
 	dashboardAggregationRepository := repository.NewDashboardAggregationRepository(db)
 	dashboardStatsCache := repository.NewDashboardCache(redisClient, configConfig)
 	dashboardService := service.NewDashboardService(usageLogRepository, dashboardAggregationRepository, dashboardStatsCache, configConfig)
@@ -341,7 +344,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	balanceQueryHandler := handler.NewBalanceQueryHandler(userCustomizationService, rateLimiter)
 	idempotencyCleanupService := service.ProvideIdempotencyCleanupService(idempotencyRepository, configConfig)
 	openAIQuotaAutoResetService := service.ProvideOpenAIQuotaAutoResetService(accountRepository, openAIQuotaService, rateLimitService, idempotencyCoordinator, auditLogService, settingService, leaderLockCache)
-	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, announcementHandler, channelMonitorUserHandler, channelMonitorV2Handler, adminHandlers, gatewayHandler, openAIGatewayHandler, handlerSettingHandler, totpHandler, passkeyHandler, handlerPaymentHandler, paymentWebhookHandler, availableChannelHandler, modelPlazaHandler, asyncImageHandler, batchImageHandler, dailyCheckinHandler, modelMarketplaceHandler, balanceQueryHandler, idempotencyCoordinator, idempotencyCleanupService, openAIQuotaAutoResetService)
+	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, announcementHandler, channelMonitorUserHandler, channelMonitorV2Handler, modelQualityHandler, adminHandlers, gatewayHandler, openAIGatewayHandler, handlerSettingHandler, totpHandler, passkeyHandler, handlerPaymentHandler, paymentWebhookHandler, availableChannelHandler, modelPlazaHandler, asyncImageHandler, batchImageHandler, dailyCheckinHandler, modelMarketplaceHandler, balanceQueryHandler, idempotencyCoordinator, idempotencyCleanupService, openAIQuotaAutoResetService)
 	jwtAuthMiddleware := middleware2.NewJWTAuthMiddleware(authService, userService, settingService, auditLogService)
 	optionalJWTAuthMiddleware := middleware2.NewOptionalJWTAuthMiddleware(authService, userService, settingService, auditLogService)
 	adminAuthMiddleware := middleware2.NewAdminAuthMiddleware(authService, userService, settingService, auditLogService)
@@ -369,9 +372,10 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	channelMonitorQuotaFetcher := service.NewChannelMonitorQuotaFetcher(accountUsageService, cnProviderQuotaService, cnProviderBalanceService, accountRepository, configConfig)
 	channelMonitorRunner := service.ProvideChannelMonitorRunner(channelMonitorService, settingService, channelMonitorQuotaFetcher)
 	upstreamSyncRunner := service.ProvideUpstreamSyncRunner(upstreamService, leaderLockCache, db)
+	modelQualityRunner := service.ProvideModelQualityRunner(modelQualityService)
 	channelMonitorV2Aggregator := service.ProvideChannelMonitorV2Aggregator(channelMonitorV2Repository, db, settingService)
 	userPlatformQuotaUsageFlusher := service.ProvideUserPlatformQuotaUsageFlusher(configConfig, billingCache, serviceUserPlatformQuotaRepository, timingWheelService)
-	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, opsService, opsIngressRejectAggregator, apiKeyService, authCacheInvalidationWorker, schedulerSnapshotService, tokenRefreshService, accountExpiryService, cnProviderBalanceCheckService, openAICodexVersionSyncService, claudeCodeVersionSyncService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, geminiCachedContentService, batchImageCleanupService, batchImageWorkerRuntime, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, temporaryCreditWorker, channelMonitorRunner, upstreamSyncRunner, channelMonitorV2Aggregator, userPlatformQuotaUsageFlusher, upstreamBillingProbeService, ollamaCloudUsageService, openCodeGoUsageService, auditLogService, openAIQuotaAutoResetService, promptService, pluginManager)
+	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, opsService, opsIngressRejectAggregator, apiKeyService, authCacheInvalidationWorker, schedulerSnapshotService, tokenRefreshService, accountExpiryService, cnProviderBalanceCheckService, openAICodexVersionSyncService, claudeCodeVersionSyncService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, geminiCachedContentService, batchImageCleanupService, batchImageWorkerRuntime, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, temporaryCreditWorker, channelMonitorRunner, upstreamSyncRunner, modelQualityRunner, channelMonitorV2Aggregator, userPlatformQuotaUsageFlusher, upstreamBillingProbeService, ollamaCloudUsageService, openCodeGoUsageService, auditLogService, openAIQuotaAutoResetService, promptService, pluginManager)
 	application := &Application{
 		Server:        httpServer,
 		PromptAudit:   promptService,
@@ -450,6 +454,7 @@ func provideCleanup(
 	temporaryCreditWorker *service.TemporaryCreditWorker,
 	channelMonitorRunner *service.ChannelMonitorRunner,
 	upstreamSyncRunner *service.UpstreamSyncRunner,
+	modelQualityRunner *service.ModelQualityRunner,
 	channelMonitorV2Aggregator *service.ChannelMonitorV2Aggregator,
 	quotaFlusher *service.UserPlatformQuotaUsageFlusher,
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
@@ -713,6 +718,12 @@ func provideCleanup(
 				}
 				return nil
 			}},
+			{"ModelQualityRunner", func() error {
+				if modelQualityRunner != nil {
+					modelQualityRunner.Stop()
+				}
+				return nil
+			}},
 			{"UserPlatformQuotaUsageFlusher", func() error {
 				if quotaFlusher != nil {
 					quotaFlusher.Stop()
@@ -789,6 +800,7 @@ func provideCleanup(
 			"SubscriptionExpiryService": true, "UsageCleanupService": true, "IdempotencyCleanupService": true,
 			"BatchImageCleanupService": true, "ScheduledTestRunnerService": true, "BackupService": true,
 			"PaymentOrderExpiryService": true, "ChannelMonitorRunner": true, "UpstreamSyncRunner": true,
+			"ModelQualityRunner":          true,
 			"UpstreamBillingProbeService": true, "OllamaCloudUsageService": true,
 		}
 		var producerSteps, remainingSteps []cleanupStep

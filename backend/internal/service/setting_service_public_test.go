@@ -187,6 +187,15 @@ func TestSettingService_GetPublicSettings_ExposesModelMarketplaceEnabled(t *test
 	})
 }
 
+func TestSettingService_GetPublicSettings_ModelQualityOptIn(t *testing.T) {
+	for _, value := range []string{"", "false", "true"} {
+		svc := NewSettingService(&settingPublicRepoStub{values: map[string]string{SettingKeyModelQualityEnabled: value}}, &config.Config{})
+		settings, err := svc.GetPublicSettings(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, value == "true", settings.ModelQualityEnabled)
+	}
+}
+
 func TestSettingService_GetPublicSettings_ExposesDailyCheckinEnabled(t *testing.T) {
 	t.Run("default disabled", func(t *testing.T) {
 		svc := NewSettingService(&settingPublicRepoStub{values: map[string]string{}}, &config.Config{})

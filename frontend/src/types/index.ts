@@ -332,6 +332,7 @@ export interface PublicSettings {
   channel_monitor_hide_user_ranking?: boolean
   available_channels_enabled: boolean
   canvas_enabled?: boolean
+  model_quality_enabled?: boolean
   /** 用户订阅界面开关，默认开启。 */
   subscription_enabled: boolean
   /** 与余额充值禁用配置保持一致，true 表示关闭余额充值。 */

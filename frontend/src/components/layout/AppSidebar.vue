@@ -711,6 +711,8 @@ const ChevronDownIcon = {
 // which handles the opt-in vs opt-out fallback when settings haven't loaded
 // yet. Admin-only flags (not in public settings) stay inline below.
 const flagChannelMonitor = makeSidebarFlag(FeatureFlags.channelMonitor)
+const flagModelQuality = makeSidebarFlag(FeatureFlags.modelQuality)
+const ModelQualityIcon = () => h(Icon, { name: 'beaker' })
 const flagPayment = makeSidebarFlag(FeatureFlags.payment)
 const flagAvailableChannels = makeSidebarFlag(FeatureFlags.availableChannels)
 const flagSubscription = makeSidebarFlag(FeatureFlags.subscription)
@@ -754,6 +756,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/models', label: t('nav.modelMarketplace'), icon: ModelMarketplaceIcon, featureFlag: flagModelMarketplace },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
+    { path: '/model-quality', label: '降智检测', icon: ModelQualityIcon, featureFlag: flagModelQuality },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagSubscription },
     { path: '/purchase', label: purchaseNavLabel.value, icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },

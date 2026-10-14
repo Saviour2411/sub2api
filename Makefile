@@ -35,6 +35,11 @@ FRONTEND_CRITICAL_VITEST := \
 	src/components/admin/account/__tests__/AccountTestModal.spec.ts \
 	src/utils/__tests__/accountTestModels.spec.ts \
 	src/views/admin/__tests__/CustomFeaturesView.spec.ts \
+	src/components/admin/model-quality/__tests__/ModelQualitySettings.spec.ts \
+	src/components/model-quality/__tests__/QualityPreview.spec.ts \
+	src/views/user/__tests__/ModelQualityView.spec.ts \
+	src/utils/__tests__/featureFlags.spec.ts \
+	src/router/__tests__/custom-features-route.spec.ts \
 	src/api/__tests__/admin.customFeatures.gateway.spec.ts \
 	src/utils/__tests__/anthropicStreamDiagnostic.spec.ts \
 	src/views/admin/ops/components/__tests__/OpsErrorDetailModal.spec.ts \

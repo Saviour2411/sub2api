@@ -209,6 +209,7 @@ export default {
         canvas: 'Infinite Canvas',
         modelMarketplace: 'Model Marketplace',
         gateway: 'Gateway Settings',
+        modelQuality: '降智检测',
         dailyCheckin: 'Daily Check-in',
       },
       canvas: {

@@ -209,6 +209,7 @@ export default {
         canvas: '无限画布',
         modelMarketplace: '模型广场',
         gateway: '网关配置',
+        modelQuality: '降智检测',
         dailyCheckin: '每日签到',
       },
       canvas: {

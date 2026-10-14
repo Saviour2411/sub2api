@@ -6,8 +6,12 @@ import (
 )
 
 func registerCustomFeatureRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	admin.POST("/model-quality/groups/:id/run", h.ModelQuality.RunNow)
 	customFeatures := admin.Group("/custom-features")
 	{
+		customFeatures.GET("/model-quality", h.ModelQuality.GetConfig)
+		customFeatures.PUT("/model-quality", h.ModelQuality.SaveConfig)
+		customFeatures.GET("/model-quality/keys", h.ModelQuality.Keys)
 		customFeatures.GET("", h.Admin.CustomFeature.GetSettings)
 		customFeatures.PUT("/model-marketplace", h.Admin.CustomFeature.UpdateModelMarketplace)
 		customFeatures.PUT("/canvas", h.Admin.CustomFeature.UpdateCanvas)

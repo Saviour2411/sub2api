@@ -92,6 +92,10 @@ func RegisterUserRoutes(
 			groups.GET("/rates", h.APIKey.GetUserGroupRates)
 		}
 
+		quality := authenticated.Group("/model-quality")
+		quality.GET("/groups", h.ModelQuality.Groups)
+		quality.GET("/runs", h.ModelQuality.Runs)
+		quality.GET("/runs/:id", h.ModelQuality.Run)
 		canvas := authenticated.Group("/canvas")
 		canvas.Use(func(c *gin.Context) {
 			if settingService == nil || !settingService.IsCanvasEnabled(c.Request.Context()) {
