@@ -288,5 +288,44 @@ class EvidenceTests(unittest.TestCase):
                 e.migration_evidence(base, sha, git)
 
 
+    def model_quality_fixture(self):
+        base, sha = e.MODEL_QUALITY_BASE, "b" * 40
+        approval = next(item for item in json.loads((ROOT/e.APPROVALS_PATH).read_text())["approvals"]
+                        if item.get("profile") == e.MODEL_QUALITY_PROFILE)
+        values = {"diff": "A\t"+approval["path"], sha+":"+approval["path"]: (ROOT/approval["path"]).read_text()}
+        for contract in approval["legacy_contracts"]:
+            contract["checksum"] = e.checksum("旧版按键设置读写")
+            values[base+":"+contract["path"]] = "旧版按键设置读写"
+        values[sha+":"+e.APPROVALS_PATH] = json.dumps({"version": 1, "approvals": [approval]})
+        def git(*args):
+            return values["diff"] if args[0] == "diff" else values[args[1]] if args[0] == "show" else ""
+        return base, sha, approval, values, git
+
+    def test_model_quality_binds_fixed_sql_base_and_only_migration(self):
+        base, sha, approval, values, git = self.model_quality_fixture()
+        result = e.migration_evidence(base, sha, git)
+        self.assertEqual("expand", result["migration_class"])
+        self.assertEqual(e.MODEL_QUALITY_PROFILE, result["migration_policy"]["migrations"][0]["profile"])
+        for diff in ("M\t"+approval["path"], values["diff"]+"\nA\tbackend/migrations/999_other.sql",
+                     values["diff"]+"\nM\tbackend/ent/schema/setting.go"):
+            with self.subTest(diff=diff), self.assertRaises(RuntimeError):
+                e.migration_evidence(base, sha, lambda *args: diff if args[0] == "diff" else git(*args))
+        with self.assertRaises(RuntimeError):
+            e.migration_evidence("c"*40, sha, git)
+
+    def test_model_quality_rejects_sql_approval_and_legacy_drift(self):
+        base, sha, approval, values, git = self.model_quality_fixture()
+        for key in (sha+":"+approval["path"], base+":"+approval["legacy_contracts"][0]["path"]):
+            before = values[key]
+            values[key] += "\n未审查的变化"
+            with self.assertRaises(RuntimeError):
+                e.migration_evidence(base, sha, git)
+            values[key] = before
+        for change in ({"legacy_contracts": []}, {"compatible_from": "c"*40}, {"profile": "unknown"}):
+            values[sha+":"+e.APPROVALS_PATH] = json.dumps({"version": 1, "approvals": [dict(approval, **change)]})
+            with self.assertRaises(RuntimeError):
+                e.migration_evidence(base, sha, git)
+
+
 if __name__ == "__main__":
     unittest.main()
