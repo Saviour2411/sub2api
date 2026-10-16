@@ -7815,3 +7815,361 @@ OAuth 超时专项：`候选第二轮完整 unit 的 TestRefreshIfNeeded_LateSuc
 
 - 首次候选静态检查发现 `gemini_chat_completions_compat_service.go` 重试循环开头的 `checkedPolicy = nil` 在读取前必被本轮检查结果覆盖。删除该无效赋值；保留 Chat Completions 每响应一次错误策略、首 Token 生命周期，以及另两条缓存兼容路径中必要的每轮重置。
 - 本次不改变业务取舍或任何测试断言，属于已批准合并适配范围。首次 lint 失败和修正后复验分别保留，最终代码提交及检查覆盖映射在正式验收记录追加。
+
+## 2026-10-16 上游0.2.17本地同步最终验收
+
+- 验收时间：`2026-10-16T22:48:38.3588480+08:00`。状态：固定范围合并与本地验证通过；本记录提交后复核原main并仅用`--ff-only`快进。最终记录自身SHA和快进结果在对话交付，不制造文档自引用。
+- 本地目标：`main`；`LOCAL_PRE_SYNC_SHA`：`4744dbec4ea6f1d841a847581b03901aafc21c99`。
+- 上游：`https://github.com/Wei-Shaw/sub2api`，远端HEAD确认默认分支为`main`；`UPSTREAM_OLD_SHA`：`4d9ac3e482106d2da3a39fe3e546d8d6801f1cc1`；`UPSTREAM_NEW_SHA`：`b0a02a3304a0a78cdd003ddda1dd23ba02c03084`。
+- 实际merge-base：`4d9ac3e482106d2da3a39fe3e546d8d6801f1cc1`，旧点为双方祖先，实际合并范围与批准范围一致；30个普通提交在同步前未发现完整等价补丁。
+- `LAST_FULLY_INTEGRATED_UPSTREAM_SHA`：`b0a02a3304a0a78cdd003ddda1dd23ba02c03084`；完整merge纳入48个提交，30个普通、18个合并。互斥统计：Applied 41，Applied + Overridden 7；Already Applied/Skipped/Deferred/Conflict均0。Applied总计48，无跳过或延期。
+- 合并提交：`102a3f350cb4c1494e0b54c038ab58a6a31e64e3`；最后代码提交：`50235ef0b9b5232e19df4db5755952456c6addca`。
+- 合并后的独立适配提交：`50235ef0b9b5232e19df4db5755952456c6addca`，仅删除Gemini Chat Completions中一行读取前必被覆盖的策略赋值，并同步维护两份台账。最终验收记录另行提交。
+- 备份：`backup/pre-upstream-sync-20261016-205254-4744dbec4`；同步：`sync/upstream-20261016-b0a02a330`。
+- 当前代码累计涉及153个文件（含本轮两份台账和来源元数据；最终仅追加本文件，不增加路径）。差异统计：`153 files changed, 7182 insertions(+), 629 deletions(-)`；最终记录还会增加文档行数。
+
+### 内容及保留边界
+
+- 支付：订单类型白名单、Stripe快照恢复、支付宝退款查询、pending保留扣减及失败原子归还；EasyPay URL/form双传查单、回调查单确认、失败码和身份校验。保留本地等待/空状态、嵌套字段、充值赠送快照、补查30秒门槛/10条/10秒预算和幂等履约；补充非有限金额与失败查单不入账回归。
+- 网关：Gemini共享容量429、失效服务账号、单次错误策略、思考档位和摘要；Antigravity模型目录、工具图片、函数调用和思考签名；Responses时间戳；协议专属URL、OAuth歧义路由、工作区隔离导入、订阅型号过滤、Web搜索模拟及OAuth排除。最小输出默认128、最低16。
+- 10个冲突均按批准方案逐块解决，覆盖VERSION、EasyPay、Gemini缓存价测试与两个兼容入口、OpenAI透传、账号筛选及测试、中英语言文件。后到成功终态优先、首Token attempt、写锁、用量结算、按请求模型计费、严格缺价、未知缓存价拒绝和常显筛选测试保持。
+- 两份台账同步维护13项受影响能力，65个稳定CUST编号没有新增、删除、复用或退役。Kimi重试/动态工具、串行扣费/5秒任务、降智检测默认关闭、Canvas与生产保护继续保留。纯上游变化没有新增本地编号。
+- 二开VERSION仍为0.1.256；来源JSON为上游0.2.17。历史SQL、Ent schema、依赖/锁文件、CI/发布和生产Compose均未修改；删除仅限上游两张赞助图标，保留其删除的本地筛选测试。
+
+<details>
+<summary>实际修改文件清单（A新增、M修改、D删除）</summary>
+
+```text
+M	README.md
+M	README_CN.md
+M	README_JA.md
+D	assets/partners/logos/aimzoon.jpg
+A	assets/partners/logos/modelflare.png
+D	assets/partners/logos/proxy4free.png
+M	backend/internal/config/config.go
+M	backend/internal/config/config_test.go
+M	backend/internal/domain/constants.go
+M	backend/internal/domain/constants_test.go
+M	backend/internal/handler/admin/account_codex_import.go
+M	backend/internal/handler/admin/account_codex_import_test.go
+M	backend/internal/handler/admin/account_handler.go
+M	backend/internal/handler/admin/account_handler_available_models_test.go
+M	backend/internal/handler/gateway_handler.go
+M	backend/internal/handler/gateway_models_test.go
+M	backend/internal/handler/gemini_v1beta_handler.go
+M	backend/internal/handler/gemini_v1beta_handler_test.go
+M	backend/internal/handler/no_account_error.go
+M	backend/internal/handler/no_account_error_test.go
+M	backend/internal/handler/openai_gateway_handler.go
+M	backend/internal/handler/payment_webhook_handler.go
+M	backend/internal/handler/payment_webhook_handler_test.go
+M	backend/internal/payment/provider/alipay.go
+M	backend/internal/payment/provider/alipay_test.go
+M	backend/internal/payment/provider/easypay.go
+A	backend/internal/payment/provider/easypay_confirm_test.go
+M	backend/internal/payment/provider/easypay_query_test.go
+A	backend/internal/payment/provider/easypay_sync_regression_test.go
+M	backend/internal/payment/types.go
+M	backend/internal/pkg/antigravity/claude_types.go
+M	backend/internal/pkg/antigravity/claude_types_test.go
+M	backend/internal/pkg/antigravity/client.go
+M	backend/internal/pkg/antigravity/client_test.go
+M	backend/internal/pkg/antigravity/oauth.go
+M	backend/internal/pkg/antigravity/oauth_test.go
+M	backend/internal/pkg/antigravity/request_transformer.go
+M	backend/internal/pkg/antigravity/request_transformer_test.go
+M	backend/internal/pkg/apicompat/anthropic_to_responses.go
+M	backend/internal/pkg/apicompat/chatcompletions_anthropic_bridge.go
+M	backend/internal/pkg/apicompat/chatcompletions_anthropic_bridge_test.go
+M	backend/internal/pkg/apicompat/chatcompletions_responses_test.go
+M	backend/internal/pkg/apicompat/chatcompletions_to_responses.go
+M	backend/internal/pkg/apicompat/types.go
+M	backend/internal/pkg/buildmeta/upstream-sync.json
+M	backend/internal/pkg/gemini/models.go
+M	backend/internal/pkg/geminicli/models.go
+M	backend/internal/server/routes/composite_platform_test.go
+M	backend/internal/server/routes/gateway.go
+M	backend/internal/server/routes/gateway_models_pinned_test.go
+M	backend/internal/service/account.go
+M	backend/internal/service/account_test_service.go
+M	backend/internal/service/account_test_service_antigravity_test.go
+M	backend/internal/service/account_websearch_test.go
+M	backend/internal/service/antigravity_gateway_compat.go
+M	backend/internal/service/antigravity_gateway_gemini.go
+M	backend/internal/service/antigravity_gateway_retry.go
+M	backend/internal/service/antigravity_gateway_service.go
+M	backend/internal/service/antigravity_gateway_service_test.go
+M	backend/internal/service/antigravity_gateway_streaming.go
+M	backend/internal/service/antigravity_gemini_thinking_variant.go
+M	backend/internal/service/antigravity_gemini_thinking_variant_test.go
+M	backend/internal/service/antigravity_rate_limit_test.go
+A	backend/internal/service/apicompat_config.go
+M	backend/internal/service/billing_service.go
+M	backend/internal/service/cn_provider_quota_service.go
+M	backend/internal/service/cn_providers_test.go
+M	backend/internal/service/composite_model_route.go
+M	backend/internal/service/composite_platform_test.go
+M	backend/internal/service/composite_route_resolver.go
+M	backend/internal/service/composite_route_resolver_test.go
+A	backend/internal/service/gateway_anthropic_base_url_test.go
+M	backend/internal/service/gateway_anthropic_passthrough.go
+M	backend/internal/service/gateway_count_tokens.go
+M	backend/internal/service/gateway_forward_as_chat_completions.go
+M	backend/internal/service/gateway_forward_as_responses.go
+M	backend/internal/service/gateway_hotpath_optimization_test.go
+M	backend/internal/service/gateway_model_availability.go
+M	backend/internal/service/gateway_service.go
+M	backend/internal/service/gateway_upstream_request.go
+A	backend/internal/service/gateway_upstream_request_test.go
+M	backend/internal/service/gateway_websearch_emulation.go
+M	backend/internal/service/gateway_websearch_emulation_test.go
+M	backend/internal/service/gemini_cache_storage_pricing_test.go
+M	backend/internal/service/gemini_chat_completions_compat_service.go
+A	backend/internal/service/gemini_compat_thinking.go
+A	backend/internal/service/gemini_compat_thinking_test.go
+A	backend/internal/service/gemini_error_policy_single_check_test.go
+M	backend/internal/service/gemini_error_policy_test.go
+M	backend/internal/service/gemini_messages_compat_service.go
+M	backend/internal/service/gemini_native_reasoning_pricing_test.go
+M	backend/internal/service/gemini_vertex_api_key_forward_test.go
+A	backend/internal/service/gemini_vertex_token_error.go
+A	backend/internal/service/gemini_vertex_token_error_test.go
+M	backend/internal/service/openai_account_scheduler.go
+M	backend/internal/service/openai_account_scheduler_test.go
+M	backend/internal/service/openai_codex_model_metadata.go
+M	backend/internal/service/openai_codex_model_metadata_test.go
+M	backend/internal/service/openai_codex_models_service.go
+M	backend/internal/service/openai_compact_fallback.go
+M	backend/internal/service/openai_gateway_chat_completions.go
+M	backend/internal/service/openai_gateway_chat_completions_anthropic_native.go
+M	backend/internal/service/openai_gateway_forward.go
+M	backend/internal/service/openai_gateway_grok_chat_bridge.go
+M	backend/internal/service/openai_gateway_messages.go
+M	backend/internal/service/openai_gateway_messages_chat_fallback.go
+M	backend/internal/service/openai_gateway_model_availability.go
+M	backend/internal/service/openai_gateway_passthrough.go
+M	backend/internal/service/openai_gateway_request_body.go
+M	backend/internal/service/openai_gateway_response_flush_test.go
+M	backend/internal/service/openai_gateway_response_handling.go
+M	backend/internal/service/openai_gateway_scheduling.go
+A	backend/internal/service/openai_model_retirement.go
+A	backend/internal/service/openai_model_retirement_test.go
+M	backend/internal/service/openai_models_list.go
+M	backend/internal/service/openai_response_model_rewrite_test.go
+A	backend/internal/service/openai_responses_created_at.go
+A	backend/internal/service/openai_responses_created_at_test.go
+M	backend/internal/service/openai_responses_ingress_compat.go
+M	backend/internal/service/openai_ws_forwarder_ingress.go
+M	backend/internal/service/openai_ws_forwarder_support.go
+M	backend/internal/service/openai_ws_http_bridge.go
+M	backend/internal/service/openai_ws_v2_passthrough_adapter.go
+M	backend/internal/service/payment_fulfillment.go
+A	backend/internal/service/payment_notification_confirm_test.go
+M	backend/internal/service/payment_order.go
+M	backend/internal/service/payment_order_lifecycle_test.go
+A	backend/internal/service/payment_order_type_test.go
+M	backend/internal/service/payment_refund.go
+A	backend/internal/service/payment_refund_pending_hold_test.go
+M	backend/internal/service/payment_refund_test.go
+M	backend/internal/service/payment_resume_service.go
+M	backend/internal/service/payment_resume_service_test.go
+M	backend/internal/service/payment_service.go
+M	backend/internal/service/pricing_service.go
+M	backend/internal/service/pricing_service_test.go
+M	backend/internal/service/upstream_models.go
+A	backend/internal/service/upstream_models_antigravity_test.go
+M	backend/internal/service/vertex_service_account.go
+M	backend/resources/model-pricing/model_prices_and_context_window.json
+M	deploy/config.example.yaml
+A	docs/OPENAI_GPT55_RETIREMENT.md
+M	docs/custom-development-history.md
+M	docs/upstream-sync-history.md
+M	frontend/src/components/account/AccountTestModal.vue
+M	frontend/src/components/account/EditAccountModal.vue
+M	frontend/src/components/admin/account/AccountTestModal.vue
+M	frontend/src/composables/__tests__/useModelWhitelist.spec.ts
+M	frontend/src/composables/useModelWhitelist.ts
+M	frontend/src/views/admin/AccountsView.vue
+M	frontend/src/views/user/PaymentView.vue
+M	frontend/src/views/user/StripePaymentView.vue
+M	frontend/src/views/user/__tests__/StripePaymentView.spec.ts
+```
+
+</details>
+
+### 逐提交处置与本地映射
+
+每行均通过完整merge `102a3f350cb4c1494e0b54c038ab58a6a31e64e3`进入本地，文本冲突和语义适配也在该提交完成；`50235ef0b9b5232e19df4db5755952456c6addca`另修正Gemini冗余赋值。合并节点保留原父子关系。
+
+| 上游完整SHA | 状态 | 实际处置 |
+| --- | --- | --- |
+| `9c2cca9e627291bc719bada3d57de23b625a4180` | Applied | 更新赞助资料 |
+| `373d43533a0fa06e1993af1eedd61154db8ebfb0` | Applied | Antigravity新模型和准确目录 |
+| `feab6d80dc09fa2d64894d20cdca64fb4e460931` | Applied | 保留工具图片、原生函数调用和思考签名，补齐组合路由 |
+| `92c9433d40db69b00f8e158fc573e2b796c4a678` | Applied | 更新赞助资料 |
+| `d19265ddb218c79e951011e6dec54fe17a215223` | Applied | 拒绝会误用OpenAI OAuth凭据的歧义组合路由 |
+| `3856a02856ca788cc1714362b1dc8a5a4d06b131` | Applied | 保留上游合并节点及依赖；本地覆盖继承下列对应普通提交处置 |
+| `1774b79dcbf9ba25a007772c015d29758b7fdbc2` | Applied | 修正GLM Coding Plan用量窗口分类 |
+| `fdc7f1fa011a912afb9f7948cb9dc46059c98ddd` | Applied | 保留上游合并节点及依赖；本地覆盖继承下列对应普通提交处置 |
+| `89ad4c2caa0a2c9f5a393f9d1c9c7e3c73f7c3b3` | Applied | Vertex共享容量429同号退避，不冷却账号 |
+| `3b83e045ed5ddc8246ebe8b3c4045a1c7ff5968b` | Applied | 保留上游合并节点及依赖；本地覆盖继承下列对应普通提交处置 |
+| `20c4bf5ae59e4cb94669165436bb57ee16c41cb3` | Applied | Vertex服务账号不存在时标错并换号 |
+| `14cd5871752dabfc38069e9a7d87f282da0c9eda` | Applied + Overridden | 每响应一次错误策略检查，与本地首Token生命周期合并 |
+| `abdc82725f1c6f1530d2a5835b0af653d352994e` | Applied | 保留上游合并节点及依赖；本地覆盖继承下列对应普通提交处置 |
+| `c6c9935ae37035ba69555701e2fb103ab4993f5e` | Applied + Overridden | 纳入Argon价卡；缓存价格测试保持本地未知型号不猜价 |
+| `dcde68aa5881ba7eea569ff1d98a860fba1d8b8c` | Applied | 保留上游合并节点及依赖；本地覆盖继承下列对应普通提交处置 |
+| `8afd2abd979fa4bf657a73cbf0900bcebd95e812` | Applied | 保留上游合并节点及依赖；本地覆盖继承下列对应普通提交处置 |
+| `9d3cc4507ff773e8f52e7340f20a5ffcfe8df22f` | Applied | 保留旧默认透传，Claude5.5思考档位按基础价卡计价 |
+| `857a76d4a0e7b2389926c340555a2f8f5b24a0ae` | Applied | 保留上游合并节点及依赖；本地覆盖继承下列对应普通提交处置 |
+| `64211de8defd7144c1e99f72770278adeae3c2a5` | Applied + Overridden | Gemini思考档位和流式摘要，与首Token/缓存生命周期合并 |
+| `2a8cb088af205586b514a27f6a63e9bcf7adb4e6` | Applied | 最小输出配置默认128、最低16 |
+| `58b5e858c82dcf14a637762ee1e6c37ec9f86aad` | Applied | 保留上游合并节点及依赖；本地覆盖继承下列对应普通提交处置 |
+| `867563ae76f3ff99ed20dfed93ee216a7939ce3f` | Applied | 按Anthropic协议专属base URL发起请求 |
+| `ddef05527eca7f369b107fd87c4811d696284f38` | Applied | 保留上游合并节点及依赖；本地覆盖继承下列对应普通提交处置 |
+| `16611a8ee0b459ee002d50efb5a90d9d06d92ff0` | Applied | Codex导入按工作区隔离 |
+| `698d142468ab15374bc22bd5247759e5b7352006` | Applied | 保留上游合并节点及依赖；本地覆盖继承下列对应普通提交处置 |
+| `c2cca510f2dc46f400bd8f9dcc4a5de55859cf51` | Applied + Overridden | 恢复内联筛选时保留本地常显响应式布局及测试 |
+| `1b2243a4f50621508e79aef4b498a2937a6238ee` | Applied | 保留上游合并节点及依赖；本地覆盖继承下列对应普通提交处置 |
+| `7c6f70680d76faf2b8e0a2df3669b8966c410f97` | Applied | 订单类型白名单，退款待确认保留扣款 |
+| `f996b0bfaae10d0894aaf7edced956805ad4229f` | Applied | 从本地订单快照恢复Stripe支付信息 |
+| `44e35fbf844059c9937c8d910f3da5fdfe0810dc` | Applied | 失败的待确认退款原子收尾并归还 |
+| `83337a0c6547037fbd122a6dcf0f6cc71679db08` | Applied | 支付宝退款查单，拒绝不支持的订单类型 |
+| `f37b69b77934ab2479b41178ef65ea337cc18041` | Applied | 查询错误保留待确认，未找到退款延迟判断失败 |
+| `52b3ca960960cc755bcb73172a99e7394f0e50dc` | Applied | 保留上游合并节点及依赖；本地覆盖继承下列对应普通提交处置 |
+| `1b92038eaf60674e622dcd90d13d79642c422a6f` | Applied + Overridden | EasyPay查单确认及身份校验；保留嵌套/等待兼容并拒绝非有限金额 |
+| `b8cfb7884084393e08f0e2c4027afc3755357b98` | Applied | 保留上游合并节点及依赖；本地覆盖继承下列对应普通提交处置 |
+| `a431e53f9e3da9097b1b9defc1f118553bd5b4fa` | Applied | 保留上游合并节点及依赖；本地覆盖继承下列对应普通提交处置 |
+| `455d317d6a87d8519a52c8769a0727824c403171` | Applied | 保留上游合并节点及依赖；本地覆盖继承下列对应普通提交处置 |
+| `f2e5b55f3e8069df1c02a9a27af537b5fdefa64e` | Applied | Responses模型改写测试夹具补齐时间字段 |
+| `26aab6dc076059efb919d8b88ce33b2b27fde246` | Applied | 按真实OAuth或shadow凭据及最终目标过滤订阅型号 |
+| `86f844304591800be66bafa4454c4a5bc8e02514` | Applied | 公开别名投影后按实际路由目标过滤订阅型号 |
+| `43157c478ec29cb765043e2f0cba4f69728dd2f2` | Applied | 保留上游合并节点及依赖；本地覆盖继承下列对应普通提交处置 |
+| `26e55cf332e73ae25ae0e17f1e0ef90bcbf03e54` | Applied | OpenAI API Key的Messages入口支持Web搜索模拟 |
+| `7de15113c77cf6d3c431b1840c6997d561cc634d` | Applied | 排除OAuth账号的Web搜索模拟，与前项同时纳入 |
+| `b14f316ca2def2fbf379a7413c3f4309cc70acdd` | Applied | 保留上游合并节点及依赖；本地覆盖继承下列对应普通提交处置 |
+| `bdfe215cbb06f5089112873b14c34c538fc37118` | Applied + Overridden | Responses补齐时间；保留透传写锁、后到成功终态优先及用量 |
+| `71e6b6a9717064b61826d7e5bc480a5f4b50d9cf` | Applied | 另一支线Responses模型改写夹具补齐时间字段 |
+| `060d0160417782cd962a0c7f460f6cd4565d4916` | Applied | 保留上游合并节点及依赖；本地覆盖继承下列对应普通提交处置 |
+| `b0a02a3304a0a78cdd003ddda1dd23ba02c03084` | Applied + Overridden | 上游来源为0.2.17，本地VERSION保持0.1.256 |
+
+### 验证与限制
+
+- 同一Windows/WSL Ubuntu24.04本地环境：Go1.27.2、golangci-lint2.14.0、Node20.20.2、pnpm9.15.9；本地PostgreSQL18/Redis测试容器，工作区tmpfs和测试数据，未接入生产或真实供应商。依赖和锁文件未变化，前端复用原node_modules。
+- 同步前后均通过默认/unit/integration、lint、后端构建、定向race、前端lint/typecheck/Vitest/构建、Canvas类型/测试/构建、嵌入版本契约、E2E编译及17项部署/来源静态检查。隔离新库启动、健康、管理员登录和旧管理员环境兼容通过；候选另导入基线测试库验证升级，迁移账本摘要相同且降智检测默认关闭。
+- 前后各33项计划内验证命令的最终退出码均为0；前端405个测试文件，同步前3134项、同步后3138项测试全部通过；Canvas前后均为8个测试文件、34项测试通过。另加前后内存对照诊断，实际失败与复跑均单列保留。
+- 验证与提交对应：完整default/unit/integration、网关与支付竞态、前端/Canvas和部署静态检查首先运行于合并提交`102a3f350cb4c1494e0b54c038ab58a6a31e64e3`。最终代码`50235ef0b9b5232e19df4db5755952456c6addca`仅删除一行冗余赋值，随后重跑全量unit、受影响service包default/integration、Gemini与首Token竞态、全量lint/build、版本契约、E2E编译及隔离启动升级；未变动的其他部分复用前述通过结果。两版源码归档和所有日志均保留，不将早期结果伪称为最终提交重新全量执行。
+- 首次候选lint退出1，报告Chat Completions循环的`checkedPolicy = nil`无效赋值。上述独立适配提交删除这一行，错误或取消路径直接返回，其余路径必定保存当前响应检查结果；另两条缓存提前退出路径仍保留必要的每轮重置。最终全量lint复验通过，未关闭规则。
+- 首次基线归档包含CRLF，导致compose-gateway、docker-resources、caddy-cache失败；较长路径导致Unix socket的bluegreen-unit失败。首次后端默认测试主动中止。使用`git -c core.autocrlf=false archive`及工作区短路径后相同检查通过；未修改业务源码、删除断言或关闭检查。原失败、手动中止与复跑日志全部保留。
+- 候选首次完整unit退出1，唯一失败为`TestInflightEstimate_AccountMappingNoDBAndBoundedMemory`：堆增量8893728字节超过8388608字节断言。该用例与预留估算实现未改；本文件2026-10-13/14记录已在当时基线和候选出现同类波动。当前基线与候选独立各20次均通过，候选随后完整unit复跑通过；未修改断言、放宽阈值或更改业务源码。该用例读取进程级HeapAlloc，具体扰动来源尚未定位，独立复验不能证明完整测试中的波动已消除，保留为已知残余测试风险。
+- 原7份未跟踪Playwright快照按批准方案归档到`tmp/upstream-sync-20261016/preexisting-playwright`并逐份SHA256核对，未混入提交。基线与候选归档均以独立Git索引核对受控文件，最终保护检查覆盖版本、迁移、依赖、编号、祖先关系、原历史只追加、冲突标记、意外删除和秘密特征。
+- 本地证据绑定：基线LF归档SHA256为`C27E24D5105D672009E2037B2596FA620035A23A21DB1C6B9257208DA9CA022F`；合并候选归档SHA256为`5B0F7213EE52A305FE9A3B98DAD2F2755828CE7E5AD9AD86629224745C17C2E2`；最终候选归档SHA256为`56D9D220331A4B75C72F60B482B7F53C15FB1619FDB3D92501761F06ADFC12C3`；最终核对时间为`2026-10-16T22:46:49.9639941+08:00`，对应代码提交`50235ef0b9b5232e19df4db5755952456c6addca`。
+- 未验证：真实供应商请求、真实支付/退款、完整业务E2E、峰值压力、远端CI/安全扫描及生产部署。E2E仅编译，不能等同端到端运行；本地测试也不能替代真实流量验收。上游内置模型价格和退役说明按固定提交纳入，本轮未向供应商重新确认，不将其视为对实时商业政策的独立保证。
+- 未执行push、PR、标签、远程服务器连接、部署或生产数据操作。凭据未输出或提交；临时材料仅位于工作区。本轮测试资源在证据保存后清理，已有容器不在清理范围。
+- 测试资源清理时间：`2026-10-16T22:47:49+08:00`；本轮标签容器剩余0，`tmp/s16`临时挂载已卸载，持久日志与源码归档保留。
+
+### 实际命令及退出码
+
+完整输出位于忽略目录`tmp/upstream-sync-20261016/{baseline,candidate}`，以下保留首次失败与复跑，不以成功结果覆盖失败事实。
+
+| 阶段 | 检查/日志 | 退出码 | 完成时间 | 命令 |
+| --- | --- | --- | --- | --- |
+| baseline | go-default初次主动中止 / `initial-run-aborted.json`、`go-default.log` | 包装器1，测试未完成 | `2026-10-16T21:04:33.8381694+08:00` | `timeout 2400 go test -count=1 ./...` |
+| baseline | apple-syntax / `apple-syntax.log` | 0 | `2026-10-16T21:01:08+08:00` | `bash -n deploy/apple-container.sh` |
+| baseline | docker-deploy-syntax / `docker-deploy-syntax.log` | 0 | `2026-10-16T21:01:08+08:00` | `bash -n deploy/docker-deploy.sh` |
+| baseline | remote-deploy-syntax / `remote-deploy-syntax.log` | 0 | `2026-10-16T21:01:08+08:00` | `sh -n deploy/remote-deploy.sh` |
+| baseline | compose-security / `compose-security.log` | 0 | `2026-10-16T21:01:08+08:00` | `sh deploy/tests/docker-compose-security-test.sh` |
+| baseline | compose-gateway / `compose-gateway.log` | 1 | `2026-10-16T21:01:09+08:00` | `sh deploy/tests/docker-compose-gateway-env-test.sh` |
+| baseline | compose-simple / `compose-simple.log` | 0 | `2026-10-16T21:01:11+08:00` | `sh deploy/tests/docker-compose-simple-mode-env-test.sh` |
+| baseline | docker-resources / `docker-resources.log` | 1 | `2026-10-16T21:01:11+08:00` | `sh deploy/tests/docker-runtime-resources-test.sh` |
+| baseline | caddy-cache / `caddy-cache.log` | 1 | `2026-10-16T21:01:11+08:00` | `sh deploy/test-caddyfile-cache.sh` |
+| baseline | remote-deploy-mock / `remote-deploy-mock.log` | 0 | `2026-10-16T21:01:11+08:00` | `sh deploy/tests/remote-deploy-test.sh` |
+| baseline | bluegreen-unit / `bluegreen-unit.log` | 1 | `2026-10-16T21:01:11+08:00` | `python3 deploy/tests/blue-green-test.py` |
+| baseline | bluegreen-evidence / `bluegreen-evidence.log` | 0 | `2026-10-16T21:01:11+08:00` | `python3 deploy/tests/blue-green-evidence-test.py` |
+| baseline | bluegreen-preflight / `bluegreen-preflight.log` | 0 | `2026-10-16T21:01:11+08:00` | `python3 deploy/tests/blue-green-preflight-test.py` |
+| baseline | metadata-unit / `metadata-unit.log` | 0 | `2026-10-16T21:01:11+08:00` | `python3 -m unittest discover -s tools -p test_check_upstream_sync_metadata.py` |
+| baseline | workflow-unit / `workflow-unit.log` | 0 | `2026-10-16T21:01:12+08:00` | `python3 -m unittest discover -s tools -p test_workflow_usage_policy.py` |
+| baseline | release-unit / `release-unit.log` | 0 | `2026-10-16T21:01:12+08:00` | `python3 -m unittest discover -s .github/release-tools -p test_release_matrix.py` |
+| baseline | metadata / `metadata.log` | 0 | `2026-10-16T21:01:12+08:00` | `python3 tools/check_upstream_sync_metadata.py` |
+| baseline | compose-equal / `compose-equal.log` | 0 | `2026-10-16T21:01:12+08:00` | `cmp deploy/docker-compose.yml deploy/docker-compose.sub2api.yml` |
+| baseline | apple-syntax / `apple-syntax.retry2.log` | 0 | `2026-10-16T21:07:19+08:00` | `bash -n deploy/apple-container.sh` |
+| baseline | docker-deploy-syntax / `docker-deploy-syntax.retry2.log` | 0 | `2026-10-16T21:07:19+08:00` | `bash -n deploy/docker-deploy.sh` |
+| baseline | remote-deploy-syntax / `remote-deploy-syntax.retry2.log` | 0 | `2026-10-16T21:07:19+08:00` | `sh -n deploy/remote-deploy.sh` |
+| baseline | compose-security / `compose-security.retry2.log` | 0 | `2026-10-16T21:07:19+08:00` | `sh deploy/tests/docker-compose-security-test.sh` |
+| baseline | compose-gateway / `compose-gateway.retry2.log` | 0 | `2026-10-16T21:07:20+08:00` | `sh deploy/tests/docker-compose-gateway-env-test.sh` |
+| baseline | compose-simple / `compose-simple.retry2.log` | 0 | `2026-10-16T21:07:22+08:00` | `sh deploy/tests/docker-compose-simple-mode-env-test.sh` |
+| baseline | docker-resources / `docker-resources.retry2.log` | 0 | `2026-10-16T21:07:22+08:00` | `sh deploy/tests/docker-runtime-resources-test.sh` |
+| baseline | caddy-cache / `caddy-cache.retry2.log` | 0 | `2026-10-16T21:07:22+08:00` | `sh deploy/test-caddyfile-cache.sh` |
+| baseline | remote-deploy-mock / `remote-deploy-mock.retry2.log` | 0 | `2026-10-16T21:07:22+08:00` | `sh deploy/tests/remote-deploy-test.sh` |
+| baseline | bluegreen-unit / `bluegreen-unit.retry2.log` | 0 | `2026-10-16T21:07:22+08:00` | `python3 deploy/tests/blue-green-test.py` |
+| baseline | bluegreen-evidence / `bluegreen-evidence.retry2.log` | 0 | `2026-10-16T21:07:22+08:00` | `python3 deploy/tests/blue-green-evidence-test.py` |
+| baseline | bluegreen-preflight / `bluegreen-preflight.retry2.log` | 0 | `2026-10-16T21:07:22+08:00` | `python3 deploy/tests/blue-green-preflight-test.py` |
+| baseline | metadata-unit / `metadata-unit.retry2.log` | 0 | `2026-10-16T21:07:23+08:00` | `python3 -m unittest discover -s tools -p test_check_upstream_sync_metadata.py` |
+| baseline | workflow-unit / `workflow-unit.retry2.log` | 0 | `2026-10-16T21:07:23+08:00` | `python3 -m unittest discover -s tools -p test_workflow_usage_policy.py` |
+| baseline | release-unit / `release-unit.retry2.log` | 0 | `2026-10-16T21:07:23+08:00` | `python3 -m unittest discover -s .github/release-tools -p test_release_matrix.py` |
+| baseline | metadata / `metadata.retry2.log` | 0 | `2026-10-16T21:07:23+08:00` | `python3 tools/check_upstream_sync_metadata.py` |
+| baseline | compose-equal / `compose-equal.retry2.log` | 0 | `2026-10-16T21:07:23+08:00` | `cmp deploy/docker-compose.yml deploy/docker-compose.sub2api.yml` |
+| baseline | build-version-contract / `build-version-contract.log` | 0 | `2026-10-16T21:10:33+08:00` | `timeout 600 go test -tags=unit,embed ./internal/handler -run 'TestBuildVersion' -count=1` |
+| baseline | e2e-compile / `e2e-compile.log` | 0 | `2026-10-16T21:10:38+08:00` | `timeout 600 go test -c -tags=e2e -o /mnt/d/project/sub2api/tmp/upstream-sync-20261016/baseline/e2e-compile.test ./internal/integration` |
+| baseline | go-default / `go-default.retry2.log` | 0 | `2026-10-16T21:16:17+08:00` | `timeout 2400 go test -count=1 ./...` |
+| baseline | go-unit / `go-unit.log` | 0 | `2026-10-16T21:26:06+08:00` | `timeout 2400 go test -tags=unit -count=1 ./...` |
+| baseline | go-integration / `go-integration.log` | 0 | `2026-10-16T21:34:13+08:00` | `timeout 2400 go test -tags=integration -count=1 ./...` |
+| baseline | go-lint / `go-lint.log` | 0 | `2026-10-16T21:37:56+08:00` | `timeout 2400 golangci-lint run --timeout=30m ./...` |
+| baseline | go-build / `go-build.log` | 0 | `2026-10-16T21:40:15+08:00` | `timeout 1200 make build` |
+| baseline | sync-regression-race / `sync-regression-race.log` | 0 | `2026-10-16T21:41:48+08:00` | `timeout 1200 go test -race -tags=unit -count=1 -run 'TestOpenAIResponseFlush\|TestHandleStreamingResponsePassthrough_BareError\|TestGeminiForward_.*Rule\|TestGeminiForward_Unchecked\|TestEasyPay\|TestReconcilePendingEasyPay' ./internal/service ./internal/payment/provider` |
+| baseline | gateway-race / `gateway-race.log` | 0 | `2026-10-16T21:42:33+08:00` | `timeout 2400 go test -race -tags=unit -count=1 -run 'TestKimi\|TestOpsErrorLoggerMiddleware_Kimi\|TestAnthropicStreamSafeRetry\|TestFirstToken\|TestDecompress\|TestUsageRecordWorkerPool\|TestStoppedKeyed\|Test.*MandatoryUsage\|Test.*GeminiCachedContent\|Test.*TempUnsched\|Test.*GPT61Sol\|TestCalculateCostUnified_ModelLongContext\|TestModelQuality\|TestGPT55Retirement\|TestResponsesCreatedAt\|TestOpenAIResponsesCreatedAt' ./internal/service ./internal/handler ./internal/repository` |
+| baseline | memory-diagnostic / `memory-diagnostic.log` | 0 | `2026-10-16T22:17:13+08:00` | `timeout 600 go test -tags=unit -count=20 -run '^TestInflightEstimate_AccountMappingNoDBAndBoundedMemory$' ./internal/service` |
+| baseline | frontend-lint / `frontend-lint.log` | 0 | `2026-10-16T21:00:48.9070276+08:00` | `pnpm --dir frontend run lint:check` |
+| baseline | frontend-typecheck / `frontend-typecheck.log` | 0 | `2026-10-16T21:01:17.0648224+08:00` | `pnpm --dir frontend run typecheck` |
+| baseline | frontend-test / `frontend-test.log` | 0 | `2026-10-16T21:03:09.4003413+08:00` | `pnpm --dir frontend run test:run` |
+| baseline | frontend-build / `frontend-build.log` | 0 | `2026-10-16T21:04:24.1032401+08:00` | `pnpm --dir frontend run build` |
+| baseline | canvas-typecheck / `canvas-typecheck.log` | 0 | `2026-10-16T21:04:40.6240954+08:00` | `pnpm --dir canvas run typecheck` |
+| baseline | canvas-test / `canvas-test.log` | 0 | `2026-10-16T21:04:47.6287768+08:00` | `pnpm --dir canvas run test` |
+| baseline | canvas-build / `canvas-build.log` | 0 | `2026-10-16T21:06:41.8751595+08:00` | `pnpm --dir canvas run build` |
+| baseline | smoke / `smoke-result.json` | 0 | 见结果JSON | `timeout 600 python3 tmp/upstream-sync-20261016/run-smoke.py baseline` |
+| candidate | apple-syntax / `apple-syntax.log` | 0 | `2026-10-16T21:52:06+08:00` | `bash -n deploy/apple-container.sh` |
+| candidate | docker-deploy-syntax / `docker-deploy-syntax.log` | 0 | `2026-10-16T21:52:06+08:00` | `bash -n deploy/docker-deploy.sh` |
+| candidate | remote-deploy-syntax / `remote-deploy-syntax.log` | 0 | `2026-10-16T21:52:06+08:00` | `sh -n deploy/remote-deploy.sh` |
+| candidate | compose-security / `compose-security.log` | 0 | `2026-10-16T21:52:06+08:00` | `sh deploy/tests/docker-compose-security-test.sh` |
+| candidate | compose-gateway / `compose-gateway.log` | 0 | `2026-10-16T21:52:07+08:00` | `sh deploy/tests/docker-compose-gateway-env-test.sh` |
+| candidate | compose-simple / `compose-simple.log` | 0 | `2026-10-16T21:52:09+08:00` | `sh deploy/tests/docker-compose-simple-mode-env-test.sh` |
+| candidate | docker-resources / `docker-resources.log` | 0 | `2026-10-16T21:52:09+08:00` | `sh deploy/tests/docker-runtime-resources-test.sh` |
+| candidate | caddy-cache / `caddy-cache.log` | 0 | `2026-10-16T21:52:09+08:00` | `sh deploy/test-caddyfile-cache.sh` |
+| candidate | remote-deploy-mock / `remote-deploy-mock.log` | 0 | `2026-10-16T21:52:09+08:00` | `sh deploy/tests/remote-deploy-test.sh` |
+| candidate | bluegreen-unit / `bluegreen-unit.log` | 0 | `2026-10-16T21:52:10+08:00` | `python3 deploy/tests/blue-green-test.py` |
+| candidate | bluegreen-evidence / `bluegreen-evidence.log` | 0 | `2026-10-16T21:52:10+08:00` | `python3 deploy/tests/blue-green-evidence-test.py` |
+| candidate | bluegreen-preflight / `bluegreen-preflight.log` | 0 | `2026-10-16T21:52:10+08:00` | `python3 deploy/tests/blue-green-preflight-test.py` |
+| candidate | metadata-unit / `metadata-unit.log` | 0 | `2026-10-16T21:52:10+08:00` | `python3 -m unittest discover -s tools -p test_check_upstream_sync_metadata.py` |
+| candidate | workflow-unit / `workflow-unit.log` | 0 | `2026-10-16T21:52:10+08:00` | `python3 -m unittest discover -s tools -p test_workflow_usage_policy.py` |
+| candidate | release-unit / `release-unit.log` | 0 | `2026-10-16T21:52:11+08:00` | `python3 -m unittest discover -s .github/release-tools -p test_release_matrix.py` |
+| candidate | metadata / `metadata.log` | 0 | `2026-10-16T21:52:11+08:00` | `python3 tools/check_upstream_sync_metadata.py` |
+| candidate | compose-equal / `compose-equal.log` | 0 | `2026-10-16T21:52:11+08:00` | `cmp deploy/docker-compose.yml deploy/docker-compose.sub2api.yml` |
+| candidate | sync-regression-race / `sync-regression-race.log` | 0 | `2026-10-16T21:57:39+08:00` | `timeout 1200 go test -race -tags=unit -count=1 -run 'TestOpenAIResponseFlush\|TestHandleStreamingResponsePassthrough_BareError\|TestGeminiForward_.*Rule\|TestGeminiForward_Unchecked\|TestEasyPay\|TestReconcilePendingEasyPay' ./internal/service ./internal/payment/provider` |
+| candidate | build-version-contract / `build-version-contract.log` | 0 | `2026-10-16T22:02:09+08:00` | `timeout 600 go test -tags=unit,embed ./internal/handler -run 'TestBuildVersion' -count=1` |
+| candidate | e2e-compile / `e2e-compile.log` | 0 | `2026-10-16T22:02:12+08:00` | `timeout 600 go test -c -tags=e2e -o /mnt/d/project/sub2api/tmp/upstream-sync-20261016/candidate/e2e-compile.test ./internal/integration` |
+| candidate | go-default / `go-default.log` | 0 | `2026-10-16T22:02:15+08:00` | `timeout 2400 go test -count=1 ./...` |
+| candidate | go-unit / `go-unit.log` | 1 | `2026-10-16T22:12:54+08:00` | `timeout 2400 go test -tags=unit -count=1 ./...` |
+| candidate | memory-diagnostic / `memory-diagnostic.log` | 0 | `2026-10-16T22:17:10+08:00` | `timeout 600 go test -tags=unit -count=20 -run '^TestInflightEstimate_AccountMappingNoDBAndBoundedMemory$' ./internal/service` |
+| candidate | go-integration / `go-integration.log` | 0 | `2026-10-16T22:21:38+08:00` | `timeout 2400 go test -tags=integration -count=1 ./...` |
+| candidate | go-lint / `go-lint.log` | 1 | `2026-10-16T22:25:06+08:00` | `timeout 2400 golangci-lint run --timeout=30m ./...` |
+| candidate | go-unit / `go-unit.retry2.log` | 0 | `2026-10-16T22:27:10+08:00` | `timeout 2400 go test -tags=unit -count=1 ./...` |
+| candidate | go-build / `go-build.log` | 0 | `2026-10-16T22:27:13+08:00` | `timeout 1200 make build` |
+| candidate | gateway-race / `gateway-race.log` | 0 | `2026-10-16T22:29:16+08:00` | `timeout 2400 go test -race -tags=unit -count=1 -run 'TestKimi\|TestOpsErrorLoggerMiddleware_Kimi\|TestAnthropicStreamSafeRetry\|TestFirstToken\|TestDecompress\|TestUsageRecordWorkerPool\|TestStoppedKeyed\|Test.*MandatoryUsage\|Test.*GeminiCachedContent\|Test.*TempUnsched\|Test.*GPT61Sol\|TestCalculateCostUnified_ModelLongContext\|TestModelQuality\|TestGPT55Retirement\|TestResponsesCreatedAt\|TestOpenAIResponsesCreatedAt' ./internal/service ./internal/handler ./internal/repository` |
+| candidate | final-service-default / `final-service-default.log` | 0 | `2026-10-16T22:38:37+08:00` | `timeout 1200 go test -count=1 ./internal/service` |
+| candidate | go-lint / `go-lint.retry2.log` | 0 | `2026-10-16T22:38:55+08:00` | `timeout 2400 golangci-lint run --timeout=30m ./...` |
+| candidate | go-build / `go-build.retry2.log` | 0 | `2026-10-16T22:40:44+08:00` | `timeout 1200 make build` |
+| candidate | build-version-contract / `build-version-contract.retry2.log` | 0 | `2026-10-16T22:41:39+08:00` | `timeout 600 go test -tags=unit,embed ./internal/handler -run 'TestBuildVersion' -count=1` |
+| candidate | e2e-compile / `e2e-compile.retry2.log` | 0 | `2026-10-16T22:41:44+08:00` | `timeout 600 go test -c -tags=e2e -o /mnt/d/project/sub2api/tmp/upstream-sync-20261016/candidate/e2e-final-compile.test ./internal/integration` |
+| candidate | final-service-integration / `final-service-integration.log` | 0 | `2026-10-16T22:41:50+08:00` | `timeout 1200 go test -tags=integration -count=1 ./internal/service` |
+| candidate | final-gemini-race / `final-gemini-race.log` | 0 | `2026-10-16T22:44:15+08:00` | `timeout 1200 go test -race -tags=unit -count=1 -run 'TestGemini\|TestFirstToken' ./internal/service` |
+| candidate | memory-diagnostic / `memory-diagnostic.retry2.log` | 0 | `2026-10-16T22:45:09+08:00` | `timeout 600 go test -tags=unit -count=20 -run '^TestInflightEstimate_AccountMappingNoDBAndBoundedMemory$' ./internal/service` |
+| candidate | go-unit / `go-unit.retry3.log` | 0 | `2026-10-16T22:45:44+08:00` | `timeout 2400 go test -tags=unit -count=1 ./...` |
+| candidate | final-invariants / `final-invariants.log` | 0 | `2026-10-16T22:46:49.0341701+08:00` | `pwsh -File tmp/upstream-sync-20261016/check-invariants.ps1 -Ref 50235ef0b9b5232e19df4db5755952456c6addca` |
+| candidate | candidate-source-tree / `candidate-source-tree.log` | 0 | `2026-10-16T22:46:49.8243134+08:00` | `bash tmp/upstream-sync-20261016/check-tree.sh candidate 50235ef0b9b5232e19df4db5755952456c6addca` |
+| candidate | frontend-lint / `frontend-lint.log` | 0 | `2026-10-16T21:53:04.4614311+08:00` | `pnpm --dir frontend run lint:check` |
+| candidate | frontend-typecheck / `frontend-typecheck.log` | 0 | `2026-10-16T21:53:39.7992881+08:00` | `pnpm --dir frontend run typecheck` |
+| candidate | frontend-test / `frontend-test.log` | 0 | `2026-10-16T21:55:23.1778169+08:00` | `pnpm --dir frontend run test:run` |
+| candidate | frontend-build / `frontend-build.log` | 0 | `2026-10-16T21:57:05.6063364+08:00` | `pnpm --dir frontend run build` |
+| candidate | canvas-typecheck / `canvas-typecheck.log` | 0 | `2026-10-16T21:57:27.5226568+08:00` | `pnpm --dir canvas run typecheck` |
+| candidate | canvas-test / `canvas-test.log` | 0 | `2026-10-16T21:57:36.2075942+08:00` | `pnpm --dir canvas run test` |
+| candidate | canvas-build / `canvas-build.log` | 0 | `2026-10-16T21:59:40.5179838+08:00` | `pnpm --dir canvas run build` |
+| candidate | smoke / `smoke-result.json` | 0 | 见结果JSON | `timeout 600 python3 tmp/upstream-sync-20261016/run-smoke.py candidate` |
