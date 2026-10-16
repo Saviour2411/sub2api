@@ -7803,3 +7803,10 @@ OAuth 超时专项：`候选第二轮完整 unit 的 TestRefreshIfNeeded_LateSuc
 | candidate | smoke-final / `smoke-final.log` | 0 | `2026-10-14T01:15:55+08:00` | `timeout 600 python3 /mnt/d/project/sub2api/tmp/upstream-sync-20261013/run-smoke.py candidate current lf` |
 | candidate | current-unit-all / `current-unit-all.log` | 0 | `2026-10-14T01:20:57+08:00` | `timeout 2400 go test -tags=unit -count=1 ./...` |
 | candidate | final-acceptance / `final-acceptance.log` | 0 | `2026-10-14T01:21:45.5949913+08:00` | `./tmp/upstream-sync-20261013/check-results.ps1` |
+
+## 2026-10-16 固定上游0.2.17合并适配
+
+- 已批准本地完整合并 `4d9ac3e482106d2da3a39fe3e546d8d6801f1cc1..b0a02a3304a0a78cdd003ddda1dd23ba02c03084`。同步前本地 `main` 为 `4744dbec4ea6f1d841a847581b03901aafc21c99`，实际merge-base等于旧上游点，固定48个提交全部纳入；没有扩大获取范围。
+- 10个文本冲突按批准方案逐块处理：保留0.1.256版本；组合EasyPay查单确认与本地兼容；Gemini同时保留attempt与checkedPolicy；缓存价保留未知型号拒绝并加入Argon；Responses保留写锁及成功终态优先并学习created_at；保留账号筛选布局与测试；两份语言文件只解决空行。
+- 语义适配完整接入支付退款和上游确认、Gemini/Antigravity思考及工具图片、真实凭据模型限制、OAuth歧义路由拒绝、Web搜索模拟与OAuth排除、最小输出配置。严格计费、赠送/补查/幂等、65个二开编号和所有生产保护项继续保留；来源元数据更新至原版0.2.17。
+- 此处记录代码合并阶段；候选尚须完成与同步前一致的本地验证。最终验收将在最后一个本地记录提交追加完整逐项处置、测试结果、代码提交SHA及未验证项，然后确认原main未变化后执行快进。没有推送、PR、标签、部署或服务器访问。

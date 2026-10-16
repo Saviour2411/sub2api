@@ -827,6 +827,53 @@ func TestReconcilePendingEasyPayOrdersFiltersCandidatesAndKeepsUnpaidPending(t *
 	require.Equal(t, easyPayWxpay.OutTradeNo, queriedOutTradeNo.Load())
 }
 
+func TestReconcilePendingEasyPayOrdersRejectsUnconfirmedPayment(t *testing.T) {
+	for _, body := range []string{
+		`{"code":0,"msg":"订单不存在"}`,
+		`{"code":-1,"status":1,"trade_status":"TRADE_SUCCESS","money":"50.00"}`,
+		`{"code":1,"status":1,"trade_status":"WAITING","money":"50.00"}`,
+		`{"code":1,"status":1,"trade_status":"","money":"50.00"}`,
+		`{"code":1,"status":1,"money":"NaN"}`,
+	} {
+		t.Run(body, func(t *testing.T) {
+			ctx := context.Background()
+			client := newPaymentOrderLifecycleTestClient(t)
+			var queryCalls atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				queryCalls.Add(1)
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(body))
+			}))
+			t.Cleanup(server.Close)
+			instance := createPaymentOrderLifecycleEasyPayInstance(t, ctx, client, server.URL)
+			user, err := client.User.Create().SetEmail("unconfirmed@example.invalid").
+				SetPasswordHash("hash").SetUsername("unconfirmed").Save(ctx)
+			require.NoError(t, err)
+			order := createPaymentOrderLifecycleOrder(t, ctx, client, user, paymentOrderLifecycleOrderOptions{
+				outTradeNo: "sub2_unconfirmed", paymentType: payment.TypeAlipay, providerKey: payment.TypeEasyPay,
+				providerInstance: strconv.FormatInt(instance.ID, 10), status: OrderStatusPending,
+				createdAt: time.Now().Add(-time.Minute), expiresAt: time.Now().Add(time.Hour), initialized: true, amount: 50,
+			})
+			userRepo := &mockUserRepo{getByIDUser: &User{ID: user.ID, Email: user.Email, Username: user.Username}}
+			userRepo.updateBalanceFn = func(_ context.Context, _ int64, amount float64) error {
+				userRepo.getByIDUser.Balance += amount
+				return nil
+			}
+			redeemRepo := createPaymentOrderLifecycleRedeemRepo(t, ctx, client, order.RechargeCode, order.Amount)
+			redeemService := NewRedeemService(redeemRepo, userRepo, nil, nil, nil, client, nil, nil)
+			svc := newPaymentOrderLifecycleEasyPayService(client, userRepo, redeemService)
+			recovered, err := svc.ReconcilePendingEasyPayOrders(ctx)
+			require.NoError(t, err)
+			require.Zero(t, recovered, "未经确认的查询不得计为补单成功")
+			require.Equal(t, int32(1), queryCalls.Load())
+			reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+			require.NoError(t, err)
+			require.Equal(t, OrderStatusPending, reloaded.Status)
+			require.Zero(t, userRepo.getByIDUser.Balance, "未确认支付不得入账")
+		})
+	}
+}
+
 func TestReconcilePendingEasyPayOrdersLimitsBatch(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentOrderLifecycleTestClient(t)
