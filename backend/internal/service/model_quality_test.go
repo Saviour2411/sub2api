@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
@@ -270,6 +272,43 @@ func TestModelQualityUncertainSubmissionNeverResent(t *testing.T) {
 	require.Equal(t, 2, c.submitted)
 	require.Equal(t, "unknown", repo.tasks[0].Verdict)
 }
+func TestModelQualityRejectedSubmissionPreservesSafeReason(t *testing.T) {
+	for _, tc := range []struct {
+		name, body, reason string
+	}{
+		{"参数不兼容", `{"error":"Invalid API request parameters"}`, "检测接口参数不兼容"},
+		{"鹈鹕模型限制", `{"error":"model is required and must be gpt-6-astra for pelican, creative and html"}`, "鹈鹕检测目前仅支持 gpt-6-astra"},
+		{"未知错误脱敏", `{"error":"sk-test-secret https://quality.example.net/v1"}`, "请检查模型和端点配置"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, repo, _, runner, _ := qualityFixture()
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				var body map[string]any
+				require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+				require.NotContains(t, body, "protocol")
+				require.Contains(t, []string{"model-a", "model-b"}, body["model"])
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer server.Close()
+			client := manxue.NewClient()
+			client.BaseURL = server.URL
+			runner.client = client
+			require.NoError(t, runner.step(context.Background()))
+			require.Len(t, repo.tasks, 4)
+			for _, task := range repo.tasks {
+				require.Equal(t, "failed", task.Status)
+				require.Equal(t, "unknown", task.Verdict)
+				require.Contains(t, task.Reason, "HTTP 400")
+				require.Contains(t, task.Reason, tc.reason)
+				require.NotContains(t, task.Reason, "sk-test-secret")
+				require.NotContains(t, task.Reason, "quality.example.net")
+				require.NotNil(t, task.FinishedAt)
+			}
+		})
+	}
+}
+
 func TestModelQualityRetryAfterAndPartialResults(t *testing.T) {
 	_, repo, _, r, c := qualityFixture()
 	c.submitErr = &manxue.Error{Status: 429, RetryAfter: 120 * time.Second}

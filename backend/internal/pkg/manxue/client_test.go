@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -22,7 +23,8 @@ func TestClientSubmitAndPoll(t *testing.T) {
 			var body map[string]any
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
 			require.Equal(t, "model-explicit", body["model"])
-			require.Equal(t, "responses", body["protocol"])
+			require.Equal(t, "low", body["reasoning_effort"])
+			require.NotContains(t, body, "protocol")
 			require.NotContains(t, body, "service_tier")
 			w.WriteHeader(202)
 			_, _ = w.Write([]byte(`{"id":"job123","status":"running"}`))
@@ -34,7 +36,7 @@ func TestClientSubmitAndPoll(t *testing.T) {
 	defer server.Close()
 	c := NewClient()
 	c.BaseURL = server.URL
-	result, err := c.Submit(context.Background(), Request{Benchmark: "candy", BaseURL: "https://test.example/v1", APIKey: "secret", Model: "model-explicit", Protocol: "responses", ReasoningEffort: "low"}, "mq_test-key")
+	result, err := c.Submit(context.Background(), Request{Benchmark: "candy", BaseURL: "https://test.example/v1", APIKey: "secret", Model: "model-explicit", ReasoningEffort: "low"}, "mq_test-key")
 	require.NoError(t, err)
 	result, err = c.Poll(context.Background(), result.ID)
 	require.NoError(t, err)
@@ -73,6 +75,38 @@ func TestClientLimitsAndUncertainSubmission(t *testing.T) {
 	require.Equal(t, 48*time.Hour, ParseRetryAfter("172800", now))
 	require.Equal(t, time.Duration(1<<63-1), ParseRetryAfter("9223372036854775807", now))
 	require.Equal(t, time.Minute, ParseRetryAfter(now.Add(time.Minute).Format(http.TimeFormat), now))
+}
+
+func TestClientRejectionReasonsDoNotExposeRemoteBody(t *testing.T) {
+	for _, tc := range []struct {
+		name, body, reason string
+	}{
+		{"旧参数", `{"error":"Invalid API request parameters"}`, "检测接口参数不兼容"},
+		{"模型限制", `{"error":"model is required and must be gpt-6-astra for pelican, creative and html"}`, "鹈鹕检测目前仅支持 gpt-6-astra"},
+		{"未知错误", `{"error":"sk-secret https://private.example/v1"}`, "请检查模型和端点配置"},
+		{"已知错误附带凭据", `{"error":"Invalid API request parameters sk-secret"}`, "请检查模型和端点配置"},
+		{"无效JSON", `{"error":`, "请检查模型和端点配置"},
+		{"超长响应", `{"error":"Invalid API request parameters","extra":"` + strings.Repeat("x", maxRejectionBytes) + `"}`, "请检查模型和端点配置"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = io.WriteString(w, tc.body)
+			}))
+			defer server.Close()
+			client := NewClient()
+			client.BaseURL = server.URL
+			_, err := client.Submit(context.Background(), Request{}, "test")
+			var remote *Error
+			require.ErrorAs(t, err, &remote)
+			require.False(t, remote.Ambiguous)
+			require.Contains(t, remote.RejectionReason(), "HTTP 400")
+			require.Contains(t, remote.RejectionReason(), tc.reason)
+			require.NotContains(t, remote.RejectionReason(), "sk-secret")
+			require.NotContains(t, remote.RejectionReason(), "private.example")
+			require.NotContains(t, remote.Error(), "sk-secret")
+		})
+	}
 }
 
 func TestClientDoesNotReplayUncertainPost(t *testing.T) {
