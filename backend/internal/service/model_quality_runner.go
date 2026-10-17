@@ -201,7 +201,7 @@ func (r *ModelQualityRunner) step(ctx context.Context) error {
 		if !claimed {
 			break
 		}
-		result, e := r.client.Submit(ctx, manxue.Request{Benchmark: t.Benchmark, BaseURL: t.Endpoint, APIKey: key.Key, Model: t.Model, Protocol: "responses", ReasoningEffort: t.Group.ReasoningEffort}, t.IdempotencyKey)
+		result, e := r.client.Submit(ctx, manxue.Request{Benchmark: t.Benchmark, BaseURL: t.Endpoint, APIKey: key.Key, Model: t.Model, ReasoningEffort: t.Group.ReasoningEffort}, t.IdempotencyKey)
 		if e != nil {
 			var remote *manxue.Error
 			if errors.As(e, &remote) && (remote.Status == 429 || remote.Status == 503) {
@@ -213,7 +213,7 @@ func (r *ModelQualityRunner) step(ctx context.Context) error {
 					finishQualityTask(t, "failed", "第三方服务持续限流或繁忙")
 				}
 			} else if errors.As(e, &remote) && !remote.Ambiguous {
-				finishQualityTask(t, "failed", "第三方服务拒绝检测请求，请检查模型和端点配置")
+				finishQualityTask(t, "failed", remote.RejectionReason())
 			} else {
 				t.Status = "uncertain"
 				t.Reason = "提交结果不明确，为避免重复扣费未自动重试"

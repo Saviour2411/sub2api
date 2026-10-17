@@ -15,13 +15,13 @@ import (
 
 const BaseURL = "https://manxue.ai"
 const MaxResponseBytes = 5 << 20
+const maxRejectionBytes = 4 << 10
 
 type Request struct {
 	Benchmark       string `json:"benchmark"`
 	BaseURL         string `json:"base_url"`
 	APIKey          string `json:"api_key"`
 	Model           string `json:"model"`
-	Protocol        string `json:"protocol"`
 	ReasoningEffort string `json:"reasoning_effort"`
 }
 
@@ -59,13 +59,21 @@ type Result struct {
 
 // 不包含远端响应体和请求地址，避免错误日志泄漏凭据。
 type Error struct {
-	Status     int
-	RetryAfter time.Duration
-	Ambiguous  bool
+	Status          int
+	RetryAfter      time.Duration
+	Ambiguous       bool
+	rejectionReason string
 }
 
 func (e *Error) Error() string {
 	return fmt.Sprintf("第三方检测请求失败（HTTP %d）", e.Status)
+}
+
+func (e *Error) RejectionReason() string {
+	if e.rejectionReason != "" {
+		return fmt.Sprintf("第三方服务拒绝检测请求（HTTP %d）：%s", e.Status, e.rejectionReason)
+	}
+	return fmt.Sprintf("第三方服务拒绝检测请求（HTTP %d），请检查模型和端点配置", e.Status)
 }
 
 type Client struct {
@@ -106,7 +114,11 @@ func (c *Client) call(ctx context.Context, method, path string, body []byte, key
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, &Error{Status: resp.StatusCode, RetryAfter: ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now()), Ambiguous: method == http.MethodPost && resp.StatusCode != 429 && resp.StatusCode != 503 && resp.StatusCode >= 500}
+		remote := &Error{Status: resp.StatusCode, RetryAfter: ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now()), Ambiguous: method == http.MethodPost && resp.StatusCode != 429 && resp.StatusCode != 503 && resp.StatusCode >= 500}
+		if resp.StatusCode == http.StatusBadRequest {
+			remote.rejectionReason = readRejectionReason(resp.Body)
+		}
+		return nil, remote
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, MaxResponseBytes+1))
 	if err != nil || len(raw) > MaxResponseBytes {
@@ -117,6 +129,28 @@ func (c *Client) call(ctx context.Context, method, path string, body []byte, key
 		return nil, &Error{Ambiguous: method == http.MethodPost}
 	}
 	return &result, nil
+}
+
+func readRejectionReason(body io.Reader) string {
+	raw, err := io.ReadAll(io.LimitReader(body, maxRejectionBytes+1))
+	if err != nil || len(raw) > maxRejectionBytes {
+		return ""
+	}
+	var response struct {
+		Error string `json:"error"`
+	}
+	if json.Unmarshal(raw, &response) != nil {
+		return ""
+	}
+	// 只映射已知错误为固定提示，不保留或展示可能回显凭据的原始响应。
+	switch response.Error {
+	case "Invalid API request parameters":
+		return "检测接口参数不兼容，请更新检测适配"
+	case "model is required and must be gpt-6-astra for pelican, creative and html":
+		return "鹈鹕检测目前仅支持 gpt-6-astra，其他模型可使用糖果检测"
+	default:
+		return ""
+	}
 }
 
 func ParseRetryAfter(raw string, now time.Time) time.Duration {
