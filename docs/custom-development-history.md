@@ -110,7 +110,7 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 - 本次同步范围：`a60a29549..b8dece9000`，62个上游提交（43个非合并、19个合并）；63项既有能力族编号全部保留，无跳过或延期提交；本地覆盖、实际验证和未覆盖范围见本轮同步记录
 - 历史识别统计（2026-09-02，`5097b3145..35c28e324`）：919 个差异文件，新增130491行、删除5976行、本地独有512个提交；此为历史快照，不代表本次同步后的统计
 - 2026-09-05 历史代码基线差异（`ab99d56e9..289a00a46`）：926个文件，新增130999行、删除6037行；本地独有517个提交（不含最后记录补记）
-- 当前能力族：65 项，分布在 9 个功能域；2026-09-20核对59项已有清单（含`CUST-GW-014`）并新增`CUST-OPS-006`，2026-09-21新增`CUST-OPS-007`，2026-09-22新增`CUST-GW-015`，2026-09-23新增`CUST-OPS-008`，2026-10-09新增`CUST-GW-016`，2026-10-15新增`CUST-OBS-003`；全部编号保留，不复用或删除
+- 当前能力族：66 项，分布在 9 个功能域；2026-09-20核对59项已有清单（含`CUST-GW-014`）并新增`CUST-OPS-006`，2026-09-21新增`CUST-OPS-007`，2026-09-22新增`CUST-GW-015`，2026-09-23新增`CUST-OPS-008`，2026-10-09新增`CUST-GW-016`，2026-10-15新增`CUST-OBS-003`，2026-10-18新增`CUST-UI-006`；全部编号保留，不复用或删除
 
 这组数字只用于确认分析边界，不能直接等同于功能数量。生成代码、测试、文案、上游提交的本地适配和同一能力的连续修复均会放大差异规模。
 
@@ -257,6 +257,7 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 | `CUST-UI-003` | 机甲冷蓝主题与浅色默认 | 保留自定义认证背景、扫描线、计数、倾斜等视觉组件，默认使用浅色主题并提供暗色兼容。 2026-09-15 上游适配：新配额卡继续使用本地 CountUp、PulseDot 与动效组件；桌面和 390px 移动端以隔离夹具检查，无横向溢出。 | `frontend/src/components/common/BackgroundFX.vue`、`frontend/src/composables/useTilt.ts`、`frontend/src/stores/app.ts` | 生效中 |
 | `CUST-UI-004` | 表格和导航稳定性 | 保留账号列表禁用虚拟化、查询后滚动重置、分页大小持久化、侧边栏滚动位置，以及日期和列设置下拉浮层不被表格 sticky 表头覆盖；用量窗口统一展示，隐藏的缓存 tooltip 不再撑出横向滚动，账号到期时间按本地时区严格解析。 账号列表接入 lite DTO 和编辑时详情回取；本地禁用虚拟化、分页/滚动和列设置 Teleport 浮层保留。请求 ID/上游 ID 默认隐藏，测试卸载浮层实例避免跨用例串扰。 本次上游适配：账号操作菜单、用量密钥分页和清单编辑即时更新纳入，保留 DataTable 非虚拟化及本地浮层与列配置。 2026-09-15 上游适配：账号创建复用本地 upstreamModelSyncPreviewRequest；OpenCode adaptive 协议进入同一预览路径，模型白名单测试对齐本地接口并保留原断言。 2026-09-18 上游适配：API Key 批量编辑与本地列设置入口同时保留，不以新增批量弹窗替换列配置。 2026-09-24 上游适配：日期弹层保留 Teleport、固定定位及窄屏边界，同时接入关闭放弃草稿、应用后保留和跨午夜刷新。 2026-10-09 上游适配：接入选择器、弹窗及异步页面的过期响应隔离，保留用量表自定义列、导出进度和本地主题。 2026-10-11：账号筛选取消折叠，平台、状态、类型、Privacy 和分组默认展示；用量统计缓存明细及账号、分组、用户、余额、接口地址、运维诊断共 33 处提示统一使用页面根节点浮层，公共组件按视口边界换向、限宽和滚动，保留键盘与复制交互；窄屏统计卡片改为单列避免数值截断。 2026-10-13 上游适配：Gemini 配额条件显示、多语言分组及新缓存开关合入，保留根节点 HelpTooltip、账号常显筛选、失败策略与 Pool 继承。 2026-10-16 上游适配：上游恢复账号内联筛选时保留本地常显、窄屏两列和可访问名称，不删除筛选测试。 | `frontend/src/components/admin/account/AccountTableFilters.vue`、`frontend/src/components/common/HelpTooltip.vue`、`frontend/src/components/admin/usage/UsageStatsCards.vue`、`frontend/src/components/common/DataTable.vue`、`frontend/src/components/common/ColumnSettingsDropdown.vue`、`frontend/src/components/layout/TablePageLayout.vue`、`frontend/src/components/layout/AppSidebar.vue` | 生效中 |
 | `CUST-UI-005` | 认证页加载与存储容错 | 注册页等待公共设置后再开放输入和提交，登录协议、Captcha 与 OAuth 开关使用同一设置快照；local/session storage 不可用时安全降级，刷新令牌并发时防止旧会话覆盖换号后的新会话；仅从 auth store 恢复 pending OAuth 时不会复用普通邮箱注册残留的邀请码。 本次上游适配：注册入口可见性和验证码加载状态纳入；本地认证存储容错保留，SDK 夹具显式按 host:port 绕过代理。 2026-09-18 上游适配：确认密码和缓存公开设置接入现有注册加载保护，确认密码输入及显示切换沿用 registrationInputDisabled；加载容错与缓存设置两组 mock 同时保留。 | `frontend/src/views/auth/RegisterView.vue`、`frontend/src/views/auth/EmailVerifyView.vue`、`frontend/src/stores/auth.ts`、`frontend/src/api/tokenRefresh.ts`、`frontend/src/utils/browserStorage.ts` | 生效中 |
+| `CUST-UI-006` | 自定义页面身份透传保护 | 自定义菜单逐页分别配置 `pass_user_id` 和 `pass_auth_token`，只有显式为 true 才附加当前用户身份；新增菜单及缺少字段的旧配置默认关闭。iframe 与新窗口共用同一构造器，普通用户和管理员专属菜单遵循相同规则；来源 `src_url` 始终移除查询参数及片段，保留目标 URL 自有参数和展示上下文。后端 DTO、管理保存和公开配置保留开关，管理端提示完整登录 Token 可读取 API Key，仅为完全可信页面开启。选择性适配上游未合并 PR #8125 的固定提交，不改变完整同步基线；Markdown、隐藏按钮和拖动行为保留。 | `frontend/src/utils/embedded-url.ts`、`frontend/src/views/user/CustomPageView.vue`、`frontend/src/views/admin/SettingsView.vue`、`backend/internal/handler/dto/settings.go` | 已实现，待发布 |
 
 ### CI、发布与生产约束
 
@@ -272,6 +273,14 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 | `CUST-OPS-008` | 构建版本与上游来源提示 | 当前二开版本来自运行程序构建信息，启动时统一注入 HTML、公共设置及管理员接口；旧首屏配置缺版本时仅补查一次公共设置。管理员显示二开版本、已同步原版版本及原版更新状态，普通用户只看二开版本。来源由随二进制嵌入的 `upstream-sync.json` 记录，缺失时显示未记录，不与二开版本比较。最新正式 Release 只读检查采用8秒超时、30分钟成功缓存、60秒失败退避和并发合并；失败保留旧结果并标记缓存，无历史显示暂不可用。可见页定时检查，后台暂停，退出或换用户清理请求和计时器；支持折叠详情、移动端、深浅主题与长版本换行。 2026-09-24 上游适配：随合并更新嵌入来源为0.2.8/a3eb7ef302961cba716dc78b39b93b60c467db0e，二开版本保持0.1.245；只读提示、缓存、身份差异及禁止自更新边界不变。 2026-09-30 上游适配：嵌入来源更新为0.2.10/a60a29549f488a854966aaec9541abbe006cac22，本地二开版本保留0.1.246，不创建发布或开放自更新。 2026-10-07 上游适配：嵌入来源更新为0.2.14/3f1a2ea0a760730e3bc528105c00b4ee4f23e469；本地版本仍为0.1.249。本轮仅本地合并，不创建标签、发布或部署，版本提示的身份隔离、缓存与禁止自更新边界不变。 2026-10-09 上游适配：本地版本保持 0.1.251，上游来源更新为 0.2.15 和固定 SHA 3a6fd1c9db07203ca308aaba69e502bc1f35b307，不改发布标签。 2026-10-13 上游适配：来源更新为0.2.16/4d9ac3e482106d2da3a39fe3e546d8d6801f1cc1，本地版本保持0.1.254，禁止网页自更新边界不变。 2026-10-16 上游适配：二开版本保持0.1.256，构建来源更新为上游0.2.17及固定提交b0a02a330；来源仍由祖先关系校验。 | `backend/internal/pkg/buildmeta/upstream-sync.json`、`backend/internal/handler/wire.go`、`backend/internal/service/upstream_version.go`、`frontend/src/composables/useVersionInfo.ts`、`frontend/src/components/common/VersionBadge.vue`、`tools/check_upstream_sync_metadata.py` | 生效中 |
 
 ## 变更记录
+
+### 2026-10-18 自定义菜单登录凭据外传修复
+
+- 新增 `CUST-UI-006`，当前能力族增至 66 项。本地基线 `00ef6eb85`、版本 `0.1.258`，选择性适配原始上游 PR #8125 固定提交 `14c4d361c72c318b072da454e8936b10989c4582`；截至本次核查该 PR 仍未合并，完整上游基线保持 `b0a02a3304a0a78cdd003ddda1dd23ba02c03084`。
+- 修复旧行为在访问外部自定义菜单时自动附带完整登录 Token 和用户 ID 的问题；改为独立开关显式开启、旧配置默认关闭。登录 Token 可进一步用于读取所属账户 API Key，管理员凭据影响更广；本轮确认代码风险，未核查生产是否曾发生泄露。
+- `src_url` 无论是否开启身份透传都清理查询参数与片段；HTTP/HTTPS 目标保留原有参数、主题与语言。配置经管理请求、存储、管理响应和用户公开响应往返保留，不需要数据库迁移。
+- 补充 URL 构造、普通用户/管理员 iframe 与新窗口、配置加载保存及后端 DTO 往返回归，并更新支付集成说明。验证：5 个相关前端测试文件共 85 项通过；隔离管理页测试夹具后复跑 2 项身份透传测试通过；前端类型检查、修改文件 ESLint、生产构建和 `git diff --check` 通过；WSL Go 1.27.2 执行 `go test ./internal/handler/dto -count=1` 通过。未执行全量后端测试或生产环境验证。
+- URL 构造、自定义页面及其竞态回归纳入前端关键测试列表，由 PR CI 持续执行。用户已授权提交、推送，并在仓库 CI 与安全扫描通过后合入 `main`；远端验收以对应 PR 与检查记录为准。本次不打标签、发布、部署或访问生产。显式开启 Token 透传仍交出完整登录身份；修复不会收回此前可能已外传的凭据。
 
 ### 2026-10-17 降智检测第三方接口兼容修复
 
@@ -476,7 +485,7 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 3. Anthropic 请求转换和账号测试变化：`CUST-PROTO-003`、`CUST-PROTO-004`、`CUST-PROTO-008`、`CUST-ACC-005`；
 4. 计费和 usage schema 变化：`CUST-BILL-001` 至 `CUST-BILL-005`；
 5. account/group/channel/payment schema 变化：`CUST-ACC-001`、`CUST-ACC-006`、`CUST-PROD-005` 至 `CUST-PROD-007`；
-6. 前端设置、导航和公共配置变化：`CUST-PROD-001`、`CUST-PROD-002`、`CUST-PROD-007`、`CUST-OBS-002`、`CUST-UI-001` 至 `CUST-UI-005`；
+6. 前端设置、导航和公共配置变化：`CUST-PROD-001`、`CUST-PROD-002`、`CUST-PROD-007`、`CUST-OBS-002`、`CUST-UI-001` 至 `CUST-UI-006`；
 7. release、Compose、镜像或网页版本管理变化：`CUST-OPS-001` 至 `CUST-OPS-006`；尤其不得恢复网页自更新、回滚或重启入口。
 
 ## 已被上游吸收的历史二开

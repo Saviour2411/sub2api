@@ -751,6 +751,54 @@ describe("admin SettingsView payment visible method controls", () => {
     wrapper.unmount();
   });
 
+  it("独立加载和保存每个菜单的身份透传开关，旧配置默认关闭", async () => {
+    const menuItems = [
+      { id: "docs", label: "文档", url: "https://example.com/docs", icon_svg: "", visibility: "user", sort_order: 0 },
+      { id: "help", label: "帮助", url: "https://example.com/help", icon_svg: "", visibility: "user", sort_order: 1, pass_user_id: true },
+      { id: "admin", label: "管理", url: "https://example.com/admin", icon_svg: "", visibility: "admin", sort_order: 2, pass_auth_token: true },
+    ];
+    getSettings.mockResolvedValue({ ...baseSettingsResponse, custom_menu_items: menuItems.map(item => ({ ...item })) });
+    const wrapper = mountView();
+    await flushPromises();
+
+    const userIdToggles = wrapper.findAll<HTMLInputElement>('[data-testid="custom-menu-pass-user-id"]');
+    const tokenToggles = wrapper.findAll<HTMLInputElement>('[data-testid="custom-menu-pass-auth-token"]');
+    expect(userIdToggles.map(toggle => toggle.element.checked)).toEqual([false, true, false]);
+    expect(tokenToggles.map(toggle => toggle.element.checked)).toEqual([false, false, true]);
+    expect(wrapper.text()).toContain("admin.settings.customMenu.authForwardingHint");
+    await userIdToggles[0].setValue(true);
+    await tokenToggles[1].setValue(true);
+    await tokenToggles[2].setValue(false);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      custom_menu_items: [
+        { ...menuItems[0], pass_user_id: true },
+        { ...menuItems[1], pass_user_id: true, pass_auth_token: true },
+        { ...menuItems[2], pass_auth_token: false },
+      ],
+    }));
+    wrapper.unmount();
+  });
+
+  it("新增菜单默认关闭身份透传", async () => {
+    getSettings.mockResolvedValue({ ...baseSettingsResponse, custom_menu_items: [] });
+    const wrapper = mountView();
+    await flushPromises();
+    const addButton = wrapper.findAll("button").find(button => button.text().includes("admin.settings.customMenu.add"));
+    expect(addButton).toBeDefined();
+    await addButton!.trigger("click");
+    expect(wrapper.get<HTMLInputElement>('[data-testid="custom-menu-pass-user-id"]').element.checked).toBe(false);
+    expect(wrapper.get<HTMLInputElement>('[data-testid="custom-menu-pass-auth-token"]').element.checked).toBe(false);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      custom_menu_items: [expect.objectContaining({ pass_user_id: false, pass_auth_token: false })],
+    }));
+    wrapper.unmount();
+  });
+
   it("submits the compact home page toggle", async () => {
     const wrapper = mountView();
     await flushPromises();

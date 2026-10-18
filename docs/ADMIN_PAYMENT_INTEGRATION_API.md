@@ -99,17 +99,21 @@ curl -X POST "${BASE}/api/v1/admin/users/123/balance" \
   }'
 ```
 
-### 4) 购买页 / 自定义页面 URL Query 透传（iframe / 新窗口一致）
-当 Sub2API 打开 `purchase_subscription_url` 或用户侧自定义页面 iframe URL 时，会统一追加：
-- `user_id`
-- `token`
+### 4) 自定义页面 URL Query 透传（iframe / 新窗口一致）
+自定义菜单的外部页面默认仅追加展示和来源参数：
 - `theme`（`light` / `dark`）
 - `lang`（例如 `zh` / `en`，用于向嵌入页传递当前界面语言）
 - `ui_mode`（固定 `embedded`）
+- `src_host`（来源站点）
+- `src_url`（来源页面地址，移除全部查询参数和片段，避免间接泄露凭据）
 
-示例：
+身份透传默认关闭，已有菜单缺少配置字段时也不发送身份信息。管理员可按菜单分别启用 `pass_user_id: true` 和 `pass_auth_token: true`，仅对应开关开启时才追加当前用户的 `user_id` 或登录 `token`。升级后依赖旧式身份透传的集成需要管理员显式开启；目标 URL 自行配置的参数继续保留。
+
+登录 Token 具有当前账户权限，可用于读取 API Key；管理员 Token 权限更高。仅为完全可信的页面开启 Token 透传，勿将管理员 API Key 放入前端 URL。
+
+默认示例（省略来源参数）：
 ```text
-https://pay.example.com/pay?user_id=123&token=<jwt>&theme=light&lang=zh&ui_mode=embedded
+https://pay.example.com/pay?theme=light&lang=zh&ui_mode=embedded
 ```
 
 ### 5) 失败处理建议
@@ -219,17 +223,14 @@ curl -X POST "${BASE}/api/v1/admin/users/123/balance" \
   }'
 ```
 
-### 4) Purchase / Custom Page URL query forwarding (iframe and new tab)
-When Sub2API opens `purchase_subscription_url` or a user-facing custom page iframe URL, it appends:
-- `user_id`
-- `token`
-- `theme` (`light` / `dark`)
-- `lang` (for example `zh` / `en`, used to pass the current UI language to the embedded page)
-- `ui_mode` (fixed: `embedded`)
+### 4) 自定义页面 URL Query 透传（iframe / 新窗口一致）
+自定义菜单默认仅发送 `theme`、`lang`、`ui_mode=embedded`、`src_host` 和清理查询参数及片段后的 `src_url`，不发送当前账户的登录 Token 或用户 ID；已有配置同样默认关闭身份透传。
 
-Example:
+确需对接可信页面时，由管理员逐菜单分别启用 `pass_user_id` 或 `pass_auth_token`。Token 具有当前账户权限，可用于读取 API Key，管理员 Token 权限更高；不得向不可信页面开启。目标 URL 自有参数继续保留。
+
+默认示例（省略来源参数）：
 ```text
-https://pay.example.com/pay?user_id=123&token=<jwt>&theme=light&lang=zh&ui_mode=embedded
+https://pay.example.com/pay?theme=light&lang=zh&ui_mode=embedded
 ```
 
 ### 5) Failure handling recommendations

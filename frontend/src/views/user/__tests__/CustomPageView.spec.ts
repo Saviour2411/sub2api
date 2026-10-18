@@ -1,21 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
+import type { CustomMenuItem } from '@/types'
 import CustomPageView from '../CustomPageView.vue'
 
-const { appStore } = vi.hoisted(() => ({
+type MenuItemFixture = Pick<CustomMenuItem, 'id' | 'url'> & Partial<CustomMenuItem>
+
+const { appStore, authStore, adminSettingsStore } = vi.hoisted(() => ({
   appStore: {
     publicSettingsLoaded: true,
-    cachedPublicSettings: { custom_menu_items: [{ id: 'docs', url: 'https://example.com/docs' }] },
+    cachedPublicSettings: { custom_menu_items: [] as MenuItemFixture[] },
   },
+  authStore: { isAdmin: false, user: { id: 7 }, token: 'test-token' },
+  adminSettingsStore: { customMenuItems: [] as MenuItemFixture[] },
 }))
 
 vi.mock('@/components/layout/AppLayout.vue', () => ({ default: { template: '<div><slot /></div>' } }))
 vi.mock('vue-router', () => ({ useRoute: () => ({ params: { id: 'docs' } }) }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key, locale: { value: 'en' } }) }))
 vi.mock('@/stores', () => ({ useAppStore: () => appStore }))
-vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ isAdmin: false, user: { id: 7 }, token: 'test-token' }) }))
-vi.mock('@/stores/adminSettings', () => ({ useAdminSettingsStore: () => ({ customMenuItems: [] }) }))
+vi.mock('@/stores/auth', () => ({ useAuthStore: () => authStore }))
+vi.mock('@/stores/adminSettings', () => ({ useAdminSettingsStore: () => adminSettingsStore }))
 vi.mock('@/api/client', () => ({ buildApiUrl: (path: string) => `/api/v1${path}` }))
 
 let notifyResize: () => void
@@ -67,6 +72,8 @@ function click(button: HTMLElement, detail = 1) {
 describe('custom page open button', () => {
   beforeEach(() => {
     appStore.cachedPublicSettings.custom_menu_items = [{ id: 'docs', url: 'https://example.com/docs' }]
+    authStore.isAdmin = false
+    adminSettingsStore.customMenuItems = []
     vi.stubGlobal('ResizeObserver', class {
       constructor(callback: () => void) { notifyResize = callback }
       observe() {}
@@ -84,13 +91,44 @@ describe('custom page open button', () => {
     const wrapper = mountPage()
     expect(wrapper.find('.custom-open-fab').exists()).toBe(hidden !== true)
     expect(wrapper.get('iframe').attributes('src')).toContain('https://example.com/docs')
+    const url = new URL(wrapper.get('iframe').attributes('src'))
+    expect(url.searchParams.has('user_id')).toBe(false)
+    expect(url.searchParams.has('token')).toBe(false)
+  })
+
+  it.each([
+    { flags: { pass_user_id: false, pass_auth_token: false }, userId: null, token: null },
+    { flags: { pass_user_id: true }, userId: '7', token: null },
+    { flags: { pass_auth_token: true }, userId: null, token: 'test-token' },
+    { flags: { pass_user_id: true, pass_auth_token: true }, userId: '7', token: 'test-token' },
+  ])('iframe 和新窗口遵循当前菜单的独立开关：$flags', ({ flags, userId, token }) => {
+    Object.assign(appStore.cachedPublicSettings.custom_menu_items[0], flags)
+    const { wrapper, button } = mountEmbed()
+    expect(button.href).toBe(wrapper.get('iframe').attributes('src'))
+    const url = new URL(button.href)
+    expect(url.searchParams.get('user_id')).toBe(userId)
+    expect(url.searchParams.get('token')).toBe(token)
+  })
+
+  it.each([false, true])('管理员专属菜单遵循显式身份透传开关：%s', (enabled) => {
+    authStore.isAdmin = true
+    appStore.cachedPublicSettings.custom_menu_items = []
+    adminSettingsStore.customMenuItems = [{
+      id: 'docs', url: 'https://example.com/admin', visibility: 'admin',
+      ...(enabled ? { pass_user_id: true, pass_auth_token: true } : {}),
+    }]
+    const { wrapper, button } = mountEmbed()
+    expect(button.href).toBe(wrapper.get('iframe').attributes('src'))
+    const url = new URL(button.href)
+    expect(url.searchParams.get('user_id')).toBe(enabled ? '7' : null)
+    expect(url.searchParams.get('token')).toBe(enabled ? 'test-token' : null)
   })
 
   it('preserves the embedded URL, secure link attributes, and normal clicks with small pointer movements', async () => {
     const { wrapper, button } = mountEmbed()
     expect(button.href).toBe(wrapper.get('iframe').attributes('src'))
-    expect(button.href).toContain('user_id=7')
-    expect(button.href).toContain('token=test-token')
+    expect(new URL(button.href).searchParams.has('user_id')).toBe(false)
+    expect(new URL(button.href).searchParams.has('token')).toBe(false)
     expect(button.target).toBe('_blank')
     expect(button.rel).toBe('noopener noreferrer')
     await pointer(button, 'pointerdown', 700, 24)
