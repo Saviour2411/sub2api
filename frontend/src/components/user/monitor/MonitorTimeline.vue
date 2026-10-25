@@ -1,6 +1,7 @@
 <template>
-  <div class="mt-4 pt-3 border-t border-gray-100 dark:border-dark-700/60">
+  <div :class="compact ? '' : 'mt-4 pt-3 border-t border-gray-100 dark:border-dark-700/60'">
     <div
+      v-if="!compact"
       class="flex justify-between text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-2"
     >
       <span>{{ t('monitorCommon.history60pts', { n: length }) }}</span>
@@ -13,7 +14,7 @@
     >
       {{ t('monitorCommon.maintenancePaused') }}
     </div>
-    <div v-else class="flex items-end gap-[2px] h-5 w-full" :class="{ 'opacity-50': stale }">
+    <div v-else class="flex items-end gap-[2px] w-full" :class="[compact ? 'h-[15px]' : 'h-5', { 'opacity-50': stale }]">
       <div
         v-for="(bar, idx) in displayBars"
         :key="idx"
@@ -25,6 +26,7 @@
     </div>
 
     <div
+      v-if="!compact"
       class="mt-1 flex justify-between text-[9px] uppercase tracking-widest text-gray-400"
     >
       <span>{{ t('monitorCommon.past') }}</span>
@@ -45,6 +47,7 @@ const props = withDefaults(defineProps<{
   length?: number
   maintenance?: boolean
   stale?: boolean
+  compact?: boolean
 }>(), {
   buckets: () => [],
   length: 60,

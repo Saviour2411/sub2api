@@ -106,6 +106,7 @@ vi.mock('@/stores', () => ({
 
 describe('KeyUsageView daily detail', () => {
   beforeEach(() => {
+    vi.useFakeTimers()
     showInfo.mockReset()
     showSuccess.mockReset()
     showError.mockReset()
@@ -169,6 +170,8 @@ describe('KeyUsageView daily detail', () => {
   })
 
   afterEach(() => {
+    // 动画定时器不能在测试环境卸载后继续访问浏览器 API。
+    vi.clearAllTimers()
     vi.useRealTimers()
     vi.unstubAllGlobals()
   })
@@ -242,6 +245,7 @@ describe('KeyUsageView daily detail', () => {
 
 describe('KeyUsageView subscription feature flag', () => {
   beforeEach(() => {
+    vi.useFakeTimers()
     localStorage.clear()
     Object.defineProperty(window, 'matchMedia', {
       configurable: true,
@@ -268,6 +272,8 @@ describe('KeyUsageView subscription feature flag', () => {
 
   afterEach(() => {
     appStoreState.cachedPublicSettings = null
+    vi.clearAllTimers()
+    vi.useRealTimers()
     vi.unstubAllGlobals()
   })
 
