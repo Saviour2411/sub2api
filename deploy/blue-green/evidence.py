@@ -18,6 +18,12 @@ MIGRATION_PATHS = ["backend/migrations", "backend/ent/schema"]
 APPROVALS_PATH = "deploy/blue-green/expand-approvals.json"
 MODEL_QUALITY_BASE = "49e3f64067f5a3340d8e9ae1c561c808206273dd"
 MODEL_QUALITY_PROFILE = "model-quality-additive-246-v1"
+RELEASE260_BASE = "52c45a51b5f221728c3b7d3d39b83c9f86c81c22"
+RELEASE260_PROFILE = "gemini-scoped-246-247-v1"
+RELEASE260_FILES = {
+    "246_enable_gemini_image_generation_groups.sql": "87267be7ab657173768989e2b0b105c5569c5930a7f1ed124f4cf81e5198297c",
+    "247_scoped_admin_api_keys.sql": "03445774e2dfad32da9e23279193d1bca02953896bc3d3b8a87ba0b36b6ed577",
+}
 SPECIAL_MIGRATIONS = {
     "246_model_quality.sql": (MODEL_QUALITY_PROFILE, "1bb3d0dd89a9e48f4c524f306b3c248873581b6a33aa1f37f1e24fc3caab545e"),
     "242_drop_platform_check_constraints.sql": ("platform-guarded-242-v1", "a7725f31f637208d200e0f37d5270e9f263743d99fa9e4f1bb9a7387e8be5a61"),
@@ -35,6 +41,7 @@ UPSTREAM216_FILES = {
     "245_gemini_cached_contents_mutation_lease.sql": "75434a7beeb8aad09b3339708ed520604d153e99c7fe680a376e8c958aadb1e8",
 }
 SPECIAL_MIGRATIONS.update({name: (UPSTREAM216_PROFILE, digest) for name, digest in UPSTREAM216_FILES.items()})
+SPECIAL_MIGRATIONS.update({name: (RELEASE260_PROFILE, digest) for name, digest in RELEASE260_FILES.items()})
 UPSTREAM216_SCHEMA = {
     "path": "backend/ent/schema/group.go",
     "from_checksum": "ab46f4e37b0287cd795622eb89d5841f76838c9dccedf88361e27fc045ea4881",
@@ -151,6 +158,12 @@ def migration_evidence(base, sha, git):
         if special:
             require(checksum(content) == special[1], "专项迁移固定 SQL 摘要不符")
             contract = {"profile": special[0]}
+            if special[0] == RELEASE260_PROFILE:
+                migration_lines = {item for item in changed.splitlines()
+                                   if not re.fullmatch(r"[AM]\tbackend/migrations/[a-zA-Z0-9_]+_test\.go", item)}
+                require(base == RELEASE260_BASE and migration_lines == {
+                    "A\tbackend/migrations/" + name for name in RELEASE260_FILES
+                }, "246/247专项仅覆盖v0.1.259到完整两条固定迁移，不允许其他SQL或Ent差异")
             if special[0] == MODEL_QUALITY_PROFILE:
                 require(base == MODEL_QUALITY_BASE and all(item == "A\t"+path
                     or re.fullmatch(r"[AM]\tbackend/migrations/[a-zA-Z0-9_]+_test\.go", item)

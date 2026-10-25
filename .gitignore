@@ -145,6 +145,7 @@ docs/*
 !docs/operations/
 docs/operations/*
 !docs/operations/graceful-blue-green-deploy.md
+!docs/operations/2026-10-26-v0.1.260-release.md
 !docs/operations/2026-09-16-nginx-worker-balance.md
 !docs/operations/2026-09-16-hourly-forced-retirement.md
 !docs/ASYNC_IMAGE_TASKS.md

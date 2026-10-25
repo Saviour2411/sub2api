@@ -124,7 +124,7 @@ class EvidenceTests(unittest.TestCase):
         for approval in approvals["approvals"]:
             if "profile" not in approval:
                 continue
-            if approval["profile"] in ("platform-guarded-242-v1", e.UPSTREAM216_PROFILE):
+            if approval["profile"] in ("platform-guarded-242-v1", e.UPSTREAM216_PROFILE, e.RELEASE260_PROFILE):
                 # 关联多个结构或迁移的审批边界在专用夹具中验证。
                 continue
             for contract in approval["legacy_contracts"]:
@@ -323,6 +323,55 @@ class EvidenceTests(unittest.TestCase):
             values[key] = before
         for change in ({"legacy_contracts": []}, {"compatible_from": "c"*40}, {"profile": "unknown"}):
             values[sha+":"+e.APPROVALS_PATH] = json.dumps({"version": 1, "approvals": [dict(approval, **change)]})
+            with self.assertRaises(RuntimeError):
+                e.migration_evidence(base, sha, git)
+
+
+    def release260_fixture(self):
+        base, sha = e.RELEASE260_BASE, "b" * 40
+        approvals = [item for item in json.loads((ROOT/e.APPROVALS_PATH).read_text())["approvals"]
+                     if item.get("profile") == e.RELEASE260_PROFILE]
+        values = {"diff": "\n".join("A\tbackend/migrations/"+name for name in e.RELEASE260_FILES)}
+        for approval in approvals:
+            values[sha+":"+approval["path"]] = (ROOT/approval["path"]).read_text()
+            for contract in approval["legacy_contracts"]:
+                contract["checksum"] = e.checksum("固定旧版读写与软删除")
+                values[base+":"+contract["path"]] = "固定旧版读写与软删除"
+        values[sha+":"+e.APPROVALS_PATH] = json.dumps({"version": 1, "approvals": approvals})
+        def git(*args):
+            return values["diff"] if args[0] == "diff" else values[args[1]] if args[0] == "show" else ""
+        return base, sha, approvals, values, git
+
+    def test_260_binds_both_original_migrations_and_exact_production_base(self):
+        base, sha, approvals, values, git = self.release260_fixture()
+        result = e.migration_evidence(base, sha, git)
+        self.assertEqual("expand", result["migration_class"])
+        self.assertEqual(set(e.RELEASE260_FILES), {item["filename"] for item in result["migration_policy"]["migrations"]})
+        original = values["diff"]
+        for diff in (original.splitlines()[0], original.replace("A\t", "M\t", 1),
+                     original+"\nA\tbackend/migrations/999_unknown.sql", original+"\nM\tbackend/ent/schema/group.go"):
+            values["diff"] = diff
+            with self.subTest(diff=diff), self.assertRaises(RuntimeError):
+                e.migration_evidence(base, sha, git)
+        values["diff"] = original
+        with self.assertRaises(RuntimeError):
+            e.migration_evidence("c"*40, sha, git)
+        values[sha+":"+e.APPROVALS_PATH] = json.dumps({"version": 1, "approvals": approvals[:1]})
+        with self.assertRaises(RuntimeError):
+            e.migration_evidence(base, sha, git)
+
+    def test_260_rejects_sql_legacy_and_approval_drift(self):
+        base, sha, approvals, values, git = self.release260_fixture()
+        for approval in approvals:
+            for key in (sha+":"+approval["path"], base+":"+approval["legacy_contracts"][0]["path"]):
+                original = values[key]
+                values[key] += "\n未经审查的变化"
+                with self.subTest(key=key), self.assertRaises(RuntimeError):
+                    e.migration_evidence(base, sha, git)
+                values[key] = original
+        for changed in (approvals+approvals[:1], [dict(item, legacy_contracts=[]) for item in approvals],
+                        [dict(item, profile="unknown") for item in approvals]):
+            values[sha+":"+e.APPROVALS_PATH] = json.dumps({"version": 1, "approvals": changed})
             with self.assertRaises(RuntimeError):
                 e.migration_evidence(base, sha, git)
 
