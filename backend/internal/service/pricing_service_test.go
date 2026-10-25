@@ -1071,10 +1071,18 @@ func TestDefaultPricingIncludesGrok47FastRates(t *testing.T) {
 	require.InDelta(t, 2e-6, standard.InputCostPerToken, 1e-15)
 
 	billing := NewBillingService(&config.Config{}, pricingSvc)
-	cost, err := billing.CalculateCost("grok-4.7-fast", UsageTokens{InputTokens: 150_000, CacheReadTokens: 50_000, OutputTokens: 10_000}, 1)
+	// 本地长上下文规则保持严格超过 200K，缓存读取也计入阈值。
+	boundary, err := billing.CalculateCost("grok-4.7-fast", UsageTokens{InputTokens: 150_000, CacheReadTokens: 50_000, OutputTokens: 10_000}, 1)
+	require.NoError(t, err)
+	require.False(t, boundary.LongContextBillingApplied)
+	require.InDelta(t, 0.6, boundary.InputCost, 1e-12)
+	require.InDelta(t, 0.05, boundary.CacheReadCost, 1e-12)
+	require.InDelta(t, 0.12, boundary.OutputCost, 1e-12)
+
+	cost, err := billing.CalculateCost("grok-4.7-fast", UsageTokens{InputTokens: 150_001, CacheReadTokens: 50_000, OutputTokens: 10_000}, 1)
 	require.NoError(t, err)
 	require.True(t, cost.LongContextBillingApplied)
-	require.InDelta(t, 0.9, cost.InputCost, 1e-12)
+	require.InDelta(t, 150_001*6e-6, cost.InputCost, 1e-12)
 	require.InDelta(t, 0.075, cost.CacheReadCost, 1e-12)
 	require.InDelta(t, 0.18, cost.OutputCost, 1e-12)
 }

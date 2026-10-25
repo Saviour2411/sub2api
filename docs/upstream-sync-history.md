@@ -8212,3 +8212,9 @@ M	frontend/src/views/user/__tests__/StripePaymentView.spec.ts
 - 定向测试发现首次事件前空闲超时的终止帧被本地首 Token 缓冲丢弃，以及流内已写上游错误时 handler 重复追加错误。通过现有 `firstTokenAttemptDecidedWithoutToken` 和 `ResponseCommittedKey` 协调终止帧与本地故障转移，保留首 Token 超时、取消、前奏溢出和已输出禁止重放边界，不删除或放宽上游断言。
 - 同提交更新 `CUST-GW-001`、`CUST-GW-008` 清单及变更记录；新增首 Token 状态边界用例。旧候选完整后端运行因已发现问题主动中止（143），日志保留；修复后从新提交重新生成源码并完整验证。
 - 保护脚本第二次因本地 `AGENTS.md` 未纳入 Git 而无法从历史提交读取；该文件仅被读取、未编辑，移出 Git 文件比较集合。历史 SQL 比较改为批量取得 Git blob 摘要，继续逐文件核验。
+
+### 2026-10-25 Grok Fast 长上下文边界验收适配
+
+- 旧候选默认测试已结束，退出码为 1，唯一失败为上游新增 `TestDefaultPricingIncludesGrok47FastRates`；随后启动的 unit 测试被本轮主动中止，未取得完整结果。此前中止记录指整套后端运行，不代表默认测试没有实际结果。
+- Grok Fast 目录基础价和倍率断言均通过，失败点为总输入恰好 200K 时上游期待加价，与已批准保留的本地严格大于阈值规则不同。补齐 200000 不加价和 200001 按 1.5 倍加价的全部分项费用断言；保留原价卡、标准 Grok 4.7 不被 Fast 遮蔽及缓存费用检查，不修改计费实现。
+- 该上游提交记为 `Applied + Overridden`，继续保留 `CUST-BILL-001`，与功能台账同提交说明。候选最终验证结果另行追加。
