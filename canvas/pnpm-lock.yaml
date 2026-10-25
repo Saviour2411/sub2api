@@ -9,6 +9,8 @@ overrides:
     fast-uri@>=3.0.0 <3.1.8: 3.1.8
     undici@>=7.0.0 <7.29.1: 7.29.1
     brace-expansion@>=5.0.0 <5.0.11: 5.0.11
+    dompurify@<3.4.17: 3.4.17
+    follow-redirects@<1.16.1: 1.16.1
 
 importers:
     .:
@@ -2464,8 +2466,8 @@ packages:
         resolution: { integrity: sha512-vtcDfH3TOjP8UekytvnHH1o1P4FcUdt4eQ1Y+Abap1tk/OB2MWQvcwS2ClCd1zuIhc3JKOx6p3kod8Vfys3E+A== }
         engines: { node: ">=0.3.1" }
 
-    dompurify@3.4.13:
-        resolution: { integrity: sha512-2vmYIoqjze2d+kakP8S/nS5shfsl587kzwEjcGlTdiksUVgFHnFCsLYDVj/JNqJVOQZGSYBTmuycv0PodwmnMQ== }
+    dompurify@3.4.17:
+        resolution: { integrity: sha512-B/pSlYVHQ58kqISD/yDjuJ1yfzI34m1gF4lAod2bwSRhiN4K5Cl3H8Af7hqB2PmTL911tdEudnnXn5FnhRoz0w== }
 
     dunder-proto@1.0.1:
         resolution: { integrity: sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A== }
@@ -2558,8 +2560,8 @@ packages:
     find-root@1.1.0:
         resolution: { integrity: sha512-NKfW6bec6GfKc0SGx1e07QZY9PE99u0Bft/0rzSD5k3sO/vwkVUpDUKVm5Gpp5Ue3YfShPFTX2070tDs5kB9Ng== }
 
-    follow-redirects@1.16.0:
-        resolution: { integrity: sha512-y5rN/uOsadFT/JfYwhxRS5R7Qce+g3zG97+JrtFZlC9klX/W5hD7iiLzScI4nZqUS7DNUdhPgw4xI8W2LuXlUw== }
+    follow-redirects@1.16.1:
+        resolution: { integrity: sha512-FNvFGzoMLWmE6Yj9spb/zjd7yiNCHiAW9/Tg9CXrQ8wuu32HtlJOwWO11OJafl5FfY3DxTdQ0vj42zU1kvv5jg== }
         engines: { node: ">=4.0" }
         peerDependencies:
             debug: "*"
@@ -6186,7 +6188,7 @@ snapshots:
 
     axios@1.20.0:
         dependencies:
-            follow-redirects: 1.16.0
+            follow-redirects: 1.16.1
             form-data: 4.0.6
             https-proxy-agent: 5.0.1
             proxy-from-env: 2.1.0
@@ -6535,7 +6537,7 @@ snapshots:
 
     diff@5.2.2: {}
 
-    dompurify@3.4.13:
+    dompurify@3.4.17:
         optionalDependencies:
             "@types/trusted-types": 2.0.7
 
@@ -6636,7 +6638,7 @@ snapshots:
 
     find-root@1.1.0: {}
 
-    follow-redirects@1.16.0: {}
+    follow-redirects@1.16.1: {}
 
     form-data@4.0.6:
         dependencies:
@@ -7243,7 +7245,7 @@ snapshots:
             d3-sankey: 0.12.3
             dagre-d3-es: 7.0.14
             dayjs: 1.11.21
-            dompurify: 3.4.13
+            dompurify: 3.4.17
             es-toolkit: 1.50.0
             katex: 0.16.47
             khroma: 2.1.0
