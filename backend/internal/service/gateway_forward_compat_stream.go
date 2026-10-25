@@ -282,6 +282,14 @@ func writeAnthropicCompatResponsesStreamFailure(c *gin.Context, state *apicompat
 }
 
 func commitAnthropicCompatStreamFailure(c *gin.Context, failure *anthropicCompatStreamFailure, frame string) {
+	if writer, ok := c.Writer.(*firstTokenBufferedResponseWriter); ok && writer.attempt != nil {
+		// 协议终止帧不是生成首 Token；已超时或取消的尝试仍由 finish 丢弃并归因。
+		writer.attempt.markDecidedWithoutToken()
+		switch writer.attempt.currentState() {
+		case firstTokenAttemptTimedOut, firstTokenAttemptClientCanceled, firstTokenAttemptPreludeOverflow:
+			return
+		}
+	}
 	MarkOpsStreamError(c, failure.errType, failure.message, http.StatusBadGateway)
 	MarkResponseCommitted(c)
 	if _, err := io.WriteString(c.Writer, frame); err != nil {

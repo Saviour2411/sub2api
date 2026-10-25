@@ -377,7 +377,9 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 			if errors.As(err, &failoverErr) {
 				if c.Writer.Size() != writerSizeBeforeForward {
 					fs.RecordTerminalFailureOutcome(c.Request.Context(), h.gatewayService, account.ID, failoverErr)
-					h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed", true)
+					if !service.IsResponseCommitted(c) {
+						h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed", true)
+					}
 					return
 				}
 				action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, failoverErr, account.GetPoolModeRetryCount())
