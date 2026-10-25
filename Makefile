@@ -41,6 +41,8 @@ FRONTEND_CRITICAL_VITEST := \
 	src/components/admin/model-quality/__tests__/ModelQualitySettings.spec.ts \
 	src/components/model-quality/__tests__/QualityPreview.spec.ts \
 	src/views/user/__tests__/ModelQualityView.spec.ts \
+	src/utils/__tests__/modelQualityLoader.spec.ts \
+	src/stores/__tests__/modelQuality.spec.ts \
 	src/utils/__tests__/featureFlags.spec.ts \
 	src/router/__tests__/custom-features-route.spec.ts \
 	src/api/__tests__/admin.customFeatures.gateway.spec.ts \
@@ -52,6 +54,8 @@ FRONTEND_CRITICAL_VITEST := \
 	src/views/admin/__tests__/UsageView.spec.ts \
 	src/views/user/__tests__/ChannelStatusV1View.refresh.spec.ts \
 	src/components/user/monitor/__tests__/MonitorCard.freshness.spec.ts \
+	src/components/user/monitor/__tests__/MonitorCardGrid.imageSuccessRate.spec.ts \
+	src/components/user/__tests__/MonitorCard.quota.spec.ts \
 	src/components/admin/monitor/__tests__/MonitorPrimaryModelCell.spec.ts \
 	src/components/admin/usage/__tests__/UsageTable.spec.ts \
 	src/api/__tests__/balanceQuery.spec.ts \

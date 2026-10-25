@@ -20,6 +20,11 @@ import { resolveRouteDocumentTitle } from './title'
  */
 const routes: RouteRecordRaw[] = [
   {
+    path: '/model-quality/runs/:id', name: 'ModelQualityDetail',
+    component: () => import('@/views/user/ModelQualityDetailView.vue'),
+    meta: { requiresAuth: true, requiresModelQuality: true, title: '降智检测' }
+  },
+  {
     path: '/model-quality', name: 'ModelQuality',
     component: () => import('@/views/user/ModelQualityView.vue'),
     meta: { requiresAuth: true, requiresModelQuality: true, title: '降智检测' }

@@ -141,6 +141,7 @@ docs/*
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
 !docs/custom-development-history.md
 !docs/model-quality.md
+!docs/channel-quality-ui-verification-2026-10-26.md
 !docs/operations/
 docs/operations/*
 !docs/operations/graceful-blue-green-deploy.md

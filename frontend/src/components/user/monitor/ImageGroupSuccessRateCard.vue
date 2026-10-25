@@ -1,70 +1,93 @@
 <template>
   <article
     data-test="image-group-success-rate-card"
-    class="flex min-h-[280px] w-full flex-col rounded-lg border border-gray-200/80 bg-white/70 p-5 shadow-card backdrop-blur-xl dark:border-dark-700/70 dark:bg-dark-800/60"
+    class="image-success-compact"
   >
-    <div class="flex items-start gap-3">
-      <span class="grid h-9 w-9 flex-shrink-0 place-items-center rounded-lg bg-rose-50 text-rose-600 ring-1 ring-rose-100 dark:bg-rose-900/20 dark:text-rose-300 dark:ring-rose-800/50">
-        <Icon name="chart" size="sm" />
-      </span>
-      <div class="min-w-0 flex-1">
-        <h3 class="truncate text-base font-semibold text-gray-900 dark:text-gray-100">
-          {{ item.group_name }}
-        </h3>
-        <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-          {{ t('channelStatus.imageSuccessRate.groupLabel') }}
-        </p>
-      </div>
+    <span class="image-success-icon"><Icon name="chart" size="sm" /></span>
+    <div class="min-w-0 flex-1">
+      <h3>{{ item.group_name }}</h3>
+      <p>{{ t('channelStatus.imageSuccessRate.groupLabel') }}</p>
     </div>
-
-    <div class="flex flex-1 flex-col items-center justify-center py-6 text-center">
-      <div class="text-4xl font-semibold tabular-nums" :class="rateClass">
-        {{ formattedRate }}%
-      </div>
-      <p class="mt-2 text-sm font-medium text-gray-600 dark:text-gray-300">
-        {{ t('channelStatus.imageSuccessRate.successRate') }}
-      </p>
-    </div>
-
-    <div class="border-t border-gray-100 pt-4 dark:border-dark-700/60">
-      <p class="text-xs text-gray-500 dark:text-gray-400">
-        {{ t('channelStatus.imageSuccessRate.lastSuccess') }}
-      </p>
-      <p class="mt-1 truncate text-sm font-medium text-gray-800 dark:text-gray-200" :title="lastSuccessText">
-        {{ lastSuccessText }}
-      </p>
+    <div class="image-success-value">
+      <strong :class="rateClass">{{ formattedRate }}<small>%</small></strong>
+      <p>{{ t('channelStatus.imageSuccessRate.successRate') }}</p>
     </div>
   </article>
 </template>
-
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { ImageGroupSuccessRateItem } from '@/api/channelMonitor'
 import Icon from '@/components/icons/Icon.vue'
-import { formatDateTime } from '@/utils/format'
-
-const props = defineProps<{
-  item: ImageGroupSuccessRateItem
-}>()
-
+const props = defineProps<{ item: ImageGroupSuccessRateItem }>()
 const { t } = useI18n()
-
 const normalizedRate = computed(() => {
   const rate = Number(props.item.success_rate)
-  if (!Number.isFinite(rate)) return 100
-  return Math.min(100, Math.max(0, rate))
+  return Number.isFinite(rate) ? Math.min(100, Math.max(0, rate)) : 100
 })
-
 const formattedRate = computed(() => normalizedRate.value.toFixed(2))
-const rateClass = computed(() => {
-  if (normalizedRate.value >= 99) return 'text-emerald-600 dark:text-emerald-300'
-  if (normalizedRate.value >= 90) return 'text-amber-600 dark:text-amber-300'
-  return 'text-red-600 dark:text-red-300'
-})
-const lastSuccessText = computed(() =>
-  props.item.last_success_at
-    ? formatDateTime(props.item.last_success_at)
-    : t('channelStatus.imageSuccessRate.noSuccessfulRequest')
+const rateClass = computed(() =>
+  normalizedRate.value >= 99
+    ? 'text-emerald-600 dark:text-emerald-300'
+    : normalizedRate.value >= 90
+      ? 'text-amber-600 dark:text-amber-300'
+      : 'text-red-600 dark:text-red-300'
 )
 </script>
+<style scoped>
+.image-success-compact {
+  min-height: 74px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 14px;
+  border: 1px solid #e1e7ed;
+  border-radius: 8px;
+  background: #fff;
+  color: #20313a;
+}
+.image-success-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  color: #cd5283;
+  background: #fff0f6;
+}
+h3 {
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+p {
+  font-size: 11px;
+  color: #73808a;
+  margin-top: 2px;
+}
+.image-success-value {
+  text-align: right;
+  flex-shrink: 0;
+}
+strong {
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+small {
+  font-size: 14px;
+}
+:global(.dark .image-success-compact) {
+  background: #242c2f;
+  border-color: #394346;
+  color: #e2e8e6;
+}
+:global(.dark .image-success-compact p) {
+  color: #a0adb6;
+}
+:global(.dark .image-success-icon) {
+  background: #432a36;
+  color: #f2a2c5;
+}
+</style>

@@ -89,6 +89,12 @@ describe('MonitorCard quota snapshot visibility', () => {
     expect(wrapper.find('[data-testid="monitor-quota-view"]').exists()).toBe(false)
   })
 
+  it('过期记录不展示旧配额', () => {
+    isQuotaVisible.mockReturnValue(true)
+    const wrapper = mountCard(makeItem({ stale: true, latest_quota: { source: 'cn_quota', success: true, fetched_at: '2026-08-18T00:00:00Z' } }))
+    expect(wrapper.find('[data-testid="monitor-quota-view"]').exists()).toBe(false)
+  })
+
   // 占位符 "quota" 是主模型存储值，不得作为假模型名直接透出到用户端。
   it('shows the localized quota label instead of the raw placeholder model', () => {
     const wrapper = mountCard(makeItem())

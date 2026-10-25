@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import MonitorCard from '../MonitorCard.vue'
-import MonitorMetricPair from '../MonitorMetricPair.vue'
 import type { UserMonitorView } from '@/api/channelMonitor'
 
 vi.mock('@/utils/featureFlags', () => ({ isChannelMonitorQuotaVisible: () => false }))
@@ -26,12 +25,14 @@ describe('渠道状态的新鲜度与无样本展示', () => {
     })
     expect(wrapper.text()).toContain('monitorCommon.status.stale')
     expect(wrapper.text()).toContain('monitorCommon.noSamples')
-    expect(wrapper.text()).toContain('monitorCommon.sampleCount:0')
+    expect(wrapper.text()).not.toContain('monitorCommon.sampleCount')
     expect(wrapper.text()).not.toContain('0.00')
     expect(wrapper.text()).not.toContain('monitorCommon.status.operational')
     expect(wrapper.text()).not.toContain('monitorCommon.now')
-    expect(wrapper.get('time').attributes('datetime')).toBe(item.last_checked_at)
-    expect(wrapper.findComponent(MonitorMetricPair).props('primaryValue')).toBe('monitorCommon.latencyEmpty')
+    expect(wrapper.find('time').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain(item.last_checked_at)
+    expect(wrapper.text()).not.toContain('2350')
+    expect(wrapper.text()).toContain('monitorCommon.latencyEmpty')
   })
 
   it('真实零成功率仍展示 0.00%，而非暂无数据', () => {
@@ -40,7 +41,7 @@ describe('渠道状态的新鲜度与无样本展示', () => {
       global: { stubs: { ProviderIcon: true, MonitorMetricPair: true, MonitorQuotaView: true } },
     })
     expect(wrapper.text()).toContain('0.00')
-    expect(wrapper.text()).toContain('monitorCommon.sampleCount:5')
+    expect(wrapper.text()).not.toContain('monitorCommon.sampleCount')
     expect(wrapper.text()).toContain('monitorCommon.status.failed')
   })
 })
