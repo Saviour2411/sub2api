@@ -26,6 +26,7 @@ import (
 	dbgroup "github.com/Wei-Shaw/sub2api/ent/group"
 	dbpredicate "github.com/Wei-Shaw/sub2api/ent/predicate"
 	dbproxy "github.com/Wei-Shaw/sub2api/ent/proxy"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/adminaccess"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -130,6 +131,9 @@ func newAccountRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor, schedul
 }
 
 func (r *accountRepository) Create(ctx context.Context, account *service.Account) error {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.Create(ctx, account)
+	}
 	if err := createAccountRecord(ctx, r.client, account); err != nil {
 		return err
 	}
@@ -277,6 +281,9 @@ func (r *accountRepository) CreateDuplicateWithPlans(ctx context.Context, source
 }
 
 func (r *accountRepository) GetByID(ctx context.Context, id int64) (*service.Account, error) {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.GetByID(ctx, id)
+	}
 	m, err := r.client.Account.Query().Where(dbaccount.IDEQ(id)).Only(ctx)
 	if err != nil {
 		return nil, translatePersistenceError(err, service.ErrAccountNotFound, nil)
@@ -453,6 +460,9 @@ func (r *accountRepository) ListCRSAccountIDs(ctx context.Context) (map[string]i
 }
 
 func (r *accountRepository) Update(ctx context.Context, account *service.Account) error {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.Update(ctx, account)
+	}
 	return r.updateAccount(ctx, account, nil, nil, account.RateMultiplier)
 }
 
@@ -972,6 +982,9 @@ func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, cre
 }
 
 func (r *accountRepository) Delete(ctx context.Context, id int64) error {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.Delete(ctx, id)
+	}
 	// 使用事务保证账号与关联分组的删除原子性
 	tx, err := r.client.Tx(ctx)
 	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
@@ -1866,6 +1879,9 @@ func (r *accountRepository) syncSchedulerAccountSnapshots(ctx context.Context, a
 }
 
 func (r *accountRepository) ClearError(ctx context.Context, id int64) error {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.ClearError(ctx, id)
+	}
 	_, err := r.client.Account.Update().
 		Where(dbaccount.IDEQ(id)).
 		SetStatus(service.StatusActive).
@@ -1966,6 +1982,12 @@ func (r *accountRepository) GetGroups(ctx context.Context, accountID int64) ([]s
 }
 
 func (r *accountRepository) BindGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.BindGroups(ctx, accountID, groupIDs)
+	}
+	if adminaccess.FromContext(ctx) != nil {
+		return r.scopedAdminBindGroups(ctx, accountID, groupIDs)
+	}
 	existingGroupIDs, err := r.loadAccountGroupIDs(ctx, accountID)
 	if err != nil {
 		return err
@@ -2652,6 +2674,9 @@ func (r *accountRepository) SetGrokCredentialTempUnschedulableIfMatch(
 }
 
 func (r *accountRepository) ClearTempUnschedulable(ctx context.Context, id int64) error {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.ClearTempUnschedulable(ctx, id)
+	}
 	_, err := r.sql.ExecContext(ctx, `
 		UPDATE accounts
 		SET temp_unschedulable_until = NULL,
@@ -2671,6 +2696,9 @@ func (r *accountRepository) ClearTempUnschedulable(ctx context.Context, id int64
 }
 
 func (r *accountRepository) ClearRateLimit(ctx context.Context, id int64) error {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.ClearRateLimit(ctx, id)
+	}
 	_, err := r.client.Account.Update().
 		Where(dbaccount.IDEQ(id)).
 		ClearRateLimitedAt().
@@ -2688,6 +2716,9 @@ func (r *accountRepository) ClearRateLimit(ctx context.Context, id int64) error 
 }
 
 func (r *accountRepository) ClearAntigravityQuotaScopes(ctx context.Context, id int64) error {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.ClearAntigravityQuotaScopes(ctx, id)
+	}
 	client := clientFromContext(ctx, r.client)
 	result, err := client.ExecContext(
 		ctx,
@@ -2712,6 +2743,9 @@ func (r *accountRepository) ClearAntigravityQuotaScopes(ctx context.Context, id 
 }
 
 func (r *accountRepository) ClearModelRateLimits(ctx context.Context, id int64) error {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.ClearModelRateLimits(ctx, id)
+	}
 	client := clientFromContext(ctx, r.client)
 	result, err := client.ExecContext(
 		ctx,
@@ -2774,6 +2808,9 @@ func (r *accountRepository) UpdateSessionWindowEnd(ctx context.Context, id int64
 }
 
 func (r *accountRepository) SetSchedulable(ctx context.Context, id int64, schedulable bool) error {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.SetSchedulable(ctx, id, schedulable)
+	}
 	// 后台恢复不能覆盖管理员在探测期间写入的暂停。
 	_, err := r.sql.ExecContext(ctx, `UPDATE accounts SET schedulable = $2, updated_at = NOW()
 		WHERE id = $1 AND deleted_at IS NULL
@@ -2833,6 +2870,9 @@ func (r *accountRepository) AutoPauseExpiredAccounts(ctx context.Context, now ti
 }
 
 func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates map[string]any) error {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.UpdateExtra(ctx, id, updates)
+	}
 	updates = stripCodexFingerprintSeedFromExtraUpdate(updates)
 	if len(updates) == 0 {
 		return nil
@@ -3065,18 +3105,25 @@ func (r *accountRepository) ClearFailureSchedulingState(ctx context.Context, acc
 	if r == nil || accountID <= 0 {
 		return false, service.ErrAccountNotFound
 	}
-	beginner, ok := r.sql.(sqlTxBeginner)
-	if !ok {
-		return false, errors.New("账号仓储不支持事务")
+	var tx *sql.Tx
+	var executor sqlExecutor
+	if contextTx := dbent.TxFromContext(ctx); contextTx != nil {
+		executor = contextTx.Client()
+	} else {
+		beginner, ok := r.sql.(sqlTxBeginner)
+		if !ok {
+			return false, errors.New("账号仓储不支持事务")
+		}
+		var err error
+		tx, err = beginner.BeginTx(ctx, nil)
+		if err != nil {
+			return false, err
+		}
+		defer func() { _ = tx.Rollback() }()
+		executor = tx
 	}
 
-	tx, err := beginner.BeginTx(ctx, nil)
-	if err != nil {
-		return false, err
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	result, err := tx.ExecContext(ctx, `
+	result, err := executor.ExecContext(ctx, `
 		UPDATE accounts
 		SET extra = COALESCE(extra, '{}'::jsonb) - 'failure_strategy_unscheduled',
 			schedulable = true,
@@ -3101,7 +3148,7 @@ func (r *accountRepository) ClearFailureSchedulingState(ctx context.Context, acc
 		return false, nil
 	}
 
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := executor.ExecContext(ctx, `
 		UPDATE scheduled_test_plans
 		SET enabled = false,
 			next_run_at = NULL,
@@ -3110,14 +3157,15 @@ func (r *accountRepository) ClearFailureSchedulingState(ctx context.Context, acc
 	`, accountID); err != nil {
 		return false, err
 	}
-	if err := enqueueSchedulerOutbox(ctx, tx, service.SchedulerOutboxEventAccountChanged, &accountID, nil, nil); err != nil {
+	if err := enqueueSchedulerOutbox(ctx, executor, service.SchedulerOutboxEventAccountChanged, &accountID, nil, nil); err != nil {
 		return false, err
 	}
-	if err := tx.Commit(); err != nil {
-		return false, err
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return false, err
+		}
+		r.syncSchedulerAccountSnapshot(ctx, accountID)
 	}
-
-	r.syncSchedulerAccountSnapshot(ctx, accountID)
 	return true, nil
 }
 
@@ -4394,6 +4442,9 @@ func (r *accountRepository) RevertProxyFallback(ctx context.Context, accountID i
 // ⚠️ 新增影子维度时：须更新此函数（或新增维度专用列举），并检查所有调用点（级联删除/一母一影校验/type 守卫），否则会静默漏掉新维度。
 // 软删除行由 SoftDeleteMixin 拦截器自动排除，无需手写 deleted_at IS NULL。
 func (r *accountRepository) ListShadowsByParent(ctx context.Context, parentID int64) ([]*service.Account, error) {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.ListShadowsByParent(ctx, parentID)
+	}
 	rows, err := r.client.Account.Query().
 		Where(dbaccount.ParentAccountIDEQ(parentID), dbaccount.QuotaDimensionEQ(dbaccount.QuotaDimensionSpark)).
 		All(ctx)

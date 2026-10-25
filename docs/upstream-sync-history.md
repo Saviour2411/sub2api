@@ -8186,3 +8186,17 @@ M	frontend/src/views/user/__tests__/StripePaymentView.spec.ts
 | candidate | canvas-test / `canvas-test.log` | 0 | `2026-10-16T21:57:36.2075942+08:00` | `pnpm --dir canvas run test` |
 | candidate | canvas-build / `canvas-build.log` | 0 | `2026-10-16T21:59:40.5179838+08:00` | `pnpm --dir canvas run build` |
 | candidate | smoke / `smoke-result.json` | 0 | 见结果JSON | `timeout 600 python3 tmp/upstream-sync-20261016/run-smoke.py candidate` |
+
+## 2026-10-25 固定增量合并：实现记录
+
+- 时间：2026-10-25T18:07:34.4378167+08:00；状态：合并适配已完成，候选验证尚未完成，最终状态以后续追加记录为准。
+- 用户已批准本地合并、适配、验证、提交和最终快进；未授权推送、PR、部署或生产访问。
+- 目标分支 main；LOCAL_PRE_SYNC_SHA：542e8971063826ffb74c2c5b09bbba112202fd68。
+- 上游 Wei-Shaw/sub2api，默认分支 main；UPSTREAM_OLD_SHA：b0a02a3304a0a78cdd003ddda1dd23ba02c03084；UPSTREAM_NEW_SHA：3f1c8f36ce8c2cd378015830a90e89970b9a9ea7；实际 merge-base 等于旧 SHA。
+- 固定范围 48 个提交（28 普通、20 merge）；完整 no-ff merge，逐块处理 17 个冲突文件，不跳过提交；本地覆盖在最终逐提交表中单列。
+- 备份分支 backup/pre-upstream-sync-20261025-170942-542e89710；同步分支 sync/upstream-20261025-3f1c8f36c。
+- 保留本地版本 0.1.259，来源元数据更新为上游 0.2.18；受限管理密钥对未登记二开路由默认拒绝，未扩大权限目录。
+- 适配：首 Token/529/Pool/已输出禁重放、断连部分用量与成功审计、请求模型计价及配额基数、Gemini 生图准入和 countTokens 免费、共享快照字段隔离、受限事务复用及提交后恢复、账号模型目录与本地词典。对应功能台账同提交更新。
+- 新增迁移原文仅 246_enable_gemini_image_generation_groups.sql 与 247_scoped_admin_api_keys.sql；本地 246_model_quality.sql 保持原样，以完整文件名共存；不修改生产迁移门禁。
+- 本轮基线与候选原始日志位于 tmp/upstream-sync-20261025；最终结果将记录所有原始失败和复跑。
+- 此阶段尚未推进完整验证基线；LAST_FULLY_INTEGRATED_UPSTREAM_SHA：b0a02a3304a0a78cdd003ddda1dd23ba02c03084。

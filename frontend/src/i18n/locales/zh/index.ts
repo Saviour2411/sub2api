@@ -1,3 +1,4 @@
+import adminAccessKeys from './adminAccessKeys'
 import landing from './landing'
 import common from './common'
 import dashboard from './dashboard'
@@ -27,6 +28,7 @@ function deepMerge(target: Record<string, unknown>, source: Record<string, unkno
 }
 
 const locale = {
+  adminAccessKeys,
   ...landing,
   ...common,
   ...dashboard,
