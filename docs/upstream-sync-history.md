@@ -8200,3 +8200,9 @@ M	frontend/src/views/user/__tests__/StripePaymentView.spec.ts
 - 新增迁移原文仅 246_enable_gemini_image_generation_groups.sql 与 247_scoped_admin_api_keys.sql；本地 246_model_quality.sql 保持原样，以完整文件名共存；不修改生产迁移门禁。
 - 本轮基线与候选原始日志位于 tmp/upstream-sync-20261025；最终结果将记录所有原始失败和复跑。
 - 此阶段尚未推进完整验证基线；LAST_FULLY_INTEGRATED_UPSTREAM_SHA：b0a02a3304a0a78cdd003ddda1dd23ba02c03084。
+
+### 2026-10-25 候选测试夹具适配
+
+- 合并提交为 `aa85b9e28d644a459af5326c74ea264159e91ca2`。首次定向竞态检查因上游新增测试调用本地扩展后的 `NewAdminService` 缺少参数而编译失败；补齐仓储及路由测试中的本地依赖占位参数，保留全部断言。
+- 仓储受限删除验收夹具补建本地既有上游倍率绑定相关 Ent 表，使删除路径仍执行本地绑定清理与账号锁，不通过绕过本地删除行为让测试通过。
+- 临时保护脚本首次误将新增迁移测试 `.go` 文件计入 SQL 增量；检查对象改为 `.sql`，历史 SQL 不变与新增两条 SQL 的约束不变。原始失败日志保留，复跑结果见最终验证记录。
