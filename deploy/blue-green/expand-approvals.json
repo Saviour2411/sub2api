@@ -2,6 +2,29 @@
   "version": 1,
   "approvals": [
     {
+      "compatible_from": "52c45a51b5f221728c3b7d3d39b83c9f86c81c22",
+      "path": "backend/migrations/246_enable_gemini_image_generation_groups.sql",
+      "checksum": "87267be7ab657173768989e2b0b105c5569c5930a7f1ed124f4cf81e5198297c",
+      "profile": "gemini-scoped-246-247-v1",
+      "legacy_contracts": [
+        {"path": "backend/internal/repository/group_repo.go", "checksum": "528c684ec5b224640c7ddd81afa8484681600ef6bd6dcd87ecd9a77a614bb5e6"},
+        {"path": "backend/internal/handler/gemini_v1beta_handler.go", "checksum": "cdbb9ea9e53051cd2956c976a83ef10baa3a1a036968d65b0fe6e1e2501bee83"}
+      ],
+      "review": "2026-10-26按用户更新tag自动蓝绿部署要求，绑定生产v0.1.259和两条原始SQL。旧Gemini处理器不按该开关拒绝生图，旧分组仓库显式列名读写；原246仅启用gemini/antigravity既有开关，composite及价格不变。两条迁移与账本同一事务，PostgreSQL18、16MiB既有表、固定分组鉴权触发器、NOWAIT和1/5/10秒预算。回退保留开关值，重复启动不重新回填。"
+    },
+    {
+      "compatible_from": "52c45a51b5f221728c3b7d3d39b83c9f86c81c22",
+      "path": "backend/migrations/247_scoped_admin_api_keys.sql",
+      "checksum": "03445774e2dfad32da9e23279193d1bca02953896bc3d3b8a87ba0b36b6ed577",
+      "profile": "gemini-scoped-246-247-v1",
+      "legacy_contracts": [
+        {"path": "backend/internal/repository/user_repo.go", "checksum": "150eba1f273da9416fae30ac8744c5327f52817583e69ba13d2f5171fdadcc1b"},
+        {"path": "backend/ent/schema/user.go", "checksum": "6f454b09374797767de8467e75f1809d73aa88049590ca0102de544249a67ada"},
+        {"path": "backend/ent/schema/mixins/soft_delete.go", "checksum": "e7e731a9a3933f46c56a8025d04ab869ec5a9e607c5e0cd887f5650dba182f59"}
+      ],
+      "review": "2026-10-26固定兼容审查：旧版不访问新管理密钥表，用户正常删除经既有Ent钩子转为软删除，新增创建者外键不影响该流程。拒绝同名表/类型/索引、部分账本和DDL触发器；短事务锁定groups/users/schema_migrations后执行两条原文并核对新表全部字段、默认值、主键、外键、索引、RLS和触发器。失败整体回滚，回退保留新表与密钥记录；旧版不提供新密钥功能。"
+    },
+    {
       "compatible_from": "49e3f64067f5a3340d8e9ae1c561c808206273dd",
       "path": "backend/migrations/246_model_quality.sql",
       "checksum": "1bb3d0dd89a9e48f4c524f306b3c248873581b6a33aa1f37f1e24fc3caab545e",
