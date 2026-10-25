@@ -8637,3 +8637,29 @@ M	frontend/src/views/admin/groupsImagePricing.ts
 ```
 
 </details>
+
+## 2026-10-25 PR #44 合入前安全门禁修复
+
+- 用户追加授权提交代码并在 CI 通过后合入主线。已将同步分支 `sync/upstream-20261025-3f1c8f36c` 的 `028bfcb9f581af3170409a032a38df1fa013bb72` 推送并创建 PR #44；本节记录合入前补丁，不改写先前仅本地执行的历史事实。
+- 本轮上游范围仍为 `b0a02a3304a0a78cdd003ddda1dd23ba02c03084..3f1c8f36ce8c2cd378015830a90e89970b9a9ea7`，未新增上游提交，48 项处置及完整合并关系保持。LAST_FULLY_INTEGRATED_UPSTREAM_SHA：`3f1c8f36ce8c2cd378015830a90e89970b9a9ea7`。
+- 远端首轮 Security Scan `40193542311` 的 `frontend-security` 作业 `121169429246` 在 Canvas 审计失败，前端主应用审计和后端安全扫描通过。失败日志保存在忽略目录 `tmp/upstream-sync-20261025/github-ci/frontend-security-first.log`。
+- 远端首轮 CI `40193542288` 的 8 个作业全部通过，包括前后端测试和构建、两组定向竞态、静态检查、Shell、发布辅助脚本及隔离蓝绿协议验证。依赖补丁仍须接受新提交上的完整复验。
+- 失败公告：DOMPurify 的 `GHSA-cg2g-xh64-v4q7`（critical）和 `GHSA-mrv2-3pqr-j5jr`（high），修复版本均为 3.4.17；follow-redirects 的 `GHSA-q3jh-wrc6-jgq8` 和 `GHSA-8r9p-f939-6h3c`（均为 high），修复版本均为 1.16.1。已通过 GitHub 公告 API 核对受影响范围及首个修复版本。
+- 修复：仅修改 `canvas/package.json` 中的两个定向覆盖及 `canvas/pnpm-lock.yaml` 对应版本、完整性和引用。pnpm 生成锁文件后按该目录原有 Prettier 格式恢复缩进，最终无全文件格式改动，其他包版本未变。同步更新 `CUST-PROD-007`、`CUST-OPS-004` 清单和变更记录；66 个二开编号保留，产品版本仍为 0.1.259。
+
+### 本地补充验证
+
+环境：Windows，Node 20.20.2、pnpm 9.15.9；日志位于 `tmp/upstream-sync-20261025/github-ci/`，全部临时文件与依赖缓存位于工作目录内。
+
+| 命令 | 退出码 | 结果 |
+| --- | --- | --- |
+| `pnpm --dir canvas install --lockfile-only --ignore-scripts` | 0 | 只更新两个指定间接依赖；沿用工作区内 pnpm store。 |
+| `pnpm --dir canvas install --frozen-lockfile --ignore-scripts` | 0 | 冻结锁文件安装通过。 |
+| `pnpm --dir canvas run typecheck` | 0 | 类型检查通过。 |
+| `pnpm --dir canvas run test` | 0 | 8 个文件、34 项测试通过。 |
+| `pnpm --dir canvas run build` | 0 | 构建通过；保留已有大包体积提示。 |
+| `pnpm --dir canvas audit --prod --audit-level=high --json` | 1 | 原始审计仍报告 1 项 low、1 项 moderate，high/critical 均为 0；不将该原始退出码记为成功。 |
+| `python3 tools/check_pnpm_audit_exceptions.py --audit tmp/upstream-sync-20261025/github-ci/canvas-audit.json --exceptions .github/audit-exceptions.yml` | 0 | 通过 WSL 运行仓库原有审计门禁；无新增或延长豁免。 |
+| `git diff --check` | 0 | 补丁空白检查通过。 |
+
+本补丁重新推送后须等待当前提交的 8 项 CI 与 2 项安全检查全部通过，再使用 merge commit 合入 main；最终提交、远端检查和合并结果在 PR #44 与交付答复记录。本节不宣称仍在运行的远端任务已成功，未执行标签发布、生产部署或服务器访问。
