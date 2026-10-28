@@ -50,11 +50,12 @@ func resolveAnthropicValidationModel(account *Account, model string) string {
 		}
 		return model
 	}
-	if account.Type == AccountTypeServiceAccount {
+	switch account.Type {
+	case AccountTypeServiceAccount:
 		if mapped, matched := account.ResolveMappedModel(model); matched {
 			return mapped
 		}
-	} else if account.Type == AccountTypeAPIKey {
+	case AccountTypeAPIKey:
 		if mapped := account.GetMappedModel(model); mapped != model {
 			return mapped
 		}
