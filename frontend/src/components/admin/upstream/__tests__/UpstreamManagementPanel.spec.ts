@@ -353,6 +353,100 @@ describe('UpstreamManagementPanel', () => {
     wrapper.unmount()
   })
 
+  it('New API 令牌认证携带可选的上游用户 ID 并校验格式', async () => {
+    const wrapper = mountPanel()
+    await flushPromises()
+    await wrapper.get('[data-test="upstream-add"]').trigger('click')
+    await wrapper.get('#upstream-name').setValue('New API ID 上游')
+    await wrapper.get('#upstream-url').setValue('https://newapi.example.com')
+    await wrapper.get('#upstream-platform').setValue('newapi')
+    await wrapper.get('#upstream-auth-mode').setValue('token')
+    await wrapper.get('#upstream-access-token').setValue('test-personal-token')
+
+    for (const value of ['0', '-1', '+270', '0270', '2.7', '1e3', 'abc', '9223372036854775808']) {
+      await wrapper.get('#upstream-newapi-user-id').setValue(value)
+      await wrapper.get('[data-test="upstream-form"]').trigger('submit')
+      await flushPromises()
+      expect(api.create).not.toHaveBeenCalled()
+      expect(api.showError).toHaveBeenLastCalledWith('admin.customFeatures.upstream.newAPIUserIDInvalid')
+    }
+
+    await wrapper.get('#upstream-newapi-user-id').setValue(' 270 ')
+    await wrapper.get('[data-test="upstream-form"]').trigger('submit')
+    await flushPromises()
+    expect(api.create).toHaveBeenCalledWith(expect.objectContaining({
+      platform: 'newapi', auth_mode: 'token', newapi_user_id: '270', access_token: 'test-personal-token',
+    }))
+    wrapper.unmount()
+  })
+
+  it.each(['270', ''])('编辑时回填用户 ID 并支持保存为 %s', async (userID) => {
+    api.list.mockResolvedValue(siteListResult(siteFixture({
+      platform: 'newapi', auth_mode: 'token', account: '', has_token: true,
+      has_password: false, newapi_user_id: '270',
+    })))
+    const wrapper = mountPanel()
+    await flushPromises()
+    await wrapper.get('button[title="admin.customFeatures.upstream.edit"]').trigger('click')
+    expect(wrapper.get<HTMLInputElement>('#upstream-newapi-user-id').element.value).toBe('270')
+    expect(wrapper.get<HTMLInputElement>('#upstream-access-token').element.value).toBe('')
+    await wrapper.get('#upstream-newapi-user-id').setValue(userID)
+    await wrapper.get('[data-test="upstream-form"]').trigger('submit')
+    await flushPromises()
+    expect(api.update).toHaveBeenCalledWith(1, expect.objectContaining({
+      newapi_user_id: userID, access_token: '',
+    }))
+    wrapper.unmount()
+  })
+
+  it('切换认证模式或平台时清除上游用户 ID 且不提交给其他模式', async () => {
+    const wrapper = mountPanel()
+    await flushPromises()
+    await wrapper.get('[data-test="upstream-add"]').trigger('click')
+    await wrapper.get('#upstream-name').setValue('测试上游')
+    await wrapper.get('#upstream-url').setValue('https://newapi.example.com')
+    await wrapper.get('#upstream-platform').setValue('newapi')
+    await wrapper.get('#upstream-auth-mode').setValue('token')
+    await wrapper.get('#upstream-newapi-user-id').setValue('270')
+    await wrapper.get('#upstream-auth-mode').setValue('password')
+    expect(wrapper.find('#upstream-newapi-user-id').exists()).toBe(false)
+    await wrapper.get('#upstream-auth-mode').setValue('token')
+    expect(wrapper.get<HTMLInputElement>('#upstream-newapi-user-id').element.value).toBe('')
+    await wrapper.get('#upstream-newapi-user-id').setValue('270')
+    await wrapper.get('#upstream-platform').setValue('sub2api')
+    expect(wrapper.find('#upstream-newapi-user-id').exists()).toBe(false)
+    await wrapper.get('#upstream-access-token').setValue('test-sub2api-token')
+    await wrapper.get('[data-test="upstream-form"]').trigger('submit')
+    await flushPromises()
+    expect(api.create).toHaveBeenCalledWith(expect.objectContaining({
+      platform: 'sub2api', newapi_user_id: undefined,
+    }))
+    wrapper.unmount()
+  })
+
+  it('上游要求用户 ID 时保留令牌和表单并显示明确提示', async () => {
+    api.create.mockRejectedValueOnce({ reason: 'UPSTREAM_NEWAPI_USER_ID_REQUIRED' })
+    const wrapper = mountPanel()
+    await flushPromises()
+    await wrapper.get('[data-test="upstream-add"]').trigger('click')
+    await wrapper.get('#upstream-name').setValue('测试上游')
+    await wrapper.get('#upstream-url').setValue('https://newapi.example.com')
+    await wrapper.get('#upstream-platform').setValue('newapi')
+    await wrapper.get('#upstream-auth-mode').setValue('token')
+    await wrapper.get('#upstream-access-token').setValue('test-personal-token')
+    await wrapper.get('[data-test="upstream-form"]').trigger('submit')
+    await flushPromises()
+    expect(api.showError).toHaveBeenCalledWith('admin.customFeatures.upstream.newAPIUserIDRequired')
+    expect(wrapper.get<HTMLInputElement>('#upstream-access-token').element.value).toBe('test-personal-token')
+    await wrapper.get('#upstream-newapi-user-id').setValue('270')
+    await wrapper.get('[data-test="upstream-form"]').trigger('submit')
+    await flushPromises()
+    expect(api.create).toHaveBeenLastCalledWith(expect.objectContaining({ newapi_user_id: '270' }))
+    expect(wrapper.find('[data-test="upstream-form"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+
   it('检测 Turnstile 后自动切换令牌认证并从登录响应导入令牌', async () => {
     api.probeCapabilities.mockResolvedValue({
       base_url: 'https://walkcoding.top', platform: 'sub2api', turnstile_enabled: true, token_auth_recommended: true,

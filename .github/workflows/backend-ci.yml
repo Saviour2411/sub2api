@@ -15,7 +15,8 @@ permissions:
 
 jobs:
   shell:
-    runs-on: macos-15
+    # 保留 macOS 15 脚本覆盖，避开 ARM64 执行器容量不足导致的排队取消。
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v6
       - name: Check deployment scripts

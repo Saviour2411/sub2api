@@ -622,7 +622,9 @@ export default {
         bodyModeHintReplace: '完全用下方 JSON 作为请求体。注意：此模式下跳过 challenge 校验，改为 HTTP 2xx + 响应文本非空即视为可用。',
         bodyJson: 'Body JSON',
         bodyJsonFormat: '格式化',
-        bodyJsonHint: '失焦时自动解析校验。留空等价于没有覆盖。',
+        bodyJsonHint: '合并模式下，留空或填写空对象均使用默认请求体。灰色示例不会自动填入。',
+        bodyJsonReplaceHint: '覆盖模式需要完整的 JSON 请求体，不能为空。',
+        bodyJsonRequired: '覆盖模式必须填写非空的 JSON 请求体',
         bodyJsonError: 'JSON 解析失败',
         bodyJsonObjectError: '请求体必须是一个 JSON 对象（不能是数组或基本类型）'
       },

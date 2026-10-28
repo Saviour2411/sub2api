@@ -70,7 +70,7 @@ var (
 		"CHANNEL_MONITOR_TEMPLATE_INVALID_BODY_MODE", "body_override_mode must be one of off/merge/replace",
 	)
 	ErrChannelMonitorTemplateBodyRequired = infraerrors.BadRequest(
-		"CHANNEL_MONITOR_TEMPLATE_BODY_REQUIRED", "body_override is required when body_override_mode is merge or replace",
+		"CHANNEL_MONITOR_TEMPLATE_BODY_REQUIRED", "body_override is required when body_override_mode is replace",
 	)
 	ErrChannelMonitorTemplateHeaderForbidden = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_TEMPLATE_HEADER_FORBIDDEN", "header name is forbidden (hop-by-hop or computed by HTTP client)",

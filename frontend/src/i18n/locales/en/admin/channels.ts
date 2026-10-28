@@ -622,7 +622,9 @@ export default {
         bodyModeHintReplace: 'Use the JSON below as the complete body. Challenge validation is skipped; HTTP 2xx + non-empty response text is treated as operational.',
         bodyJson: 'Body JSON',
         bodyJsonFormat: 'Format',
-        bodyJsonHint: 'Parsed on blur. Empty means no override.',
+        bodyJsonHint: 'In Merge mode, blank input or an empty object uses the default body. The placeholder is not submitted.',
+        bodyJsonReplaceHint: 'Replace mode requires a complete, non-empty JSON body.',
+        bodyJsonRequired: 'Replace mode requires a non-empty JSON body',
         bodyJsonError: 'JSON parse failed',
         bodyJsonObjectError: 'Body must be a JSON object (no arrays or primitives)'
       },

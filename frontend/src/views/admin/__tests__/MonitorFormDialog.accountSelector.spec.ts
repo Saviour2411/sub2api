@@ -118,7 +118,6 @@ function mountDialog(monitor: ChannelMonitor | null = null) {
         Toggle: true,
         ModelTagInput: true,
         MonitorKeyPickerDialog: true,
-        MonitorAdvancedRequestConfig: true,
       },
     },
   })

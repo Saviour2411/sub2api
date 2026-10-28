@@ -174,6 +174,7 @@
       </div>
 
       <MonitorAdvancedRequestConfig
+        ref="advancedRequestConfig"
         :provider="form.provider"
         :api-mode="form.api_mode"
         :extra-headers="form.extra_headers"
@@ -317,6 +318,7 @@ interface TemplateForm {
 
 const editing = ref<null | 'new' | number>(null) // null = list view; 'new' = create; <id> = edit
 const submitting = ref(false)
+const advancedRequestConfig = ref<InstanceType<typeof MonitorAdvancedRequestConfig> | null>(null)
 const form = reactive<TemplateForm>(emptyForm(PROVIDER_ANTHROPIC))
 
 function emptyForm(provider: Provider): TemplateForm {
@@ -396,6 +398,7 @@ async function handleSubmit() {
     appStore.showError(t('admin.channelMonitor.template.missingName'))
     return
   }
+  if (advancedRequestConfig.value?.validateBody() === false) return
   submitting.value = true
   try {
     if (editing.value === 'new') {
@@ -406,7 +409,7 @@ async function handleSubmit() {
         description: form.description.trim(),
         extra_headers: form.extra_headers,
         body_override_mode: form.body_override_mode,
-        body_override: form.body_override,
+        body_override: form.body_override ?? {},
         stream_enabled: form.stream_enabled,
       })
       appStore.showSuccess(t('admin.channelMonitor.template.createSuccess'))
@@ -417,7 +420,8 @@ async function handleSubmit() {
         description: form.description.trim(),
         extra_headers: form.extra_headers,
         body_override_mode: form.body_override_mode,
-        body_override: form.body_override,
+        // 更新接口将 null 视为不修改，空对象才会清除旧请求体。
+        body_override: form.body_override ?? {},
         stream_enabled: form.stream_enabled,
       })
       appStore.showSuccess(t('admin.channelMonitor.template.updateSuccess'))

@@ -57,6 +57,9 @@ FRONTEND_CRITICAL_VITEST := \
 	src/components/user/monitor/__tests__/MonitorCardGrid.imageSuccessRate.spec.ts \
 	src/components/user/__tests__/MonitorCard.quota.spec.ts \
 	src/components/admin/monitor/__tests__/MonitorPrimaryModelCell.spec.ts \
+	src/components/admin/monitor/__tests__/MonitorRequestBody.spec.ts \
+	src/views/admin/__tests__/MonitorFormDialog.accountSelector.spec.ts \
+	src/components/admin/upstream/__tests__/UpstreamManagementPanel.spec.ts \
 	src/components/admin/usage/__tests__/UsageTable.spec.ts \
 	src/api/__tests__/balanceQuery.spec.ts \
 	src/api/__tests__/admin.userCustomizations.spec.ts \

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -224,6 +225,9 @@ func (s *UpstreamService) Update(ctx context.Context, id int64, input UpstreamUp
 }
 
 func upstreamValidationError(err error) error {
+	if errors.Is(err, ErrUpstreamNewAPIUserIDRequired) {
+		return ErrUpstreamNewAPIUserIDRequired.WithCause(err)
+	}
 	if errors.Is(err, ErrUpstreamTurnstileRequired) {
 		return ErrUpstreamTurnstileRequired.WithCause(err)
 	}
@@ -436,6 +440,9 @@ func (s *UpstreamService) prepareCreate(input UpstreamCreateInput) (*UpstreamSit
 		Password: strings.TrimSpace(input.Password), AccessToken: strings.TrimSpace(input.AccessToken),
 		RefreshToken: strings.TrimSpace(input.RefreshToken), UserAgent: strings.TrimSpace(input.UserAgent),
 	}
+	if site.Platform == UpstreamPlatformNewAPI && site.AuthMode == UpstreamAuthToken {
+		credential.NewAPIUserID = strings.TrimSpace(input.NewAPIUserID)
+	}
 	sanitizeNewAPIPersonalAccessTokenCredential(site, &credential)
 	if err := s.validateSite(site, credential); err != nil {
 		return nil, UpstreamCredential{}, err
@@ -466,6 +473,12 @@ func (s *UpstreamService) validateSite(site *UpstreamSite, credential UpstreamCr
 		if site.Platform == UpstreamPlatformNewAPI {
 			if credential.AccessToken == "" {
 				return ErrUpstreamInvalidInput.WithCause(fmt.Errorf("new API 令牌认证必须填写个人访问令牌"))
+			}
+			if credential.NewAPIUserID != "" {
+				id, err := strconv.ParseInt(credential.NewAPIUserID, 10, 64)
+				if err != nil || id <= 0 || strconv.FormatInt(id, 10) != credential.NewAPIUserID {
+					return ErrUpstreamInvalidInput.WithCause(fmt.Errorf("上游用户 ID 必须是有效的正整数"))
+				}
 			}
 		} else if credential.AccessToken == "" && credential.RefreshToken == "" {
 			return ErrUpstreamInvalidInput.WithCause(fmt.Errorf("令牌认证必须填写访问令牌或刷新令牌"))
@@ -534,6 +547,10 @@ func mergeUpstreamUpdate(site *UpstreamSite, credential *UpstreamCredential, inp
 		}
 		credential.AccessToken = nextAccessToken
 		changed = true
+	}
+	// 显式 ID 在令牌或站点变化清理旧会话后应用，避免丢失本次提交的身份。
+	if site.Platform == UpstreamPlatformNewAPI && site.AuthMode == UpstreamAuthToken && input.NewAPIUserID != nil {
+		apply(&credential.NewAPIUserID, input.NewAPIUserID, trim)
 	}
 	if input.RefreshToken != nil && strings.TrimSpace(*input.RefreshToken) != "" {
 		credential.RefreshToken = strings.TrimSpace(*input.RefreshToken)
@@ -607,6 +624,9 @@ func (s *UpstreamService) toView(site *UpstreamSite) UpstreamSiteView {
 		view.HasPassword = site.AuthMode == UpstreamAuthPassword && credential.Password != ""
 		view.HasToken = site.AuthMode == UpstreamAuthToken && (credential.AccessToken != "" ||
 			(site.Platform != UpstreamPlatformNewAPI && credential.RefreshToken != ""))
+		if site.Platform == UpstreamPlatformNewAPI && site.AuthMode == UpstreamAuthToken {
+			view.NewAPIUserID = credential.NewAPIUserID
+		}
 	}
 	return view
 }

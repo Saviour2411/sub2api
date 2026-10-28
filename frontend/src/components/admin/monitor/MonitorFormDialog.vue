@@ -189,6 +189,7 @@
           </div>
 
           <MonitorAdvancedRequestConfig
+            ref="advancedRequestConfig"
             :provider="form.provider"
             :api-mode="form.api_mode"
             :extra-headers="form.extra_headers"
@@ -313,6 +314,7 @@ const systemDefaultInterval = computed<number>(() => {
 const editing = computed<ChannelMonitor | null>(() => props.monitor)
 
 const submitting = ref(false)
+const advancedRequestConfig = ref<InstanceType<typeof MonitorAdvancedRequestConfig> | null>(null)
 
 // API key picker
 const showKeyPicker = ref(false)
@@ -841,7 +843,8 @@ function buildPayload(): CreateParams {
     template_id: usesProbePart.value ? form.template_id : null,
     extra_headers: form.extra_headers,
     body_override_mode: form.body_override_mode,
-    body_override: form.body_override,
+    // 更新接口将 null 视为不修改，空对象才会清除旧请求体。
+    body_override: form.body_override ?? {},
     stream_enabled: form.stream_enabled,
   }
 }
@@ -860,6 +863,7 @@ async function handleSubmit() {
     appStore.showError(t('admin.channelMonitor.primaryModelRequired'))
     return
   }
+  if (usesProbePart.value && advancedRequestConfig.value?.validateBody() === false) return
 
   submitting.value = true
   try {

@@ -388,6 +388,10 @@
             <input id="upstream-access-token" v-model="form.access_token" class="input" type="password" autocomplete="off" :placeholder="editingSite?.auth_mode === 'token' && editingSite.has_token ? t('admin.customFeatures.upstream.keepCredential') : ''" />
             <p v-if="form.platform === 'newapi'" class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.customFeatures.upstream.newAPIAccessTokenHint') }}</p>
           </div>
+          <div v-if="form.platform === 'newapi'">
+            <label for="upstream-newapi-user-id" class="input-label">{{ t('admin.customFeatures.upstream.newAPIUserID') }}</label>
+            <input id="upstream-newapi-user-id" v-model.trim="form.newapi_user_id" class="input" type="text" inputmode="numeric" pattern="[1-9][0-9]*" maxlength="19" autocomplete="off" />
+          </div>
           <div v-if="form.platform === 'sub2api'">
             <label for="upstream-refresh-token" class="input-label">{{ t('admin.customFeatures.upstream.refreshToken') }}</label>
             <input id="upstream-refresh-token" v-model="form.refresh_token" class="input" type="password" autocomplete="off" :placeholder="editingSite?.auth_mode === 'token' && editingSite.has_token ? t('admin.customFeatures.upstream.keepCredential') : ''" />
@@ -664,7 +668,7 @@ function currentBrowserUserAgent() {
 
 const form = reactive<UpstreamWritePayload>({
   name: '', base_url: '', platform: 'sub2api', auth_mode: 'password', account: '',
-  password: '', access_token: '', refresh_token: '', user_agent: currentBrowserUserAgent(), enabled: true
+  password: '', access_token: '', newapi_user_id: '', refresh_token: '', user_agent: currentBrowserUserAgent(), enabled: true
 })
 
 const turnstileDetected = computed(() => (
@@ -972,14 +976,14 @@ async function saveSortOrder() {
 
 function resetForm() {
   resetCapabilityProbe()
-  Object.assign(form, { name: '', base_url: '', platform: 'sub2api', auth_mode: 'password', account: '', password: '', access_token: '', refresh_token: '', user_agent: currentBrowserUserAgent(), enabled: true })
+  Object.assign(form, { name: '', base_url: '', platform: 'sub2api', auth_mode: 'password', account: '', password: '', access_token: '', newapi_user_id: '', refresh_token: '', user_agent: currentBrowserUserAgent(), enabled: true })
 }
 
 function openCreate() { editingSite.value = null; resetForm(); formOpen.value = true }
 function openEdit(site: UpstreamSite) {
   resetCapabilityProbe()
   editingSite.value = site
-  Object.assign(form, { name: site.name, base_url: site.base_url, platform: site.platform, auth_mode: site.auth_mode, account: site.account, password: '', access_token: '', refresh_token: '', user_agent: '', enabled: site.enabled })
+  Object.assign(form, { name: site.name, base_url: site.base_url, platform: site.platform, auth_mode: site.auth_mode, account: site.account, password: '', access_token: '', newapi_user_id: site.newapi_user_id || '', refresh_token: '', user_agent: '', enabled: site.enabled })
   formOpen.value = true
   void probeSiteCapabilities()
 }
@@ -990,6 +994,7 @@ function closeForm() {
 }
 function handlePlatformChange() {
   resetCapabilityProbe()
+  form.newapi_user_id = ''
   if (form.platform === 'newapi') {
     form.refresh_token = ''
     form.user_agent = ''
@@ -999,6 +1004,7 @@ function handlePlatformChange() {
   void probeSiteCapabilities()
 }
 function handleAuthModeChange() {
+  form.newapi_user_id = ''
   if (turnstileDetected.value && form.auth_mode === 'password') form.auth_mode = 'token'
   if (form.auth_mode === 'token' && form.platform === 'sub2api' && !form.user_agent?.trim()) {
     form.user_agent = currentBrowserUserAgent()
@@ -1136,6 +1142,11 @@ async function submitForm() {
       return
     }
   }
+  const newAPIUserID = form.platform === 'newapi' && form.auth_mode === 'token' ? (form.newapi_user_id || '').trim() : undefined
+  if (newAPIUserID && (!/^[1-9][0-9]{0,18}$/.test(newAPIUserID) || (newAPIUserID.length === 19 && newAPIUserID > '9223372036854775807'))) {
+    appStore.showError(t('admin.customFeatures.upstream.newAPIUserIDInvalid'))
+    return
+  }
   saving.value = true
   try {
     const payload: UpstreamWritePayload = {
@@ -1145,6 +1156,7 @@ async function submitForm() {
       account: form.auth_mode === 'password' ? form.account.trim() : '',
       password: form.auth_mode === 'password' ? form.password?.trim() : undefined,
       access_token: form.auth_mode === 'token' ? form.access_token?.trim() : undefined,
+      newapi_user_id: newAPIUserID,
       refresh_token: form.auth_mode === 'token' && form.platform === 'sub2api' ? form.refresh_token?.trim() : undefined,
       user_agent: form.auth_mode === 'token' && form.platform === 'sub2api' ? form.user_agent?.trim() : undefined,
     }
@@ -1157,6 +1169,10 @@ async function submitForm() {
     if (extractApiErrorCode(error) === 'UPSTREAM_TURNSTILE_REQUIRED') {
       markTurnstileDetected(form.base_url)
       appStore.showError(t('admin.customFeatures.upstream.turnstileRequiresToken'))
+      return
+    }
+    if (extractApiErrorCode(error) === 'UPSTREAM_NEWAPI_USER_ID_REQUIRED') {
+      appStore.showError(t('admin.customFeatures.upstream.newAPIUserIDRequired'))
       return
     }
     appStore.showError(extractApiErrorMessage(error, t('admin.customFeatures.upstream.saveFailed')))
