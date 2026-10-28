@@ -228,12 +228,12 @@ func validateBodyModeForProtocol(provider, apiMode, mode string, body map[string
 	return nil
 }
 
-// validateBodyModeParams 校验 body_override_mode 合法，且 merge/replace 模式下 body_override 非空。
+// validateBodyModeParams 允许合并模式使用默认请求体，覆盖模式必须提供非空请求体。
 func validateBodyModeParams(mode string, body map[string]any) error {
 	switch mode {
-	case "", MonitorBodyOverrideModeOff:
+	case "", MonitorBodyOverrideModeOff, MonitorBodyOverrideModeMerge:
 		return nil
-	case MonitorBodyOverrideModeMerge, MonitorBodyOverrideModeReplace:
+	case MonitorBodyOverrideModeReplace:
 		if len(body) == 0 {
 			return ErrChannelMonitorTemplateBodyRequired
 		}

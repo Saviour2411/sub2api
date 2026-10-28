@@ -28,6 +28,7 @@ export interface UpstreamSite {
   updated_at: string
   has_password: boolean
   has_token: boolean
+  newapi_user_id?: string
   displayed_group_count: number
   binding_count: number
 }
@@ -106,6 +107,7 @@ export interface UpstreamWritePayload {
   account: string
   password?: string
   access_token?: string
+  newapi_user_id?: string
   refresh_token?: string
   user_agent?: string
   enabled: boolean

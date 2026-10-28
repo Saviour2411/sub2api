@@ -105,7 +105,9 @@
       />
       <p v-if="bodyError" class="mt-1 text-xs text-red-500">{{ bodyError }}</p>
       <p v-else class="mt-1 text-xs text-gray-400">
-        {{ t('admin.channelMonitor.advanced.bodyJsonHint') }}
+        {{ t(bodyOverrideMode === 'replace'
+          ? 'admin.channelMonitor.advanced.bodyJsonReplaceHint'
+          : 'admin.channelMonitor.advanced.bodyJsonHint') }}
       </p>
     </div>
   </div>
@@ -228,50 +230,53 @@ watch(
   },
 )
 
-function commitBody() {
+watch(() => props.bodyOverrideMode, () => { bodyError.value = '' })
+
+function commitBody(): boolean {
   if (props.bodyOverrideMode === 'off') {
-    return
+    bodyError.value = ''
+    return true
   }
   const trimmed = bodyText.value.trim()
   if (trimmed === '') {
+    if (props.bodyOverrideMode === 'replace') {
+      bodyError.value = t('admin.channelMonitor.advanced.bodyJsonRequired')
+      return false
+    }
     emit('update:bodyOverride', null)
     bodyError.value = ''
-    return
+    return true
   }
   try {
     const parsed = JSON.parse(trimmed)
     if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
       bodyError.value = t('admin.channelMonitor.advanced.bodyJsonObjectError')
-      return
+      return false
+    }
+    if (props.bodyOverrideMode === 'replace' && Object.keys(parsed).length === 0) {
+      bodyError.value = t('admin.channelMonitor.advanced.bodyJsonRequired')
+      return false
     }
     emit('update:bodyOverride', parsed as Record<string, unknown>)
     bodyError.value = ''
+    return true
   } catch (e) {
     bodyError.value =
       t('admin.channelMonitor.advanced.bodyJsonError') +
       ': ' +
       (e instanceof Error ? e.message : String(e))
+    return false
   }
 }
 
 function formatBody() {
-  const trimmed = bodyText.value.trim()
-  if (trimmed === '') return
-  try {
-    const parsed = JSON.parse(trimmed)
-    bodyText.value = JSON.stringify(parsed, null, 2)
-    bodyError.value = ''
-    // 同步把校验过的对象提交，避免格式化后焦点未移走时父组件读到旧值
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      emit('update:bodyOverride', parsed as Record<string, unknown>)
-    }
-  } catch (e) {
-    bodyError.value =
-      t('admin.channelMonitor.advanced.bodyJsonError') +
-      ': ' +
-      (e instanceof Error ? e.message : String(e))
+  if (commitBody() && bodyText.value.trim()) {
+    bodyText.value = JSON.stringify(JSON.parse(bodyText.value), null, 2)
   }
 }
+
+// 提交时主动解析当前输入，避免未失焦或校验失败时保存旧值。
+defineExpose({ validateBody: commitBody })
 
 function serializeBody(body: Record<string, unknown> | null): string {
   if (!body || Object.keys(body).length === 0) return ''
@@ -282,6 +287,7 @@ function updateBodyMode(mode: BodyOverrideMode) {
   emit('update:bodyOverrideMode', mode)
   // 切换到 off 时清掉 body（提示用户）
   if (mode === 'off') {
+    bodyText.value = ''
     emit('update:bodyOverride', null)
   }
 }

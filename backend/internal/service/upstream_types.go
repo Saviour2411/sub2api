@@ -33,6 +33,9 @@ var (
 	ErrUpstreamConnectionFailed = infraerrors.BadRequest(
 		"UPSTREAM_CONNECTION_FAILED", "无法连接或认证上游站点",
 	)
+	ErrUpstreamNewAPIUserIDRequired = infraerrors.BadRequest(
+		"UPSTREAM_NEWAPI_USER_ID_REQUIRED", "该 New API 站点要求上游用户 ID，请填写后重试",
+	)
 	ErrUpstreamTurnstileRequired = infraerrors.BadRequest(
 		"UPSTREAM_TURNSTILE_REQUIRED", "目标站点开启了 Cloudflare Turnstile，请使用访问令牌认证",
 	).WithMetadata(map[string]string{"recommended_auth_mode": UpstreamAuthToken})
@@ -123,6 +126,7 @@ type UpstreamSiteView struct {
 	UpdatedAt             time.Time  `json:"updated_at"`
 	HasPassword           bool       `json:"has_password"`
 	HasToken              bool       `json:"has_token"`
+	NewAPIUserID          string     `json:"newapi_user_id,omitempty"`
 	DisplayedGroupCount   int        `json:"displayed_group_count"`
 	BindingCount          int        `json:"binding_count"`
 }
@@ -163,13 +167,14 @@ type UpstreamCreateInput struct {
 	Account      string `json:"account"`
 	Password     string `json:"password"`
 	AccessToken  string `json:"access_token"`
+	NewAPIUserID string `json:"newapi_user_id"`
 	RefreshToken string `json:"refresh_token"`
 	UserAgent    string `json:"user_agent"`
 	Enabled      bool   `json:"enabled"`
 	CreatedBy    int64  `json:"-"`
 }
 
-// UpstreamUpdateInput 使用指针区分未提交字段；凭证空字符串表示保留旧值。
+// UpstreamUpdateInput 使用指针区分未提交字段；凭证空字符串保留旧值，用户 ID 空字符串表示清除。
 type UpstreamUpdateInput struct {
 	Name         *string `json:"name"`
 	BaseURL      *string `json:"base_url"`
@@ -178,6 +183,7 @@ type UpstreamUpdateInput struct {
 	Account      *string `json:"account"`
 	Password     *string `json:"password"`
 	AccessToken  *string `json:"access_token"`
+	NewAPIUserID *string `json:"newapi_user_id"`
 	RefreshToken *string `json:"refresh_token"`
 	UserAgent    *string `json:"user_agent"`
 	Enabled      *bool   `json:"enabled"`

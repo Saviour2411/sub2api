@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -219,6 +220,12 @@ func (p *newAPIUpstreamProvider) loadAuthState(ctx context.Context, site *Upstre
 	state := &newAPIAuthState{credential: credential, headers: headers}
 	self, _, err := p.http.doJSON(ctx, http.MethodGet, site.BaseURL, "/api/user/self", headers, credential.Cookie, nil)
 	if err != nil {
+		var statusErr *upstreamHTTPStatusError
+		if site.AuthMode == UpstreamAuthToken && credential.NewAPIUserID == "" &&
+			errors.As(err, &statusErr) && statusErr.StatusCode == http.StatusUnauthorized &&
+			strings.Contains(strings.ToLower(statusErr.Message), "new-api-user header not provided") {
+			return state, ErrUpstreamNewAPIUserIDRequired.WithCause(err)
+		}
 		return state, fmt.Errorf("读取 New API 账号信息: %w", err)
 	}
 	if userID := stringValue(valueByKeys(apiData(self), "id", "user_id")); userID != "" {

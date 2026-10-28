@@ -20,8 +20,8 @@
         :data-provider="group.provider"
       >
         <header class="monitor-platform-heading">
-          <ProviderIcon :provider="group.provider" :size="18" />
-          <h2>{{ providerLabel(group.provider) }}</h2>
+          <ProviderIcon :provider="group.provider" :size="18" :class="group.colorClass" />
+          <h2 :class="group.colorClass">{{ providerLabel(group.provider) }}</h2>
           <span class="monitor-platform-rule"></span>
         </header>
         <div class="monitor-platform-grid">
@@ -67,6 +67,7 @@ import type {
 } from '@/api/channelMonitor'
 import { PROVIDERS } from '@/constants/channelMonitor'
 import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
+import { platformTextClass } from '@/utils/platformColors'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ProviderIcon from './ProviderIcon.vue'
@@ -103,7 +104,11 @@ const platformGroups = computed(() => {
   ]
   return order
     .filter((provider) => grouped.has(provider))
-    .map((provider) => ({ provider, items: grouped.get(provider)! }))
+    .map((provider) => ({
+      provider,
+      items: grouped.get(provider)!,
+      colorClass: PROVIDERS.some((p) => p === provider) ? platformTextClass(provider) : ''
+    }))
 })
 function resolveAvailability(item: UserMonitorView): number | null {
   if (props.window === '7d') return item.availability_7d ?? null
