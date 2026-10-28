@@ -47,7 +47,7 @@ class WorkflowUsagePolicyTests(unittest.TestCase):
             "shell", "test", "stream-race", "frontend", "golangci-lint",
             "lifecycle-race", "bluegreen-protocol", "release-helpers",
         })
-        self.assertEqual(ci["jobs"]["shell"]["runs-on"], "macos-15")
+        self.assertEqual(ci["jobs"]["shell"]["runs-on"], "macos-15-intel")
         self.assertEqual(set(load_workflow("security-scan.yml")["jobs"]), {
             "backend-security", "frontend-security",
         })
