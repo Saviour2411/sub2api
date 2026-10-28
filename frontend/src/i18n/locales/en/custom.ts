@@ -421,8 +421,13 @@ export default {
         },
         anthropicSamplingParameterFilter: {
           title: 'Anthropic Sampling Parameter Filter',
-          description: 'Remove temperature, top_k and top_p from REST Messages bodies after the final upstream model matches. Exact model IDs and trailing wildcards are supported.',
+          description: 'Remove temperature, top_k and top_p before model validation for matching upstream models, including Messages, token counting and Responses/Chat conversion. Exact model IDs and trailing wildcards are supported.',
           enabled: 'Enable filter',
+          excludedGroups: 'Anthropic groups excluded from this feature',
+          inactive: 'Inactive group',
+          skipThinking: 'Skip thinking model restrictions',
+          skipToolChoice: 'Skip tool_choice model restrictions',
+          validationHint: 'Independent options apply only when this feature is enabled, the model matches and the group is not excluded. Fields are preserved; format and upstream validation still apply.',
         },
         kimiCompatibility: {
           title: 'Kimi Parameter Compatibility Retries',

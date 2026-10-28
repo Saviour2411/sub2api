@@ -13,6 +13,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/tidwall/gjson"
@@ -576,44 +577,50 @@ func isClaude55SignedThinkingModel(model string) bool {
 // validateClaude55Request rejects settings that the upstream cannot honor.
 // Call before OAuth mimicry can remove tool_choice or alter thinking defaults.
 func validateClaude55Request(body []byte, model string) error {
+	return validateClaude55RequestWithOptions(body, model, apicompat.AnthropicModelValidationOptions{})
+}
+
+func validateClaude55RequestWithOptions(body []byte, model string, options apicompat.AnthropicModelValidationOptions) error {
 	if !isClaude55SignedThinkingModel(model) {
 		return nil
 	}
 	isSonnet55 := claude.IsSonnet55(model)
 	isHaiku55 := claude.IsHaiku55(model)
-	thinkingType := gjson.GetBytes(body, "thinking.type").String()
-	switch thinkingType {
-	case "disabled", "enabled":
-		if isHaiku55 {
-			// haiku-5-5：enabled 一律 400（用 adaptive）；disabled 仅 high 及以下
-			// 可用，xhigh/max 上 400。见官方 migration guide。
-			if thinkingType == "enabled" {
-				return fmt.Errorf("claude-haiku-5-5 requires adaptive thinking; omit thinking or use thinking.type=adaptive and output_config.effort")
-			}
-			switch gjson.GetBytes(body, "output_config.effort").String() {
-			case "xhigh", "max":
-				return fmt.Errorf("claude-haiku-5-5 thinking.type=disabled supports only low, medium or high effort")
-			}
-			break
-		}
-		if isSonnet55 {
-			return fmt.Errorf("claude-sonnet-5-5 requires adaptive thinking or thinking.type=between_tools; omit thinking or use one of those modes")
-		}
-		return fmt.Errorf("claude-opus-5-5 requires adaptive thinking; omit thinking or use thinking.type=adaptive and output_config.effort")
-	case "between_tools":
-		if !isSonnet55 {
+	if !options.SkipThinkingValidation {
+		thinkingType := gjson.GetBytes(body, "thinking.type").String()
+		switch thinkingType {
+		case "disabled", "enabled":
 			if isHaiku55 {
-				return fmt.Errorf("claude-haiku-5-5 requires adaptive thinking; thinking.type=between_tools is unsupported (use thinking.type=disabled at high effort or below)")
+				// haiku-5-5：enabled 一律 400（用 adaptive）；disabled 仅 high 及以下
+				// 可用，xhigh/max 上 400。见官方 migration guide。
+				if thinkingType == "enabled" {
+					return fmt.Errorf("claude-haiku-5-5 requires adaptive thinking; omit thinking or use thinking.type=adaptive and output_config.effort")
+				}
+				switch gjson.GetBytes(body, "output_config.effort").String() {
+				case "xhigh", "max":
+					return fmt.Errorf("claude-haiku-5-5 thinking.type=disabled supports only low, medium or high effort")
+				}
+				break
 			}
-			return fmt.Errorf("claude-opus-5-5 requires adaptive thinking; thinking.type=between_tools is unsupported")
-		}
-		effort := gjson.GetBytes(body, "output_config.effort").String()
-		if effort == "xhigh" || effort == "max" {
-			return fmt.Errorf("claude-sonnet-5-5 thinking.type=between_tools supports only low, medium or high effort")
-		}
-		for _, field := range []string{"thinking.display", "thinking.budget_tokens", "thinking.block_binding"} {
-			if gjson.GetBytes(body, field).Exists() {
-				return fmt.Errorf("claude-sonnet-5-5 thinking.type=between_tools does not support %s", field)
+			if isSonnet55 {
+				return fmt.Errorf("claude-sonnet-5-5 requires adaptive thinking or thinking.type=between_tools; omit thinking or use one of those modes")
+			}
+			return fmt.Errorf("claude-opus-5-5 requires adaptive thinking; omit thinking or use thinking.type=adaptive and output_config.effort")
+		case "between_tools":
+			if !isSonnet55 {
+				if isHaiku55 {
+					return fmt.Errorf("claude-haiku-5-5 requires adaptive thinking; thinking.type=between_tools is unsupported (use thinking.type=disabled at high effort or below)")
+				}
+				return fmt.Errorf("claude-opus-5-5 requires adaptive thinking; thinking.type=between_tools is unsupported")
+			}
+			effort := gjson.GetBytes(body, "output_config.effort").String()
+			if effort == "xhigh" || effort == "max" {
+				return fmt.Errorf("claude-sonnet-5-5 thinking.type=between_tools supports only low, medium or high effort")
+			}
+			for _, field := range []string{"thinking.display", "thinking.budget_tokens", "thinking.block_binding"} {
+				if gjson.GetBytes(body, field).Exists() {
+					return fmt.Errorf("claude-sonnet-5-5 thinking.type=between_tools does not support %s", field)
+				}
 			}
 		}
 	}
@@ -626,7 +633,7 @@ func validateClaude55Request(body []byte, model string) error {
 	}
 	// haiku-5-5 接受强制 tool_choice（响应以 tool call 开头、无 thinking 块），
 	// 与 opus/sonnet-5-5 不同，不拦截。见官方 migration guide。
-	if !isHaiku55 {
+	if !isHaiku55 && !options.SkipToolChoiceValidation {
 		if gjson.GetBytes(body, "tool_choice").String() == "required" {
 			return fmt.Errorf("%s does not support forced tool_choice; use auto or none", modelName)
 		}

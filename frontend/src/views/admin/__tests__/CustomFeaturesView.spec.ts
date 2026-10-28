@@ -37,7 +37,7 @@ vi.mock('@/api/admin/customFeatures', () => ({
 
 vi.mock('@/api/admin/groups', () => ({
   default: {
-    getAll: getGroups,
+    getAllIncludingInactive: getGroups,
   },
 }))
 
@@ -146,6 +146,9 @@ function settingsFixture(): CustomFeatureSettings {
       anthropic_claude_code_mimicry_enabled: false,
       anthropic_sampling_parameter_filter_enabled: false,
       anthropic_sampling_parameter_filter_models: [],
+      anthropic_sampling_parameter_filter_excluded_group_ids: [],
+      anthropic_sampling_parameter_filter_skip_thinking_validation: false,
+      anthropic_sampling_parameter_filter_skip_tool_choice_validation: false,
       kimi_sampling_parameter_retry_enabled: false,
       kimi_reasoning_effort_retry_enabled: false,
       kimi_tool_choice_retry_enabled: false,
@@ -174,6 +177,46 @@ function mountView() {
 }
 
 describe('admin CustomFeaturesView', () => {
+  it('采样过滤仅列出 Anthropic 分组并保留独立校验开关和失效选择', async () => {
+    const settings = settingsFixture()
+    Object.assign(settings.gateway, {
+      anthropic_sampling_parameter_filter_enabled: true,
+      anthropic_sampling_parameter_filter_models: ['claude-sonnet-5-5'],
+      anthropic_sampling_parameter_filter_excluded_group_ids: [999],
+    })
+    getSettings.mockResolvedValue(settings)
+    getGroups.mockResolvedValue([
+      { id: 1, name: '其他平台', platform: 'openai', status: 'active' },
+      { id: 2, name: 'Anthropic 正常组', platform: 'anthropic', status: 'active' },
+      { id: 3, name: 'Anthropic 停用组', platform: 'anthropic', status: 'inactive' },
+    ])
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="custom-feature-tab-gateway"]').trigger('click')
+    expect(wrapper.find('[data-test="sampling-filter-excluded-group-1"]').exists()).toBe(false)
+    expect(wrapper.get<HTMLInputElement>('[data-test="sampling-filter-excluded-group-999"]').element.checked).toBe(true)
+    await wrapper.get('[data-test="sampling-filter-excluded-group-3"]').setValue(true)
+    await wrapper.get('[data-test="sampling-filter-skip-thinking"]').trigger('click')
+    await wrapper.get('[data-test="gateway-anthropic-sampling-parameter-filter-enabled"]').trigger('click')
+    expect(wrapper.find('[data-test="sampling-filter-skip-thinking"]').exists()).toBe(false)
+    await wrapper.get('[data-test="gateway-form"]').trigger('submit')
+    await flushPromises()
+    expect(updateGateway).toHaveBeenCalledWith(expect.objectContaining({
+      anthropic_sampling_parameter_filter_enabled: false,
+      anthropic_sampling_parameter_filter_excluded_group_ids: [999, 3],
+      anthropic_sampling_parameter_filter_skip_thinking_validation: true,
+      anthropic_sampling_parameter_filter_skip_tool_choice_validation: false,
+    }))
+    await wrapper.get('[data-test="gateway-anthropic-sampling-parameter-filter-enabled"]').trigger('click')
+    await wrapper.get('[data-test="sampling-filter-skip-tool-choice"]').trigger('click')
+    await wrapper.get('[data-test="gateway-form"]').trigger('submit')
+    await flushPromises()
+    expect(updateGateway).toHaveBeenLastCalledWith(expect.objectContaining({
+      anthropic_sampling_parameter_filter_skip_thinking_validation: true,
+      anthropic_sampling_parameter_filter_skip_tool_choice_validation: true,
+    }))
+  })
+
   beforeEach(() => {
     getSettings.mockReset()
     updateModelMarketplace.mockReset()
@@ -275,6 +318,9 @@ describe('admin CustomFeaturesView', () => {
       anthropic_claude_code_mimicry_enabled: true,
       anthropic_sampling_parameter_filter_enabled: true,
       anthropic_sampling_parameter_filter_models: ['claude-opus-*'],
+      anthropic_sampling_parameter_filter_excluded_group_ids: [],
+      anthropic_sampling_parameter_filter_skip_thinking_validation: false,
+      anthropic_sampling_parameter_filter_skip_tool_choice_validation: false,
       kimi_sampling_parameter_retry_enabled: false,
       kimi_reasoning_effort_retry_enabled: false,
       kimi_tool_choice_retry_enabled: false,

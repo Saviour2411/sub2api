@@ -421,8 +421,13 @@ export default {
         },
         anthropicSamplingParameterFilter: {
           title: 'Anthropic 采样参数过滤',
-          description: '命中最终上游模型后，从 REST Messages 请求体中删除 temperature、top_k 和 top_p。支持精确模型 ID 与末尾通配符。',
+          description: '命中最终上游模型后，在模型校验前删除 temperature、top_k 和 top_p，覆盖 Messages、令牌计数及 Responses/Chat 转换。支持精确模型 ID 与末尾通配符。',
           enabled: '启用过滤',
+          excludedGroups: '停用此功能的 Anthropic 分组',
+          inactive: '分组已停用',
+          skipThinking: '跳过 thinking 模型限制校验',
+          skipToolChoice: '跳过 tool_choice 模型限制校验',
+          validationHint: '两个选项独立生效，仅适用于功能开启且模型命中的非停用分组；不会删除对应字段，格式校验和上游校验仍然有效。',
         },
         kimiCompatibility: {
           title: 'Kimi 参数兼容重试',

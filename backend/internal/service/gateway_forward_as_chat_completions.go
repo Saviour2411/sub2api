@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
@@ -38,6 +37,11 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	}
 	startTime := time.Now()
 
+	mappedModel := resolveAnthropicValidationModel(account, gjson.GetBytes(body, "model").String())
+	ctx, body, validationOptions, err := s.prepareAnthropicSamplingRequest(ctx, account, body, mappedModel)
+	if err != nil {
+		return nil, err
+	}
 	// 1. Parse Chat Completions request
 	var ccReq apicompat.ChatCompletionsRequest
 	if err := json.Unmarshal(body, &ccReq); err != nil {
@@ -52,28 +56,12 @@ func (s *GatewayService) ForwardAsChatCompletions(
 		return nil, fmt.Errorf("convert chat completions to responses: %w", err)
 	}
 
-	// Resolve the final upstream model before model-specific conversion.
-	mappedModel := originalModel
-	if account.Type == AccountTypeAPIKey || account.Type == AccountTypeServiceAccount {
-		mappedModel = account.GetMappedModel(originalModel)
-	}
-	if mappedModel == originalModel && account.Platform == PlatformAnthropic && account.Type == AccountTypeServiceAccount {
-		normalized := normalizeVertexAnthropicModelID(claude.NormalizeModelID(originalModel))
-		if normalized != originalModel {
-			mappedModel = normalized
-		}
-	} else if mappedModel == originalModel && account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey {
-		normalized := claude.NormalizeModelID(originalModel)
-		if normalized != originalModel {
-			mappedModel = normalized
-		}
-	}
-	if err := validateClaude55Request(body, mappedModel); err != nil {
+	if err := validateClaude55RequestWithOptions(body, mappedModel, validationOptions); err != nil {
 		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, err
 	}
 	responsesReq.Model = mappedModel
-	anthropicReq, err := apicompat.ResponsesToAnthropicRequest(responsesReq)
+	anthropicReq, err := apicompat.ResponsesToAnthropicRequestWithOptions(responsesReq, validationOptions)
 	if err != nil {
 		if isClaude55SignedThinkingModel(mappedModel) {
 			writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())

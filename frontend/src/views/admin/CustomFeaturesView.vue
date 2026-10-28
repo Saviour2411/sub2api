@@ -268,6 +268,46 @@
                 v-model="gateway.anthropic_sampling_parameter_filter_models"
                 platform="anthropic"
               />
+              <div class="mt-5">
+                <p class="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.customFeatures.gateway.anthropicSamplingParameterFilter.excludedGroups') }}
+                </p>
+                <div class="grid gap-3 sm:grid-cols-2">
+                  <label v-for="group in samplingFilterGroupOptions" :key="group.id" class="flex min-w-0 items-start gap-2 text-sm">
+                    <input
+                      v-model="gateway.anthropic_sampling_parameter_filter_excluded_group_ids"
+                      type="checkbox"
+                      :value="group.id"
+                      :data-test="`sampling-filter-excluded-group-${group.id}`"
+                      class="checkbox mt-0.5"
+                    >
+                    <span class="min-w-0 break-words">{{ group.name }}</span>
+                  </label>
+                </div>
+              </div>
+              <div class="mt-5 flex items-center justify-between gap-4">
+                <span id="sampling-skip-thinking-label" class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.customFeatures.gateway.anthropicSamplingParameterFilter.skipThinking') }}
+                </span>
+                <Toggle
+                  v-model="gateway.anthropic_sampling_parameter_filter_skip_thinking_validation"
+                  aria-labelledby="sampling-skip-thinking-label"
+                  data-test="sampling-filter-skip-thinking"
+                />
+              </div>
+              <div class="mt-5 flex items-center justify-between gap-4">
+                <span id="sampling-skip-tool-choice-label" class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.customFeatures.gateway.anthropicSamplingParameterFilter.skipToolChoice') }}
+                </span>
+                <Toggle
+                  v-model="gateway.anthropic_sampling_parameter_filter_skip_tool_choice_validation"
+                  aria-labelledby="sampling-skip-tool-choice-label"
+                  data-test="sampling-filter-skip-tool-choice"
+                />
+              </div>
+              <p class="mt-3 text-sm text-gray-500 dark:text-gray-400">
+                {{ t('admin.customFeatures.gateway.anthropicSamplingParameterFilter.validationHint') }}
+              </p>
             </div>
           </section>
 
@@ -945,6 +985,7 @@ const savingDailyCheckin = ref(false)
 const resettingImageSuccessRates = ref(false)
 const showResetImageSuccessRatesConfirm = ref(false)
 const activeGroups = ref<AdminGroup[]>([])
+const allGroups = ref<AdminGroup[]>([])
 
 const modelMarketplace = reactive<ModelMarketplaceSettings>({
   enabled: true,
@@ -995,6 +1036,9 @@ const gateway = reactive<GatewaySettings>({
   anthropic_claude_code_mimicry_enabled: false,
   anthropic_sampling_parameter_filter_enabled: false,
   anthropic_sampling_parameter_filter_models: [],
+  anthropic_sampling_parameter_filter_excluded_group_ids: [],
+  anthropic_sampling_parameter_filter_skip_thinking_validation: false,
+  anthropic_sampling_parameter_filter_skip_tool_choice_validation: false,
   kimi_sampling_parameter_retry_enabled: false,
   kimi_reasoning_effort_retry_enabled: false,
   kimi_tool_choice_retry_enabled: false,
@@ -1008,6 +1052,21 @@ const gatewayAdditionalFailoverStatusCodesInput = ref(
   gateway.additional_failover_status_codes.join(', ')
 )
 const gatewayUpstreamErrorStatusCodesInput = ref(gateway.upstream_error_status_codes.join(', '))
+
+const samplingFilterGroupOptions = computed(() => {
+  const groups = allGroups.value
+    .filter((group) => group.platform === 'anthropic')
+    .map(({ id, name, status }) => ({
+      id,
+      name: status === 'active' ? name : `${name} (${t('admin.customFeatures.gateway.anthropicSamplingParameterFilter.inactive')})`
+    }))
+  for (const id of gateway.anthropic_sampling_parameter_filter_excluded_group_ids) {
+    if (!groups.some((group) => group.id === id)) {
+      groups.push({ id, name: t('admin.customFeatures.gateway.firstTokenTimeout.unavailableGroup', { id }) })
+    }
+  }
+  return groups
+})
 
 const firstTokenGroupOptions = computed(() => {
   const groups = activeGroups.value.map(({ id, name }) => ({ id, name }))
@@ -1081,6 +1140,13 @@ function cloneGateway(settings?: Partial<GatewaySettings>): GatewaySettings {
     anthropic_sampling_parameter_filter_models: [
       ...(settings?.anthropic_sampling_parameter_filter_models ?? [])
     ],
+    anthropic_sampling_parameter_filter_excluded_group_ids: [
+      ...(settings?.anthropic_sampling_parameter_filter_excluded_group_ids ?? [])
+    ],
+    anthropic_sampling_parameter_filter_skip_thinking_validation:
+      settings?.anthropic_sampling_parameter_filter_skip_thinking_validation ?? false,
+    anthropic_sampling_parameter_filter_skip_tool_choice_validation:
+      settings?.anthropic_sampling_parameter_filter_skip_tool_choice_validation ?? false,
     kimi_sampling_parameter_retry_enabled: settings?.kimi_sampling_parameter_retry_enabled ?? false,
     kimi_reasoning_effort_retry_enabled: settings?.kimi_reasoning_effort_retry_enabled ?? false,
     kimi_tool_choice_retry_enabled: settings?.kimi_tool_choice_retry_enabled ?? false,
@@ -1107,7 +1173,7 @@ async function loadSettings() {
   try {
     const [settings, groups] = await Promise.all([
       customFeaturesAPI.getSettings(),
-      groupsAPI.getAll()
+      groupsAPI.getAllIncludingInactive()
     ])
     Object.assign(modelMarketplace, {
       ...settings.model_marketplace,
@@ -1116,7 +1182,8 @@ async function loadSettings() {
     Object.assign(canvas, settings.canvas || { enabled: true })
     Object.assign(dailyCheckin, cloneDailyCheckin(settings.daily_checkin))
     assignGateway(settings.gateway)
-    activeGroups.value = (groups || []).filter((group) => group.status === 'active')
+    allGroups.value = groups || []
+    activeGroups.value = allGroups.value.filter((group) => group.status === 'active')
   } catch (error) {
     loadFailed.value = true
     appStore.showError(extractApiErrorMessage(error, t('admin.customFeatures.loadFailed')))
@@ -1347,6 +1414,12 @@ async function saveGateway() {
       anthropic_claude_code_mimicry_enabled: gateway.anthropic_claude_code_mimicry_enabled,
       anthropic_sampling_parameter_filter_enabled:
         gateway.anthropic_sampling_parameter_filter_enabled,
+      anthropic_sampling_parameter_filter_excluded_group_ids:
+        [...new Set(gateway.anthropic_sampling_parameter_filter_excluded_group_ids)],
+      anthropic_sampling_parameter_filter_skip_thinking_validation:
+        gateway.anthropic_sampling_parameter_filter_skip_thinking_validation,
+      anthropic_sampling_parameter_filter_skip_tool_choice_validation:
+        gateway.anthropic_sampling_parameter_filter_skip_tool_choice_validation,
       kimi_sampling_parameter_retry_enabled: gateway.kimi_sampling_parameter_retry_enabled,
       kimi_reasoning_effort_retry_enabled: gateway.kimi_reasoning_effort_retry_enabled,
       kimi_tool_choice_retry_enabled: gateway.kimi_tool_choice_retry_enabled,

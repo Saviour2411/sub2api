@@ -63,6 +63,9 @@ export interface GatewaySettings {
   anthropic_claude_code_mimicry_enabled: boolean
   anthropic_sampling_parameter_filter_enabled: boolean
   anthropic_sampling_parameter_filter_models: string[]
+  anthropic_sampling_parameter_filter_excluded_group_ids: number[]
+  anthropic_sampling_parameter_filter_skip_thinking_validation: boolean
+  anthropic_sampling_parameter_filter_skip_tool_choice_validation: boolean
   kimi_sampling_parameter_retry_enabled: boolean
   kimi_reasoning_effort_retry_enabled: boolean
   kimi_tool_choice_retry_enabled: boolean

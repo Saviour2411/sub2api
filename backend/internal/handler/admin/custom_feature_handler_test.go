@@ -185,10 +185,13 @@ func TestCustomFeatureHandler_UpdateGateway_EmptyRetryStatusCodesReturnsArray(t 
 
 func TestCustomFeatureHandler_UpdateGateway_部分更新保留ClaudeCode模拟开关(t *testing.T) {
 	repo := &customFeatureHandlerRepoStub{values: map[string]string{
-		service.SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled:       "true",
-		service.SettingKeyGatewayAnthropicSamplingParameterFilterEnabled: "true",
-		service.SettingKeyGatewayAnthropicSamplingParameterFilterModels:  `["claude-opus-4-8"]`,
-		service.SettingKeyGatewayDisableRechargeBonusForCustomRateUsers:  "true",
+		service.SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled:                        "true",
+		service.SettingKeyGatewayAnthropicSamplingParameterFilterEnabled:                  "true",
+		service.SettingKeyGatewayAnthropicSamplingParameterFilterModels:                   `["claude-opus-4-8"]`,
+		service.SettingKeyGatewayAnthropicSamplingParameterFilterExcludedGroupIDs:         `[44]`,
+		service.SettingKeyGatewayAnthropicSamplingParameterFilterSkipThinkingValidation:   "true",
+		service.SettingKeyGatewayAnthropicSamplingParameterFilterSkipToolChoiceValidation: "true",
+		service.SettingKeyGatewayDisableRechargeBonusForCustomRateUsers:                   "true",
 	}}
 	body := bytes.NewBufferString(`{"image_group_success_rate_visible":false}`)
 	recorder := httptest.NewRecorder()
@@ -200,6 +203,9 @@ func TestCustomFeatureHandler_UpdateGateway_部分更新保留ClaudeCode模拟�
 	require.Equal(t, "true", repo.values[service.SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled])
 	require.Equal(t, "true", repo.values[service.SettingKeyGatewayAnthropicSamplingParameterFilterEnabled])
 	require.Equal(t, `["claude-opus-4-8"]`, repo.values[service.SettingKeyGatewayAnthropicSamplingParameterFilterModels])
+	require.Equal(t, `[44]`, repo.values[service.SettingKeyGatewayAnthropicSamplingParameterFilterExcludedGroupIDs])
+	require.Equal(t, "true", repo.values[service.SettingKeyGatewayAnthropicSamplingParameterFilterSkipThinkingValidation])
+	require.Equal(t, "true", repo.values[service.SettingKeyGatewayAnthropicSamplingParameterFilterSkipToolChoiceValidation])
 	require.Equal(t, "true", repo.values[service.SettingKeyGatewayDisableRechargeBonusForCustomRateUsers])
 	require.Equal(t, "false", repo.values[service.SettingKeyGatewayAdditionalFailoverStatusCodesEnabled])
 	require.Equal(t, `[451]`, repo.values[service.SettingKeyGatewayAdditionalFailoverStatusCodes])
