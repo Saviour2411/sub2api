@@ -14,6 +14,17 @@ import (
 // enables Anthropic platform groups to accept OpenAI Responses API requests
 // by converting them to the native /v1/messages format before forwarding upstream.
 func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, error) {
+	return ResponsesToAnthropicRequestWithOptions(req, AnthropicModelValidationOptions{})
+}
+
+// AnthropicModelValidationOptions 仅控制模型能力限制，不跳过协议结构校验。
+type AnthropicModelValidationOptions struct {
+	SkipThinkingValidation   bool
+	SkipToolChoiceValidation bool
+}
+
+// ResponsesToAnthropicRequestWithOptions 按本次转发的校验策略转换请求。
+func ResponsesToAnthropicRequestWithOptions(req *ResponsesRequest, options AnthropicModelValidationOptions) (*AnthropicRequest, error) {
 	isOpus55 := claude.IsOpus55(req.Model)
 	isSonnet55 := claude.IsSonnet55(req.Model)
 	isHaiku55 := claude.IsHaiku55(req.Model)
@@ -72,7 +83,7 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 				return nil, fmt.Errorf("invalid tool_choice: %w", err)
 			}
 		}
-		if (choice.Type == "any" || choice.Type == "tool") && !isHaiku55 {
+		if !options.SkipToolChoiceValidation && (choice.Type == "any" || choice.Type == "tool") && !isHaiku55 {
 			return nil, fmt.Errorf("%s does not support forced tool_choice; use auto or none", req.Model)
 		}
 		effort := "medium"
@@ -120,10 +131,12 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 			out.OutputConfig.Effort = "low"
 			return out, nil
 		}
-		switch effort {
-		case "low", "medium", "high", "xhigh", "max":
-		default:
-			return nil, fmt.Errorf("%s does not support reasoning effort %q; use low, medium, high, xhigh or max", req.Model, effort)
+		if !options.SkipThinkingValidation {
+			switch effort {
+			case "low", "medium", "high", "xhigh", "max":
+			default:
+				return nil, fmt.Errorf("%s does not support reasoning effort %q; use low, medium, high, xhigh or max", req.Model, effort)
+			}
 		}
 		out.Thinking = &AnthropicThinking{Type: "adaptive"}
 		out.OutputConfig = &AnthropicOutputConfig{Effort: effort}

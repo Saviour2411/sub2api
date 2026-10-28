@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -291,6 +292,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
 		forwardCtx := withPreResponseKeepalive(c.Request.Context(), preResponseKeepalive)
+		forwardCtx = context.WithValue(forwardCtx, ctxkey.Group, apiKey.Group)
 		var result *service.ForwardResult
 		setActualUpstreamEndpoint(c, "")
 		if shouldUseAntigravityCompat(account) {

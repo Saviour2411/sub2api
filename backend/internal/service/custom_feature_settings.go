@@ -79,34 +79,37 @@ type DailyCheckinSettings struct {
 
 // GatewaySettings 是二开功能中的网关运行配置。
 type GatewaySettings struct {
-	AnthropicStreamSafeRetryEnabled                    bool     `json:"anthropic_stream_safe_retry_enabled"`
-	AnthropicStreamSafeRetryEarlyKeepaliveEnabled      bool     `json:"anthropic_stream_safe_retry_early_keepalive_enabled"`
-	AnthropicStreamSafeRetryMaxRetries                 int      `json:"anthropic_stream_safe_retry_max_retries"`
-	AnthropicStreamSafeRetryTotalWaitSeconds           int      `json:"anthropic_stream_safe_retry_total_wait_seconds"`
-	AnthropicStreamSafeRetryFirstContentTimeoutSeconds int      `json:"anthropic_stream_safe_retry_first_content_timeout_seconds"`
-	DefaultPoolModeRetryCount                          int      `json:"default_pool_mode_retry_count"`
-	DefaultPoolModeRetryStatusCodes                    []int    `json:"default_pool_mode_retry_status_codes"`
-	AdditionalFailoverStatusCodesEnabled               bool     `json:"additional_failover_status_codes_enabled"`
-	AdditionalFailoverStatusCodes                      []int    `json:"additional_failover_status_codes"`
-	AutoManagedProbeBackoffMinutes                     []int    `json:"auto_managed_probe_backoff_minutes"`
-	FirstTokenTimeoutSeconds                           int      `json:"first_token_timeout_seconds"`
-	FirstTokenTimeoutScope                             string   `json:"first_token_timeout_scope"`
-	FirstTokenTimeoutGroupIDs                          []int64  `json:"first_token_timeout_group_ids"`
-	FirstTokenTimeoutConsecutiveThreshold              int      `json:"first_token_timeout_consecutive_threshold"`
-	UpstreamErrorStatusCodes                           []int    `json:"upstream_error_status_codes"`
-	UpstreamErrorConsecutiveThreshold                  int      `json:"upstream_error_consecutive_threshold"`
-	ImageGroupSuccessRateVisible                       bool     `json:"image_group_success_rate_visible"`
-	AnthropicClaudeCodeMimicryEnabled                  bool     `json:"anthropic_claude_code_mimicry_enabled"`
-	AnthropicSamplingParameterFilterEnabled            bool     `json:"anthropic_sampling_parameter_filter_enabled"`
-	AnthropicSamplingParameterFilterModels             []string `json:"anthropic_sampling_parameter_filter_models"`
-	KimiSamplingParameterRetryEnabled                  bool     `json:"kimi_sampling_parameter_retry_enabled"`
-	KimiReasoningEffortRetryEnabled                    bool     `json:"kimi_reasoning_effort_retry_enabled"`
-	KimiToolChoiceRetryEnabled                         bool     `json:"kimi_tool_choice_retry_enabled"`
-	KimiMaxCompletionTokensRetryEnabled                bool     `json:"kimi_max_completion_tokens_retry_enabled"`
-	KimiThinkingTypeRetryEnabled                       bool     `json:"kimi_thinking_type_retry_enabled"`
-	KimiDynamicToolsEnabled                            bool     `json:"kimi_dynamic_tools_enabled"`
-	DisableRechargeBonusForCustomRateUsers             bool     `json:"disable_recharge_bonus_for_custom_rate_users"`
-	FailurePolicyRevision                              int64    `json:"-"`
+	AnthropicStreamSafeRetryEnabled                          bool     `json:"anthropic_stream_safe_retry_enabled"`
+	AnthropicStreamSafeRetryEarlyKeepaliveEnabled            bool     `json:"anthropic_stream_safe_retry_early_keepalive_enabled"`
+	AnthropicStreamSafeRetryMaxRetries                       int      `json:"anthropic_stream_safe_retry_max_retries"`
+	AnthropicStreamSafeRetryTotalWaitSeconds                 int      `json:"anthropic_stream_safe_retry_total_wait_seconds"`
+	AnthropicStreamSafeRetryFirstContentTimeoutSeconds       int      `json:"anthropic_stream_safe_retry_first_content_timeout_seconds"`
+	DefaultPoolModeRetryCount                                int      `json:"default_pool_mode_retry_count"`
+	DefaultPoolModeRetryStatusCodes                          []int    `json:"default_pool_mode_retry_status_codes"`
+	AdditionalFailoverStatusCodesEnabled                     bool     `json:"additional_failover_status_codes_enabled"`
+	AdditionalFailoverStatusCodes                            []int    `json:"additional_failover_status_codes"`
+	AutoManagedProbeBackoffMinutes                           []int    `json:"auto_managed_probe_backoff_minutes"`
+	FirstTokenTimeoutSeconds                                 int      `json:"first_token_timeout_seconds"`
+	FirstTokenTimeoutScope                                   string   `json:"first_token_timeout_scope"`
+	FirstTokenTimeoutGroupIDs                                []int64  `json:"first_token_timeout_group_ids"`
+	FirstTokenTimeoutConsecutiveThreshold                    int      `json:"first_token_timeout_consecutive_threshold"`
+	UpstreamErrorStatusCodes                                 []int    `json:"upstream_error_status_codes"`
+	UpstreamErrorConsecutiveThreshold                        int      `json:"upstream_error_consecutive_threshold"`
+	ImageGroupSuccessRateVisible                             bool     `json:"image_group_success_rate_visible"`
+	AnthropicClaudeCodeMimicryEnabled                        bool     `json:"anthropic_claude_code_mimicry_enabled"`
+	AnthropicSamplingParameterFilterEnabled                  bool     `json:"anthropic_sampling_parameter_filter_enabled"`
+	AnthropicSamplingParameterFilterModels                   []string `json:"anthropic_sampling_parameter_filter_models"`
+	AnthropicSamplingParameterFilterExcludedGroupIDs         []int64  `json:"anthropic_sampling_parameter_filter_excluded_group_ids"`
+	AnthropicSamplingParameterFilterSkipThinkingValidation   bool     `json:"anthropic_sampling_parameter_filter_skip_thinking_validation"`
+	AnthropicSamplingParameterFilterSkipToolChoiceValidation bool     `json:"anthropic_sampling_parameter_filter_skip_tool_choice_validation"`
+	KimiSamplingParameterRetryEnabled                        bool     `json:"kimi_sampling_parameter_retry_enabled"`
+	KimiReasoningEffortRetryEnabled                          bool     `json:"kimi_reasoning_effort_retry_enabled"`
+	KimiToolChoiceRetryEnabled                               bool     `json:"kimi_tool_choice_retry_enabled"`
+	KimiMaxCompletionTokensRetryEnabled                      bool     `json:"kimi_max_completion_tokens_retry_enabled"`
+	KimiThinkingTypeRetryEnabled                             bool     `json:"kimi_thinking_type_retry_enabled"`
+	KimiDynamicToolsEnabled                                  bool     `json:"kimi_dynamic_tools_enabled"`
+	DisableRechargeBonusForCustomRateUsers                   bool     `json:"disable_recharge_bonus_for_custom_rate_users"`
+	FailurePolicyRevision                                    int64    `json:"-"`
 }
 
 type gatewaySettingsRevisionWriter interface {
@@ -155,6 +158,9 @@ var gatewaySettingKeys = []string{
 	SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled,
 	SettingKeyGatewayAnthropicSamplingParameterFilterEnabled,
 	SettingKeyGatewayAnthropicSamplingParameterFilterModels,
+	SettingKeyGatewayAnthropicSamplingParameterFilterExcludedGroupIDs,
+	SettingKeyGatewayAnthropicSamplingParameterFilterSkipThinkingValidation,
+	SettingKeyGatewayAnthropicSamplingParameterFilterSkipToolChoiceValidation,
 	SettingKeyGatewayKimiSamplingParameterRetryEnabled,
 	SettingKeyGatewayKimiReasoningEffortRetryEnabled,
 	SettingKeyGatewayKimiToolChoiceRetryEnabled,
@@ -199,6 +205,9 @@ var customFeatureSettingKeys = []string{
 	SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled,
 	SettingKeyGatewayAnthropicSamplingParameterFilterEnabled,
 	SettingKeyGatewayAnthropicSamplingParameterFilterModels,
+	SettingKeyGatewayAnthropicSamplingParameterFilterExcludedGroupIDs,
+	SettingKeyGatewayAnthropicSamplingParameterFilterSkipThinkingValidation,
+	SettingKeyGatewayAnthropicSamplingParameterFilterSkipToolChoiceValidation,
 	SettingKeyGatewayKimiSamplingParameterRetryEnabled,
 	SettingKeyGatewayKimiReasoningEffortRetryEnabled,
 	SettingKeyGatewayKimiToolChoiceRetryEnabled,
@@ -288,6 +297,7 @@ func DefaultGatewaySettings() GatewaySettings {
 		AnthropicClaudeCodeMimicryEnabled:                  false,
 		AnthropicSamplingParameterFilterEnabled:            false,
 		AnthropicSamplingParameterFilterModels:             []string{},
+		AnthropicSamplingParameterFilterExcludedGroupIDs:   []int64{},
 		KimiSamplingParameterRetryEnabled:                  false,
 		KimiReasoningEffortRetryEnabled:                    false,
 		KimiToolChoiceRetryEnabled:                         false,
@@ -361,6 +371,20 @@ func (s *SettingService) UpdateGatewaySettings(ctx context.Context, input Gatewa
 		input.FirstTokenTimeoutGroupIDs = append([]int64{}, current.FirstTokenTimeoutGroupIDs...)
 	}
 	input.AnthropicSamplingParameterFilterModels = normalizeAnthropicSamplingParameterFilterModels(input.AnthropicSamplingParameterFilterModels)
+	input.AnthropicSamplingParameterFilterExcludedGroupIDs = normalizeCustomFeatureGroupIDs(input.AnthropicSamplingParameterFilterExcludedGroupIDs)
+	for _, id := range input.AnthropicSamplingParameterFilterExcludedGroupIDs {
+		// 已配置但已删除的分组允许保留，避免阻塞其他设置保存。
+		if slices.Contains(current.AnthropicSamplingParameterFilterExcludedGroupIDs, id) {
+			continue
+		}
+		if s.defaultSubGroupReader == nil {
+			return nil, fmt.Errorf("%w: 无法校验 Anthropic 停用分组", ErrGatewaySettingsInvalid)
+		}
+		group, groupErr := s.defaultSubGroupReader.GetByID(ctx, id)
+		if groupErr != nil || group == nil || group.Platform != PlatformAnthropic {
+			return nil, fmt.Errorf("%w: 采样参数过滤的停用分组必须是现存的 Anthropic 分组", ErrGatewaySettingsInvalid)
+		}
+	}
 	if err := validateGatewaySettings(&input); err != nil {
 		return nil, err
 	}
@@ -392,33 +416,36 @@ func (s *SettingService) UpdateGatewaySettings(ctx context.Context, input Gatewa
 		return nil, fmt.Errorf("序列化 Anthropic 采样参数过滤模型: %w", err)
 	}
 	updates := map[string]string{
-		SettingKeyGatewayAnthropicStreamSafeRetryEnabled:                    strconv.FormatBool(input.AnthropicStreamSafeRetryEnabled),
-		SettingKeyGatewayAnthropicStreamSafeRetryEarlyKeepaliveEnabled:      strconv.FormatBool(input.AnthropicStreamSafeRetryEarlyKeepaliveEnabled),
-		SettingKeyGatewayAnthropicStreamSafeRetryFirstContentTimeoutSeconds: strconv.Itoa(input.AnthropicStreamSafeRetryFirstContentTimeoutSeconds),
-		SettingKeyGatewayAnthropicStreamSafeRetryMaxRetries:                 strconv.Itoa(input.AnthropicStreamSafeRetryMaxRetries),
-		SettingKeyGatewayAnthropicStreamSafeRetryTotalWaitSeconds:           strconv.Itoa(input.AnthropicStreamSafeRetryTotalWaitSeconds),
-		SettingKeyGatewayFirstTokenTimeoutScope:                             input.FirstTokenTimeoutScope,
-		SettingKeyGatewayFirstTokenTimeoutGroupIDs:                          marshalFirstTokenTimeoutGroupIDs(input.FirstTokenTimeoutGroupIDs),
-		SettingKeyGatewayDefaultPoolModeRetryCount:                          strconv.Itoa(input.DefaultPoolModeRetryCount),
-		SettingKeyGatewayDefaultPoolModeRetryStatusCodes:                    string(statusCodesJSON),
-		SettingKeyGatewayAdditionalFailoverStatusCodesEnabled:               strconv.FormatBool(input.AdditionalFailoverStatusCodesEnabled),
-		SettingKeyGatewayAdditionalFailoverStatusCodes:                      string(additionalFailoverStatusCodesJSON),
-		SettingKeyGatewayAutoManagedProbeBackoffMinutes:                     string(backoffJSON),
-		SettingKeyGatewayFirstTokenTimeoutSeconds:                           strconv.Itoa(input.FirstTokenTimeoutSeconds),
-		SettingKeyGatewayFirstTokenTimeoutConsecutiveThreshold:              strconv.Itoa(input.FirstTokenTimeoutConsecutiveThreshold),
-		SettingKeyGatewayUpstreamErrorStatusCodes:                           string(upstreamErrorStatusCodesJSON),
-		SettingKeyGatewayUpstreamErrorConsecutiveThreshold:                  strconv.Itoa(input.UpstreamErrorConsecutiveThreshold),
-		SettingKeyGatewayImageGroupSuccessRateVisible:                       strconv.FormatBool(input.ImageGroupSuccessRateVisible),
-		SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled:                  strconv.FormatBool(input.AnthropicClaudeCodeMimicryEnabled),
-		SettingKeyGatewayAnthropicSamplingParameterFilterEnabled:            strconv.FormatBool(input.AnthropicSamplingParameterFilterEnabled),
-		SettingKeyGatewayAnthropicSamplingParameterFilterModels:             string(filterModelsJSON),
-		SettingKeyGatewayKimiSamplingParameterRetryEnabled:                  strconv.FormatBool(input.KimiSamplingParameterRetryEnabled),
-		SettingKeyGatewayKimiReasoningEffortRetryEnabled:                    strconv.FormatBool(input.KimiReasoningEffortRetryEnabled),
-		SettingKeyGatewayKimiToolChoiceRetryEnabled:                         strconv.FormatBool(input.KimiToolChoiceRetryEnabled),
-		SettingKeyGatewayKimiMaxCompletionTokensRetryEnabled:                strconv.FormatBool(input.KimiMaxCompletionTokensRetryEnabled),
-		SettingKeyGatewayKimiThinkingTypeRetryEnabled:                       strconv.FormatBool(input.KimiThinkingTypeRetryEnabled),
-		SettingKeyGatewayKimiDynamicToolsEnabled:                            strconv.FormatBool(input.KimiDynamicToolsEnabled),
-		SettingKeyGatewayDisableRechargeBonusForCustomRateUsers:             strconv.FormatBool(input.DisableRechargeBonusForCustomRateUsers),
+		SettingKeyGatewayAnthropicStreamSafeRetryEnabled:                          strconv.FormatBool(input.AnthropicStreamSafeRetryEnabled),
+		SettingKeyGatewayAnthropicStreamSafeRetryEarlyKeepaliveEnabled:            strconv.FormatBool(input.AnthropicStreamSafeRetryEarlyKeepaliveEnabled),
+		SettingKeyGatewayAnthropicStreamSafeRetryFirstContentTimeoutSeconds:       strconv.Itoa(input.AnthropicStreamSafeRetryFirstContentTimeoutSeconds),
+		SettingKeyGatewayAnthropicStreamSafeRetryMaxRetries:                       strconv.Itoa(input.AnthropicStreamSafeRetryMaxRetries),
+		SettingKeyGatewayAnthropicStreamSafeRetryTotalWaitSeconds:                 strconv.Itoa(input.AnthropicStreamSafeRetryTotalWaitSeconds),
+		SettingKeyGatewayFirstTokenTimeoutScope:                                   input.FirstTokenTimeoutScope,
+		SettingKeyGatewayFirstTokenTimeoutGroupIDs:                                marshalFirstTokenTimeoutGroupIDs(input.FirstTokenTimeoutGroupIDs),
+		SettingKeyGatewayDefaultPoolModeRetryCount:                                strconv.Itoa(input.DefaultPoolModeRetryCount),
+		SettingKeyGatewayDefaultPoolModeRetryStatusCodes:                          string(statusCodesJSON),
+		SettingKeyGatewayAdditionalFailoverStatusCodesEnabled:                     strconv.FormatBool(input.AdditionalFailoverStatusCodesEnabled),
+		SettingKeyGatewayAdditionalFailoverStatusCodes:                            string(additionalFailoverStatusCodesJSON),
+		SettingKeyGatewayAutoManagedProbeBackoffMinutes:                           string(backoffJSON),
+		SettingKeyGatewayFirstTokenTimeoutSeconds:                                 strconv.Itoa(input.FirstTokenTimeoutSeconds),
+		SettingKeyGatewayFirstTokenTimeoutConsecutiveThreshold:                    strconv.Itoa(input.FirstTokenTimeoutConsecutiveThreshold),
+		SettingKeyGatewayUpstreamErrorStatusCodes:                                 string(upstreamErrorStatusCodesJSON),
+		SettingKeyGatewayUpstreamErrorConsecutiveThreshold:                        strconv.Itoa(input.UpstreamErrorConsecutiveThreshold),
+		SettingKeyGatewayImageGroupSuccessRateVisible:                             strconv.FormatBool(input.ImageGroupSuccessRateVisible),
+		SettingKeyGatewayAnthropicClaudeCodeMimicryEnabled:                        strconv.FormatBool(input.AnthropicClaudeCodeMimicryEnabled),
+		SettingKeyGatewayAnthropicSamplingParameterFilterEnabled:                  strconv.FormatBool(input.AnthropicSamplingParameterFilterEnabled),
+		SettingKeyGatewayAnthropicSamplingParameterFilterModels:                   string(filterModelsJSON),
+		SettingKeyGatewayAnthropicSamplingParameterFilterExcludedGroupIDs:         marshalFirstTokenTimeoutGroupIDs(input.AnthropicSamplingParameterFilterExcludedGroupIDs),
+		SettingKeyGatewayAnthropicSamplingParameterFilterSkipThinkingValidation:   strconv.FormatBool(input.AnthropicSamplingParameterFilterSkipThinkingValidation),
+		SettingKeyGatewayAnthropicSamplingParameterFilterSkipToolChoiceValidation: strconv.FormatBool(input.AnthropicSamplingParameterFilterSkipToolChoiceValidation),
+		SettingKeyGatewayKimiSamplingParameterRetryEnabled:                        strconv.FormatBool(input.KimiSamplingParameterRetryEnabled),
+		SettingKeyGatewayKimiReasoningEffortRetryEnabled:                          strconv.FormatBool(input.KimiReasoningEffortRetryEnabled),
+		SettingKeyGatewayKimiToolChoiceRetryEnabled:                               strconv.FormatBool(input.KimiToolChoiceRetryEnabled),
+		SettingKeyGatewayKimiMaxCompletionTokensRetryEnabled:                      strconv.FormatBool(input.KimiMaxCompletionTokensRetryEnabled),
+		SettingKeyGatewayKimiThinkingTypeRetryEnabled:                             strconv.FormatBool(input.KimiThinkingTypeRetryEnabled),
+		SettingKeyGatewayKimiDynamicToolsEnabled:                                  strconv.FormatBool(input.KimiDynamicToolsEnabled),
+		SettingKeyGatewayDisableRechargeBonusForCustomRateUsers:                   strconv.FormatBool(input.DisableRechargeBonusForCustomRateUsers),
 	}
 	var revision int64
 	if writer, ok := s.settingRepo.(gatewaySettingsRevisionWriter); ok {
@@ -575,6 +602,9 @@ func parseGatewaySettings(values map[string]string) GatewaySettings {
 		settings.AnthropicSamplingParameterFilterEnabled = strings.EqualFold(strings.TrimSpace(raw), "true")
 	}
 	settings.KimiSamplingParameterRetryEnabled = strings.EqualFold(strings.TrimSpace(values[SettingKeyGatewayKimiSamplingParameterRetryEnabled]), "true")
+	settings.AnthropicSamplingParameterFilterExcludedGroupIDs = normalizeCustomFeatureGroupIDs(parseCustomFeatureGroupIDs(values[SettingKeyGatewayAnthropicSamplingParameterFilterExcludedGroupIDs]))
+	settings.AnthropicSamplingParameterFilterSkipThinkingValidation = strings.EqualFold(strings.TrimSpace(values[SettingKeyGatewayAnthropicSamplingParameterFilterSkipThinkingValidation]), "true")
+	settings.AnthropicSamplingParameterFilterSkipToolChoiceValidation = strings.EqualFold(strings.TrimSpace(values[SettingKeyGatewayAnthropicSamplingParameterFilterSkipToolChoiceValidation]), "true")
 	settings.KimiReasoningEffortRetryEnabled = strings.EqualFold(strings.TrimSpace(values[SettingKeyGatewayKimiReasoningEffortRetryEnabled]), "true")
 	settings.KimiToolChoiceRetryEnabled = strings.EqualFold(strings.TrimSpace(values[SettingKeyGatewayKimiToolChoiceRetryEnabled]), "true")
 	settings.KimiMaxCompletionTokensRetryEnabled = strings.EqualFold(strings.TrimSpace(values[SettingKeyGatewayKimiMaxCompletionTokensRetryEnabled]), "true")
@@ -737,6 +767,7 @@ func cloneGatewaySettings(settings GatewaySettings) GatewaySettings {
 	settings.UpstreamErrorStatusCodes = append([]int{}, settings.UpstreamErrorStatusCodes...)
 	settings.AutoManagedProbeBackoffMinutes = append([]int(nil), settings.AutoManagedProbeBackoffMinutes...)
 	settings.AnthropicSamplingParameterFilterModels = append([]string{}, settings.AnthropicSamplingParameterFilterModels...)
+	settings.AnthropicSamplingParameterFilterExcludedGroupIDs = append([]int64{}, settings.AnthropicSamplingParameterFilterExcludedGroupIDs...)
 	return settings
 }
 

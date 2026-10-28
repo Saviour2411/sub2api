@@ -194,7 +194,7 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 | `CUST-PROTO-005` | API Key 账号请求头覆写 | Anthropic/OpenAI/Kimi/Zhipu/DeepSeek API Key 账号及 Grok API Key/OAuth 账号可以配置请求头覆写；真实转发、模型列表、能力探测、count tokens、Images、Kimi 原生 Responses 和 WS 使用一致的最终请求头。 仅合法 OpenCode 目标在账号覆写后转发调用者会话头；非 OpenCode 目标不泄露该头。 本次上游适配：兼容 MiniMax 平台与 Ollama Anthropic Bearer 鉴权选择，不改变本地最终请求头覆写顺序。 2026-09-30 上游适配：请求头覆写仍受认证及模拟身份边界约束；Sonnet 5.5 不兼容的细粒度流式 beta 在 messages、count_tokens 最终头上再次过滤。 | `backend/internal/service/openai_gateway_forward.go`、`backend/internal/service/upstream_models.go`、`frontend/src/components/account/EditAccountModal.vue` | 生效中 |
 | `CUST-PROTO-006` | 请求端点与 compact 信号规范化 | 从原始路径规范化入站端点，区分 Responses compact 和 `/responses/input_tokens`，识别 `compaction_trigger`，继承客户端工具状态；Kimi PayG/Coding 的显式 `responses` 或 `adaptive` 请求使用各自原生 `/v1/responses`，强制 `store=false` 并移除 `previous_response_id`。继续保留本地 HTTP 流转 WSv2、namespace，以及每轮重新取得请求模型和渠道映射、仅在上下文可完整重建时恢复当前轮次换号的决策边界。 2026-09-15 上游适配：接入 OpenCode 三协议端点与单次模型映射，保留 Kimi 原生 Responses/store=false、本地端点归因及 WS 逐轮策略；compact 缺省模型改为 gpt-5.5。 2026-09-18 上游适配：接入 Responses 前导指令合并、中段指令转 user、严格 Chat 目标的 developer 转 system、Lite namespace 及工具媒体处理；Kimi 默认关闭的参数重试与入口请求体保护保留，并补充角色转换和 400 修正同时发生的交叉回归。 2026-09-20 上游适配：DeepSeek 推理占位及 Anthropic 根联合工具 schema 扁平化进入共用协议链；Kimi 四项默认关闭的参数修正、有限重试、首 Token 清理和既有 namespace 转换保留。 | `backend/internal/handler/gateway_handler.go`、`backend/internal/service/openai_gateway_request_body.go`、`backend/internal/service/openai_ws_http_bridge.go`、`backend/internal/service/account_test_service_cn_adaptive.go` | 生效中 |
 | `CUST-PROTO-007` | Responses 渠道监控请求格式 | `probe` 和 `quota_probe` 使用结构化 Responses `input` 消息数组，而不是普通字符串；`quota` 只读取额度，不构造 LLM 请求，上游同步不得退回非标准请求体。 | `backend/internal/service/channel_monitor_checker.go`、`frontend/src/components/admin/monitor/MonitorAdvancedRequestConfig.vue` | 兼容覆盖 |
-| `CUST-PROTO-008` | Anthropic 采样参数过滤 | 在二开网关配置中按最终上游模型精确匹配或末尾通配符匹配，从 REST Messages 请求体删除已被新模型弃用的 `temperature`、`top_k` 和 `top_p`；覆盖 API Key、OAuth、协议转换、直通和账号测试，默认关闭。 | `backend/internal/service/gateway_anthropic_sampling_filter.go`、`backend/internal/service/custom_feature_settings.go`、`frontend/src/views/admin/CustomFeaturesView.vue` | 生效中 |
+| `CUST-PROTO-008` | Anthropic 采样参数过滤 | 按最终上游模型精确匹配或末尾通配符匹配，在模型校验前删除根级 `temperature`、`top_k`、`top_p`；覆盖 Messages、令牌计数、API Key/OAuth、协议转换、直通和账号测试。可选择 Anthropic 分组停用整个功能；独立跳过 thinking 和 tool_choice 模型限制的开关默认关闭，受总开关、模型白名单及实际转发分组共同约束。无分组账号测试只保留采样过滤。 | `backend/internal/service/gateway_anthropic_sampling_filter.go`、`backend/internal/service/custom_feature_settings.go`、`frontend/src/views/admin/CustomFeaturesView.vue` | 生效中 |
 
 ### 账号与运维测试
 
@@ -280,6 +280,14 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 | `CUST-OPS-008` | 构建版本与上游来源提示 | 当前二开版本来自运行程序构建信息，启动时统一注入 HTML、公共设置及管理员接口；旧首屏配置缺版本时仅补查一次公共设置。管理员显示二开版本、已同步原版版本及原版更新状态，普通用户只看二开版本。来源由随二进制嵌入的 `upstream-sync.json` 记录，缺失时显示未记录，不与二开版本比较。最新正式 Release 只读检查采用8秒超时、30分钟成功缓存、60秒失败退避和并发合并；失败保留旧结果并标记缓存，无历史显示暂不可用。可见页定时检查，后台暂停，退出或换用户清理请求和计时器；支持折叠详情、移动端、深浅主题与长版本换行。 2026-09-24 上游适配：随合并更新嵌入来源为0.2.8/a3eb7ef302961cba716dc78b39b93b60c467db0e，二开版本保持0.1.245；只读提示、缓存、身份差异及禁止自更新边界不变。 2026-09-30 上游适配：嵌入来源更新为0.2.10/a60a29549f488a854966aaec9541abbe006cac22，本地二开版本保留0.1.246，不创建发布或开放自更新。 2026-10-07 上游适配：嵌入来源更新为0.2.14/3f1a2ea0a760730e3bc528105c00b4ee4f23e469；本地版本仍为0.1.249。本轮仅本地合并，不创建标签、发布或部署，版本提示的身份隔离、缓存与禁止自更新边界不变。 2026-10-09 上游适配：本地版本保持 0.1.251，上游来源更新为 0.2.15 和固定 SHA 3a6fd1c9db07203ca308aaba69e502bc1f35b307，不改发布标签。 2026-10-13 上游适配：来源更新为0.2.16/4d9ac3e482106d2da3a39fe3e546d8d6801f1cc1，本地版本保持0.1.254，禁止网页自更新边界不变。 2026-10-16 上游适配：二开版本保持0.1.256，构建来源更新为上游0.2.17及固定提交b0a02a330；来源仍由祖先关系校验。 2026-10-25 上游适配：本地版本保持 0.1.259，嵌入来源更新为上游 0.2.18/3f1c8f36ce8c2cd378015830a90e89970b9a9ea7。 | `backend/internal/pkg/buildmeta/upstream-sync.json`、`backend/internal/handler/wire.go`、`backend/internal/service/upstream_version.go`、`frontend/src/composables/useVersionInfo.ts`、`frontend/src/components/common/VersionBadge.vue`、`tools/check_upstream_sync_metadata.py` | 生效中 |
 
 ## 变更记录
+
+### 2026-10-29 Anthropic 采样过滤前置及分组控制（0.1.261）
+
+- `CUST-PROTO-008`：修复采样字段在 Claude 5.5 模型校验后才被删除，导致命中白名单的请求仍被本地 400 拦截的问题。各入口使用最终上游模型，协议转换前清除三个采样字段，校验和出站共用单次尝试策略。
+- 增加 Anthropic 停用分组列表及独立的 thinking/tool_choice 校验跳过开关；默认列表为空、两个开关均关闭，分组停用时恢复原严格行为。既有总开关和白名单保持原值。
+- 转换器保留严格默认接口，仅显式选项放宽模型限制；既有格式检查、必要协议转换和上游错误处理不变。每次换号和切组重新判定，不从账号的多个分组推测请求来源。
+- 设置使用现有表持久化并深拷贝缓存；旧管理客户端省略字段时保留原配置。界面支持停用中的 Anthropic 分组及历史失效选择，不影响其他功能的活跃分组列表。无数据库结构迁移。
+- 新增入口实际出站、模型别名、分组隔离、独立开关、转换器严格默认、设置缓存、部分更新和界面回归测试。CI、合并及蓝绿发布结果以对应 PR、Release 和运维验收记录为准。
 
 ### 2026-10-29 PR #47 macOS 执行器容量适配
 
