@@ -849,3 +849,7 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 ### 同轮认证快照测试适配（2026-10-30）
 
 关联 `CUST-BILL-001`。全量测试发现本地利润控制快照回归仍硬编码 v24；按照已批准的快照 v25 契约更新预期，增加图片按张计费开关与利润、长上下文、模型价格共同经过 JSON 往返后的保留断言，并同时覆盖 v20、v24 旧缓存淘汰。只修正测试契约，不改变生产逻辑或默认值；首轮失败和复测结果在同步历史最终验收节记录。
+
+### 同轮 Gemini 静态检查适配（2026-10-30）
+
+关联 `CUST-ACC-005`。删除合并遗留的未调用 `geminiDefaultTestModel`，默认测试模型继续由 `resolveDefaultAccountTestModel` 和 `prepareAccountTestModel` 统一选择：普通 Gemini 保持 3.8，Google One 使用独立保守列表。此项消除静态检查的 unused 错误，不改变运行时选择规则或测试断言。

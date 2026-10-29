@@ -8692,3 +8692,8 @@ M	frontend/src/views/admin/groupsImagePricing.ts
 
 - 默认及单元全量检查发现 `TestAPIKeyAuthSnapshotProfitControlRoundtrip` 仍预期旧快照 v24，实际已按批准方案升级为 v25。将明确版本断言改为 25，保留原有利润、长上下文与模型价格断言，新增图片按张计费开关的 JSON 往返断言，并同时验证 v20、v24 淘汰回源。
 - 本补丁仅修改本地测试契约及两份台账，不改变运行时行为或默认值。首轮验证失败如实保留，最终验收节列出后续复测命令与结果。
+
+### 同轮 Gemini 静态检查修正
+
+- 首轮 golangci-lint 发现合并遗留的 `geminiDefaultTestModel` 未被调用；本地 `resolveDefaultAccountTestModel` 已完整承担相同的普通 Gemini 与 Google One 默认选择。删除该不可达辅助函数，保留统一入口、模型规则及原有断言。
+- 修正后另行核验最终归档的静态检查、构建及账号模型/认证快照回归；全量默认、单元、集成复测仍在此前测试修正归档上完成，两者运行时行为一致，具体提交及退出码在最终验收节区分记录。
