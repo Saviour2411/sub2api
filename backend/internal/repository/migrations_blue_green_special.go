@@ -29,6 +29,8 @@ func approvedBlueGreenSpecial(entry blueGreenMigration) bool {
 		return false
 	}
 	switch entry.Profile {
+	case blueGreen248Profile:
+		return entry == blueGreen248Migration
 	case blueGreen260Profile:
 		for _, expected := range blueGreen260Migrations {
 			if entry == expected {
@@ -61,6 +63,9 @@ func approvedBlueGreenSpecial(entry blueGreenMigration) bool {
 }
 
 func applyBlueGreenSpecial(ctx context.Context, conn *sql.Conn, entry blueGreenMigration, content string) error {
+	if entry.Profile == blueGreen248Profile {
+		return applyBlueGreen248(ctx, conn, entry, content)
+	}
 	if entry.Profile == blueGreen260Profile {
 		return applyBlueGreen260(ctx, conn, entry)
 	}

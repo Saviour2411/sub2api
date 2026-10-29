@@ -9136,3 +9136,9 @@ A	frontend/src/views/admin/__tests__/ChannelsView.webSearchEmulation.spec.ts
 - 最终保护命令 `python3 tmp/upstream-sync-20261030/verify-protection.py` 于 2026-10-30T05:23:49+08:00 结束，退出码 0，共 515 项，实际差异 167 文件。该次检查在上述命令表生成后执行，单独补记。
 - 最终按 Git 对象核对为新增 37、修改 130、删除 0。删除未调用 Gemini 辅助函数后，`account_test_service.go` 与同步前完全一致，故不计入最终差异文件；17 处合并文本冲突的历史事实不变。最终清单已与 Git 逐项一致。
 - 本次标签 `sub2api.sync-test=20261030` 的临时容器清单为空，隔离环境保持进程已正常退出；`findmnt --mountpoint /mnt/d/project/sub2api/tmp/s30` 返回 1 且无输出，确认本次 tmpfs 已不再挂载。未停止用户的其他 Docker 容器、Docker 服务或 WSL；原始日志和归档继续保留于工作目录。
+
+## 2026-10-30 上游 a3298b46e 的发布兼容补充
+
+- 用户在本地同步9d0482218完成后明确授权提交、通过CI合入主线，再更新tag自动蓝绿部署。本阶段不扩大上游范围；LAST_FULLY_INTEGRATED_UPSTREAM_SHA 仍为 a3298b46ebe239fb0720b068a1eb3383955bdac2。
+- 生产实际v0.1.261/979679663缺少248字段及账本，新增固定 image-count-additive-248-v1 和实库回归，绑定该旧提交、上游原SQL、分组Ent前后摘要及旧分组读写契约。普通门禁保持，未修改历史SQL或计费默认值；同步更新 CUST-OPS-007 清单和变更记录。
+- 发布版本准备为v0.1.262，验证及执行证据见 docs/operations/2026-10-30-v0.1.262-release.md。此前记录的全量前端和扩展竞态基线失败仍保留，本轮不通过删除断言或关闭检查规避它们。
