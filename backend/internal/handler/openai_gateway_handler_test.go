@@ -29,6 +29,31 @@ import (
 	"github.com/tidwall/sjson"
 )
 
+func TestOpenAIFailoverExhaustedPreservesStreamTransportCode(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, code := range []string{service.OpenAIUpstreamHTTP2StreamErrorCode, service.OpenAIUpstreamStreamReadErrorCode, service.OpenAIUpstreamStreamTruncatedCode} {
+		for _, streaming := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/streaming=%t", code, streaming), func(t *testing.T) {
+				recorder := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(recorder)
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+				body, err := json.Marshal(gin.H{"error": gin.H{"type": "upstream_error", "code": code, "message": "Upstream HTTP/2 stream failed"}})
+				require.NoError(t, err)
+				(&OpenAIGatewayHandler{}).handleFailoverExhausted(c, &service.UpstreamFailoverError{StatusCode: http.StatusBadGateway, ResponseBody: body}, streaming)
+				require.Contains(t, recorder.Body.String(), code)
+				require.Contains(t, recorder.Body.String(), "Upstream HTTP/2 stream failed")
+				if streaming {
+					require.Equal(t, http.StatusOK, recorder.Code)
+					require.Contains(t, recorder.Body.String(), "event: response.failed")
+				} else {
+					require.Equal(t, http.StatusBadGateway, recorder.Code)
+					require.Equal(t, "upstream_error", gjson.Get(recorder.Body.String(), "error.type").String())
+				}
+			})
+		}
+	}
+}
+
 func TestOpenAIHandleStreamingAwareError_JSONEscaping(t *testing.T) {
 	tests := []struct {
 		name    string

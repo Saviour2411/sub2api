@@ -82,13 +82,13 @@ jobs:
           check-latest: false
           cache: true
           cache-dependency-path: backend/go.sum
-      - name: Claude 流重试、空闲计时与压缩响应关闭竞态检查
+      - name: Claude 与 OpenAI 流恢复、空闲计时与压缩响应关闭竞态检查
         working-directory: backend
         env:
           CGO_ENABLED: '1'
         run: >-
           go test -race -tags=unit -count=1
-          -run 'TestKimi|TestOpsErrorLoggerMiddleware_Kimi|TestAnthropicStreamSafeRetry|TestFirstTokenCleanup|TestGatewayService_AnthropicAPIKeyPassthrough_StreamingIdleTimeout|TestDecompressResponseBodyStreamClose|TestDecompressedBodyClose'
+          -run 'TestKimi|TestOpsErrorLoggerMiddleware_Kimi|TestAnthropicStreamSafeRetry|TestFirstTokenCleanup|TestGatewayService_AnthropicAPIKeyPassthrough_StreamingIdleTimeout|TestDecompressResponseBodyStreamClose|TestDecompressedBodyClose|TestOpenAIStreamTransportEvent|TestOpsErrorLoggerMiddleware_StreamTransportCodesAreUpstream|TestOpenAIFailoverExhaustedPreservesStreamTransportCode'
           ./internal/service ./internal/handler ./internal/repository
 
   frontend:
@@ -102,7 +102,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'pnpm'
           cache-dependency-path: |
             frontend/pnpm-lock.yaml

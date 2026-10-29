@@ -1931,6 +1931,9 @@ func buildOpenAIResponseFailedSSE(responseID, model string, createdAt int64, sou
 		code = strings.TrimSpace(gjson.GetBytes(source, "response.error.code").String())
 	}
 	if code == "" {
+		code = strings.TrimSpace(gjson.GetBytes(source, "code").String())
+	}
+	if code == "" {
 		code = "upstream_error"
 	}
 	message := extractOpenAISSEErrorMessage(source)

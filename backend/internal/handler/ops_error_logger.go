@@ -2039,6 +2039,8 @@ func sanitizeOpsSSEDataForPersistence(body []byte) string {
 
 func inferResponsesFailedOpsErrorType(code string) string {
 	switch strings.TrimSpace(code) {
+	case service.OpenAIUpstreamHTTP2StreamErrorCode, service.OpenAIUpstreamStreamReadErrorCode, service.OpenAIUpstreamStreamTruncatedCode:
+		return "upstream_error"
 	case "rate_limit_exceeded":
 		return "rate_limit_error"
 	case "permission_denied", "permission_error", "insufficient_permissions", "cyber_policy", "content_policy":

@@ -3781,6 +3781,11 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 	upstreamMsg := service.ExtractUpstreamErrorMessage(responseBody)
 	service.SetOpsUpstreamError(c, statusCode, upstreamMsg, "")
 
+	if code := gjson.GetBytes(responseBody, "error.code").String(); statusCode == http.StatusBadGateway && service.IsOpenAIUpstreamStreamErrorCode(code) {
+		h.handleStreamingAwareErrorWithCode(c, statusCode, "upstream_error", code, service.SanitizeUpstreamErrorMessage(upstreamMsg), streamStarted, true)
+		return
+	}
+
 	// 使用默认的错误映射
 	status, errType, errMsg := h.mapUpstreamError(statusCode)
 	h.handleStreamingAwareError(c, status, errType, errMsg, streamStarted)
