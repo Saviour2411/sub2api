@@ -8697,3 +8697,5 @@ M	frontend/src/views/admin/groupsImagePricing.ts
 
 - 首轮 golangci-lint 发现合并遗留的 `geminiDefaultTestModel` 未被调用；本地 `resolveDefaultAccountTestModel` 已完整承担相同的普通 Gemini 与 Google One 默认选择。删除该不可达辅助函数，保留统一入口、模型规则及原有断言。
 - 修正后另行核验最终归档的静态检查、构建及账号模型/认证快照回归；全量默认、单元、集成复测仍在此前测试修正归档上完成，两者运行时行为一致，具体提交及退出码在最终验收节区分记录。
+
+同轮标签测试修正：最终静态检查已通过，带 unit 标签的 Gemini 默认模型测试仍直接引用已删除的辅助函数，导致该次定向竞态命令编译失败。将测试切换到实际公共入口 `DefaultAccountTestModel`，保留 Google One 映射与普通默认值断言并增加错误检查；运行时代码不变。保留失败日志，随后在更新后的最终归档复测。

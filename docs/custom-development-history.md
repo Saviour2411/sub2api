@@ -853,3 +853,5 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 ### 同轮 Gemini 静态检查适配（2026-10-30）
 
 关联 `CUST-ACC-005`。删除合并遗留的未调用 `geminiDefaultTestModel`，默认测试模型继续由 `resolveDefaultAccountTestModel` 和 `prepareAccountTestModel` 统一选择：普通 Gemini 保持 3.8，Google One 使用独立保守列表。此项消除静态检查的 unused 错误，不改变运行时选择规则或测试断言。
+
+同轮补充（`CUST-ACC-005`）：带 unit 标签的 Google One 回归改为调用真实使用的 `DefaultAccountTestModel`，保留默认值和映射包含断言，并增加错误检查；不再直接测试已删除的合并遗留函数。此前标签测试编译失败及修正后的复测结果均记录于同步历史。
