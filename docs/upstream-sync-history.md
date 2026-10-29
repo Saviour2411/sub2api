@@ -8699,3 +8699,440 @@ M	frontend/src/views/admin/groupsImagePricing.ts
 - 修正后另行核验最终归档的静态检查、构建及账号模型/认证快照回归；全量默认、单元、集成复测仍在此前测试修正归档上完成，两者运行时行为一致，具体提交及退出码在最终验收节区分记录。
 
 同轮标签测试修正：最终静态检查已通过，带 unit 标签的 Gemini 默认模型测试仍直接引用已删除的辅助函数，导致该次定向竞态命令编译失败。将测试切换到实际公共入口 `DefaultAccountTestModel`，保留 Google One 映射与普通默认值断言并增加错误检查；运行时代码不变。保留失败日志，随后在更新后的最终归档复测。
+
+## 2026-10-30 上游 0.2.19 最终本地验收
+
+- 时间：`2026-10-30T05:22:21+08:00`（北京时间，UTC+08:00）。状态：本地完整集成与验收通过；保留并单独披露同步前已有失败。
+- LAST_FULLY_INTEGRATED_UPSTREAM_SHA：`a3298b46ebe239fb0720b068a1eb3383955bdac2`。固定范围内全部提交已有处置，无跳过、延期或未解决冲突。
+- 全量 Go 默认/单元/集成复测、最终静态检查与构建、前端类型及构建、Canvas、版本契约、关键竞态和隔离新建/升级启动均通过。前端与扩展 Grok/Gemini 竞态的已发现失败均有同步前证据，未发现相对基线新增的失败。具体执行 SHA、非零退出码及未验证边界见下文。
+- 本记录作为最后一个本地提交；提交前再次核验原 main 仍为同步前 SHA，随后使用 `git merge --ff-only sync/upstream-20261030-a3298b46e` 推进本地 main。最终记录提交自身 SHA、快进后的 main SHA 以及清理状态在交付答复报告。未授权也未执行 push、PR、发布、部署或远程服务器访问。
+
+### 固定范围与本地提交
+
+- 本地目标分支：`main`；LOCAL_PRE_SYNC_SHA：`d5b888ad0f720363287984515ebdacf474305a37`。
+- 上游仓库：`https://github.com/Wei-Shaw/sub2api`；默认分支：`main`。UPSTREAM_OLD_SHA：`3f1c8f36ce8c2cd378015830a90e89970b9a9ea7`；UPSTREAM_NEW_SHA：`a3298b46ebe239fb0720b068a1eb3383955bdac2`。实际 merge-base 为旧基线，记录范围与实际引入范围一致；执行期间没有扩大目标范围。
+- 范围包含 73 个提交，其中普通提交 52 个、合并提交 21 个。互斥计数：Applied 57、Applied + Overridden 15、Already Applied 1、Skipped 0、Deferred 0、未解决 Conflict 0。共 72 个应用项（包含 15 个保留本地覆盖项）；Already Applied 项保留于完整祖先图，没有重复升级依赖。
+- 备份分支：`backup/pre-upstream-sync-20261030-031222-d5b888ad0`；同步分支：`sync/upstream-20261030-a3298b46e`。策略为完整 `merge --no-ff --no-commit`，逐块解决冲突，再提交兼容修正。
+- 合并提交：`8ea190ab29bf62a4a18abe141b00233de53b7f93`（`sync: 合并上游更新至 a3298b46e 并适配二开功能`）。两个父提交分别为同步前本地提交和固定上游目标。
+- 兼容修正：`b477535d85b2a0a710558cee4ff6f3c606be1124`（`sync: 修复透传响应语义并适配上游回归用例`）。
+- 测试契约修正：`69826b99767a80764895dc3df388991332ed50d7`（`sync: 补齐认证快照 v25 的本地回归契约`）；仅修改测试及两份台账，运行时代码与 b477535d85b2a0a710558cee4ff6f3c606be1124 一致。
+- 静态修正：`17d83531964e39c3b774366923593aa430db1ba2`（`sync: 清理 Gemini 模型选择合并遗留函数`）；只删除未调用的辅助函数并记录原因，默认模型行为不变。最终静态检查和构建针对该提交的独立归档。
+- 最后代码/测试提交：`d6c87e6254705745e614a6e9e9b9eb121b799edf`（`sync: 让 Gemini 回归覆盖统一默认模型入口`）；只将 unit 标签回归接入真实公共入口并增加错误断言，运行时代码与 17d83531964e39c3b774366923593aa430db1ba2 完全一致。最终定向竞态复测及启动验证使用此归档，启动二进制来自上述同运行时代码的构建。
+- 本地产品版本保持 `0.1.261`；构建来源更新为上游 `0.2.19` 及固定目标 SHA。累计修改 167 个文件，新增 37、修改 130、删除 0；完整源码归档 5072 个受控文件。记录提交自身及最终 main SHA 在交付答复报告，避免自引用。
+
+### 更新内容与二开保护
+
+- 接入 OAuth 非流式 Responses 的终态聚合、不完整/取消处理、图片按张计费与实际图片数、Grok 模型目录诊断和模型审计、Gemini 重试配置及保守 Google One 模型、Terra 模型定价归一化、分页溢出保护、渠道 Web 搜索及相关界面/API 修正。其余变更见逐提交处置表。
+- 按已批准决定取消 DeepSeek Pro 按日期切换到 Flash 默认价，Claude 指纹采用 JavaScript UTF-16 码元规则；继续保留自定义价格优先及本地请求清洗流程。
+- 保留请求模型计费、未知/缺价明确失败、长上下文定价、渠道图片上下文分档、图片交付标记、断连结算及 OAuth 流式不按请求 n 兜底。图片按张开关默认 false；有图像端点且满足计费模式约束时才适用。
+- 认证缓存 v25 保留利润控制、长上下文、模型价格、请求模型白名单等本地字段并携带新图片开关；JSON 往返以及 v20/v24 淘汰回源有明确断言。
+- OAuth 透传用 `upstreamStream && clientStream` 选择流式响应；客户端非流式时聚合上游 SSE 为 JSON，保留 compact 的 JSON→SSE 桥接、本地首 Token 和断连规则。Grok 响应模型仅用于诊断及账号成本，不恢复响应模型给用户扣费。
+- 模型白名单继续使用本地 `previewSyncRequest`，同时接入按钮显示控制、诊断刷新及过期结果隔离；凭据变化后旧响应不得覆盖当前配置。普通 Gemini 测试默认保持 3.8，Google One 使用独立保守列表。
+- 全部 66 个二开编号保留，同步更新 13 个受影响清单项与同轮记录：`CUST-GW-001/003/004/008`、`CUST-PROTO-003`、`CUST-ACC-001/005`、`CUST-BILL-001/002/003`、`CUST-PROD-002`、`CUST-OPS-007/008`。未修改的安全页面、Canvas、受限管理密钥与其他本地文件通过差异保护检查。
+- 按用户串行扣费、5 秒 usage task、降智检测默认关闭、历史迁移、生产双 Compose、绑定挂载、回环监听、HTTP upstream、生产响应头超时及资源配置均未调整；未读取实例配置。本轮唯一新增 SQL 为上游原始 `248_group_image_count_billing.sql`，没有放宽蓝绿 expand 兼容门禁。
+
+### 17 处文本冲突决策
+
+所有冲突采用批准方案逐块融合，没有整文件采用 ours/theirs；自动合并文件另行核对调用契约、定价及断连语义。
+
+| 文件 | 处理结果 |
+| --- | --- |
+| `backend/cmd/server/VERSION` | 保持本地 0.1.261，独立更新上游来源元数据。 |
+| `backend/go.sum` | 合并校验项，保留本地既有依赖升级，go.mod 与同步前一致。 |
+| `backend/internal/pkg/geminicli/models.go` | 普通 Gemini 列表与 Google One 保守列表分开。 |
+| `backend/internal/service/account_test_service.go` | 保留 prepareAccountTestModel 及本地账号参数，融合上游 provider 逻辑。 |
+| `backend/internal/service/account_test_service_gemini_test.go` | 普通账号保持 Gemini 3.8，Google One 断言跟随独立列表。 |
+| `backend/internal/service/api_key_auth_cache_impl.go` | 升级 v25，保留全部本地快照字段并增加图片开关。 |
+| `backend/internal/service/billing_service.go` | 图片按张分支接入本地严格计费、渠道价及上下文分档。 |
+| `backend/internal/service/gateway_billing_block.go` | 严格缺价检查继续生效，按张分支共用适用条件。 |
+| `backend/internal/service/gateway_usage_billing.go` | 按实际交付结算，并保留请求模型与本地用量记录契约。 |
+| `backend/internal/service/openai_gateway_grok.go` | 保留本地响应模型诊断/账号成本语义，不改用户计费模型。 |
+| `backend/internal/service/openai_gateway_passthrough.go` | 保留双流式标记、compact 桥接和本地首 Token，修正非流式终态输出。 |
+| `backend/internal/service/openai_gateway_service.go` | 结果结构同时携带图片端点、交付及断连状态。 |
+| `backend/internal/service/openai_images.go` | 实际图片数与断连保护共同生效，避免开关兜底形成未交付费用。 |
+| `backend/internal/service/openai_images_responses.go` | 保留 OAuth 图片交付及流式断连不使用请求 n 兜底。 |
+| `backend/internal/service/response_model_billing_test.go` | 延续按请求模型计费及响应模型仅作诊断的明确断言。 |
+| `frontend/src/components/account/ModelWhitelistSelector.vue` | 本地预览入口与上游诊断、刷新及过期隔离并存。 |
+| `frontend/src/components/account/__tests__/ModelWhitelistSelector.spec.ts` | 保留原断言，补齐计数/总数翻译桩及凭据变化丢弃旧响应覆盖。 |
+
+### 逐提交处置和本地映射
+
+下表所有 SHA 均包含在合并提交 `8ea190ab29bf62a4a18abe141b00233de53b7f93` 的上游父链中；最终兼容结果由 `b477535d85b2a0a710558cee4ff6f3c606be1124` 、`69826b99767a80764895dc3df388991332ed50d7` 、`17d83531964e39c3b774366923593aa430db1ba2` 和 `d6c87e6254705745e614a6e9e9b9eb121b799edf` 补齐。Already Applied 的依赖升级在 `d5b888ad0f720363287984515ebdacf474305a37` 已等价存在，完整 merge 只补齐其祖先关系。
+
+| 上游完整 SHA | 类型 | 状态 | 处置说明 |
+| --- | --- | --- | --- |
+| `6b2fdfcac262ec826be24c9ca857f39e40ef7119` | 普通 | Applied + Overridden | OAuth 非流式 Responses 聚合为 JSON；保留双流式标记、首 Token、断连结算及 compact 桥接。 |
+| `9b5407449c8d0b8f41abba4756da3bab47a67945` | 普通 | Applied | 不完整或取消的非流式 Responses 返回终态 JSON。 |
+| `5db2d6956ba60fb5c9401823561a166d38295095` | 普通 | Applied + Overridden | 取消 DeepSeek Pro 按日期切换 Flash 默认价；自定义价格优先不变。 |
+| `c01b2cb817663e79c3ce1db1d611ffe33f2d589a` | 普通 | Applied | 重新触发上游 CI 的空提交；保留祖先关系，不触发远端工作流。 |
+| `3f4e13aaba9be9c714711ef5b897af335fb0d7ff` | 合并 | Applied | 完整保留上游父提交关系及合并结果中的修正。 |
+| `de908ed6d29339fec04dcd9b39dab95b47a49575` | 普通 | Applied | 国产 Coding Plan 频率型 429 使用秒级冷却。 |
+| `4197fa62021ca1fe7933fe3eb08ae119dc1fe91b` | 普通 | Applied + Overridden | Gemini 同账号重试支持配置，保留本地首 Token 和错误策略收尾。 |
+| `f9652804894eb150942af2b108bbce670594460c` | 普通 | Applied | 分页偏移防止整型溢出。 |
+| `9aa16c8c66326afdd2e1b070e3403ac36e8a7050` | 普通 | Applied | 分页范围校验并复用安全偏移。 |
+| `fd998129ec8375c6623e061c7e5e391752dc954a` | 普通 | Applied + Overridden | 多图按张计费接入本地严格计费链；缺价及请求模型规则保持。 |
+| `1487fa511bffbb26ebcebb82a717264c84ffb3a0` | 普通 | Applied + Overridden | 按真实返回图片数量结算，保留交付状态和断连保护。 |
+| `cb2959245f7ab452e152a2e77bf811f9be66cbfa` | 普通 | Applied | 可用分组 API 契约加入图片按张计费字段。 |
+| `aa1a1b11c864a009ddd83e1f9010b0f92bd1da0b` | 普通 | Applied + Overridden | 按张计费受开关、端点和定价模式约束，默认关闭。 |
+| `917dbdc705d69a65e1fccdd0bba2dc0f7afdbc67` | 普通 | Applied | Gemini fileData 图片纳入计数。 |
+| `014cc016f9a01b0b5ee61493cbb0ff282e81d7ac` | 普通 | Applied + Overridden | Grok 原生 Responses 模型审计增强；响应模型仍仅用于诊断及账号成本。 |
+| `7131b997ca0bb5fb68459ced150a1428d3107935` | 普通 | Applied | Grok 聚合路径识别跨事件模型冲突。 |
+| `d01f2eb42cf4dccc22690acc849be2d6ce54f118` | 普通 | Applied | 固定聚合前序模型审计并隔离非 Grok 请求。 |
+| `6202da0f53b0ed41d889a66c03a61d2854aea0f9` | 普通 | Applied | 统一 Grok 目录解析和观测状态。 |
+| `87266a7b181024f1e48dcdb3ff5c53018496c30a` | 普通 | Applied | 原子持久化目录快照。 |
+| `b1cb2eb1f30d5f098fe509964b0d793c3ceb40ea` | 普通 | Applied | 补充取消和调用方事务的目录回归。 |
+| `41a6ff8ac1209da6057f46e1ae49b92852d3baa2` | 普通 | Applied | 对齐手动同步与后台目录观察。 |
+| `635b8353508eb0b8994afcc5b1ef73c5b270d1b1` | 普通 | Applied | 后台观察测试使用 CAS 持久化。 |
+| `d4136cea5e6c3c8fb40487f3f4692ab72919e8b1` | 普通 | Applied | 增加模型目录差异诊断。 |
+| `bb11e83c44abe9786c20cffca4445190bf2b63fb` | 普通 | Applied | 裸别名标记无法核验，自定义模型 ID 保留大小写。 |
+| `60931bce3114eb1d240e5bd1eb54546181216056` | 普通 | Applied | 展示目录诊断并保留账号编辑草稿。 |
+| `ae5705da1d0b13c351d52329067eb2763e986f8f` | 普通 | Applied | 修复同账号刷新导致目录同步卡住。 |
+| `2db7ce3d25a9b2dc8285bbc1fbf51185c1211f43` | 普通 | Applied + Overridden | 隔离过期同步请求，模式切换后刷新诊断；适配本地预览接口。 |
+| `02db748cd5a8767378c5f174eedf83367655e3bb` | 普通 | Applied | 保留受管快照，拒绝非法时间并保护失败日志。 |
+| `0d374b25494d7b49915b51af15f9a7eff99a87b7` | 普通 | Applied | 简化目录诊断并按需展开详情。 |
+| `c68d312372999f696ddca35bb6f394061878602d` | 普通 | Applied | 未知目录详情使用历史标题。 |
+| `32c00d6e72135eb367d80d014ff1a929deffae4e` | 普通 | Applied | 诊断译文不读取继承属性。 |
+| `21b5b49d0a5a673c051d16ad807d6b57be3694d5` | 普通 | Applied + Overridden | 统一同步入口并保留模式隔离；沿用本地 previewSyncRequest。 |
+| `7f18239be2c09bd7c08663bd4d55ee1f73d42571` | 普通 | Applied | 改善模型编辑布局及响应式展示。 |
+| `9534f1c089d67fbfac8784489579791bd50df0e4` | 普通 | Applied | 改善删除图标对比度及同步按钮可访问名称。 |
+| `3ce09c8aff085ce42538d539d515742d8650e6f0` | 普通 | Applied + Overridden | 图片渠道按次价格保留 token 上下文分档及本地错误回退。 |
+| `ba81c7fd758e425d67f856d601147ef0c5263d3f` | 合并 | Applied | 完整保留上游父提交关系及合并结果中的修正。 |
+| `dfc13ce7f9ff9300c524d21d871f672c91d235c2` | 普通 | Applied | 修复目录审计静态检查问题。 |
+| `cde6ddfd8f41e1cf173ed83ac42e79f1e8af34c8` | 普通 | Applied | 拒绝超限 multipart 上传，避免静默截断。 |
+| `3e18e78ab1d06d3cce1fc019d8969acceafaaf5e` | 普通 | Applied | DeepSeek prompt_cache_hit_tokens 纳入缓存读取用量。 |
+| `88d9c43b3e9a30d9e7f74a369114eff0f5674379` | 普通 | Applied | 管理员保护规则返回 400。 |
+| `14a5fe3050616e35b5f123614f57e0e6adcaf069` | 普通 | Applied | Antigravity 拒绝畸形非流式工具调用；新增用例适配本地账号参数。 |
+| `34236674223877d265bb5dbc071277d04ded0d34` | 普通 | Applied + Overridden | 支持 GPT-6.1 Terra，同时补入本地独立定价归一化。 |
+| `d0afece15f9f16da32193816c2cc50dbb04938e5` | 普通 | Applied | 模型广场优先使用分组模型价格。 |
+| `a207412375448f85e816b1b56139813d04d831d8` | 普通 | Applied + Overridden | Gemini 绑定缓存的池模式请求按配置同账号重试，保留本地收尾及构造契约。 |
+| `b2b1bcf260b584dc4d268a8ae36bec31a2de2130` | 普通 | Applied | 模型列表 singleflight 内复查缓存。 |
+| `ba5b21879430fdbe3ab87dc791b09bcdece5e4a7` | 普通 | Applied | 修复 OpenCode 转发 DeepSeek 时的角色兼容。 |
+| `7bce2cfb45d8cf6e8ea7f9cf2710c9febb8a2f51` | 普通 | Applied + Overridden | 指纹采用 JavaScript UTF-16 码元规则，保留本地模拟开关、版本一致性及中文回归。 |
+| `b332f169f9c6c10722016ff7a09bc9c9658a3152` | 合并 | Applied | 完整保留上游父提交关系及合并结果中的修正。 |
+| `15701ba187af5827d740901d53421bd69ed97717` | 合并 | Applied | 完整保留上游父提交关系及合并结果中的修正。 |
+| `0232cb7137b840926e2dd23c62f1bee1c8557071` | 合并 | Applied | 完整保留上游父提交关系及合并结果中的修正。 |
+| `3bd166babc300281f1830e6d7ce24256265a1d20` | 合并 | Applied | 完整保留上游父提交关系及合并结果中的修正。 |
+| `bb021d330e2067687d6362dc48991e63b3e56d6c` | 合并 | Applied | 完整保留上游父提交关系及合并结果中的修正。 |
+| `3f1ae7ee76aecd8d5066e6549690a7cd66e471f2` | 合并 | Applied | 完整保留上游父提交关系及合并结果中的修正。 |
+| `98bcee7a8934220215268cccb80f15f3cb16091b` | 合并 | Applied | 完整保留上游父提交关系及合并结果中的修正。 |
+| `8e231ff5d66afb5789f5a876872d2c8867828e82` | 合并 | Applied | 完整保留上游父提交关系及合并结果中的修正。 |
+| `af4462ebaef34d68c1e73e8622c4e195648fef75` | 合并 | Applied | 完整保留上游父提交关系及合并结果中的修正。 |
+| `2c9d9760d8d60bc403d50d3d9b56d77c56164adf` | 合并 | Applied | 完整保留上游父提交关系及合并结果中的修正。 |
+| `449b65a2ed9ae43c8438105b41c500619253090f` | 合并 | Applied | 完整保留上游父提交关系及合并结果中的修正。 |
+| `f178e5ae32659e8901644a9f2378a0439ffa36ae` | 合并 | Applied | 完整保留上游父提交关系及合并结果中的修正。 |
+| `9eba617367469e3e37fa4aa131275499ea2f8c14` | 普通 | Applied | 渠道更新保留网页搜索模拟的平台维度。 |
+| `b2e7c609430736bd0a4b89c5b27a079ccef820d4` | 合并 | Applied | 完整保留上游父提交关系及合并结果中的修正。 |
+| `1352e899ecd418ecf0b81a5151a9c992c953d945` | 普通 | Applied | 网页搜索合并测试使用检查后的类型断言。 |
+| `0a2a29b32e6724714c69822296ccd05a6b86bfdd` | 普通 | Already Applied | 七项 Go 依赖升级本地已等价具备；额外依赖及历史摘要保留。 |
+| `de44e3a0bfd63db10fc733a71d6577f5070a6b8e` | 普通 | Applied | Gemini 模型列表及详情按分组、账号共同声明的模型响应；测试适配本地设置服务参数。 |
+| `31564b2e86ccb6f4de348a21eb9e47b366f326ba` | 普通 | Applied + Overridden | 刷新 Gemini 目录；普通测试默认 3.8，Google One 保留保守列表。 |
+| `8b3f33f28ae3f2e5707b810eca187a3b40780638` | 合并 | Applied | 完整保留上游父提交关系及合并结果中的修正。 |
+| `bf02c1a6e0f78816b728e1e16854afa5c8fabe6b` | 合并 | Applied | 完整保留上游父提交关系及合并结果中的修正。 |
+| `7311b865f327e5e69f16e40a3a4236c08da2048b` | 合并 | Applied | 完整保留上游父提交关系及合并结果中的修正。 |
+| `184193f01ea0c681e2ab31c238c067aa9e7f34a6` | 合并 | Applied | 完整保留上游父提交关系及合并结果中的修正。 |
+| `dece26153621959ccd7635814f4b2d08304e681a` | 合并 | Applied | 完整保留上游父提交关系及合并结果中的修正。 |
+| `a9240d5016c226b341242a8c54a01a8605cbbc72` | 普通 | Applied + Overridden | 来源元数据更新至上游 0.2.19，本地产品版本保持 0.1.261。 |
+| `4db8402b5081d2f3caa2b870b64aa7c18ff057ed` | 普通 | Applied | OAuth 非流式透传在缺少 Content-Type 时识别 SSE 正文。 |
+| `a3298b46ebe239fb0720b068a1eb3383955bdac2` | 合并 | Applied | 完整保留上游父提交关系及合并结果中的修正。 |
+
+### 修改文件清单
+
+以下为同步前提交至最后代码/测试提交的实际差异（A：新增；M：修改），不含工作区内隔离脚本、缓存、日志和构建产物。最终验收只追加已有同步历史文件，因此文件总数不再增加。
+
+```text
+M	backend/ent/group.go
+M	backend/ent/group/group.go
+M	backend/ent/group/where.go
+M	backend/ent/group_create.go
+M	backend/ent/group_update.go
+M	backend/ent/migrate/schema.go
+M	backend/ent/mutation.go
+M	backend/ent/runtime/runtime.go
+M	backend/ent/schema/group.go
+M	backend/go.sum
+M	backend/internal/config/config.go
+M	backend/internal/config/config_test.go
+M	backend/internal/handler/admin/account_handler.go
+A	backend/internal/handler/admin/account_handler_grok_model_diagnostics_test.go
+M	backend/internal/handler/admin/admin_helpers_test.go
+M	backend/internal/handler/admin/group_handler.go
+M	backend/internal/handler/admin/ops_dashboard_handler.go
+M	backend/internal/handler/dto/account_mapper_redact_test.go
+M	backend/internal/handler/dto/mappers.go
+M	backend/internal/handler/dto/types.go
+M	backend/internal/handler/gateway_models_test.go
+A	backend/internal/handler/gemini_cached_content_bound_retry_test.go
+M	backend/internal/handler/gemini_mixed_models_test.go
+M	backend/internal/handler/gemini_v1beta_handler.go
+M	backend/internal/pkg/antigravity/response_transformer.go
+A	backend/internal/pkg/antigravity/response_transformer_malformed_test.go
+M	backend/internal/pkg/apicompat/anthropic_to_responses.go
+M	backend/internal/pkg/buildmeta/upstream-sync.json
+M	backend/internal/pkg/gemini/models.go
+M	backend/internal/pkg/gemini/models_test.go
+M	backend/internal/pkg/geminicli/models.go
+M	backend/internal/pkg/geminicli/models_test.go
+M	backend/internal/pkg/openai/constants.go
+M	backend/internal/pkg/pagination/pagination.go
+M	backend/internal/pkg/pagination/pagination_test.go
+M	backend/internal/pkg/response/response.go
+M	backend/internal/pkg/response/response_test.go
+M	backend/internal/repository/account_repo.go
+A	backend/internal/repository/account_repo_grok_managed_extra_integration_test.go
+A	backend/internal/repository/account_repo_grok_managed_extra_test.go
+A	backend/internal/repository/account_repo_grok_models.go
+A	backend/internal/repository/account_repo_grok_models_integration_test.go
+A	backend/internal/repository/account_repo_grok_models_test.go
+M	backend/internal/repository/account_repo_opencode_go_usage_test.go
+M	backend/internal/repository/account_repo_upstream_billing_probe_update_test.go
+M	backend/internal/repository/api_key_repo.go
+M	backend/internal/repository/group_repo.go
+A	backend/internal/repository/pagination_test.go
+M	backend/internal/securityaudit/prompt_handler.go
+M	backend/internal/securityaudit/prompt_handler_test.go
+M	backend/internal/server/api_contract_test.go
+M	backend/internal/service/account_test_models.go
+M	backend/internal/service/account_test_models_test.go
+M	backend/internal/service/account_test_service_gemini_test.go
+M	backend/internal/service/admin_account.go
+A	backend/internal/service/admin_account_grok_catalog_test.go
+M	backend/internal/service/admin_group.go
+M	backend/internal/service/admin_group_duplicate.go
+M	backend/internal/service/admin_service.go
+M	backend/internal/service/admin_service_role_test.go
+M	backend/internal/service/admin_user.go
+M	backend/internal/service/antigravity_gateway_compat.go
+M	backend/internal/service/antigravity_gateway_gemini.go
+A	backend/internal/service/antigravity_gateway_nonstream_malformed_test.go
+M	backend/internal/service/antigravity_gateway_streaming.go
+M	backend/internal/service/antigravity_image_test.go
+M	backend/internal/service/api_key_auth_cache.go
+M	backend/internal/service/api_key_auth_cache_impl.go
+M	backend/internal/service/api_key_auth_cache_profit_test.go
+M	backend/internal/service/api_key_service.go
+M	backend/internal/service/billing_service.go
+M	backend/internal/service/billing_service_test.go
+M	backend/internal/service/channel_service.go
+A	backend/internal/service/channel_websearch_merge_test.go
+M	backend/internal/service/deepseek_pricing_test.go
+M	backend/internal/service/gateway_billing_block.go
+A	backend/internal/service/gateway_billing_block_test.go
+M	backend/internal/service/gateway_billing_header_test.go
+M	backend/internal/service/gateway_service.go
+M	backend/internal/service/gateway_usage_billing.go
+M	backend/internal/service/gemini_cached_content.go
+M	backend/internal/service/gemini_cached_content_hardening_test.go
+M	backend/internal/service/gemini_chat_completions_compat_service.go
+M	backend/internal/service/gemini_error_policy_single_check_test.go
+M	backend/internal/service/gemini_image_output_accounting.go
+M	backend/internal/service/gemini_image_output_accounting_test.go
+M	backend/internal/service/gemini_messages_compat_service.go
+M	backend/internal/service/gemini_models_endpoints.go
+A	backend/internal/service/gemini_same_account_retries_test.go
+M	backend/internal/service/gemini_vertex_api_key_forward_test.go
+M	backend/internal/service/grok_media.go
+A	backend/internal/service/grok_model_catalog.go
+A	backend/internal/service/grok_model_catalog_store.go
+A	backend/internal/service/grok_model_catalog_store_test.go
+A	backend/internal/service/grok_model_catalog_sync_test.go
+A	backend/internal/service/grok_model_catalog_test.go
+A	backend/internal/service/grok_model_diagnostics.go
+A	backend/internal/service/grok_model_diagnostics_test.go
+M	backend/internal/service/grok_observed_models.go
+A	backend/internal/service/grok_observed_models_log_test.go
+M	backend/internal/service/grok_p2_test.go
+M	backend/internal/service/grok_quota_service_test.go
+A	backend/internal/service/grok_response_model_audit_test.go
+M	backend/internal/service/group.go
+M	backend/internal/service/group_service.go
+A	backend/internal/service/image_billing_count.go
+A	backend/internal/service/image_billing_count_test.go
+A	backend/internal/service/image_count_billing_switch_test.go
+M	backend/internal/service/media_price_config.go
+M	backend/internal/service/model_plaza_service.go
+M	backend/internal/service/model_plaza_service_test.go
+M	backend/internal/service/openai_chat_roles.go
+M	backend/internal/service/openai_chat_roles_test.go
+M	backend/internal/service/openai_codex_models_service.go
+M	backend/internal/service/openai_codex_transform.go
+M	backend/internal/service/openai_compat_model.go
+M	backend/internal/service/openai_gateway_chat_completions.go
+M	backend/internal/service/openai_gateway_chat_completions_raw.go
+M	backend/internal/service/openai_gateway_messages.go
+M	backend/internal/service/openai_gateway_messages_chat_fallback.go
+M	backend/internal/service/openai_gateway_passthrough.go
+M	backend/internal/service/openai_gateway_response_handling.go
+M	backend/internal/service/openai_gateway_responses_chat_fallback.go
+M	backend/internal/service/openai_gateway_service.go
+M	backend/internal/service/openai_gateway_usage.go
+A	backend/internal/service/openai_gpt61_terra_test.go
+M	backend/internal/service/openai_images.go
+M	backend/internal/service/openai_images_responses.go
+M	backend/internal/service/openai_images_test.go
+A	backend/internal/service/openai_images_upload_limit_test.go
+M	backend/internal/service/openai_model_alias.go
+A	backend/internal/service/openai_oauth_passthrough_non_stream_test.go
+A	backend/internal/service/openai_usage_deepseek_cache_test.go
+A	backend/internal/service/pagination_test.go
+M	backend/internal/service/pricing_service.go
+A	backend/internal/service/ratelimit_cn_frequency_429_test.go
+M	backend/internal/service/ratelimit_cn_providers.go
+M	backend/internal/service/response_model_billing_test.go
+M	backend/internal/service/upstream_models.go
+M	backend/internal/service/upstream_models_test.go
+M	backend/internal/service/upstream_response_model_test.go
+A	backend/migrations/248_group_image_count_billing.sql
+M	backend/resources/model-pricing/model_prices_and_context_window.json
+M	docs/custom-development-history.md
+M	docs/upstream-sync-history.md
+A	frontend/src/api/__tests__/admin.accounts.grokModelDiagnostics.spec.ts
+M	frontend/src/api/admin/accounts.ts
+M	frontend/src/components/account/EditAccountModal.vue
+A	frontend/src/components/account/GrokModelDiagnosticsPanel.vue
+M	frontend/src/components/account/ModelWhitelistSelector.vue
+M	frontend/src/components/account/__tests__/EditAccountModal.grokUpstream.spec.ts
+A	frontend/src/components/account/__tests__/GrokModelDiagnosticsPanel.spec.ts
+M	frontend/src/components/account/__tests__/ModelWhitelistSelector.spec.ts
+M	frontend/src/components/keys/UseKeyModal.vue
+M	frontend/src/components/keys/__tests__/UseKeyModal.spec.ts
+M	frontend/src/composables/__tests__/useModelWhitelist.spec.ts
+M	frontend/src/composables/useModelWhitelist.ts
+M	frontend/src/i18n/locales/en/admin/accounts.ts
+M	frontend/src/i18n/locales/en/admin/channels.ts
+M	frontend/src/i18n/locales/en/admin/overview.ts
+M	frontend/src/i18n/locales/zh/admin/accounts.ts
+M	frontend/src/i18n/locales/zh/admin/channels.ts
+M	frontend/src/i18n/locales/zh/admin/overview.ts
+M	frontend/src/types/index.ts
+M	frontend/src/views/admin/ChannelsView.vue
+M	frontend/src/views/admin/GroupsView.vue
+A	frontend/src/views/admin/__tests__/ChannelsView.webSearchEmulation.spec.ts
+```
+
+### 验证环境与源码对应关系
+
+- 基线取同步前提交 d5b888ad0f720363287984515ebdacf474305a37；候选每阶段从固定 Git 对象归档，所有缓存、日志和临时数据均位于工作目录。Linux 在 WSL Ubuntu 24.04 的工作区内 tmpfs 上运行，避免 Windows 挂载目录的 Unix socket/权限差异；使用 Go 1.27.3、golangci-lint 2.14.0、GOMAXPROCS=2、GOFLAGS=-p=2、GOMEMLIMIT=4GiB。
+- 前端使用 Windows Node 24.15.0、pnpm 9.15.9。冻结锁文件安装禁用生命周期脚本；候选确认 frontend/canvas 四份包文件和锁文件内容一致后复用隔离依赖，未使用根目录旧 node_modules。Vue I18n 保持 11.4.16。
+- PostgreSQL 18.1 与 Redis 8.4 为本机 Docker 隔离容器，映射随机回环端口，数据库使用合成账号和测试数据；清除实际数据库、Redis、供应商及 E2E 配置，仅将本次模型检测/管理密钥测试 DSN 指向临时数据库。未访问远程服务器或生产实例，未发起真实支付、扣费及消息写入。
+- b477535d85b2a0a710558cee4ff6f3c606be1124 的 Linux、Windows 归档均核验 5072 文件、零换行差异。其全量默认/单元/集成首轮失败与后续修正严格分开记录；核心竞态、前端、API/版本契约及广范围竞态的证据保留。
+- 69826b99767a80764895dc3df388991332ed50d7 独立归档重跑同样的三套全量 Go 命令；17d83531964e39c3b774366923593aa430db1ba2 仅进一步删除未调用的合并遗留函数，重新执行最终静态检查与构建；d6c87e6254705745e614a6e9e9b9eb121b799edf 只修改 unit 测试调用和文档，并对账号模型及快照执行定向竞态复测。上述三个归档均逐文件核验 5072 文件、零换行差异。没有把旧归档上的命令标成在后续 SHA 重新运行。
+- 启动验证覆盖新库、旧管理员带无效旧环境变量继续登录、从基线夹具数据库升级。历史迁移摘要逐条一致，只新增 248；降智检测和图片按张默认 false，不自动创建受限管理密钥；升级前后 Gemini/Antigravity/Composite 生图 false、OpenAI true 的夹具值均不变。
+
+### 失败、修正与既有问题
+
+1. 基线归档的 CRLF 使 Compose 网关参数、Docker 资源和 Caddy 缓存三项静态检查首轮退出 1；只恢复隔离归档的 LF 后相同检查全部退出 0，没有修改仓库行为。基线首次前端构建的嵌套 pnpm 误用环境中的另一入口并报锁文件 overrides 不匹配；固定 9.15.9 的 PATH 后冻结安装及构建通过。
+2. 候选首次前端准备因基线 CRLF 与候选 LF 的原始哈希不同而退出 1；改为仅归一 CRLF 后比较包文件/锁文件，内容确实相同，随后执行验证。未重新解析依赖或修改锁文件。
+3. 候选定向检查依次发现透传变量 reqStream 未定义、4 处新增测试签名不匹配、4 个 OAuth 客户端非流式却收到 SSE 的回归。保留本地双流式标记，按客户端及上游标记共同选择输出分支，保留 compact 桥接；修正调用后扩展定向检查退出 0。前端新增翻译桩断言补齐 count/total 参数后，复测仅剩基线 3 项失败。
+4. 候选首轮全量默认、unit、integration 均只因利润控制快照预期 v24 而失败；更新为明确的 v25 断言，增加新开关 JSON 往返及 v20/v24 失效覆盖，再独立重跑三套完整命令。首轮 lint 的未使用 Gemini 辅助函数已移除，最终 lint 退出 0。随后 unit 标签定向检查暴露测试对已删除辅助函数的引用；改为实际 DefaultAccountTestModel 入口，原有默认模型和映射断言完整保留，复测另行记录。
+5. 前端订阅卡片基线有 3 个译文断言失败，独立复跑仍复现；候选失败集合完全相同。最终前端为 412 文件中 411 通过、3364 用例中 3361 通过。失败分别为短标题布局、标题/徽标/价格等区域布局、复数有效期单位三个 SubscriptionPlanCard 用例，预期翻译 key 与实际 month/days 文本不符。本轮没有修改该无关行为。
+6. 广范围竞态基线退出 1，5 个用例、9 段报告；候选同一命令退出 1，3 个用例、6 段报告。候选失败为 TestGrokFreeQuotaGateIsSchedulerOnlyAdminPathUnfiltered、TestGrokQuotaQueryRemainsAvailableWhileSchedulingIsPaused、TestGrokImportProbeFailureLogDoesNotIncludeErrorMessage，均在基线集合内。基线额外复现 TestFilterGrokFreeQuotaAccountsRecoversAfterRollingUsageFalls 和 TestGrokOAuthHandlerQueryQuotaProbesUpstream；本次未复现不能视作修复。
+7. 竞态逐栈核对：免费配额测试重置全局状态与异步刷新收尾竞争；导入探测测试读取 bytes.Buffer 与后台日志写入竞争。目录同步写路径由测试桩 UpdateExtra 改为 CompareAndSwapGrokObservedModels，但仍原地修改同一账号 Extra map，与 HasFailureStrategyUnscheduledMarker 的读取冲突，基线已有同一根因。实际 repository 使用 PostgreSQL 条件 UPDATE，不执行该测试桩的共享 map 修改；本轮完整集成中的 repository 测试也覆盖其 SQL 契约。此核对没有证明所有生产并发路径安全；保留已有失败及后续治理边界。核心竞态作为补充，两边均退出 0，未替换或关闭失败的广范围检查。
+
+8. 扩大到 Gemini 流测试的最终竞态集合复现既有 Gin 全局模式竞争。首次基线失败 2 个、候选失败 3 个；两边使用相同命令重复 10 次后均为 EmitsImageEvent、ImageFlowSkipsSemanticDetection、SemanticErrorFails 三个用例，分别产生 8/14 段报告。冲突位于未改动的并行测试和 newTestContext 内的 gin.SetMode；不把报告次数波动当成通过或修复。保留扩大集合的退出码 1，另行针对本次修改的默认模型、认证快照执行定向竞态，退出码 0。
+9. 最终契约检查临时脚本生成时发生引号错误，首次调用及随后语法检查均退出 1，未启动产品测试；修正后 bash -n 和正式定向检查均退出 0。准备失败补记在 final-prepare-results.tsv，不混同产品测试失败。
+
+### 未验证项与残余风险
+
+- 未执行真实供应商 OAuth/Token 刷新、付费生图、真实支付或外部端到端写操作；供应商 E2E 仅完成编译，相关本地网关路径通过 mock、httptest 和隔离数据库验证。
+- 未访问生产、部署、运行生产迁移、线上重启、蓝绿切换或回滚；双 Compose、资源参数和迁移门禁仅做代码差异与本地脚本验证。未做实际生产数据规模、峰值吞吐、超长流、长期稳定性、多实例竞争或全平台镜像验证。
+- Apple container 脚本完成语法检查，未在 macOS 执行实际安装/运行；前端完成逻辑、类型和构建验证，未单独进行浏览器视觉及全套人工操作验收。
+- 3 个既有前端断言失败和基线已有 Grok/Gemini 测试竞态仍是残余问题，不把本地同步验收等同于全部测试通过，也不承诺所有二开功能绝对无影响。
+- 原始命令、日志、源码核验、前端失败集合和竞态对比保存在工作区 `tmp/upstream-sync-20261030/`；下表记录实际执行命令及每次退出码，失败重试未被覆盖。
+
+
+### 实际验证命令与退出码
+
+同一阶段的完全相同命令合并一行，退出码按实际执行时间依次列出，覆盖每次重试；具体起止时间及日志路径见原始 TSV。表内 phase 对应 baseline/candidate，工作目录分别为该阶段的 backend、归档根目录或 Windows 归档根目录；命令参数保持实际记录。前端准备阶段另有一次退出 1，其原始记录只有时间和 CRLF 摘要差异说明，原因已在上文单独保留。
+
+| 阶段 | 检查名 | 实际命令 | 每次退出码（时间顺序） |
+| --- | --- | --- | --- |
+| baseline | frontend-install | `pnpm --dir D:\project\sub2api\tmp\upstream-sync-20261030\baseline-source\frontend install --frozen-lockfile --ignore-scripts --store-dir D:\project\sub2api\tmp\upstream-sync-20261025\pnpm-store` | 0 → 0 → 0 |
+| baseline | canvas-install | `pnpm --dir D:\project\sub2api\tmp\upstream-sync-20261030\baseline-source\canvas install --frozen-lockfile --ignore-scripts --store-dir D:\project\sub2api\tmp\upstream-sync-20261025\pnpm-store` | 0 → 0 → 0 |
+| baseline | frontend-lint | `pnpm --dir frontend run lint:check` | 0 |
+| baseline | apple-syntax | `bash -n deploy/apple-container.sh` | 0 → 0 |
+| baseline | docker-deploy-syntax | `bash -n deploy/docker-deploy.sh` | 0 → 0 |
+| baseline | remote-deploy-syntax | `sh -n deploy/remote-deploy.sh` | 0 → 0 |
+| baseline | compose-security | `sh deploy/tests/docker-compose-security-test.sh` | 0 → 0 |
+| baseline | compose-gateway | `sh deploy/tests/docker-compose-gateway-env-test.sh` | 1 → 0 |
+| baseline | compose-simple | `sh deploy/tests/docker-compose-simple-mode-env-test.sh` | 0 → 0 |
+| baseline | go-default | `timeout 2400 go test -count=1 ./...` | 0 |
+| baseline | docker-resources | `sh deploy/tests/docker-runtime-resources-test.sh` | 1 → 0 |
+| baseline | caddy-cache | `sh deploy/test-caddyfile-cache.sh` | 1 → 0 |
+| baseline | remote-deploy-mock | `sh deploy/tests/remote-deploy-test.sh` | 0 → 0 |
+| baseline | bluegreen-unit | `python3 deploy/tests/blue-green-test.py` | 0 → 0 |
+| baseline | bluegreen-evidence | `python3 deploy/tests/blue-green-evidence-test.py` | 0 → 0 |
+| baseline | bluegreen-preflight | `python3 deploy/tests/blue-green-preflight-test.py` | 0 → 0 |
+| baseline | metadata-unit | `python3 -m unittest discover -s tools -p test_check_upstream_sync_metadata.py` | 0 → 0 |
+| baseline | workflow-unit | `python3 -m unittest discover -s tools -p test_workflow_usage_policy.py` | 0 → 0 |
+| baseline | release-unit | `python3 -m unittest discover -s .github/release-tools -p test_release_matrix.py` | 0 → 0 |
+| baseline | metadata | `python3 tools/check_upstream_sync_metadata.py` | 0 → 0 |
+| baseline | compose-equal | `cmp deploy/docker-compose.yml deploy/docker-compose.sub2api.yml` | 0 → 0 |
+| baseline | frontend-typecheck | `pnpm --dir frontend run typecheck` | 0 |
+| baseline | frontend-test | `pnpm --dir frontend run test:run` | 1 |
+| baseline | frontend-build | `pnpm --dir frontend run build` | 1 → 0 |
+| baseline | canvas-typecheck | `pnpm --dir canvas run typecheck` | 0 |
+| baseline | canvas-test | `pnpm --dir canvas run test` | 0 |
+| baseline | canvas-build | `pnpm --dir canvas run build` | 0 → 0 |
+| baseline | subscription-card-focused | `pnpm --dir frontend exec vitest run src/components/payment/__tests__/SubscriptionPlanCard.spec.ts` | 1 |
+| baseline | build-version-contract | `timeout 600 go test -tags=unit,embed ./internal/handler -run TestBuildVersion -count=1` | 0 |
+| baseline | go-unit | `timeout 2400 go test -tags=unit -count=1 ./...` | 0 |
+| baseline | e2e-compile | `timeout 600 go test -c -tags=e2e -o /mnt/d/project/sub2api/tmp/upstream-sync-20261030/baseline/e2e-compile.test ./internal/integration` | 0 |
+| baseline | go-integration | `timeout 2400 go test -tags=integration -count=1 ./...` | 0 |
+| baseline | go-lint | `timeout 2400 golangci-lint run --timeout=30m ./...` | 0 |
+| baseline | go-build | `timeout 1200 make build` | 0 |
+| baseline | gateway-race | `timeout 2400 go test -race -tags=unit -count=1 -run TestKimi\|TestOpsErrorLoggerMiddleware_Kimi\|TestAnthropicStreamSafeRetry\|TestFirstToken\|TestDecompress\|TestUsageRecordWorkerPool\|TestStoppedKeyed\|TestOpenAIStreamTransportEvent\|TestOpsErrorLoggerMiddleware_StreamTransportCodesAreUpstream\|TestOpenAIFailoverExhaustedPreservesStreamTransportCode\|Test.*Grok\|Test.*Image\|Test.*Gemini\|TestComputeClaudeCodeFingerprint\|Test.*ClientDisconnect\|Test.*ClientAbort\|Test.*ResponseModel\|Test.*AccountTestModel ./internal/service ./internal/handler ./internal/handler/admin ./internal/repository` | 1 |
+| baseline | local-smoke | `timeout 600 python3 /mnt/d/project/sub2api/tmp/upstream-sync-20261030/run-smoke.py baseline` | 0 |
+| baseline | core-race | `timeout 1200 go test -race -tags=unit -count=1 -run TestKimi\|TestOpsErrorLoggerMiddleware_Kimi\|TestAnthropicStreamSafeRetry\|TestFirstToken\|TestDecompress\|TestUsageRecordWorkerPool\|TestStoppedKeyed\|TestOpenAIStreamTransportEvent\|TestOpsErrorLoggerMiddleware_StreamTransportCodesAreUpstream\|TestOpenAIFailoverExhaustedPreservesStreamTransportCode\|Test.*Image\|Test.*Gemini\|TestComputeClaudeCodeFingerprint\|Test.*ClientDisconnect\|Test.*ClientAbort\|Test.*ResponseModel\|Test.*AccountTestModel ./internal/service ./internal/handler ./internal/handler/admin ./internal/repository` | 0 |
+| candidate | focused | `timeout 1200 go test -tags=unit -count=1 -run Test.*Grok\|Test.*Image\|Test.*Gemini\|Test.*OAuth.*Stream\|Test.*DeepSeek\|Test.*GPT61\|Test.*Fingerprint\|Test.*ResponseModel\|Test.*Channel.*WebSearch\|Test.*Pagination\|Test.*AccountTestModel\|Test.*OpenAIStreamTransport ./internal/service ./internal/repository ./internal/handler ./internal/handler/admin ./internal/pkg/antigravity ./internal/pkg/apicompat ./internal/pkg/geminicli ./internal/pkg/pagination ./internal/pkg/response ./internal/config ./internal/server` | 1 → 1 → 1 |
+| candidate | apple-syntax | `bash -n deploy/apple-container.sh` | 0 |
+| candidate | docker-deploy-syntax | `bash -n deploy/docker-deploy.sh` | 0 |
+| candidate | remote-deploy-syntax | `sh -n deploy/remote-deploy.sh` | 0 |
+| candidate | compose-security | `sh deploy/tests/docker-compose-security-test.sh` | 0 |
+| candidate | compose-gateway | `sh deploy/tests/docker-compose-gateway-env-test.sh` | 0 |
+| candidate | compose-simple | `sh deploy/tests/docker-compose-simple-mode-env-test.sh` | 0 |
+| candidate | docker-resources | `sh deploy/tests/docker-runtime-resources-test.sh` | 0 |
+| candidate | caddy-cache | `sh deploy/test-caddyfile-cache.sh` | 0 |
+| candidate | remote-deploy-mock | `sh deploy/tests/remote-deploy-test.sh` | 0 |
+| candidate | bluegreen-unit | `python3 deploy/tests/blue-green-test.py` | 0 |
+| candidate | bluegreen-evidence | `python3 deploy/tests/blue-green-evidence-test.py` | 0 |
+| candidate | bluegreen-preflight | `python3 deploy/tests/blue-green-preflight-test.py` | 0 |
+| candidate | metadata-unit | `python3 -m unittest discover -s tools -p test_check_upstream_sync_metadata.py` | 0 |
+| candidate | workflow-unit | `python3 -m unittest discover -s tools -p test_workflow_usage_policy.py` | 0 |
+| candidate | release-unit | `python3 -m unittest discover -s .github/release-tools -p test_release_matrix.py` | 0 |
+| candidate | metadata | `python3 tools/check_upstream_sync_metadata.py` | 0 |
+| candidate | compose-equal | `cmp deploy/docker-compose.yml deploy/docker-compose.sub2api.yml` | 0 |
+| candidate | protection | `python3 /mnt/d/project/sub2api/tmp/upstream-sync-20261030/verify-protection.py` | 0 → 0 → 0 |
+| candidate | frontend-lint | `pnpm --dir frontend run lint:check` | 0 |
+| candidate | frontend-typecheck | `pnpm --dir frontend run typecheck` | 0 |
+| candidate | frontend-test | `pnpm --dir frontend run test:run` | 1 → 1 |
+| candidate | frontend-build | `pnpm --dir frontend run build` | 0 |
+| candidate | canvas-typecheck | `pnpm --dir canvas run typecheck` | 0 |
+| candidate | canvas-test | `pnpm --dir canvas run test` | 0 |
+| candidate | canvas-build | `pnpm --dir canvas run build` | 0 |
+| candidate | focused | `timeout 1200 go test -tags=unit -count=1 -run Test.*Grok\|Test.*Image\|Test.*Gemini\|Test.*OAuth.*Stream\|Test.*DeepSeek\|Test.*GPT61\|Test.*Fingerprint\|Test.*ResponseModel\|Test.*Channel.*WebSearch\|Test.*Pagination\|Test.*AccountTestModel\|Test.*OpenAIStreamTransport\|Test.*Compact\|Test.*Passthrough ./internal/service ./internal/repository ./internal/handler ./internal/handler/admin ./internal/pkg/antigravity ./internal/pkg/apicompat ./internal/pkg/geminicli ./internal/pkg/pagination ./internal/pkg/response ./internal/config ./internal/server` | 0 |
+| baseline | core-race | `timeout 1200 go test -race -tags=unit -count=1 -run TestKimi\|TestOpsErrorLoggerMiddleware_Kimi\|TestAnthropicStreamSafeRetry\|TestFirstToken\|TestDecompress\|TestUsageRecordWorkerPool\|TestStoppedKeyed\|TestOpenAIStreamTransportEvent\|TestOpsErrorLoggerMiddleware_StreamTransportCodesAreUpstream\|TestOpenAIFailoverExhaustedPreservesStreamTransportCode\|Test.*Image\|Test.*Gemini\|TestComputeClaudeCodeFingerprint\|Test.*ClientDisconnect\|Test.*ClientAbort\|Test.*ResponseModel\|Test.*AccountTestModel\|TestOpenAIGatewayService_OAuth.*(StreamFalse\|StreamTrue\|Compact)\|Test.*GPT61\|Test.*DeepSeek\|Test.*Fingerprint\|Test.*Compact.*SSE ./internal/service ./internal/handler ./internal/handler/admin ./internal/repository` | 0 |
+| candidate | go-default | `timeout 2400 go test -count=1 ./...` | 1 → 0 |
+| candidate | build-version-contract | `timeout 600 go test -tags=unit,embed ./internal/handler -run TestBuildVersion -count=1` | 0 |
+| candidate | e2e-compile | `timeout 600 go test -c -tags=e2e -o /mnt/d/project/sub2api/tmp/upstream-sync-20261030/candidate/e2e-compile.test ./internal/integration` | 0 |
+| candidate | core-race | `timeout 1200 go test -race -tags=unit -count=1 -run TestKimi\|TestOpsErrorLoggerMiddleware_Kimi\|TestAnthropicStreamSafeRetry\|TestFirstToken\|TestDecompress\|TestUsageRecordWorkerPool\|TestStoppedKeyed\|TestOpenAIStreamTransportEvent\|TestOpsErrorLoggerMiddleware_StreamTransportCodesAreUpstream\|TestOpenAIFailoverExhaustedPreservesStreamTransportCode\|Test.*Image\|Test.*Gemini\|TestComputeClaudeCodeFingerprint\|Test.*ClientDisconnect\|Test.*ClientAbort\|Test.*ResponseModel\|Test.*AccountTestModel\|TestOpenAIGatewayService_OAuth.*(StreamFalse\|StreamTrue\|Compact)\|Test.*GPT61\|Test.*DeepSeek\|Test.*Fingerprint\|Test.*Compact.*SSE ./internal/service ./internal/handler ./internal/handler/admin ./internal/repository` | 0 |
+| candidate | go-unit | `timeout 2400 go test -tags=unit -count=1 ./...` | 1 → 0 |
+| candidate | go-integration | `timeout 2400 go test -tags=integration -count=1 ./...` | 1 → 0 |
+| candidate | go-lint、go-lint-final | `timeout 2400 golangci-lint run --timeout=30m ./...` | 1 → 0 |
+| candidate | go-build、go-build-final | `timeout 1200 make build` | 0 → 0 |
+| candidate | gateway-race | `timeout 2400 go test -race -tags=unit -count=1 -run TestKimi\|TestOpsErrorLoggerMiddleware_Kimi\|TestAnthropicStreamSafeRetry\|TestFirstToken\|TestDecompress\|TestUsageRecordWorkerPool\|TestStoppedKeyed\|TestOpenAIStreamTransportEvent\|TestOpsErrorLoggerMiddleware_StreamTransportCodesAreUpstream\|TestOpenAIFailoverExhaustedPreservesStreamTransportCode\|Test.*Grok\|Test.*Image\|Test.*Gemini\|TestComputeClaudeCodeFingerprint\|Test.*ClientDisconnect\|Test.*ClientAbort\|Test.*ResponseModel\|Test.*AccountTestModel ./internal/service ./internal/handler ./internal/handler/admin ./internal/repository` | 1 |
+| candidate | final-regression | `timeout 1200 go test -race -tags=unit -count=1 -run ^(TestAPIKeyAuthSnapshot.*\|TestAccountGetModelMapping_GoogleOne.*\|TestCreateGeminiTestPayload_ImageModel\|TestProcessGeminiStream_EmitsImageEvent\|TestProcessGeminiStream_SemanticErrorFails\|TestProcessGeminiStream_ImageFlowSkipsSemanticDetection\|TestGeminiDefaultTestModel\|Test账号测试默认模型与受限接入\|Test国产测试模型确定性选择与单次映射\|Test国产无具体文本模型不发送请求\|TestOpenAI默认测试实际请求模型\|TestAntigravity默认Opus5映射不改写自定义映射\|TestFetchOpenAIAccountModelsOAuthPopulatesPickerFields\|TestFetchOpenAIAccountModelsAPIKeyPopulatesPickerFields\|TestFetchOpenAIAccountModelsAPIKeyAppliesAccountModelMapping\|TestFetchOpenAIAccountModelsPreservesEmptyCatalog\|TestFetchOpenAIAccountModelsOAuthLabelsLocalImageModelsLikeUpstream\|TestFetchOpenAIAccountModelsOAuthRespectsImageAllowlist\|TestFetchOpenAIAccountModelsOAuthExcludesUnconfiguredTextModels\|TestFetchOpenAIAccountModelsOAuthLocalImageAlias\|TestFetchOpenAIAccountModelsOAuthImageNamesMappedToText\|TestFetchOpenAIAccountModelsOAuthPassthroughIgnoresMappingTargets\|TestFetchOpenAIAccountModelsAPIKeyPassthroughIgnoresMapping\|TestFetchOpenAIAccountModelsMappingChangesReuseRawCache)$ ./internal/service` | 1 → 1 |
+| candidate | local-smoke | `timeout 600 python3 /mnt/d/project/sub2api/tmp/upstream-sync-20261030/run-smoke.py candidate` | 0 |
+| baseline | final-regression | `timeout 1200 go test -race -tags=unit -count=1 -run ^(TestAPIKeyAuthSnapshot.*\|TestAccountGetModelMapping_GoogleOne.*\|TestCreateGeminiTestPayload_ImageModel\|TestProcessGeminiStream_EmitsImageEvent\|TestProcessGeminiStream_SemanticErrorFails\|TestProcessGeminiStream_ImageFlowSkipsSemanticDetection\|TestGeminiDefaultTestModel\|Test账号测试默认模型与受限接入\|Test国产测试模型确定性选择与单次映射\|Test国产无具体文本模型不发送请求\|TestOpenAI默认测试实际请求模型\|TestAntigravity默认Opus5映射不改写自定义映射\|TestFetchOpenAIAccountModelsOAuthPopulatesPickerFields\|TestFetchOpenAIAccountModelsAPIKeyPopulatesPickerFields\|TestFetchOpenAIAccountModelsAPIKeyAppliesAccountModelMapping\|TestFetchOpenAIAccountModelsPreservesEmptyCatalog\|TestFetchOpenAIAccountModelsOAuthLabelsLocalImageModelsLikeUpstream\|TestFetchOpenAIAccountModelsOAuthRespectsImageAllowlist\|TestFetchOpenAIAccountModelsOAuthExcludesUnconfiguredTextModels\|TestFetchOpenAIAccountModelsOAuthLocalImageAlias\|TestFetchOpenAIAccountModelsOAuthImageNamesMappedToText\|TestFetchOpenAIAccountModelsOAuthPassthroughIgnoresMappingTargets\|TestFetchOpenAIAccountModelsAPIKeyPassthroughIgnoresMapping\|TestFetchOpenAIAccountModelsMappingChangesReuseRawCache)$ ./internal/service` | 1 |
+| candidate | final-contract-script-first-run | `bash /mnt/d/project/sub2api/tmp/upstream-sync-20261030/run-final-contract.sh candidate` | 1 |
+| candidate | final-contract-script-syntax | `bash -n /mnt/d/project/sub2api/tmp/upstream-sync-20261030/run-final-contract.sh` | 1 → 0 |
+| candidate | final-contract-race | `timeout 1200 go test -race -tags=unit -count=1 -run ^(TestAPIKeyAuthSnapshot.*\|TestGeminiDefaultTestModel\|Test账号测试默认模型与受限接入)$ ./internal/service` | 0 |
+| baseline | final-regression-repeat | `timeout 1200 go test -race -tags=unit -count=10 -run ^(TestAPIKeyAuthSnapshot.*\|TestAccountGetModelMapping_GoogleOne.*\|TestCreateGeminiTestPayload_ImageModel\|TestProcessGeminiStream_EmitsImageEvent\|TestProcessGeminiStream_SemanticErrorFails\|TestProcessGeminiStream_ImageFlowSkipsSemanticDetection\|TestGeminiDefaultTestModel\|Test账号测试默认模型与受限接入\|Test国产测试模型确定性选择与单次映射\|Test国产无具体文本模型不发送请求\|TestOpenAI默认测试实际请求模型\|TestAntigravity默认Opus5映射不改写自定义映射\|TestFetchOpenAIAccountModelsOAuthPopulatesPickerFields\|TestFetchOpenAIAccountModelsAPIKeyPopulatesPickerFields\|TestFetchOpenAIAccountModelsAPIKeyAppliesAccountModelMapping\|TestFetchOpenAIAccountModelsPreservesEmptyCatalog\|TestFetchOpenAIAccountModelsOAuthLabelsLocalImageModelsLikeUpstream\|TestFetchOpenAIAccountModelsOAuthRespectsImageAllowlist\|TestFetchOpenAIAccountModelsOAuthExcludesUnconfiguredTextModels\|TestFetchOpenAIAccountModelsOAuthLocalImageAlias\|TestFetchOpenAIAccountModelsOAuthImageNamesMappedToText\|TestFetchOpenAIAccountModelsOAuthPassthroughIgnoresMappingTargets\|TestFetchOpenAIAccountModelsAPIKeyPassthroughIgnoresMapping\|TestFetchOpenAIAccountModelsMappingChangesReuseRawCache)$ ./internal/service` | 1 |
+| candidate | final-regression-repeat | `timeout 1200 go test -race -tags=unit -count=10 -run ^(TestAPIKeyAuthSnapshot.*\|TestAccountGetModelMapping_GoogleOne.*\|TestCreateGeminiTestPayload_ImageModel\|TestProcessGeminiStream_EmitsImageEvent\|TestProcessGeminiStream_SemanticErrorFails\|TestProcessGeminiStream_ImageFlowSkipsSemanticDetection\|TestGeminiDefaultTestModel\|Test账号测试默认模型与受限接入\|Test国产测试模型确定性选择与单次映射\|Test国产无具体文本模型不发送请求\|TestOpenAI默认测试实际请求模型\|TestAntigravity默认Opus5映射不改写自定义映射\|TestFetchOpenAIAccountModelsOAuthPopulatesPickerFields\|TestFetchOpenAIAccountModelsAPIKeyPopulatesPickerFields\|TestFetchOpenAIAccountModelsAPIKeyAppliesAccountModelMapping\|TestFetchOpenAIAccountModelsPreservesEmptyCatalog\|TestFetchOpenAIAccountModelsOAuthLabelsLocalImageModelsLikeUpstream\|TestFetchOpenAIAccountModelsOAuthRespectsImageAllowlist\|TestFetchOpenAIAccountModelsOAuthExcludesUnconfiguredTextModels\|TestFetchOpenAIAccountModelsOAuthLocalImageAlias\|TestFetchOpenAIAccountModelsOAuthImageNamesMappedToText\|TestFetchOpenAIAccountModelsOAuthPassthroughIgnoresMappingTargets\|TestFetchOpenAIAccountModelsAPIKeyPassthroughIgnoresMapping\|TestFetchOpenAIAccountModelsMappingChangesReuseRawCache)$ ./internal/service` | 1 |
+
+源码归档核验另以 `verify-tree.py <phase> <SHA> [归档目录] [结果文件]` 执行：基线 5035 文件、207 项仅 CRLF；候选 b477535d85b2a0a710558cee4ff6f3c606be1124、69826b99767a80764895dc3df388991332ed50d7、17d83531964e39c3b774366923593aa430db1ba2、d6c87e6254705745e614a6e9e9b9eb121b799edf 均为 5072 文件、零换行差异，退出码均 0。`git diff --check`、未解决冲突、删除文件、敏感凭据模式和二开编号保护等纳入保护脚本；最终记录追加后再次检查并在交付前确认 main 快进及工作树干净。
+
+### 最终收尾复核
+
+- 最终保护命令 `python3 tmp/upstream-sync-20261030/verify-protection.py` 于 2026-10-30T05:23:49+08:00 结束，退出码 0，共 515 项，实际差异 167 文件。该次检查在上述命令表生成后执行，单独补记。
+- 最终按 Git 对象核对为新增 37、修改 130、删除 0。删除未调用 Gemini 辅助函数后，`account_test_service.go` 与同步前完全一致，故不计入最终差异文件；17 处合并文本冲突的历史事实不变。最终清单已与 Git 逐项一致。
+- 本次标签 `sub2api.sync-test=20261030` 的临时容器清单为空，隔离环境保持进程已正常退出；`findmnt --mountpoint /mnt/d/project/sub2api/tmp/s30` 返回 1 且无输出，确认本次 tmpfs 已不再挂载。未停止用户的其他 Docker 容器、Docker 服务或 WSL；原始日志和归档继续保留于工作目录。
