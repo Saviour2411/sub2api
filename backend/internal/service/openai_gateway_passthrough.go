@@ -181,6 +181,8 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			body = normalizedBody
 		}
 		upstreamStream = gjson.GetBytes(body, "stream").Bool()
+		// OAuth 上游需要流式请求，响应形态仍由客户端标记决定；
+		// compact 保留独立的 JSON 到 SSE 桥接，不覆盖客户端标记。
 
 		accountScopedBody, accountScoped, scopeErr := applyCodexAccountIdentityClientMetadataRaw(body, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
 		if scopeErr != nil {
@@ -489,7 +491,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			s.noteOpenAICodexTurnStateProvenance(c, account)
 		}
 
-		if upstreamStream {
+		if upstreamStream && clientStream {
 			firstTokenAttempt.setAcceptedCallback(releasePassthroughRequestBody)
 			firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolSSE)
 			result, handleErr := s.handleStreamingResponsePassthroughOnAccepted(
@@ -2529,7 +2531,10 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	// Some upstreams (e.g. other sub2api instances) may return SSE even when
 	// stream=false was requested. Without this conversion the client would
 	// receive raw SSE text or a terminal event with empty output.
-	if isEventStreamResponse(resp.Header) {
+	// The ChatGPT OAuth upstream may omit Content-Type while still sending SSE,
+	// so OAuth accounts also fall back to the body framing (same rule as
+	// handleNonStreamingResponse).
+	if isEventStreamResponse(resp.Header) || (account != nil && account.Type == AccountTypeOAuth && bodyHasSSEFraming(body)) {
 		return s.handlePassthroughSSEToJSON(resp, c, account, body, originalModel, mappedModel)
 	}
 
@@ -2602,6 +2607,9 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 		)
 	}
 	finalResponse, ok := extractCodexFinalResponse(bodyText)
+	if !ok && terminalOK {
+		finalResponse, ok = extractOpenAINonCompletedTerminalResponse(terminalType, terminalPayload)
+	}
 
 	usage := s.parseSSEUsageFromBody(bodyText)
 	if ok {
@@ -2648,6 +2656,9 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 		}
 	}
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
+		// 上游的 Content-Type（text/event-stream）已复制到响应头，而 c.Data
+		// 不会覆盖已存在的 Content-Type，这里需显式设置为聚合后的类型。
+		c.Writer.Header().Set("Content-Type", contentType)
 		c.Data(resp.StatusCode, contentType, body)
 	}
 

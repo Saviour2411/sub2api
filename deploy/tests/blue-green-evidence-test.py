@@ -124,7 +124,7 @@ class EvidenceTests(unittest.TestCase):
         for approval in approvals["approvals"]:
             if "profile" not in approval:
                 continue
-            if approval["profile"] in ("platform-guarded-242-v1", e.UPSTREAM216_PROFILE, e.RELEASE260_PROFILE):
+            if approval["profile"] in ("platform-guarded-242-v1", e.UPSTREAM216_PROFILE, e.RELEASE260_PROFILE, e.IMAGE248_PROFILE):
                 # 关联多个结构或迁移的审批边界在专用夹具中验证。
                 continue
             for contract in approval["legacy_contracts"]:
@@ -372,6 +372,54 @@ class EvidenceTests(unittest.TestCase):
         for changed in (approvals+approvals[:1], [dict(item, legacy_contracts=[]) for item in approvals],
                         [dict(item, profile="unknown") for item in approvals]):
             values[sha+":"+e.APPROVALS_PATH] = json.dumps({"version": 1, "approvals": changed})
+            with self.assertRaises(RuntimeError):
+                e.migration_evidence(base, sha, git)
+
+
+    def image248_fixture(self):
+        base, sha = e.IMAGE248_BASE, "b" * 40
+        approval = copy.deepcopy(next(item for item in json.loads((ROOT/e.APPROVALS_PATH).read_text())["approvals"]
+                                      if item.get("profile") == e.IMAGE248_PROFILE))
+        values = {"diff": "A\t"+approval["path"]+"\nM\t"+e.IMAGE248_SCHEMA["path"],
+                  sha+":"+approval["path"]: (ROOT/approval["path"]).read_text(),
+                  base+":"+e.IMAGE248_SCHEMA["path"]: (ROOT/"deploy/tests/fixtures/group-i18n-216.go.txt").read_text(),
+                  sha+":"+e.IMAGE248_SCHEMA["path"]: (ROOT/"deploy/tests/fixtures/group-image-count-248.go.txt").read_text()}
+        for contract in approval["legacy_contracts"]:
+            contract["checksum"] = e.checksum("旧分组明确列名读写")
+            values[base+":"+contract["path"]] = "旧分组明确列名读写"
+        values[sha+":"+e.APPROVALS_PATH] = json.dumps({"version": 1, "approvals": [approval]})
+        def git(*args):
+            return values["diff"] if args[0] == "diff" else values[args[1]] if args[0] == "show" else ""
+        return base, sha, approval, values, git
+
+    def test_248_binds_exact_base_sql_and_schema(self):
+        base, sha, approval, values, git = self.image248_fixture()
+        result = e.migration_evidence(base, sha, git)
+        self.assertEqual("expand", result["migration_class"])
+        self.assertEqual([{"filename": e.IMAGE248_FILE, "checksum": approval["checksum"], "profile": e.IMAGE248_PROFILE}],
+                         result["migration_policy"]["migrations"])
+        original = values["diff"]
+        for diff in (original.splitlines()[0], original.splitlines()[1], original.replace("A\t", "M\t", 1),
+                     original+"\nA\tbackend/migrations/999_other.sql", original+"\nM\tbackend/ent/schema/account.go"):
+            values["diff"] = diff
+            with self.subTest(diff=diff), self.assertRaises(RuntimeError):
+                e.migration_evidence(base, sha, git)
+        values["diff"] = original
+        with self.assertRaises(RuntimeError):
+            e.migration_evidence("c"*40, sha, git)
+
+    def test_248_rejects_sql_schema_legacy_and_approval_drift(self):
+        base, sha, approval, values, git = self.image248_fixture()
+        for key in (sha+":"+approval["path"], base+":"+e.IMAGE248_SCHEMA["path"], sha+":"+e.IMAGE248_SCHEMA["path"],
+                    *(base+":"+item["path"] for item in approval["legacy_contracts"])):
+            original = values[key]
+            values[key] += "\n未经审查的变化"
+            with self.subTest(key=key), self.assertRaises(RuntimeError):
+                e.migration_evidence(base, sha, git)
+            values[key] = original
+        for entries in ([], [approval, approval], [dict(approval, legacy_contracts=[])],
+                        [dict(approval, schema_change={})], [dict(approval, profile="unknown")]):
+            values[sha+":"+e.APPROVALS_PATH] = json.dumps({"version": 1, "approvals": entries})
             with self.assertRaises(RuntimeError):
                 e.migration_evidence(base, sha, git)
 

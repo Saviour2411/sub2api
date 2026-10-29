@@ -16,6 +16,14 @@ REQUIRED = {
 }
 MIGRATION_PATHS = ["backend/migrations", "backend/ent/schema"]
 APPROVALS_PATH = "deploy/blue-green/expand-approvals.json"
+IMAGE248_BASE = "9796796638ea87226bcc5d936033ae53bfedc313"
+IMAGE248_PROFILE = "image-count-additive-248-v1"
+IMAGE248_FILE = "248_group_image_count_billing.sql"
+IMAGE248_SCHEMA = {
+    "path": "backend/ent/schema/group.go",
+    "from_checksum": "c9e1e2ef48143693fc9cba92e123998d7b508d50b79ea735164d56d56afa4776",
+    "to_checksum": "e7b69fe98e8570cf9992f8cebfab97eed8b16d77ff612749a3eb748ba74cb6d3",
+}
 MODEL_QUALITY_BASE = "49e3f64067f5a3340d8e9ae1c561c808206273dd"
 MODEL_QUALITY_PROFILE = "model-quality-additive-246-v1"
 RELEASE260_BASE = "52c45a51b5f221728c3b7d3d39b83c9f86c81c22"
@@ -25,6 +33,7 @@ RELEASE260_FILES = {
     "247_scoped_admin_api_keys.sql": "03445774e2dfad32da9e23279193d1bca02953896bc3d3b8a87ba0b36b6ed577",
 }
 SPECIAL_MIGRATIONS = {
+    IMAGE248_FILE: (IMAGE248_PROFILE, "a872dde339b19f311feb5fa6fd85c8ff7b11d69794c35a18e2086d9846b3499c"),
     "246_model_quality.sql": (MODEL_QUALITY_PROFILE, "1bb3d0dd89a9e48f4c524f306b3c248873581b6a33aa1f37f1e24fc3caab545e"),
     "242_drop_platform_check_constraints.sql": ("platform-guarded-242-v1", "a7725f31f637208d200e0f37d5270e9f263743d99fa9e4f1bb9a7387e8be5a61"),
     "239_channel_reasoning_effort_multipliers.sql": ("reasoning-empty-239-v1", "66feb546785dfa385d8efd268a40276cd8ffdb0cead7026cd79e339a3b69edf1"),
@@ -68,6 +77,17 @@ PLATFORM242_SCHEMAS = [
         "to_checksum": "cc2e48c8fe7305805f106de7b8cec77a94aee3650cb0009ae5d60cba2434f6d6"
     }
 ]
+
+
+def reviewed_image248_schema(base, sha, changed, git):
+    lines = {line for line in changed.splitlines()
+             if not re.fullmatch(r"[AM]\tbackend/migrations/[a-zA-Z0-9_]+_test\.go", line)}
+    require(base == IMAGE248_BASE and lines == {
+        "A\tbackend/migrations/" + IMAGE248_FILE, "M\t" + IMAGE248_SCHEMA["path"]
+    }, "248专项仅覆盖v0.1.261、原始SQL和固定分组Ent差异")
+    for ref, key in ((base, "from_checksum"), (sha, "to_checksum")):
+        require(checksum(git("show", ref+":"+IMAGE248_SCHEMA["path"])) == IMAGE248_SCHEMA[key],
+                "248专项分组Ent摘要不符")
 
 
 def reviewed_platform242_schemas(base, sha, changed, git):
@@ -139,6 +159,9 @@ def migration_evidence(base, sha, git):
         fields = line.split("\t")
         require(len(fields) == 2, "迁移差异格式不受支持")
         status, path = fields
+        if status == "M" and path == IMAGE248_SCHEMA["path"] and "A\tbackend/migrations/" + IMAGE248_FILE in changed.splitlines():
+            reviewed_image248_schema(base, sha, changed, git)
+            continue
         if status == "M" and path == UPSTREAM216_SCHEMA["path"]:
             reviewed_upstream216_schema(base, sha, changed, git)
             continue
@@ -158,6 +181,8 @@ def migration_evidence(base, sha, git):
         if special:
             require(checksum(content) == special[1], "专项迁移固定 SQL 摘要不符")
             contract = {"profile": special[0]}
+            if special[0] == IMAGE248_PROFILE:
+                reviewed_image248_schema(base, sha, changed, git)
             if special[0] == RELEASE260_PROFILE:
                 migration_lines = {item for item in changed.splitlines()
                                    if not re.fullmatch(r"[AM]\tbackend/migrations/[a-zA-Z0-9_]+_test\.go", item)}
@@ -183,6 +208,8 @@ def migration_evidence(base, sha, git):
         require(approval.get("checksum") == checksum(content), "迁移内容与兼容审批摘要不符")
         if special:
             require(approval.get("profile") == special[0] and "column" not in approval, "专项迁移与兼容审批不符")
+            if special[0] == IMAGE248_PROFILE:
+                require(approval.get("schema_change") == IMAGE248_SCHEMA, "248审批缺少固定分组Ent差异")
             if special[0] == UPSTREAM216_PROFILE:
                 require(approval.get("schema_change") == UPSTREAM216_SCHEMA, "0.2.16审批缺少固定分组Ent差异")
             if special[0] == "platform-guarded-241-v1":

@@ -2,6 +2,25 @@
   "version": 1,
   "approvals": [
     {
+      "compatible_from": "9796796638ea87226bcc5d936033ae53bfedc313",
+      "path": "backend/migrations/248_group_image_count_billing.sql",
+      "checksum": "a872dde339b19f311feb5fa6fd85c8ff7b11d69794c35a18e2086d9846b3499c",
+      "profile": "image-count-additive-248-v1",
+      "schema_change": {
+        "path": "backend/ent/schema/group.go",
+        "from_checksum": "c9e1e2ef48143693fc9cba92e123998d7b508d50b79ea735164d56d56afa4776",
+        "to_checksum": "e7b69fe98e8570cf9992f8cebfab97eed8b16d77ff612749a3eb748ba74cb6d3"
+      },
+      "legacy_contracts": [
+        {"path": "backend/internal/repository/group_repo.go", "checksum": "528c684ec5b224640c7ddd81afa8484681600ef6bd6dcd87ecd9a77a614bb5e6"},
+        {"path": "backend/ent/group/group.go", "checksum": "f3ad00826e2e126f07893da39331431de75ca8be6d70e324eefade90710e7465"},
+        {"path": "backend/ent/group_create.go", "checksum": "9e922d34a7884ce6a445991d7b30db0b30be61d1465b2e578cbe9089231367c1"},
+        {"path": "backend/ent/group_query.go", "checksum": "7ddebed10fd6e5408404b7e1dfb5cb169e473fd0421e96688fc67b619ee7de32"},
+        {"path": "backend/ent/group_update.go", "checksum": "b6d0248414b7696f3befe8bb4adb54d0129f66e3ab3a4aa7cf65d021d2003b0f"}
+      ],
+      "review": "2026-10-30按用户通过CI合入主线并更新tag自动蓝绿部署要求，绑定生产v0.1.261、原始248及分组Ent固定摘要。旧分组仓库和Ent明确列名读写，不引用新字段，旧新增使用false默认值，旧更新保留新开关。仅PostgreSQL18、16MiB既有表、固定鉴权触发器、NOWAIT及1/5/10秒预算；原SQL与账本同事务，核验无物理重写、字段定义及重复启动结构。失败保留旧流量；应用回退保留新增列和管理员值，旧版不支持新的按张计费功能。"
+    },
+    {
       "compatible_from": "52c45a51b5f221728c3b7d3d39b83c9f86c81c22",
       "path": "backend/migrations/246_enable_gemini_image_generation_groups.sql",
       "checksum": "87267be7ab657173768989e2b0b105c5569c5930a7f1ed124f4cf81e5198297c",

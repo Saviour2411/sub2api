@@ -30,7 +30,7 @@ func Test账号测试默认模型与受限接入(t *testing.T) {
 		{"Antigravity", PlatformAntigravity, AccountTypeOAuth, "", "claude-opus-5"},
 		{"Antigravity API Key", PlatformAntigravity, AccountTypeAPIKey, "", "claude-opus-5"},
 		{"Bedrock", PlatformAnthropic, AccountTypeBedrock, "", claude.DefaultTestModel},
-		{"Google One", PlatformGemini, AccountTypeOAuth, "google_one", geminicli.DefaultTestModel},
+		{"Google One", PlatformGemini, AccountTypeOAuth, "google_one", geminicli.GoogleOneModels[0].ID},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			account := &Account{Platform: tc.platform, Type: tc.kind, Credentials: map[string]any{"oauth_type": tc.oauth}}
