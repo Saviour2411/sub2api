@@ -9142,3 +9142,7 @@ A	frontend/src/views/admin/__tests__/ChannelsView.webSearchEmulation.spec.ts
 - 用户在本地同步9d0482218完成后明确授权提交、通过CI合入主线，再更新tag自动蓝绿部署。本阶段不扩大上游范围；LAST_FULLY_INTEGRATED_UPSTREAM_SHA 仍为 a3298b46ebe239fb0720b068a1eb3383955bdac2。
 - 生产实际v0.1.261/979679663缺少248字段及账本，新增固定 image-count-additive-248-v1 和实库回归，绑定该旧提交、上游原SQL、分组Ent前后摘要及旧分组读写契约。普通门禁保持，未修改历史SQL或计费默认值；同步更新 CUST-OPS-007 清单和变更记录。
 - 发布版本准备为v0.1.262，验证及执行证据见 docs/operations/2026-10-30-v0.1.262-release.md。此前记录的全量前端和扩展竞态基线失败仍保留，本轮不通过删除断言或关闭检查规避它们。
+
+### 发布安全扫描补充
+
+- PR #50首轮发现新公布的GHSA-qr28-fpjm-wq7f / CVE-2026-118664，frontend经query-string间接锁定decode-uri-component 0.4.1。核对官方公告和0.5.1代码变更后固定到修复版并更新pnpm锁文件，保留现有扫描和例外策略，无二开功能或默认值变化。
