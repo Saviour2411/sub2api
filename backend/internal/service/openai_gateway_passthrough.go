@@ -181,12 +181,8 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			body = normalizedBody
 		}
 		upstreamStream = gjson.GetBytes(body, "stream").Bool()
-		// 上游 ChatGPT internal API 要求 stream=true，但下游响应形态必须遵循
-		// 客户端原始的 stream 标志：stream=false 时由非流式分支把上游 SSE
-		// 聚合为单个 JSON（#7978）。compact 请求始终为非流式。
-		if isOpenAIResponsesCompactPath(c) {
-			reqStream = false
-		}
+		// OAuth 上游需要流式请求，响应形态仍由客户端标记决定；
+		// compact 保留独立的 JSON 到 SSE 桥接，不覆盖客户端标记。
 
 		accountScopedBody, accountScoped, scopeErr := applyCodexAccountIdentityClientMetadataRaw(body, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
 		if scopeErr != nil {
@@ -495,7 +491,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			s.noteOpenAICodexTurnStateProvenance(c, account)
 		}
 
-		if upstreamStream {
+		if upstreamStream && clientStream {
 			firstTokenAttempt.setAcceptedCallback(releasePassthroughRequestBody)
 			firstTokenAttempt.wrapResponse(resp, c, firstTokenProtocolSSE)
 			result, handleErr := s.handleStreamingResponsePassthroughOnAccepted(

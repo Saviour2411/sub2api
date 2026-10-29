@@ -31,7 +31,7 @@ func TestGrokResponseAuditNativeJSON(t *testing.T) {
 		Credentials: map[string]any{"api_key": "test-key", "base_url": "https://api.x.ai/v1"}}
 	svc := &OpenAIGatewayService{httpUpstream: upstream}
 	body := []byte(`{"model":"composer-2.5","input":"hi","stream":false}`)
-	result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "composer-2.5", false, time.Now())
+	result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "composer-2.5", false, false, time.Now())
 	require.NoError(t, err)
 	require.Equal(t, "grok-composer-2.5-fast", result.UpstreamModel)
 	require.Equal(t, "grok-4.5-build", result.UpstreamResponseModel)

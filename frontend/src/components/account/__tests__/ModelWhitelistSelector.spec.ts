@@ -464,7 +464,7 @@ describe('ModelWhitelistSelector', () => {
     await button.trigger('click')
     await flushPromises()
     expect(wrapper.emitted('update:modelValue')).toEqual([[['gpt-6']]])
-    expect(showSuccess).toHaveBeenCalledWith('admin.accounts.syncUpstreamModelsSuccess')
+    expect(showSuccess).toHaveBeenCalledWith('admin.accounts.syncUpstreamModelsSuccess{"count":1,"total":1}')
     expect(wrapper.emitted('upstream-sync-finished')).toHaveLength(1)
     expect(wrapper.emitted('upstream-synced')).toBeUndefined()
   })
