@@ -58,7 +58,7 @@ func resolveDefaultAccountTestModel(account *Account) (string, bool, error) {
 		return claude.DefaultTestModel, false, nil
 	}
 	if account.IsGeminiGoogleOne() {
-		return geminicli.DefaultTestModel, false, nil
+		return geminicli.GoogleOneModels[0].ID, false, nil
 	}
 	if account.IsCNProvider() {
 		return selectCNAccountTestModel(account)

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -95,4 +96,15 @@ func TestProcessGeminiStream_ImageFlowSkipsSemanticDetection(t *testing.T) {
 	require.Contains(t, body, "\"type\":\"content\"")
 	require.Contains(t, body, "\"type\":\"image\"")
 	require.Contains(t, body, "\"success\":true")
+}
+
+func TestGeminiDefaultTestModel(t *testing.T) {
+	t.Parallel()
+
+	googleOne := &Account{Platform: PlatformGemini, Type: AccountTypeOAuth, Credentials: map[string]any{"oauth_type": "google_one"}}
+	require.Equal(t, geminicli.GoogleOneModels[0].ID, geminiDefaultTestModel(googleOne))
+	require.Contains(t, googleOne.GetModelMapping(), geminiDefaultTestModel(googleOne))
+
+	apiKey := &Account{Platform: PlatformGemini, Type: AccountTypeAPIKey}
+	require.Equal(t, defaultGeminiAccountTestModel, geminiDefaultTestModel(apiKey))
 }

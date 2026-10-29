@@ -1804,13 +1804,18 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 	direct := usesCodexDirectImages(upstreamModel) && !isOpenAIImagesForceResponses(ctx)
 	beginUpstreamResponseModelObservation(c)
 	SetOpsUpstreamModel(c, upstreamModel)
+	uploadParts := make([]string, 0, len(parsed.Uploads))
+	for _, upload := range parsed.Uploads {
+		uploadParts = append(uploadParts, fmt.Sprintf("%s:%d", upload.ContentType, len(upload.Data)))
+	}
 	logger.LegacyPrintf(
 		"service.openai_gateway",
-		"[OpenAI] Images request routing request_model=%s endpoint=%s account_type=%s uploads=%d",
+		"[OpenAI] Images request routing request_model=%s endpoint=%s account_type=%s uploads=%d upload_parts=%v",
 		requestModel,
 		parsed.Endpoint,
 		account.Type,
 		len(parsed.Uploads),
+		uploadParts,
 	)
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	defer releaseUpstreamCtx()
@@ -1945,6 +1950,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 				Duration:                      time.Since(startTime),
 				FirstTokenMs:                  firstTokenMs,
 				ClientDisconnect:              parsed.clientDisconnected,
+				ImageEndpoint:                 true,
 				ImageSize:                     parsed.SizeTier,
 				ImageInputSize:                parsed.Size,
 			}
@@ -1988,9 +1994,13 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 			)
 		}
 	}
-	if imageCount <= 0 && !parsed.Stream {
-		imageCount = parsed.N
+	requestedCount := 0
+	if !parsed.Stream {
+		requestedCount = parsed.N
 	}
+	// 流式断连后不能用默认张数补出尚未交付的图片。
+	fallbackToOne := !parsed.clientDisconnected && imageCountBillingEnabled(getAPIKeyFromContext(c))
+	imageCount = resolveBillableImageCount(imageCount, requestedCount, fallbackToOne)
 	if !parsed.Stream {
 		imageDelivered = imageCount > 0 && c.Writer.Size() != writerSizeBeforeResponse
 	}
@@ -2009,6 +2019,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		ResponseHeaders:               resp.Header.Clone(),
 		Duration:                      time.Since(startTime),
 		FirstTokenMs:                  firstTokenMs,
+		ImageEndpoint:                 true,
 		ImageCount:                    imageCount,
 		ImageSize:                     parsed.SizeTier,
 		ImageInputSize:                parsed.Size,

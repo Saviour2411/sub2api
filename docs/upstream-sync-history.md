@@ -8669,3 +8669,14 @@ M	frontend/src/views/admin/groupsImagePricing.ts
 | `git diff --check` | 0 | 补丁空白检查通过。 |
 
 本补丁重新推送后须等待当前提交的 8 项 CI 与 2 项安全检查全部通过，再使用 merge commit 合入 main；最终提交、远端检查和合并结果在 PR #44 与交付答复记录。本节不宣称仍在运行的远端任务已成功，未执行标签发布、生产部署或服务器访问。
+
+## 2026-10-30 上游 0.2.19 集成执行记录
+
+- 时间：`2026-10-30T04:08:28+08:00`。状态：已按批准方案处理代码合并，候选验证待执行；原目标分支尚未更新。
+- 本地目标：`main`；LOCAL_PRE_SYNC_SHA：`d5b888ad0f720363287984515ebdacf474305a37`。
+- 上游：`https://github.com/Wei-Shaw/sub2api`，`main`；UPSTREAM_OLD_SHA：`3f1c8f36ce8c2cd378015830a90e89970b9a9ea7`；UPSTREAM_NEW_SHA：`a3298b46ebe239fb0720b068a1eb3383955bdac2`；实际 merge-base 与旧基线一致。
+- LAST_FULLY_INTEGRATED_UPSTREAM_SHA：`3f1c8f36ce8c2cd378015830a90e89970b9a9ea7`（验收通过前保持旧完整基线，最终记录再推进）。
+- 备份：`backup/pre-upstream-sync-20261030-031222-d5b888ad0`；同步分支：`sync/upstream-20261030-a3298b46e`；执行完整 `merge --no-ff --no-commit`，未跳过或延期任何上游提交。
+- 17 个文本冲突按审批方案逐块融合；本地产品版本、请求模型计费、严格缺价、首 Token、断连结算、串行扣费及 5 秒 usage 超时保留。DeepSeek Pro 价格与 Claude UTF-16 指纹采用已批准的新行为。
+- 同提交更新二开台账对应的 13 个功能项并保留 66 个编号。生产文件及历史迁移保持，唯一新增 SQL 为上游原始 `248_group_image_count_billing.sql`，开关默认关闭；发布兼容门禁未放宽。
+- 基线默认测试、单元、集成、lint、构建、版本契约、核心竞态及本地启动检查通过。前端有 3 个既有订阅卡片译文断言失败；广范围竞态发现 5 个既有 Grok 测试失败，涉及测试桩状态及异步日志访问。原始结果保存在工作区 `tmp/upstream-sync-20261030/baseline`，最终记录将列出全部实际验证及逐提交映射。
