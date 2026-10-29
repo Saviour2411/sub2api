@@ -6,6 +6,8 @@
 
 重试耗尽的错误体及补发的 `response.failed` 保留具体传输错误码，监控按上游故障归类，避免裸 error 回落为本站 internal。回归覆盖 Responses、透传、Chat Completions、Messages 的首内容前恢复与输出后不重放，以及非流式聚合和错误日志归因。本次修复上游错误的处理，不改变 HTTP/2 协议配置或现有重试预算。
 
+同轮安全检查发现 `GHSA-83rm-6c8r-g728`：Vue I18n 9.14.5 的 `escapeParameter` 不能防止译文 `srcdoc` 注入。9.x 无修复版本，升级 Vue I18n 与消息编译器至已包含修复的 11.4.16，沿用项目已使用的 Composition API。依赖要求 Node.js 22 及以上，CI、安全扫描及发布前端构建统一为与 Docker 构建一致的 Node.js 24。
+
 ## 2026-10-26 v0.1.260发布兼容适配
 
 - 用户在PR #45通过CI合入后要求更新tag并自动蓝绿部署。生产仍为v0.1.259，本次同时发布已合入的上游同步和渠道/降智页面优化；关联既有`CUST-OPS-007`、`CUST-OPS-001`、`CUST-OBS-001`、`CUST-OBS-003`，不新增功能编号。
