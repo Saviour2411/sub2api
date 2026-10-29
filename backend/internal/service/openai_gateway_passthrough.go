@@ -1398,11 +1398,14 @@ func openAIStreamDataStartsTTFT(data, eventType string, forceOutput bool, mode s
 }
 
 // openAIStreamFailedEventErrorCode 提取流内 failed 事件的错误码（小写），
-// 兼容 response.failed 的嵌套形态与裸 error 形态。
+// 兼容 response.failed、嵌套 error 和顶层 error 事件。
 func openAIStreamFailedEventErrorCode(payload []byte) string {
 	code := strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "response.error.code").String()))
 	if code == "" {
 		code = strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "error.code").String()))
+	}
+	if code == "" {
+		code = strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "code").String()))
 	}
 	return code
 }
@@ -1724,10 +1727,14 @@ func openAIStreamErrorEventShouldFailover(payload []byte, message string) bool {
 	if isOpenAIUpstreamAccessStateError(message, payload) {
 		return true
 	}
-	switch openAIStreamFailedEventSemanticStatus(payload, message) {
+	semanticStatus := openAIStreamFailedEventSemanticStatus(payload, message)
+	switch semanticStatus {
 	case http.StatusForbidden:
 		return openAIStream403AccountFailure(payload, message)
 	case http.StatusUnauthorized, http.StatusTooManyRequests, 529:
+		return true
+	}
+	if semanticStatus == http.StatusBadGateway && IsOpenAIUpstreamStreamErrorCode(openAIStreamFailedEventErrorCode(payload)) {
 		return true
 	}
 	if isOpenAITransientProcessingError(http.StatusBadRequest, message, payload) {
@@ -1879,12 +1886,12 @@ func (s *OpenAIGatewayService) newOpenAIStreamFailoverErrorWithModel(
 	if statusCode == http.StatusTooManyRequests {
 		errType = "rate_limit_error"
 	}
-	body, _ := json.Marshal(gin.H{
-		"error": gin.H{
-			"type":    errType,
-			"message": message,
-		},
-	})
+	errorBody := gin.H{"type": errType, "message": message}
+	if code := openAIStreamFailedEventErrorCode(payload); IsOpenAIUpstreamStreamErrorCode(code) {
+		// 重试耗尽后仍保留传输故障分类，供客户端和监控识别。
+		errorBody["code"] = code
+	}
+	body, _ := json.Marshal(gin.H{"error": errorBody})
 	retryableOnSameAccount := openAIStreamFailedEventRetryableOnSameAccount(account, payload, message)
 	// 流终止事件承载在 HTTP 200 内，外层响应头描述的是成功流状态，而不是语义上的
 	// 429 事件。仅在配额分类时忽略这些头；故障转移错误仍保留它们，使 Retry-After

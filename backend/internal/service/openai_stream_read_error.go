@@ -23,6 +23,16 @@ const (
 // EOF — without a read error — before any terminal signal arrived.
 var ErrOpenAIUpstreamStreamTruncated = errors.New("upstream stream ended before any terminal chunk")
 
+// IsOpenAIUpstreamStreamErrorCode 只识别明确的传输故障码，避免扩大业务错误重试范围。
+func IsOpenAIUpstreamStreamErrorCode(code string) bool {
+	switch code {
+	case OpenAIUpstreamHTTP2StreamErrorCode, OpenAIUpstreamStreamReadErrorCode, OpenAIUpstreamStreamTruncatedCode:
+		return true
+	default:
+		return false
+	}
+}
+
 type openAIUpstreamStreamReadError struct {
 	cause         error
 	clientCode    string
