@@ -44,6 +44,7 @@ func profitAuthTestAPIKey() *APIKey {
 			ProfitMinMargin:           0.2,
 			ProfitSafetyBuffer:        0.05,
 			LongContextPricingEnabled: true,
+			ImageCountBilling:         true,
 			ModelPricing: []ChannelModelPricing{{
 				Platform:       PlatformOpenAI,
 				Models:         []string{"gpt-cache-roundtrip"},
@@ -68,7 +69,7 @@ func TestAPIKeyAuthSnapshotProfitControlRoundtrip(t *testing.T) {
 	snapshot := svc.snapshotFromAPIKey(context.Background(), apiKey)
 	require.NotNil(t, snapshot)
 	require.Equal(t, apiKeyAuthSnapshotVersion, snapshot.Version)
-	require.Equal(t, 24, snapshot.Version, "v24 认证快照在长上下文、免费 Fast 和固定账号模型清单配置之外携带请求模型白名单")
+	require.Equal(t, 25, snapshot.Version, "v25 认证快照在既有本地配置之外携带图片按张计费开关")
 
 	// 模拟 L2 缓存的完整 JSON 往返（与 apiKeyCache.SetAuthCache/GetAuthCache 同构）。
 	payload, err := json.Marshal(&APIKeyAuthCacheEntry{Snapshot: snapshot})
@@ -86,6 +87,7 @@ func TestAPIKeyAuthSnapshotProfitControlRoundtrip(t *testing.T) {
 	require.InDelta(t, 0.05, materialized.Group.ProfitSafetyBuffer, 1e-12)
 	require.InDelta(t, 0.06, materialized.Group.RateMultiplier, 1e-12)
 	require.True(t, materialized.Group.LongContextPricingEnabled)
+	require.True(t, materialized.Group.ImageCountBilling)
 	require.Len(t, materialized.Group.ModelPricing, 1)
 	require.Equal(t, []string{"gpt-cache-roundtrip"}, materialized.Group.ModelPricing[0].Models)
 	require.InDelta(t, 1.25e-6, *materialized.Group.ModelPricing[0].InputPrice, 1e-12)
@@ -100,15 +102,25 @@ func TestAPIKeyAuthSnapshotProfitControlRoundtrip(t *testing.T) {
 	require.InDelta(t, 0.06*(1-0.25), gate.threshold, 1e-12)
 }
 
-// 旧 v20 快照可能分别缺少长上下文开关或模型定价，必须被淘汰回源，不得复用。
+// 旧快照缺少长上下文、模型定价或图片按张计费配置，必须淘汰回源。
 func TestAPIKeyAuthSnapshotOldVersionEvicted(t *testing.T) {
-	svc := &APIKeyService{}
-	snapshot := svc.snapshotFromAPIKey(context.Background(), profitAuthTestAPIKey())
-	require.NotNil(t, snapshot)
-	snapshot.Version = 20
+	for _, tt := range []struct {
+		name    string
+		version int
+	}{
+		{name: "v20", version: 20},
+		{name: "v24", version: 24},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := &APIKeyService{}
+			snapshot := svc.snapshotFromAPIKey(context.Background(), profitAuthTestAPIKey())
+			require.NotNil(t, snapshot)
+			snapshot.Version = tt.version
 
-	materialized, used, err := svc.applyAuthCacheEntry("sk-old", &APIKeyAuthCacheEntry{Snapshot: snapshot})
-	require.NoError(t, err)
-	require.False(t, used, "版本不匹配的缓存条目必须淘汰并回源重建")
-	require.Nil(t, materialized)
+			materialized, used, err := svc.applyAuthCacheEntry("sk-old", &APIKeyAuthCacheEntry{Snapshot: snapshot})
+			require.NoError(t, err)
+			require.False(t, used, "版本不匹配的缓存条目必须淘汰并回源重建")
+			require.Nil(t, materialized)
+		})
+	}
 }
