@@ -196,6 +196,7 @@ func (h *anthropicStreamCaptureHandler) ServeHTTP(w http.ResponseWriter, r *http
 	w.WriteHeader(http.StatusOK)
 	answer := answerFromAnthropicRequest(parsed)
 	_, _ = fmt.Fprintf(w, "data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":%q}}\n\n", answer)
+	_, _ = fmt.Fprint(w, "data: {\"type\":\"message_stop\"}\n\n")
 }
 
 type geminiStreamCaptureHandler struct {
@@ -217,7 +218,7 @@ func (h *geminiStreamCaptureHandler) ServeHTTP(w http.ResponseWriter, r *http.Re
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.WriteHeader(http.StatusOK)
 	answer := answerFromGeminiRequest(parsed)
-	_, _ = fmt.Fprintf(w, "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":%q}]}}]}\n\n", answer)
+	_, _ = fmt.Fprintf(w, "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":%q}]},\"finishReason\":\"STOP\"}]}\n\n", answer)
 }
 
 func setupFakeAnthropicStream(t *testing.T, handler *anthropicStreamCaptureHandler) string {

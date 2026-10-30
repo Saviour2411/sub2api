@@ -35,8 +35,11 @@ const (
 	monitorMaxIntervalSeconds = 3600
 	// monitorMessageMaxBytes message 字段最大字节数（与 schema/migration 一致）。
 	monitorMessageMaxBytes = 500
-	// monitorResponseMaxBytes 单次模型响应最大读取字节，防止 OOM。
+	// monitorResponseMaxBytes 非流式正文与提取文本的上限。
 	monitorResponseMaxBytes = 64 * 1024
+	// 流式元数据可能大于正文，逐事件处理且不累计保存完整响应。
+	monitorStreamEventMaxBytes = 1024 * 1024
+	monitorStreamMaxBytes      = 8 * 1024 * 1024
 	// monitorErrorBodySnippetMaxBytes 非 2xx 响应时保留上游 body 片段的最大字节数。
 	// 留 300 字节足够覆盖典型结构化错误（如 `{"error":{"message":"..."}}`），
 	// 又给 "upstream HTTP <status>: " 前缀留出余量，避免最终被 monitorMessageMaxBytes (500) 截得太狠。

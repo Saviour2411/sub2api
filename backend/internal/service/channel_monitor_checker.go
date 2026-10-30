@@ -294,7 +294,7 @@ func providerAdapterFor(provider, apiMode string) (providerAdapter, string, bool
 //
 // 返回值：
 //   - extractedText: 按 textPath 抽出的成功文本，仅在 status 2xx 时有意义；非 2xx 时通常为空串
-//   - rawBody: 完整响应体的字符串形式（已被 monitorResponseMaxBytes 截断），用于错误路径保留上游真实回包
+//   - rawBody: 有界 JSON 正文或 HTTP 错误片段；流式成功不累计原始事件
 //   - status: HTTP 状态码
 //   - err: 网络 / 序列化错误
 func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt string, opts *CheckOptions) (extractedText, rawBody string, status int, err error) {
@@ -324,12 +324,31 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 		path = adapter.buildStreamPath(model)
 	}
 	full := joinURL(endpoint, path)
-	respBytes, status, err := postRawJSON(ctx, full, body, headers)
+	requestCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	resp, err := postMonitorRequest(requestCtx, full, body, headers)
 	if err != nil {
-		return "", "", status, err
+		return "", "", 0, err
 	}
-	if streamEnabled {
-		return extractStreamingMonitorText(provider, apiMode, respBytes), string(respBytes), status, nil
+	defer func() {
+		cancel()
+		_ = resp.Body.Close()
+	}()
+	status = resp.StatusCode
+	if streamEnabled && status >= 200 && status < 300 {
+		text, readErr := readMonitorEventStream(resp.Body, provider, apiMode)
+		return text, "", status, readErr
+	}
+	respBytes, err := io.ReadAll(io.LimitReader(resp.Body, monitorResponseMaxBytes+1))
+	if err != nil {
+		return "", "", status, fmt.Errorf("read body: %w", err)
+	}
+	if len(respBytes) > monitorResponseMaxBytes {
+		if status >= 200 && status < 300 {
+			return "", "", status, fmt.Errorf("monitor response exceeds %d bytes", monitorResponseMaxBytes)
+		}
+		// HTTP 错误仍保留状态码和有界正文片段。
+		respBytes = respBytes[:monitorResponseMaxBytes]
 	}
 	if provider == MonitorProviderOpenAI && apiMode == MonitorAPIModeResponses {
 		return extractOpenAIResponsesText(respBytes), string(respBytes), status, nil
@@ -445,53 +464,6 @@ func extractOpenAIResponsesText(respBytes []byte) string {
 		return strings.Join(texts, "")
 	}
 	return gjson.GetBytes(respBytes, providerOpenAIResponsesAdapter.textPath).String()
-}
-
-func extractStreamingMonitorText(provider, apiMode string, respBytes []byte) string {
-	var texts []string
-	for _, payload := range extractSSEJSONPayloads(respBytes) {
-		switch provider {
-		case MonitorProviderOpenAI:
-			if defaultAPIMode(apiMode) == MonitorAPIModeResponses {
-				if text := gjson.Get(payload, "delta").String(); text != "" && gjson.Get(payload, "type").String() == "response.output_text.delta" {
-					texts = append(texts, text)
-				}
-				continue
-			}
-			gjson.Get(payload, "choices").ForEach(func(_, choice gjson.Result) bool {
-				if text := choice.Get("delta.content").String(); text != "" {
-					texts = append(texts, text)
-				}
-				return true
-			})
-		case MonitorProviderAnthropic:
-			if gjson.Get(payload, "type").String() == "content_block_delta" {
-				if text := gjson.Get(payload, "delta.text").String(); text != "" {
-					texts = append(texts, text)
-				}
-			}
-		case MonitorProviderGemini:
-			texts = append(texts, extractGeminiMonitorTextParts(gjson.Parse(payload))...)
-		}
-	}
-	return strings.Join(texts, "")
-}
-
-func extractSSEJSONPayloads(respBytes []byte) []string {
-	lines := strings.Split(string(respBytes), "\n")
-	payloads := make([]string, 0, len(lines))
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if !sseDataPrefix.MatchString(line) {
-			continue
-		}
-		payload := strings.TrimSpace(sseDataPrefix.ReplaceAllString(line, ""))
-		if payload == "" || payload == "[DONE]" || !gjson.Valid(payload) {
-			continue
-		}
-		payloads = append(payloads, payload)
-	}
-	return payloads
 }
 
 // mergeHeaders 把用户自定义 headers 合并到 adapter 默认 headers 上。
@@ -647,12 +619,11 @@ func hasNonEmptyBodyValue(v any) bool {
 	}
 }
 
-// postRawJSON 发送 POST + 已序列化好的 JSON 字节，限制响应体大小，返回响应字节、HTTP status、错误。
-// adapter 自行 marshal 是为了精确控制字段顺序与类型，所以这里直接收 []byte 而不是 any。
-func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers map[string]string) ([]byte, int, error) {
+// postMonitorRequest 只发送请求，由调用方按 JSON / SSE 分别读取并关闭响应。
+func postMonitorRequest(ctx context.Context, fullURL string, payload []byte, headers map[string]string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(payload))
 	if err != nil {
-		return nil, 0, fmt.Errorf("build request: %w", err)
+		return nil, fmt.Errorf("build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
@@ -662,15 +633,9 @@ func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers ma
 
 	resp, err := monitorHTTPClient.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("do request: %w", err)
+		return nil, fmt.Errorf("do request: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
-
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, monitorResponseMaxBytes))
-	if err != nil {
-		return nil, resp.StatusCode, fmt.Errorf("read body: %w", err)
-	}
-	return respBody, resp.StatusCode, nil
+	return resp, nil
 }
 
 // monitorRequestPath 返回探测请求路径。智谱按 endpoint 区分：
