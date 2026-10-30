@@ -53,8 +53,8 @@ func readMonitorEventStream(body io.Reader, provider, apiMode string) (string, e
 		case "event":
 			eventName = value
 		case "data":
-			data.WriteString(value)
-			data.WriteByte('\n')
+			_, _ = data.WriteString(value)
+			_ = data.WriteByte('\n')
 		}
 	}
 	if limited.N == 0 {
@@ -89,7 +89,7 @@ func (s *monitorStreamState) appendText(text string) error {
 	if len(text) > monitorResponseMaxBytes-s.text.Len() {
 		return fmt.Errorf("monitor stream text exceeds %d bytes", monitorResponseMaxBytes)
 	}
-	s.text.WriteString(text)
+	_, _ = s.text.WriteString(text)
 	return nil
 }
 
