@@ -37,7 +37,10 @@ class FakeDeployment(bg.Deployment):
         if args[:3] == ("docker","image","inspect"):
             output = json.dumps([{"Config":{"Labels":{"org.opencontainers.image.revision": self.state["release"]["sha"]}}}])
         elif args[:5] == ("docker","exec","sub2api-redis","redis-cli","--raw"):
-            output = "0\n5\n" if args[5] == "EVAL" else "1\n"
+            if len(args) > 8 and args[8] == "billing:inflight:accounting":
+                output = json.dumps({"mode":args[9], "owner":args[10], "generation":args[11]})
+            else:
+                output = "0\n5\n" if args[5] == "EVAL" else "1\n"
         elif args == ("nginx","-T"):
             output = "include /etc/nginx/conf.d/*.conf;"
         else:
@@ -147,6 +150,70 @@ class BlueGreenTests(unittest.TestCase):
         self.deployment.state_path.unlink()
         with self.assertRaisesRegex(bg.Refused,"首次初始化"):
             bg.Deployment(self.directory)
+
+    def modern_candidate(self):
+        original = self.deployment.run
+        def execute(*args, **kwargs):
+            result = original(*args, **kwargs)
+            if args[:2] == ("docker", "compose"):
+                state = self.deployment.states[args[-1]]
+                state.update(capabilities=["billing_inflight_aggregate_v1"], ready=True)
+            return result
+        return execute
+
+    def test_inflight_aggregate_waits_for_old_container_removal(self):
+        deployment = self.deployment
+        with patch.object(deployment, "run", side_effect=self.modern_candidate()):
+            deployment.deploy(self.release(1), window=0)
+        calls = deployment.calls
+        modes = [(index, call[9]) for index, call in enumerate(calls) if len(call)>8 and call[8]=="billing:inflight:accounting"]
+        start = next(index for index,call in enumerate(calls) if call[:2]==("docker","compose"))
+        removed = calls.index(("docker","rm","sub2api-blue"))
+        self.assertLess(modes[0][0], start)
+        self.assertEqual("compat", modes[0][1])
+        self.assertTrue(all(index>removed for index,mode in modes if mode=="aggregate"))
+        self.assertEqual("aggregate", deployment.state["inflight_accounting"]["mode"])
+
+    def test_inflight_mixed_versions_stay_compatible_and_rollback(self):
+        deployment = self.deployment
+        deployment.busy.add("blue")
+        release = dict(self.release(1), rollback_compatible=True)
+        with patch.object(deployment, "run", side_effect=self.modern_candidate()):
+            deployment.deploy(release, window=0)
+        self.assertEqual("compat", deployment.state["inflight_accounting"]["mode"])
+        self.assertEqual("blue", deployment.state["pending"])
+        deployment.calls.clear()
+        deployment.rollback(window=0)
+        self.assertEqual("blue", deployment.state["active"])
+        self.assertEqual("compat", deployment.state["inflight_accounting"]["mode"])
+        self.assertEqual("billing:inflight:accounting", deployment.calls[0][8])
+
+    def test_inflight_mode_failure_stops_start_and_rollback(self):
+        deployment = self.deployment
+        with patch.object(deployment, "set_inflight_mode", side_effect=bg.Refused("切换未确认")):
+            with self.assertRaisesRegex(bg.Refused, "切换未确认"):
+                deployment.deploy(self.release(1), window=0)
+            self.assertFalse(any(call[:2]==("docker","compose") for call in deployment.calls))
+            with self.assertRaisesRegex(bg.Refused, "切换未确认"):
+                deployment.rollback(window=0)
+            self.assertNotIn(("control","blue","activate"), deployment.calls)
+
+    def test_inflight_unconfirmed_redis_reply_is_rejected(self):
+        reply = subprocess.CompletedProcess([],0,stdout='{"mode":"aggregate","generation":"wrong","owner":""}',stderr="")
+        with patch.object(self.deployment, "run", return_value=reply):
+            with self.assertRaisesRegex(bg.Refused,"无法确认"):
+                self.deployment.set_inflight_mode("compat")
+
+    def test_inflight_stale_capability_or_remaining_container_refuses_enable(self):
+        deployment=self.deployment
+        deployment.state["slots"]["blue"]["capabilities"]=["billing_inflight_aggregate_v1"]
+        deployment.containers["sub2api-blue"]["State"]={"Running":True}
+        with self.assertRaisesRegex(bg.Refused,"支持累计"):
+            deployment.finish_inflight_accounting()
+        deployment.states["blue"].update(capabilities=["billing_inflight_aggregate_v1"],ready=True)
+        deployment.containers["sub2api-green"]={"Id":"unknown"}
+        with self.assertRaisesRegex(bg.Refused,"旧容器"):
+            deployment.finish_inflight_accounting()
 
     def test_twenty_state_machine_cycles(self):
         for index in range(1,21):
@@ -356,7 +423,7 @@ class BlueGreenTests(unittest.TestCase):
         self.assertEqual("17",deployment.state["forced_retire_result"]["affinity_cursor"])
         self.assertEqual(5,deployment.state["forced_retire_result"]["affinity_removed"])
         deployment.clear_retired_affinity("old")
-        scan = next(call for call in deployment.calls if call[:5] == ("docker","exec","sub2api-redis","redis-cli","--raw") and call[5] == "EVAL")
+        scan = next(call for call in deployment.calls if call[:5] == ("docker","exec","sub2api-redis","redis-cli","--raw") and call[5] == "EVAL" and call[7] == "0")
         self.assertEqual(("17","old"),scan[-2:])
 
     def test_forced_retirement_preserves_cleanup_count_across_resume(self):

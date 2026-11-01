@@ -75,6 +75,7 @@ var (
 		local maxConcurrency = tonumber(ARGV[1])
 		local ttl = tonumber(ARGV[2])
 		local requestID = ARGV[3]
+		if redis.call('EXISTS', KEYS[4]) == 1 then return {0, 0} end
 
 		-- 使用 Redis 服务器时间，确保多实例时钟一致
 		local timeResult = redis.call('TIME')
@@ -90,6 +91,7 @@ var (
 		if exists ~= false then
 			redis.call('ZADD', key, now, requestID)
 			redis.call('EXPIRE', key, ttl)
+			redis.call('ZADD', KEYS[3], now + ttl, ARGV[4])
 			return {1, now}
 		end
 
@@ -98,6 +100,7 @@ var (
 		if count < maxConcurrency then
 			redis.call('ZADD', key, now, requestID)
 			redis.call('EXPIRE', key, ttl)
+			redis.call('ZADD', KEYS[3], now + ttl, ARGV[4])
 			return {1, now}
 		end
 
@@ -270,6 +273,7 @@ type concurrencyCache struct {
 	ownedMu             sync.Mutex
 	ownedSlots          map[string]map[string]bool
 	waitKeys            map[string]int
+	waitLocks           map[string]*waitKeyLock
 	rdb                 *redis.Client
 	slotTTLSeconds      int // 槽位过期时间（秒）
 	waitQueueTTLSeconds int // 等待队列过期时间（秒）
@@ -547,14 +551,12 @@ func runScriptInt64Pair(ctx context.Context, rdb *redis.Client, script *redis.Sc
 func (c *concurrencyCache) AcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int, requestID string) (bool, error) {
 	key := accountSlotKey(accountID)
 	// 时间戳在 Lua 脚本内使用 Redis TIME 命令获取，确保多实例时钟一致
-	result, now, err := runScriptInt64Pair(ctx, c.rdb, acquireScript, []string{key, liveAccountSlotKey(accountID)}, maxConcurrency, c.slotTTLSeconds, requestID)
+	result, _, err := runScriptInt64Pair(ctx, c.rdb, acquireScript, []string{key, liveAccountSlotKey(accountID), accountActiveIndexKey, key + ":done:" + requestID}, maxConcurrency, c.slotTTLSeconds, requestID, accountID)
 	if err != nil {
 		return false, err
 	}
 	if result == 1 {
 		c.rememberSlot(key, requestID, true)
-		// 成功占槽后标记活跃账号，后台清理即可从索引定位候选账号。
-		c.touchActiveIndexAt(ctx, accountActiveIndexKey, accountID, now+int64(c.slotTTLSeconds))
 	}
 	return result == 1, nil
 }
@@ -562,12 +564,7 @@ func (c *concurrencyCache) AcquireAccountSlot(ctx context.Context, accountID int
 func (c *concurrencyCache) ReleaseAccountSlot(ctx context.Context, accountID int64, requestID string) error {
 	key := accountSlotKey(accountID)
 	c.rememberSlot(key, requestID, false)
-	if err := c.rdb.ZRem(ctx, key, requestID).Err(); err != nil {
-		return err
-	}
-	// 释放后用真实负载刷新索引；若没有槽位和等待计数，会移除索引 member。
-	c.refreshAccountActiveIndex(ctx, accountID)
-	return nil
+	return c.releaseIndexedSlot(ctx, key, liveAccountSlotKey(accountID), accountWaitKey(accountID), accountActiveIndexKey, accountID, requestID)
 }
 
 func (c *concurrencyCache) GetAccountConcurrency(ctx context.Context, accountID int64) (int, error) {
@@ -626,14 +623,12 @@ func (c *concurrencyCache) GetAccountConcurrencyBatch(ctx context.Context, accou
 func (c *concurrencyCache) AcquireUserSlot(ctx context.Context, userID int64, maxConcurrency int, requestID string) (bool, error) {
 	key := userSlotKey(userID)
 	// 时间戳在 Lua 脚本内使用 Redis TIME 命令获取，确保多实例时钟一致
-	result, now, err := runScriptInt64Pair(ctx, c.rdb, acquireScript, []string{key, liveUserSlotKey(userID)}, maxConcurrency, c.slotTTLSeconds, requestID)
+	result, _, err := runScriptInt64Pair(ctx, c.rdb, acquireScript, []string{key, liveUserSlotKey(userID), userActiveIndexKey, key + ":done:" + requestID}, maxConcurrency, c.slotTTLSeconds, requestID, userID)
 	if err != nil {
 		return false, err
 	}
 	if result == 1 {
 		c.rememberSlot(key, requestID, true)
-		// 成功占槽后标记活跃用户，避免启动清理依赖全量 SCAN。
-		c.touchActiveIndexAt(ctx, userActiveIndexKey, userID, now+int64(c.slotTTLSeconds))
 	}
 	return result == 1, nil
 }
@@ -641,12 +636,7 @@ func (c *concurrencyCache) AcquireUserSlot(ctx context.Context, userID int64, ma
 func (c *concurrencyCache) ReleaseUserSlot(ctx context.Context, userID int64, requestID string) error {
 	key := userSlotKey(userID)
 	c.rememberSlot(key, requestID, false)
-	if err := c.rdb.ZRem(ctx, key, requestID).Err(); err != nil {
-		return err
-	}
-	// 释放后按 Redis 中剩余负载修正索引状态。
-	c.refreshUserActiveIndex(ctx, userID)
-	return nil
+	return c.releaseIndexedSlot(ctx, key, liveUserSlotKey(userID), waitQueueKey(userID), userActiveIndexKey, userID, requestID)
 }
 
 func (c *concurrencyCache) GetUserConcurrency(ctx context.Context, userID int64) (int, error) {

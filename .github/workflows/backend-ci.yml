@@ -158,7 +158,32 @@ jobs:
         run: |
           mkdir -p ../.cache/tmp
           export TMPDIR="$(pwd)/../.cache/tmp"
-          go test -race -tags=unit ./internal/pkg/lifecycle ./internal/service ./internal/repository ./internal/handler -run 'TestPeer|TestAffinity|TestPublicPeer|TestLongSSE|TestHijacked|TestDetachedProducer|TestControl|TestDrain|TestNewInstance|TestLegacyWaits|TestRenewal|TestUsageRecordWorkerPool_StopRace|TestStoppedKeyed|TestOpenAIResponsesWebSocket_Ingress|TestUpstreamVersion|TestChannelMonitorRunnerRejected'
+          go test -race -tags=unit ./internal/pkg/lifecycle ./internal/pkg/cleanupqueue ./internal/service ./internal/repository ./internal/handler -run 'TestPeer|TestAffinity|TestPublicPeer|TestLongSSE|TestHijacked|TestDetachedProducer|TestControl|TestDrain|TestNewInstance|TestLegacyWaits|TestRenewal|TestUsageRecordWorkerPool_StopRace|TestStoppedKeyed|TestOpenAIResponsesWebSocket_Ingress|TestUpstreamVersion|TestChannelMonitorRunnerRejected|TestInflight|TestCleanupQueue|TestConcurrencySlowWait|TestConcurrencyRenewal|TestSlotAcquire|TestBalanceInflight|TestSlotBackend'
+
+  redis-inflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      redis:
+        image: redis:8.4-alpine
+        ports:
+          - 16391:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: 验证真实 Redis 热点性能及超时清理
+        working-directory: backend
+        env:
+          INFLIGHT_TEST_REDIS_ADDR: 127.0.0.1:16391
+        run: go test -tags=unit ./internal/repository -run '^TestInflightRedis' -count=1 -v -timeout=5m
 
   bluegreen-protocol:
     runs-on: ubuntu-latest

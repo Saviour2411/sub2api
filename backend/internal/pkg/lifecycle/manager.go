@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cleanupqueue"
 	"github.com/google/uuid"
 )
 
@@ -41,13 +42,15 @@ var ErrRetired = errors.New("实例已封闭接入")
 var Process = New("i" + strings.ReplaceAll(uuid.NewString(), "-", ""))
 
 type Snapshot struct {
-	ID            string           `json:"instance_id"`
-	Version       string           `json:"version"`
-	State         State            `json:"state"`
-	Ready         bool             `json:"ready"`
-	Sealed        bool             `json:"sealed"`
-	Work          map[string]int64 `json:"work"`
-	SessionLeases int              `json:"session_leases"`
+	Capabilities  []string                      `json:"capabilities"`
+	Cleanup       map[string]cleanupqueue.Stats `json:"redis_cleanup"`
+	ID            string                        `json:"instance_id"`
+	Version       string                        `json:"version"`
+	State         State                         `json:"state"`
+	Ready         bool                          `json:"ready"`
+	Sealed        bool                          `json:"sealed"`
+	Work          map[string]int64              `json:"work"`
+	SessionLeases int                           `json:"session_leases"`
 }
 
 type Manager struct {
@@ -185,7 +188,7 @@ func (m *Manager) Snapshot() Snapshot {
 	for k, v := range m.work {
 		work[k] = v
 	}
-	return Snapshot{ID: m.id, Version: m.version, State: state, Ready: state == Active && !m.sealed, Sealed: m.sealed, Work: work, SessionLeases: len(m.leases)}
+	return Snapshot{ID: m.id, Version: m.version, State: state, Ready: state == Active && !m.sealed, Sealed: m.sealed, Work: work, SessionLeases: len(m.leases), Capabilities: []string{"billing_inflight_aggregate_v1"}, Cleanup: cleanupqueue.Metrics()}
 }
 
 // Seal 与 Begin 共用锁，避免看到零计数后新请求入场的退役竞态。

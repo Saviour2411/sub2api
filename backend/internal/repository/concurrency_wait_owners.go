@@ -3,7 +3,7 @@ package repository
 import (
 	"context"
 	"strconv"
-	"time"
+	"strings"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -48,10 +48,15 @@ func (c *concurrencyCache) readWait(ctx context.Context, cmd redis.Scripter, key
 	return cmd.Eval(ctx, readWaitOwnersLua+`return total`, []string{key, waitOwnersKey(key)})
 }
 func (c *concurrencyCache) mutateWait(ctx context.Context, key string, delta, maxWait int) (int64, int64, error) {
-	c.ownedMu.Lock()
-	defer c.ownedMu.Unlock()
+	unlock, err := c.lockWaitKey(ctx, key)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer unlock()
 	result, now, err := runScriptInt64Pair(ctx, c.rdb, mutateWaitOwnersScript, []string{key, waitOwnersKey(key)}, c.owner, delta, maxWait, c.waitQueueTTLSeconds)
 	if err == nil {
+		c.ownedMu.Lock()
+		defer c.ownedMu.Unlock()
 		if result == 1 && delta > 0 {
 			c.waitKeys[key]++
 		}
@@ -67,24 +72,79 @@ func (c *concurrencyCache) mutateWait(ctx context.Context, key string, delta, ma
 
 // RefreshOwnedLeases只刷新本进程仍持有的槽和等待字段；不复活已释放的槽。
 func (c *concurrencyCache) RefreshOwnedLeases(ctx context.Context) error {
-	now, err := c.redisUnixSeconds(ctx)
-	if err != nil {
-		return err
-	}
+	type lease struct{ key, member string }
+	var slots []lease
+	var waits []string
 	c.ownedMu.Lock()
-	defer c.ownedMu.Unlock()
-	pipe := c.rdb.Pipeline()
 	for key, members := range c.ownedSlots {
 		for member := range members {
-			pipe.ZAddXX(ctx, key, redis.Z{Score: float64(now), Member: member})
+			slots = append(slots, lease{key, member})
 		}
-		pipe.Expire(ctx, key, time.Duration(c.slotTTLSeconds)*time.Second)
 	}
 	for key := range c.waitKeys {
-		pipe.Eval(ctx, readWaitOwnersLua+mutateWaitOwnersLua, []string{key, waitOwnersKey(key)}, c.owner, 0, 0, c.waitQueueTTLSeconds)
+		waits = append(waits, key)
 	}
-	_, err = pipe.Exec(ctx)
-	return err
+	c.ownedMu.Unlock()
+	const batchSize = 128
+	for len(slots) > 0 || len(waits) > 0 {
+		pipe := c.rdb.Pipeline()
+		n := 0
+		for len(slots) > 0 && n < batchSize {
+			slot := slots[0]
+			slots = slots[1:]
+			n++
+			index, prefix := userActiveIndexKey, userSlotKeyPrefix
+			if strings.HasPrefix(slot.key, accountSlotKeyPrefix) {
+				index, prefix = accountActiveIndexKey, accountSlotKeyPrefix
+			}
+			pipe.Eval(ctx, renewOwnedSlotLua, []string{slot.key, index}, slot.member, c.slotTTLSeconds, strings.TrimPrefix(slot.key, prefix))
+		}
+		for len(waits) > 0 && n < batchSize {
+			key := waits[0]
+			waits = waits[1:]
+			n++
+			pipe.Eval(ctx, readWaitOwnersLua+mutateWaitOwnersLua, []string{key, waitOwnersKey(key)}, c.owner, 0, 0, c.waitQueueTTLSeconds)
+		}
+		if _, err := pipe.Exec(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type waitKeyLock struct {
+	token chan struct{}
+	refs  int
+}
+
+// 按键协调本地计数与 Redis 操作；等待锁同样服从调用方截止时间。
+func (c *concurrencyCache) lockWaitKey(ctx context.Context, key string) (func(), error) {
+	c.ownedMu.Lock()
+	if c.waitLocks == nil {
+		c.waitLocks = make(map[string]*waitKeyLock)
+	}
+	lock := c.waitLocks[key]
+	if lock == nil {
+		lock = &waitKeyLock{token: make(chan struct{}, 1)}
+		c.waitLocks[key] = lock
+	}
+	lock.refs++
+	c.ownedMu.Unlock()
+	drop := func() {
+		c.ownedMu.Lock()
+		lock.refs--
+		if lock.refs == 0 {
+			delete(c.waitLocks, key)
+		}
+		c.ownedMu.Unlock()
+	}
+	select {
+	case lock.token <- struct{}{}:
+		return func() { <-lock.token; drop() }, nil
+	case <-ctx.Done():
+		drop()
+		return nil, ctx.Err()
+	}
 }
 
 func (c *concurrencyCache) rememberSlot(key, requestID string, held bool) {

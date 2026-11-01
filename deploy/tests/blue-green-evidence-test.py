@@ -33,6 +33,19 @@ class EvidenceTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             e.checked_run([run], "a"*40, {"test", "race"}, jobs)
 
+    def test_inflight_redis_check_is_required_for_release(self):
+        required = e.REQUIRED["backend-ci.yml"]
+        self.assertIn("redis-inflight", required)
+        run = self.run_record()
+        other = [{"name": name, "conclusion": "success"} for name in required if name != "redis-inflight"]
+        for conclusion in (None, "skipped", "cancelled", "failure"):
+            with self.subTest(conclusion=conclusion):
+                jobs = other + ([{"name":"redis-inflight", "conclusion":conclusion}] if conclusion else [])
+                with self.assertRaises(RuntimeError):
+                    e.checked_run([run], "a"*40, required, lambda _: jobs)
+        jobs = other + [{"name":"redis-inflight", "conclusion":"success"}]
+        self.assertIn("redis-inflight", e.checked_run([run], "a"*40, required, lambda _: jobs)["jobs"])
+
     def test_migration_changes_fail_closed(self):
         base, sha = "a"*40, "b"*40
         self.assertEqual("none", e.migration_evidence(base, sha, lambda *args: "")["migration_class"])
