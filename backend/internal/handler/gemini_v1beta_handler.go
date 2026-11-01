@@ -1002,8 +1002,13 @@ func googlePlatformError(c *gin.Context, status int, message string) {
 
 // googleErrorWithType 保留 Google 错误格式，并登记网关错误类型与错误码。
 func googleErrorWithType(c *gin.Context, status int, errType, code, message string) {
+	errType, code = normalizeBillingError(c, errType, code)
 	service.SetOpsLocalErrorType(c, errType, code)
-	writeGoogleError(c, status, message, "")
+	reason := ""
+	if code == "balance_inflight_limit" {
+		reason = code
+	}
+	writeGoogleError(c, status, message, reason)
 }
 
 func writeGoogleError(c *gin.Context, status int, message, reason string) {

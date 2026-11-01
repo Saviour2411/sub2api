@@ -11,7 +11,7 @@ import urllib.parse
 import urllib.request
 
 REQUIRED = {
-    "backend-ci.yml": {"shell", "test", "stream-race", "frontend", "golangci-lint", "lifecycle-race", "bluegreen-protocol", "release-helpers"},
+    "backend-ci.yml": {"shell", "test", "stream-race", "frontend", "golangci-lint", "lifecycle-race", "redis-inflight", "bluegreen-protocol", "release-helpers"},
     "security-scan.yml": {"backend-security", "frontend-security"},
 }
 MIGRATION_PATHS = ["backend/migrations", "backend/ent/schema"]

@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cleanupqueue"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/lifecycle"
 	"strconv"
 	"sync"
@@ -216,7 +217,10 @@ const (
 
 // ConcurrencyService 管理账号和用户的并发限制。
 type ConcurrencyService struct {
-	cache ConcurrencyCache
+	cache       ConcurrencyCache
+	cleanupOnce sync.Once
+	cleanup     *cleanupqueue.Queue
+	stopped     atomic.Bool
 
 	accountLoadCacheTTL atomic.Int64
 	accountLoadCacheMu  sync.RWMutex
@@ -323,82 +327,14 @@ type UserLoadInfo struct {
 	LoadRate           int // 0-100+ (percent)
 }
 
-// AcquireAccountSlot attempts to acquire a concurrency slot for an account.
-// If the account is at max concurrency, it waits until a slot is available or timeout.
-// Returns a release function that MUST be called when the request completes.
-func (s *ConcurrencyService) AcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {
-	// If maxConcurrency is 0 or negative, no limit
-	if maxConcurrency <= 0 {
-		return &AcquireResult{
-			Acquired:    true,
-			ReleaseFunc: func() {}, // no-op
-		}, nil
-	}
-
-	// Generate unique request ID for this slot
-	requestID := generateRequestID()
-
-	acquired, err := s.cache.AcquireAccountSlot(ctx, accountID, maxConcurrency, requestID)
-	if err != nil {
-		return nil, err
-	}
-
-	if acquired {
-		return &AcquireResult{
-			Acquired: true,
-			ReleaseFunc: func() {
-				bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				if err := s.cache.ReleaseAccountSlot(bgCtx, accountID, requestID); err != nil {
-					logger.LegacyPrintf("service.concurrency", "Warning: failed to release account slot for %d (req=%s): %v", accountID, requestID, err)
-				}
-			},
-		}, nil
-	}
-
-	return &AcquireResult{
-		Acquired:    false,
-		ReleaseFunc: nil,
-	}, nil
+// AcquireAccountSlot 获取账号槽位，底层幂等重试共用两秒总预算。
+func (s *ConcurrencyService) AcquireAccountSlot(ctx context.Context, id int64, limit int) (*AcquireResult, error) {
+	return s.acquireSlot(ctx, "account", id, limit)
 }
 
-// AcquireUserSlot attempts to acquire a concurrency slot for a user.
-// If the user is at max concurrency, it waits until a slot is available or timeout.
-// Returns a release function that MUST be called when the request completes.
-func (s *ConcurrencyService) AcquireUserSlot(ctx context.Context, userID int64, maxConcurrency int) (*AcquireResult, error) {
-	// If maxConcurrency is 0 or negative, no limit
-	if maxConcurrency <= 0 {
-		return &AcquireResult{
-			Acquired:    true,
-			ReleaseFunc: func() {}, // no-op
-		}, nil
-	}
-
-	// Generate unique request ID for this slot
-	requestID := generateRequestID()
-
-	acquired, err := s.cache.AcquireUserSlot(ctx, userID, maxConcurrency, requestID)
-	if err != nil {
-		return nil, err
-	}
-
-	if acquired {
-		return &AcquireResult{
-			Acquired: true,
-			ReleaseFunc: func() {
-				bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				if err := s.cache.ReleaseUserSlot(bgCtx, userID, requestID); err != nil {
-					logger.LegacyPrintf("service.concurrency", "Warning: failed to release user slot for %d (req=%s): %v", userID, requestID, err)
-				}
-			},
-		}, nil
-	}
-
-	return &AcquireResult{
-		Acquired:    false,
-		ReleaseFunc: nil,
-	}, nil
+// AcquireUserSlot 获取用户槽位；Redis 故障不绕过并发限制。
+func (s *ConcurrencyService) AcquireUserSlot(ctx context.Context, id int64, limit int) (*AcquireResult, error) {
+	return s.acquireSlot(ctx, "user", id, limit)
 }
 
 // TrackAPIKeySlot records one active request slot for an API key without

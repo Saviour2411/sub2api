@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"strconv"
 	"time"
@@ -10,195 +11,82 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// 余额在途预留：
-//   - billing:inflight:{uid}      ZSET  member=requestID score=过期时间(ms)
-//   - billing:inflight_amt:{uid}  HASH  field=requestID value=预留金额(USD)
-//
-// 两个 key 使用同一 hash tag，保证 Redis Cluster 下 Lua 可同时访问。
-const (
-	billingInflightKeyPrefix    = "billing:inflight:"
-	billingInflightAmtKeyPrefix = "billing:inflight_amt:"
-)
+// 保留旧明细键；全局模式由蓝绿部署在旧实例退出后切换，缺失时采用兼容统计。
+const billingInflightAccountingKey = "billing:inflight:accounting"
 
 func billingInflightKeys(userID int64) (string, string) {
-	return fmt.Sprintf("%s{%d}", billingInflightKeyPrefix, userID),
-		fmt.Sprintf("%s{%d}", billingInflightAmtKeyPrefix, userID)
+	return fmt.Sprintf("billing:inflight:{%d}", userID), fmt.Sprintf("billing:inflight_amt:{%d}", userID)
 }
-
-// 订阅 / API Key 维度在途预留（确定金额费用）：
-//   - billing:inflight_scope:{scope}      ZSET  member=requestID score=过期时间(ms)
-//   - billing:inflight_scope_amt:{scope}  HASH  field=requestID value=预留金额(USD)
-//
-// 过期清理与释放语义与余额维度相同，不续期。
-const (
-	billingInflightScopeKeyPrefix    = "billing:inflight_scope:"
-	billingInflightScopeAmtKeyPrefix = "billing:inflight_scope_amt:"
-)
 
 func billingInflightScopeKeys(scope string) (string, string) {
-	return billingInflightScopeKeyPrefix + "{" + scope + "}", billingInflightScopeAmtKeyPrefix + "{" + scope + "}"
+	return "billing:inflight_scope:{" + scope + "}", "billing:inflight_scope_amt:{" + scope + "}"
 }
 
-var (
-	// KEYS: [1]=zset [2]=hash
-	// ARGV: [1]=now_ms [2]=expire_at_ms [3]=member [4]=amount [5]=balance [6]=key_ttl_ms
-	// 返回 {allowed, inflight_sum(string), inflight_count}
-	// 规则：先清理已过期成员；若无在途预留则直接放行（与旧行为一致，外层已校验余额 > 阈值）；
-	// 否则要求 balance - sum(在途) >= amount。放行时登记预留。
-	reserveInflightBalanceScript = redis.NewScript(`
-		local now = tonumber(ARGV[1])
-		local expired = redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', now)
-		if #expired > 0 then
-			redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now)
-			redis.call('HDEL', KEYS[2], unpack(expired))
-		end
-		local vals = redis.call('HVALS', KEYS[2])
-		local sum = 0
-		for i = 1, #vals do
-			sum = sum + (tonumber(vals[i]) or 0)
-		end
-		local count = redis.call('ZCARD', KEYS[1])
-		local amount = tonumber(ARGV[4])
-		local balance = tonumber(ARGV[5])
-		if count > 0 and (balance - sum) < amount then
-			return {0, tostring(sum), count}
-		end
-		redis.call('ZADD', KEYS[1], tonumber(ARGV[2]), ARGV[3])
-		redis.call('HSET', KEYS[2], ARGV[3], ARGV[4])
-		redis.call('PEXPIRE', KEYS[1], ARGV[6])
-		redis.call('PEXPIRE', KEYS[2], ARGV[6])
-		return {1, tostring(sum), count}
-	`)
+//go:embed billing_inflight.lua
+var billingInflightLua string
 
-	// KEYS: [1]=zset [2]=hash  ARGV: [1]=member [2]=expire_at_ms [3]=key_ttl_ms [4]=now_ms
-	// 仅当成员仍存在且尚未过期（score > now）时续期（XX），并把两个 key 的 TTL 至少延长到 key_ttl_ms。
-	// 已过期但尚未被惰性清理的成员不得被复活：顺手清掉并返回 0。
-	renewInflightBalanceScript = redis.NewScript(`
-		local score = redis.call('ZSCORE', KEYS[1], ARGV[1])
-		if not score then
-			return 0
-		end
-		if tonumber(score) <= tonumber(ARGV[4]) then
-			redis.call('ZREM', KEYS[1], ARGV[1])
-			redis.call('HDEL', KEYS[2], ARGV[1])
-			return 0
-		end
-		redis.call('ZADD', KEYS[1], 'XX', tonumber(ARGV[2]), ARGV[1])
-		local ttl = tonumber(ARGV[3])
-		if redis.call('PTTL', KEYS[1]) < ttl then
-			redis.call('PEXPIRE', KEYS[1], ttl)
-		end
-		if redis.call('PTTL', KEYS[2]) < ttl then
-			redis.call('PEXPIRE', KEYS[2], ttl)
-		end
-		return 1
-	`)
+var billingInflightScript = redis.NewScript(billingInflightLua)
 
-	releaseInflightBalanceScript = redis.NewScript(`
-		redis.call('ZREM', KEYS[1], ARGV[1])
-		redis.call('HDEL', KEYS[2], ARGV[1])
-		return 1
-	`)
+func (c *billingCache) inflightOperation(ctx context.Context, zkey, hkey, op, id string, amount, balance float64, ttl time.Duration) (int64, float64, error) {
+	keys := []string{zkey, hkey, zkey + ":total", billingInflightAccountingKey, zkey + ":done:" + id, zkey + ":prior"}
+	for {
+		if err := ctx.Err(); err != nil {
+			return 0, 0, err
+		}
+		result, err := billingInflightScript.Run(ctx, c.rdb, keys, op, id,
+			strconv.FormatFloat(amount, 'f', -1, 64), strconv.FormatFloat(balance, 'f', -1, 64),
+			max(ttl.Milliseconds(), 1)).Slice()
+		if err != nil {
+			return 0, 0, err
+		}
+		if len(result) != 2 {
+			return 0, 0, fmt.Errorf("预留操作 %s 返回格式异常", op)
+		}
+		status, ok := result[0].(int64)
+		if !ok {
+			return 0, 0, fmt.Errorf("预留操作 %s 返回状态异常", op)
+		}
+		if status == 2 {
+			// 每个脚本最多清理 128 条，沿用原预算并让出 Redis 执行机会。
+			continue
+		}
+		text, ok := result[1].(string)
+		if !ok {
+			return 0, 0, fmt.Errorf("预留操作 %s 返回金额异常", op)
+		}
+		sum, err := strconv.ParseFloat(text, 64)
+		return status, sum, err
+	}
+}
 
-	// KEYS: [1]=zset [2]=hash
-	// ARGV: [1]=now_ms [2]=expire_at_ms [3]=member [4]=amount [5]=key_ttl_ms
-	// 先清理已过期成员，再登记本次预留；返回登记前其他在途预留的合计（string），是否放行由调用方按权威用量判定。
-	reserveInflightScopeScript = redis.NewScript(`
-		local now = tonumber(ARGV[1])
-		local expired = redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', now)
-		if #expired > 0 then
-			redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now)
-			redis.call('HDEL', KEYS[2], unpack(expired))
-		end
-		local vals = redis.call('HVALS', KEYS[2])
-		local sum = 0
-		for i = 1, #vals do
-			sum = sum + (tonumber(vals[i]) or 0)
-		end
-		redis.call('ZADD', KEYS[1], tonumber(ARGV[2]), ARGV[3])
-		redis.call('HSET', KEYS[2], ARGV[3], ARGV[4])
-		redis.call('PEXPIRE', KEYS[1], ARGV[5])
-		redis.call('PEXPIRE', KEYS[2], ARGV[5])
-		return tostring(sum)
-	`)
-)
-
-// ReserveInflightBalance 实现 service.InflightBalanceReservationCache。
-func (c *billingCache) ReserveInflightBalance(ctx context.Context, userID int64, requestID string, amount, balance float64, ttl time.Duration) (bool, float64, error) {
+func (c *billingCache) ReserveInflightBalance(ctx context.Context, userID int64, id string, amount, balance float64, ttl time.Duration) (bool, float64, error) {
 	zkey, hkey := billingInflightKeys(userID)
-	now := time.Now().UnixMilli()
-	ttlMs := ttl.Milliseconds()
-	if ttlMs <= 0 {
-		ttlMs = 1
-	}
-	res, err := reserveInflightBalanceScript.Run(ctx, c.rdb, []string{zkey, hkey},
-		now,
-		now+ttlMs,
-		requestID,
-		strconv.FormatFloat(amount, 'f', -1, 64),
-		strconv.FormatFloat(balance, 'f', -1, 64),
-		ttlMs,
-	).Slice()
-	if err != nil {
-		return false, 0, err
-	}
-	if len(res) < 2 {
-		return false, 0, fmt.Errorf("unexpected inflight reservation reply: %v", res)
-	}
-	allowed, _ := res[0].(int64)
-	var sum float64
-	if s, ok := res[1].(string); ok {
-		sum, _ = strconv.ParseFloat(s, 64)
-	}
-	return allowed == 1, sum, nil
+	status, sum, err := c.inflightOperation(ctx, zkey, hkey, "balance", id, amount, balance, ttl)
+	return status == 1, sum, err
 }
 
-// ReleaseInflightBalance 实现 service.InflightBalanceReservationCache。
-func (c *billingCache) ReleaseInflightBalance(ctx context.Context, userID int64, requestID string) error {
+func (c *billingCache) ReleaseInflightBalance(ctx context.Context, userID int64, id string) error {
 	zkey, hkey := billingInflightKeys(userID)
-	return releaseInflightBalanceScript.Run(ctx, c.rdb, []string{zkey, hkey}, requestID).Err()
+	_, _, err := c.inflightOperation(ctx, zkey, hkey, "release", id, 0, 0, 0)
+	return err
 }
 
-// RenewInflightBalance 实现 service.InflightBalanceReservationRenewer。
-func (c *billingCache) RenewInflightBalance(ctx context.Context, userID int64, requestID string, ttl time.Duration) (bool, error) {
+func (c *billingCache) RenewInflightBalance(ctx context.Context, userID int64, id string, ttl time.Duration) (bool, error) {
 	zkey, hkey := billingInflightKeys(userID)
-	ttlMs := ttl.Milliseconds()
-	if ttlMs <= 0 {
-		ttlMs = 1
-	}
-	now := time.Now().UnixMilli()
-	n, err := renewInflightBalanceScript.Run(ctx, c.rdb, []string{zkey, hkey}, requestID, now+ttlMs, ttlMs, now).Int64()
-	if err != nil {
-		return false, err
-	}
-	return n == 1, nil
+	status, _, err := c.inflightOperation(ctx, zkey, hkey, "renew", id, 0, 0, ttl)
+	return status == 1, err
 }
 
-// ReserveInflightScope 实现 service.InflightScopeReservationCache。
-func (c *billingCache) ReserveInflightScope(ctx context.Context, scope, requestID string, amount float64, ttl time.Duration) (float64, error) {
+func (c *billingCache) ReserveInflightScope(ctx context.Context, scope, id string, amount float64, ttl time.Duration) (float64, error) {
 	zkey, hkey := billingInflightScopeKeys(scope)
-	now := time.Now().UnixMilli()
-	ttlMs := ttl.Milliseconds()
-	if ttlMs <= 0 {
-		ttlMs = 1
-	}
-	res, err := reserveInflightScopeScript.Run(ctx, c.rdb, []string{zkey, hkey},
-		now,
-		now+ttlMs,
-		requestID,
-		strconv.FormatFloat(amount, 'f', -1, 64),
-		ttlMs,
-	).Text()
-	if err != nil {
-		return 0, err
-	}
-	return strconv.ParseFloat(res, 64)
+	_, sum, err := c.inflightOperation(ctx, zkey, hkey, "scope", id, amount, 0, ttl)
+	return sum, err
 }
 
-// ReleaseInflightScope 实现 service.InflightScopeReservationCache。
-func (c *billingCache) ReleaseInflightScope(ctx context.Context, scope, requestID string) error {
+func (c *billingCache) ReleaseInflightScope(ctx context.Context, scope, id string) error {
 	zkey, hkey := billingInflightScopeKeys(scope)
-	return releaseInflightBalanceScript.Run(ctx, c.rdb, []string{zkey, hkey}, requestID).Err()
+	_, _, err := c.inflightOperation(ctx, zkey, hkey, "release", id, 0, 0, 0)
+	return err
 }
 
 var (

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"math"
 	"strconv"
 	"strings"
@@ -10,9 +11,12 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cleanupqueue"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 // InflightBalanceReservationCache 余额在途预留的缓存能力（可选）。
@@ -75,12 +79,14 @@ type InflightReservation struct {
 	scopeCache InflightScopeReservationCache
 	scopes     []string
 
-	refs        atomic.Int64
-	releaseOnce sync.Once
-	stopOnce    sync.Once
-	closeOnce   sync.Once
-	stopRenew   chan struct{}
-	renewDone   chan struct{}
+	refs             atomic.Int64
+	releaseMu        sync.Mutex
+	releaseConfirmed bool
+	scheduleCleanup  func(string, time.Time, func(context.Context) error) bool
+	stopOnce         sync.Once
+	closeOnce        sync.Once
+	stopRenew        chan struct{}
+	renewDone        chan struct{}
 }
 
 // Amount 预留金额。
@@ -127,21 +133,51 @@ func (r *InflightReservation) Release() {
 		return
 	}
 	r.stopRenewal()
-	r.releaseOnce.Do(func() {
-		r.refs.Store(0)
-		relCtx, relCancel := context.WithTimeout(context.Background(), inflightReservationReleaseTimeout)
-		defer relCancel()
-		if r.cache != nil {
-			if err := r.cache.ReleaseInflightBalance(relCtx, r.userID, r.requestID); err != nil {
-				logger.LegacyPrintf("service.billing_cache", "Warning: inflight reservation release failed for user %d (expires by ttl): %v", r.userID, err)
-			}
+	r.refs.Store(0)
+	ctx, cancel := context.WithTimeout(context.Background(), inflightReservationReleaseTimeout)
+	err := r.tryRelease(ctx)
+	cancel()
+	if err != nil {
+		logger.L().Warn("billing.inflight_release_pending", zap.Int64("user_id", r.userID), zap.String("reservation_id", r.requestID), zap.Error(err))
+		if r.scheduleCleanup != nil {
+			r.scheduleCleanup(r.requestID, time.Now().Add(r.ttl), r.tryRelease)
 		}
-		for _, scope := range r.scopes {
-			if err := r.scopeCache.ReleaseInflightScope(relCtx, scope, r.requestID); err != nil {
-				logger.LegacyPrintf("service.billing_cache", "Warning: inflight reservation release failed for %s (expires by ttl): %v", scope, err)
-			}
-		}
-	})
+	}
+}
+
+// 只有所有维度都获 Redis 确认才完成释放；重复调用和补偿共用同一 ID。
+func (r *InflightReservation) tryRelease(ctx context.Context) error {
+	if !r.releaseMu.TryLock() {
+		return errors.New("预留释放正在执行")
+	}
+	defer r.releaseMu.Unlock()
+	if r.releaseConfirmed {
+		return nil
+	}
+	var errs []error
+	if r.cache != nil {
+		errs = append(errs, r.cache.ReleaseInflightBalance(ctx, r.userID, r.requestID))
+	}
+	for _, scope := range r.scopes {
+		errs = append(errs, r.scopeCache.ReleaseInflightScope(ctx, scope, r.requestID))
+	}
+	err := errors.Join(errs...)
+	if err == nil {
+		r.releaseConfirmed = true
+	}
+	return err
+}
+
+func (s *BillingCacheService) scheduleInflightCleanup(id string, expires time.Time, run func(context.Context) error) bool {
+	s.inflightCleanupOnce.Do(func() { s.inflightCleanup = cleanupqueue.New("billing_reservation") })
+	if s.inflightCleanup == nil {
+		cleanupqueue.RecordFallback("billing_reservation", id, "服务已停止")
+		return false
+	}
+	if s.stopped.Load() {
+		s.inflightCleanup.Stop()
+	}
+	return s.inflightCleanup.Enqueue(id, expires, run)
 }
 
 func (r *InflightReservation) decRef() {
@@ -282,18 +318,21 @@ func (s *BillingCacheService) reserveInflightScope(ctx context.Context, res *Inf
 		if cfg.TTLSeconds > 0 {
 			ttl = time.Duration(cfg.TTLSeconds) * time.Second
 		}
-		res = &InflightReservation{userID: userID, requestID: uuid.NewString(), amount: amount, ttl: ttl}
+		res = &InflightReservation{userID: userID, requestID: uuid.NewString(), amount: amount, ttl: ttl, scheduleCleanup: s.scheduleInflightCleanup}
 		res.refs.Store(1)
 	}
-	reserveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), inflightReservationReserveTimeout)
+	// 网络调用前登记清理责任，响应丢失也必须在计费交接结束后释放。
+	res.scopeCache = sc
+	res.scopes = append(res.scopes, scope)
+	started := time.Now()
+	reserveCtx, cancel := context.WithTimeout(ctx, inflightReservationReserveTimeout)
 	pending, err := sc.ReserveInflightScope(reserveCtx, scope, res.requestID, amount, res.ttl)
 	cancel()
 	if err != nil {
-		logger.LegacyPrintf("service.billing_cache", "Warning: inflight reservation failed for %s (fail-open): %v", scope, err)
+		requestID, _ := ctx.Value(ctxkey.RequestID).(string)
+		logger.FromContext(ctx).Warn("billing.inflight_scope_result_unknown", zap.String("request_id", requestID), zap.String("reservation_id", res.requestID), zap.String("scope", scope), zap.Float64("estimate", amount), zap.Duration("elapsed", time.Since(started)), zap.Error(err))
 		return res, 0
 	}
-	res.scopeCache = sc
-	res.scopes = append(res.scopes, scope)
 	return res, pending
 }
 
@@ -321,26 +360,32 @@ func (s *BillingCacheService) reserveInflight(ctx context.Context, user *User, g
 		logger.LegacyPrintf("service.billing_cache", "Warning: inflight reservation balance read failed for user %d (fail-open): %v", user.ID, err)
 		return nil, nil
 	}
+	if balance <= 0 {
+		return nil, ErrInsufficientBalance
+	}
 
 	ttl := defaultInflightReservationTTL
 	if cfg.TTLSeconds > 0 {
 		ttl = time.Duration(cfg.TTLSeconds) * time.Second
 	}
 	requestID := uuid.NewString()
-	reserveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), inflightReservationReserveTimeout)
+	r := &InflightReservation{cache: rc, userID: user.ID, requestID: requestID, amount: estimate, ttl: ttl, scheduleCleanup: s.scheduleInflightCleanup}
+	r.refs.Store(1)
+	started := time.Now()
+	reserveCtx, cancel := context.WithTimeout(ctx, inflightReservationReserveTimeout)
 	allowed, inflight, err := rc.ReserveInflightBalance(reserveCtx, user.ID, requestID, estimate, balance, ttl)
 	cancel()
+	inboundID, _ := ctx.Value(ctxkey.RequestID).(string)
+	log := logger.FromContext(ctx).With(zap.String("request_id", inboundID), zap.Int64("user_id", user.ID), zap.String("reservation_id", requestID), zap.Float64("balance", balance), zap.Float64("inflight_total", inflight), zap.Float64("estimate", estimate), zap.Duration("elapsed", time.Since(started)))
 	if err != nil {
-		logger.LegacyPrintf("service.billing_cache", "Warning: inflight reservation failed for user %d (fail-open): %v", user.ID, err)
-		return nil, nil
+		log.Warn("billing.inflight_result_unknown", zap.Error(err))
+	} else if !allowed {
+		log.Info("billing.inflight_limit")
+		if balance <= 0 {
+			return nil, ErrInsufficientBalance
+		}
+		return nil, ErrBalanceInflightLimit
 	}
-	if !allowed {
-		logger.LegacyPrintf("service.billing_cache", "inflight reservation rejected: user=%d balance=%.6f inflight=%.6f estimate=%.6f", user.ID, balance, inflight, estimate)
-		return nil, ErrInsufficientBalance
-	}
-
-	r := &InflightReservation{cache: rc, userID: user.ID, requestID: requestID, amount: estimate, ttl: ttl}
-	r.refs.Store(1)
 	if renewer, ok := s.cache.(InflightBalanceReservationRenewer); renew && ok && renewer != nil {
 		r.startRenewal(renewer)
 	}

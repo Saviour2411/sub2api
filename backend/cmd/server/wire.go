@@ -106,6 +106,7 @@ func provideCleanup(
 	pricing *service.PricingService,
 	emailQueue *service.EmailQueueService,
 	billingCache *service.BillingCacheService,
+	concurrencyService *service.ConcurrencyService,
 	usageRecordWorkerPool *service.UsageRecordWorkerPool,
 	subscriptionService *service.SubscriptionService,
 	oauth *service.OAuthService,
@@ -313,6 +314,10 @@ func provideCleanup(
 			}},
 			{"BillingCacheService", func() error {
 				billingCache.Stop()
+				return nil
+			}},
+			{"ConcurrencyService", func() error {
+				concurrencyService.Stop()
 				return nil
 			}},
 			{"UsageRecordWorkerPool", func() error {

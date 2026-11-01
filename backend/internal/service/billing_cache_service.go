@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/cleanupqueue"
 	"math"
 	"strconv"
 	"sync"
@@ -24,6 +25,7 @@ import (
 var errBillingCacheUnavailable = fmt.Errorf("billing cache unavailable")
 
 var (
+	ErrBalanceInflightLimit      = infraerrors.TooManyRequests("balance_inflight_limit", "Balance is reserved by in-flight requests. Please retry shortly.")
 	ErrSubscriptionInvalid       = infraerrors.Forbidden("SUBSCRIPTION_INVALID", "subscription is invalid or expired")
 	ErrBillingServiceUnavailable = infraerrors.ServiceUnavailable("BILLING_SERVICE_ERROR", "Billing service temporarily unavailable. Please retry later.")
 	// RPM 超限错误。gateway_handler 负责映射为 HTTP 429。
@@ -115,13 +117,15 @@ type BillingCacheService struct {
 	circuitBreaker        *billingCircuitBreaker
 	userPlatformQuotaRepo UserPlatformQuotaRepository
 
-	cacheWriteChan     chan cacheWriteTask
-	cacheWriteWg       sync.WaitGroup
-	cacheWriteStopOnce sync.Once
-	cacheWriteMu       sync.RWMutex
-	stopped            atomic.Bool
-	balanceLoadSF      singleflight.Group
-	quotaLoadSF        singleflight.Group
+	cacheWriteChan      chan cacheWriteTask
+	cacheWriteWg        sync.WaitGroup
+	cacheWriteStopOnce  sync.Once
+	cacheWriteMu        sync.RWMutex
+	stopped             atomic.Bool
+	inflightCleanupOnce sync.Once
+	inflightCleanup     *cleanupqueue.Queue
+	balanceLoadSF       singleflight.Group
+	quotaLoadSF         singleflight.Group
 	// 丢弃日志节流计数器（减少高负载下日志噪音）
 	cacheWriteDropFullCount     uint64
 	cacheWriteDropFullLastLog   int64
@@ -159,6 +163,10 @@ func NewBillingCacheService(
 func (s *BillingCacheService) Stop() {
 	s.cacheWriteStopOnce.Do(func() {
 		s.stopped.Store(true)
+		defer func() {
+			s.inflightCleanupOnce.Do(func() {})
+			s.inflightCleanup.Stop()
+		}()
 
 		s.cacheWriteMu.Lock()
 		ch := s.cacheWriteChan

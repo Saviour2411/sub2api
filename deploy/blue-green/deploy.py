@@ -13,6 +13,7 @@ import subprocess
 import sys
 import time
 import threading
+import uuid
 
 SLOTS = {"blue": 18080, "green": 18082}
 LEGACY_SHA = "cfd9afa871def9ebd457bb95fb4c2e8b4b02b34f"
@@ -289,6 +290,46 @@ class Deployment:
             self.finish_migration_guard(release, self.platform_guard_database, "platform_guard_result")
         if self.platform242_guard(release) and not self.state.get("rollback"):
             self.finish_migration_guard(release, self.platform242_guard_database, "platform242_guard_result")
+        self.finish_inflight_accounting()
+
+    def set_inflight_mode(self, mode, owner=""):
+        require(mode in ("compat", "aggregate"), "非法预留统计模式")
+        generation = uuid.uuid4().hex
+        script = """
+local key=KEYS[1]
+local generation=ARGV[3]
+if redis.call('HGET',key,'mode')==ARGV[1] and redis.call('HGET',key,'owner')==ARGV[2] then
+ generation=redis.call('HGET',key,'generation') or generation
+end
+redis.call('HSET',key,'mode',ARGV[1],'owner',ARGV[2],'generation',generation)
+return cjson.encode({mode=redis.call('HGET',key,'mode'),owner=redis.call('HGET',key,'owner'),generation=redis.call('HGET',key,'generation')})
+"""
+        result = self.run("docker", "exec", "sub2api-redis", "redis-cli", "--raw", "EVAL", script,
+                          "1", "billing:inflight:accounting", mode, owner, generation)
+        confirmed = json.loads(result.stdout)
+        require(confirmed.get("mode") == mode and confirmed.get("owner") == owner and confirmed.get("generation"),
+                "无法确认预留统计切换，停止发布或回滚")
+        self.save(inflight_accounting=confirmed)
+
+    def finish_inflight_accounting(self):
+        active = self.state.get("active")
+        serving = self.state.get("slots", {}).get(active, {})
+        if "billing_inflight_aggregate_v1" not in serving.get("capabilities", []):
+            return
+        require(self.state["phase"] == "stable" and not self.state.get("pending") and set(self.state["slots"]) == {active},
+                "旧实例尚未退出，禁止启用累计统计")
+        for slot in SLOTS:
+            container = self.inspect("sub2api-" + slot)
+            if slot == active:
+                require(container and container["Id"] == serving["container_id"] and container["State"]["Running"], "累计统计活动容器身份不匹配")
+            else:
+                require(container is None, "旧容器仍存在，禁止启用累计统计")
+        require(self.inspect("sub2api") is None, "历史旧实例仍存在，禁止启用累计统计")
+        snapshot = self.control(active)
+        require(snapshot["instance_id"] == serving["instance_id"] and snapshot.get("ready") and
+                "billing_inflight_aggregate_v1" in snapshot.get("capabilities", []), "无法确认活动实例支持累计统计")
+        self.control(active, "check")
+        self.set_inflight_mode("aggregate", serving["instance_id"])
 
     def finish_migration_guard(self, release, database, result_key):
         # 旧槽仍存在或身份、配置、健康异常时，必须保留新旧版本的写入兼容保护。
@@ -648,6 +689,7 @@ class Deployment:
         return result
 
     def switch(self, slot):
+        self.set_inflight_mode("compat")
         instance = self.control(slot)
         expected = self.state["slots"][slot]["instance_id"]
         require(instance["instance_id"] == expected and instance["state"] in ("standby", "active"), "候选实例身份/状态发生变化")
@@ -682,6 +724,7 @@ class Deployment:
         self.save(active=slot, pending=old, phase="switched", switched_at=time.time(), drain_started_at=time.time(), switch_seconds=time.monotonic()-switch_started, verified_instance=expected)
 
     def rollback(self, window=3600):
+        self.set_inflight_mode("compat")
         self.verify_migration_guards(self.state.get("release", {}))
         # 只能回到尚未封闭接入的保留实例；不是重新创建旧镜像。
         if self.state.get("rollback"):
@@ -816,6 +859,7 @@ class Deployment:
         result = dict(result,completed_at=time.time())
         self.save(slots=slots,pending=None,phase="stable",forced_retire_result=result,forced_retire_operation=None,
                   pending_reason=None,retired_at=time.time(),prepared_release=None,last_error=None)
+        self.finish_inflight_accounting()
         print("::warning::旧实例已按超时强制策略回收；可能中断旧请求，不代表无损退役或用量完整",file=sys.stderr)
 
     def finish_retirement(self, old, expected):
@@ -831,6 +875,7 @@ class Deployment:
             self.run("docker", "rm", "sub2api-"+old)
         slots = dict(self.state["slots"]); del slots[old]
         self.save(slots=slots, pending=None, phase="stable", drained_at=time.time(), prepared_release=None, last_error=None)
+        self.finish_inflight_accounting()
 
     def drain(self, window):
         old = self.state.get("pending")
@@ -938,6 +983,7 @@ class Deployment:
             require(existing is None and slot not in self.state["slots"], "候选槽被占用")
             self.save(phase="preparing", generation=self.state.get("generation",0)+1, release=release, rollback=None)
         if existing is None:
+            self.set_inflight_mode("compat")
             path = self.render(slot, release, compose)
             if not prepared_image:
                 self.pull_release_image(release)
@@ -964,7 +1010,7 @@ class Deployment:
         slots = dict(self.state["slots"])
         known = slots.get(slot)
         require(not known or known["instance_id"] == candidate["instance_id"], "候选意外重启，停止自动恢复")
-        slots[slot] = dict(container_id=self.inspect("sub2api-"+slot)["Id"], instance_id=candidate["instance_id"], image=release["image"], sha=release["sha"], version=candidate["version"])
+        slots[slot] = dict(container_id=self.inspect("sub2api-"+slot)["Id"], instance_id=candidate["instance_id"], image=release["image"], sha=release["sha"], version=candidate["version"], capabilities=candidate.get("capabilities", []))
         self.save(slots=slots)
         if release["migration_class"] == "expand":
             self.run("docker", "update", "--restart=on-failure", "sub2api-"+slot)

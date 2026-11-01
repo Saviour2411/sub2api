@@ -2154,6 +2154,7 @@ func (h *GatewayHandler) handleStreamingAwareError(c *gin.Context, status int, e
 }
 
 func (h *GatewayHandler) handleStreamingAwareErrorWithCode(c *gin.Context, status int, errType, code, message string, streamStarted bool) {
+	errType, code = normalizeBillingError(c, errType, code)
 	if streamStarted {
 		// 响应状态码已固化为 200（ping/部分数据已 flush），错误只能就地以 SSE 帧回传。
 		// 标记本次流内错误，供 ops_error_logger 补记——否则该中间件按 status>=400 采集，
@@ -2287,6 +2288,7 @@ func (h *GatewayHandler) errorResponse(c *gin.Context, status int, errType, mess
 }
 
 func (h *GatewayHandler) errorResponseWithCode(c *gin.Context, status int, errType, code, message string) {
+	errType, code = normalizeBillingError(c, errType, code)
 	errorObject := gin.H{"type": errType, "message": message}
 	if code != "" {
 		errorObject["code"] = code
@@ -2659,6 +2661,9 @@ func extractQuotaResetSeconds(err error) int {
 }
 
 func billingErrorDetails(err error) (status int, code, message string, retryAfter int) {
+	if errors.Is(err, service.ErrBalanceInflightLimit) {
+		return http.StatusTooManyRequests, "balance_inflight_limit", pkgerrors.Message(err), 1
+	}
 	if errors.Is(err, service.ErrBillingServiceUnavailable) {
 		msg := pkgerrors.Message(err)
 		if msg == "" {

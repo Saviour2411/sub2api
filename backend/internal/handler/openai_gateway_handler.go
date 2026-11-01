@@ -1612,17 +1612,23 @@ func resolveOpenAIMessagesMetadataSession(c *gin.Context, sessionHash, promptCac
 // anthropicErrorResponse writes an error in Anthropic Messages API format.
 func (h *OpenAIGatewayHandler) anthropicErrorResponse(c *gin.Context, status int, errType, message string) {
 	c.JSON(status, gin.H{
-		"type": "error",
-		"error": gin.H{
-			"type":    errType,
-			"message": message,
-		},
+		"type":  "error",
+		"error": billingErrorObject(c, errType, message),
 	})
 }
 
 // anthropicStreamingAwareError handles errors that may occur during streaming,
 // using Anthropic SSE error format.
 func (h *OpenAIGatewayHandler) anthropicStreamingAwareError(c *gin.Context, status int, errType, message string, streamStarted bool) {
+	if errType == "balance_inflight_limit" {
+		normalizedType, code := normalizeBillingError(c, errType, "")
+		if streamStarted {
+			writeAnthropicRequestedPricingStreamError(c, status, normalizedType, code, message)
+		} else {
+			h.anthropicErrorResponse(c, status, errType, message)
+		}
+		return
+	}
 	if streamStarted {
 		flusher, ok := c.Writer.(http.Flusher)
 		if ok {
@@ -3875,6 +3881,7 @@ func (h *OpenAIGatewayHandler) handleStreamingAwareErrorWithCode(
 	streamStarted bool,
 	countTowardsSLA bool,
 ) {
+	errType, code = normalizeBillingError(c, errType, code)
 	// body-signal compact 心跳可能已把响应头提交为 200：先停心跳（建立
 	// happens-before，接管 ResponseWriter），并升级为流内错误处理。
 	if service.StopOpenAICompactSSEKeepaliveCommitted(c) {
@@ -4062,15 +4069,13 @@ func (h *OpenAIGatewayHandler) errorResponse(c *gin.Context, status int, errType
 	// 提交的 SSE 流交错，必须降级为 response.failed 终止事件（#3887）。
 	if service.StopOpenAICompactSSEKeepaliveCommitted(c) {
 		service.MarkOpsStreamError(c, errType, message, status)
-		if writeResponsesFailedSSE(c, errType, "", message) {
+		normalizedType, code := normalizeBillingError(c, errType, "")
+		if writeResponsesFailedSSE(c, normalizedType, code, message) {
 			return
 		}
 	}
 	c.JSON(status, gin.H{
-		"error": gin.H{
-			"type":    errType,
-			"message": message,
-		},
+		"error": billingErrorObject(c, errType, message),
 	})
 }
 

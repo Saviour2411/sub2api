@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"net/http"
 )
 
@@ -32,6 +33,10 @@ func concurrencyErrorResponse(err error, slotType string) (int, string, string, 
 
 	if errors.Is(err, context.Canceled) {
 		return statusClientClosedRequest, "api_error", "", "context canceled"
+	}
+	var operation *service.SlotOperationError
+	if errors.As(err, &operation) {
+		return http.StatusServiceUnavailable, "api_error", "gateway_concurrency_backend_unavailable", "Service temporarily unavailable, please retry later"
 	}
 
 	return http.StatusServiceUnavailable, "api_error", "", "Service temporarily unavailable, please retry later"
