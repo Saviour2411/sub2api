@@ -61,7 +61,7 @@ func TestAnthropicPassthroughThinkingBindingPreserved(t *testing.T) {
 						require.Equal(t, string(body), string(wireBody), "透传不能按beta删除绑定控制及其扩展字段")
 					}
 					require.NoError(t, err)
-					defer req.Body.Close()
+					t.Cleanup(func() { require.NoError(t, req.Body.Close()) })
 					actual, err := io.ReadAll(req.Body)
 					require.NoError(t, err)
 					require.Equal(t, string(body), string(actual), "出站请求必须保留签名和前缀绑定要求")
