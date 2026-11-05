@@ -145,7 +145,7 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 - 本次同步范围：`a60a29549..b8dece9000`，62个上游提交（43个非合并、19个合并）；63项既有能力族编号全部保留，无跳过或延期提交；本地覆盖、实际验证和未覆盖范围见本轮同步记录
 - 历史识别统计（2026-09-02，`5097b3145..35c28e324`）：919 个差异文件，新增130491行、删除5976行、本地独有512个提交；此为历史快照，不代表本次同步后的统计
 - 2026-09-05 历史代码基线差异（`ab99d56e9..289a00a46`）：926个文件，新增130999行、删除6037行；本地独有517个提交（不含最后记录补记）
-- 当前能力族：67 项，分布在 9 个功能域；2026-11-01新增`CUST-BILL-008`；2026-09-20核对59项已有清单（含`CUST-GW-014`）并新增`CUST-OPS-006`，2026-09-21新增`CUST-OPS-007`，2026-09-22新增`CUST-GW-015`，2026-09-23新增`CUST-OPS-008`，2026-10-09新增`CUST-GW-016`，2026-10-15新增`CUST-OBS-003`，2026-10-18新增`CUST-UI-006`；全部编号保留，不复用或删除
+- 当前能力族：68 项，分布在 9 个功能域；2026-11-05新增`CUST-PROTO-009`；2026-11-01新增`CUST-BILL-008`；2026-09-20核对59项已有清单（含`CUST-GW-014`）并新增`CUST-OPS-006`，2026-09-21新增`CUST-OPS-007`，2026-09-22新增`CUST-GW-015`，2026-09-23新增`CUST-OPS-008`，2026-10-09新增`CUST-GW-016`，2026-10-15新增`CUST-OBS-003`，2026-10-18新增`CUST-UI-006`；全部编号保留，不复用或删除
 
 这组数字只用于确认分析边界，不能直接等同于功能数量。生成代码、测试、文案、上游提交的本地适配和同一能力的连续修复均会放大差异规模。
 
@@ -223,6 +223,7 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 | `CUST-PROTO-006` | 请求端点与 compact 信号规范化 | 从原始路径规范化入站端点，区分 Responses compact 和 `/responses/input_tokens`，识别 `compaction_trigger`，继承客户端工具状态；Kimi PayG/Coding 的显式 `responses` 或 `adaptive` 请求使用各自原生 `/v1/responses`，强制 `store=false` 并移除 `previous_response_id`。继续保留本地 HTTP 流转 WSv2、namespace，以及每轮重新取得请求模型和渠道映射、仅在上下文可完整重建时恢复当前轮次换号的决策边界。 2026-09-15 上游适配：接入 OpenCode 三协议端点与单次模型映射，保留 Kimi 原生 Responses/store=false、本地端点归因及 WS 逐轮策略；compact 缺省模型改为 gpt-5.5。 2026-09-18 上游适配：接入 Responses 前导指令合并、中段指令转 user、严格 Chat 目标的 developer 转 system、Lite namespace 及工具媒体处理；Kimi 默认关闭的参数重试与入口请求体保护保留，并补充角色转换和 400 修正同时发生的交叉回归。 2026-09-20 上游适配：DeepSeek 推理占位及 Anthropic 根联合工具 schema 扁平化进入共用协议链；Kimi 四项默认关闭的参数修正、有限重试、首 Token 清理和既有 namespace 转换保留。 | `backend/internal/handler/gateway_handler.go`、`backend/internal/service/openai_gateway_request_body.go`、`backend/internal/service/openai_ws_http_bridge.go`、`backend/internal/service/account_test_service_cn_adaptive.go` | 生效中 |
 | `CUST-PROTO-007` | Responses 渠道监控请求格式 | `probe` 和 `quota_probe` 使用结构化 Responses `input` 消息数组，而不是普通字符串；`quota` 只读取额度，不构造 LLM 请求，上游同步不得退回非标准请求体。 | `backend/internal/service/channel_monitor_checker.go`、`frontend/src/components/admin/monitor/MonitorAdvancedRequestConfig.vue` | 兼容覆盖 |
 | `CUST-PROTO-008` | Anthropic 采样参数过滤 | 按最终上游模型精确匹配或末尾通配符匹配，在模型校验前删除根级 `temperature`、`top_k`、`top_p`；覆盖 Messages、令牌计数、API Key/OAuth、协议转换、直通和账号测试。可选择 Anthropic 分组停用整个功能；独立跳过 thinking 和 tool_choice 模型限制的开关默认关闭，受总开关、模型白名单及实际转发分组共同约束。无分组账号测试只保留采样过滤。 | `backend/internal/service/gateway_anthropic_sampling_filter.go`、`backend/internal/service/custom_feature_settings.go`、`frontend/src/views/admin/CustomFeaturesView.vue` | 生效中 |
+| `CUST-PROTO-009` | Anthropic 透传签名绑定保留 | Anthropic API Key 透传的 Messages 和 count_tokens 原样保留 `thinking.block_binding` 及其扩展字段，不因缺少、无关或账号覆写的 beta 头删除，也不自动补充绑定 beta。前缀不匹配校验由渠道执行，上游400沿用既有错误返回路径；普通非透传及其他字段的兼容清理保持原行为。 | `backend/internal/service/gateway_anthropic_passthrough.go`、`backend/internal/service/gateway_count_tokens.go`、`backend/internal/service/gateway_request.go`、`backend/internal/service/gateway_anthropic_passthrough_binding_test.go` | 待发布 |
 
 ### 账号与运维测试
 
@@ -309,6 +310,13 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 | `CUST-OPS-008` | 构建版本与上游来源提示 | 当前二开版本来自运行程序构建信息，启动时统一注入 HTML、公共设置及管理员接口；旧首屏配置缺版本时仅补查一次公共设置。管理员显示二开版本、已同步原版版本及原版更新状态，普通用户只看二开版本。来源由随二进制嵌入的 `upstream-sync.json` 记录，缺失时显示未记录，不与二开版本比较。最新正式 Release 只读检查采用8秒超时、30分钟成功缓存、60秒失败退避和并发合并；失败保留旧结果并标记缓存，无历史显示暂不可用。可见页定时检查，后台暂停，退出或换用户清理请求和计时器；支持折叠详情、移动端、深浅主题与长版本换行。 2026-09-24 上游适配：随合并更新嵌入来源为0.2.8/a3eb7ef302961cba716dc78b39b93b60c467db0e，二开版本保持0.1.245；只读提示、缓存、身份差异及禁止自更新边界不变。 2026-09-30 上游适配：嵌入来源更新为0.2.10/a60a29549f488a854966aaec9541abbe006cac22，本地二开版本保留0.1.246，不创建发布或开放自更新。 2026-10-07 上游适配：嵌入来源更新为0.2.14/3f1a2ea0a760730e3bc528105c00b4ee4f23e469；本地版本仍为0.1.249。本轮仅本地合并，不创建标签、发布或部署，版本提示的身份隔离、缓存与禁止自更新边界不变。 2026-10-09 上游适配：本地版本保持 0.1.251，上游来源更新为 0.2.15 和固定 SHA 3a6fd1c9db07203ca308aaba69e502bc1f35b307，不改发布标签。 2026-10-13 上游适配：来源更新为0.2.16/4d9ac3e482106d2da3a39fe3e546d8d6801f1cc1，本地版本保持0.1.254，禁止网页自更新边界不变。 2026-10-16 上游适配：二开版本保持0.1.256，构建来源更新为上游0.2.17及固定提交b0a02a330；来源仍由祖先关系校验。 2026-10-25 上游适配：本地版本保持 0.1.259，嵌入来源更新为上游 0.2.18/3f1c8f36ce8c2cd378015830a90e89970b9a9ea7。 2026-10-30 上游适配：来源元数据推进至上游 0.2.19 / a3298b46e，本地产品版本保持 0.1.261。 | `backend/internal/pkg/buildmeta/upstream-sync.json`、`backend/internal/handler/wire.go`、`backend/internal/service/upstream_version.go`、`frontend/src/composables/useVersionInfo.ts`、`frontend/src/components/common/VersionBadge.vue`、`tools/check_upstream_sync_metadata.py` | 生效中 |
 
 ## 变更记录
+
+### 2026-11-05 Anthropic 透传保留签名绑定（v0.1.265 发布候选）
+
+- 新增 `CUST-PROTO-009`。客户要求透传不删除签名绑定字段；生产复测确认无绑定 beta 时，网关删除 `thinking.block_binding.prefix_mismatch_behavior=error`，造成同一签名换 system 后直连渠道400、经网关200。
+- Messages 与 count_tokens 的 API Key 透传均保留该字段及未知扩展，校验交由渠道；不自动补 beta、不改变已有请求头覆写、其他字段清理及非透传默认行为。
+- 验证：Go 1.27.3（WSL）新增12个场景通过，覆盖缺少beta、无关beta、绑定beta、账号覆写添加或移除绑定beta，以及流式/非流式上游签名400错误的完整转发。现有透传、beta清理、context_management、fallback和消息级output_config相关定向回归整组复跑通过，无跳过。
+- 首次扩展回归有一条既有断连超时用例返回“缺少终止事件”而非“超时”；当前代码单独连续5次、修改前HEAD代码对照2次及整组复跑均通过，未修改该测试，原始失败与复测日志保存在本地 `outputs/anthropic-compat-20261105/binding-*.jsonl`。用户随后授权通过CI后合入主线，再创建新标签自动蓝绿发布；沿用既有一小时排空与到期强制退役流程，发布是否完成以对应版本的部署证据为准。
 
 ### 2026-10-29 Anthropic 采样过滤前置及分组控制（0.1.261）
 
