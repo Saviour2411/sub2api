@@ -1038,6 +1038,14 @@ const anthropicBetaContextManagementToken = "context-management-2025-06-27"
 // 返回 (sanitized, changed)：changed 表示是否发生实际删除，供调用方决定
 // 是否重用原 body 引用。
 func sanitizeAnthropicBodyForBetaTokens(body []byte, anthropicBetaHeader string) ([]byte, bool) {
+	return sanitizeAnthropicBodyForBetaTokensWithOptions(body, anthropicBetaHeader, anthropicBodySanitizeOptions{})
+}
+
+type anthropicBodySanitizeOptions struct {
+	preserveThinkingBlockBinding bool
+}
+
+func sanitizeAnthropicBodyForBetaTokensWithOptions(body []byte, anthropicBetaHeader string, opts anthropicBodySanitizeOptions) ([]byte, bool) {
 	if len(body) == 0 {
 		return body, false
 	}
@@ -1051,11 +1059,13 @@ func sanitizeAnthropicBodyForBetaTokens(body []byte, anthropicBetaHeader string)
 		body, changed = b, true
 	}
 
-	// thinking.block_binding：需要 thinking-binding-controls beta。
-	if b, deleted := stripAnthropicBodyFieldUnlessBeta(
-		body, "thinking.block_binding", anthropicBetaHeader, claude.BetaThinkingBindingControls,
-	); deleted {
-		body, changed = b, true
+	// 透传必须保留客户端的绑定要求，由上游决定是否接受并校验签名。
+	if !opts.preserveThinkingBlockBinding {
+		if b, deleted := stripAnthropicBodyFieldUnlessBeta(
+			body, "thinking.block_binding", anthropicBetaHeader, claude.BetaThinkingBindingControls,
+		); deleted {
+			body, changed = b, true
+		}
 	}
 
 	// fallbacks：server-side refusal fallback，仅接受 server-side-fallback beta。

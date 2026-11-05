@@ -468,7 +468,9 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 	if beta, ok := account.HeaderOverrideValue("anthropic-beta"); ok {
 		clientBeta = beta
 	}
-	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, clientBeta); changed {
+	if sanitized, changed := sanitizeAnthropicBodyForBetaTokensWithOptions(body, clientBeta, anthropicBodySanitizeOptions{
+		preserveThinkingBlockBinding: true,
+	}); changed {
 		body = sanitized
 	}
 
