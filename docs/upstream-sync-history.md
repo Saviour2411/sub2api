@@ -10069,3 +10069,8 @@ A	frontend/src/views/admin/__tests__/ChannelsView.webSearchEmulation.spec.ts
 - 两个代码/测试本地提交命令均退出 0。最终记录提交与 main 快进结果在交付说明报告，避免自引用。
 - `docker ps -a --filter label=sub2api.sync-test=20261107`：退出 0，清单为空。保持进程退出 0；`umount /mnt/d/project/sub2api/tmp/s1107` 退出 1（已未挂载），随后 `findmnt --mountpoint /mnt/d/project/sub2api/tmp/s1107` 退出 1 且无输出，证实清理结果。
 - 完整准备异常、候选包装器中断、清理状态和竞态对照分别保存在 tmp/upstream-sync-20261107/preparation-results.json、cleanup-result.json、race-comparison.json；原始失败日志未覆盖。
+
+### 2026-11-07 远端 CI 环境勘误
+
+- 提交远端 PR 前重新核对当前工作流：CI 与 Security Scan 的前端任务均使用 Node 24，shell 任务使用 macos-15-intel。上文完整同步验收的未验证项将远端 Node 版本误写为 20，现更正为 24。
+- 本地前端验收实际使用 Node 24.15.0；此处仅补充文档勘误，不改变已有测试结果、应用行为或 CI 配置。远端检查结果以随后针对 PR 最新提交的 GitHub Actions 运行为准。
