@@ -19,9 +19,9 @@ describe('使用记录游标导出', () => {
     expect(load.mock.calls[1][0]).toBe('999')
   })
 
-  it('429 按 Retry-After 重试相同游标且不重复写入', async () => {
+  it.each([{ retryAfter: '2' }, { retry_after_seconds: 2 }])('429 按 Retry-After 重试相同游标且不重复写入：%j', async (retry) => {
     const load = vi.fn()
-      .mockRejectedValueOnce({ status: 429, retryAfter: '2' })
+      .mockRejectedValueOnce({ status: 429, ...retry })
       .mockResolvedValue({ items: [1], next_cursor: '' })
     const consume = vi.fn()
     const result = exportUsagePages({ load, consume, signal: new AbortController().signal })

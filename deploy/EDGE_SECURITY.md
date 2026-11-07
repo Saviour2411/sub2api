@@ -1,8 +1,8 @@
 # Edge and HTTP Ingress Security
 
-Sub2API supports long-lived SSE and WebSocket requests. Protect the request
-ingress without imposing a response `WriteTimeout`: a write deadline would
-terminate healthy long generations and streams.
+Sub2API supports long-lived SSE and WebSocket requests. Protect request ingress
+and individual socket operations without imposing a fixed timeout on the entire
+response. Healthy generations can remain open while an upstream is thinking.
 
 ## Application defaults
 
@@ -15,6 +15,34 @@ terminate healthy long generations and streams.
   image, video, and batch-image endpoints.
 - `gateway.text_max_body_size: 33554432` limits the known pure-text
   `/embeddings` and `/alpha/search` endpoints to 32 MiB.
+- `gateway.request_body_memory_budget_bytes: 0` 默认关闭实例级请求体内存准入预算。
+  显式启用后，分块、连续副本、解压结果、JSON 规范化和解码工作区纳入统计，
+  中间对象释放所有权后归还预算；最终请求体与仍被引用的预读缓冲保留到处理结束。
+  预算耗尽返回 503 和 Retry-After，单请求大小超限仍返回 413。
+  启用前须按并发长请求、上传和转换峰值验证容量，并预留业务缓存与 GC 空间；
+  此预算不代表堆或 RSS 的硬上限。本地首个有效输出后的请求体释放策略继续保留。
+- Compressed request output is capped at 64 MiB, with overflow rejected rather
+  than truncated. Zstd additionally has an 8 MiB window cap and one decoder
+  worker per request.
+- `gateway.request_body_read_timeout_seconds: 120` bounds a stalled body read;
+  `gateway.downstream_write_timeout_seconds: 120` bounds each write/flush.
+  Successful operations clear their deadline, so upstream thinking does not
+  consume a whole-response time budget. Zero disables the corresponding limit.
+- `gateway.max_line_size: 524288000` preserves the 500 MiB SSE line default
+  required by large base64 4K images, image-generation output and multi-image
+  responses. Upgrading does not silently lower this compatibility limit.
+  `sse_event_max_bytes: 0` inherits that cap for each complete event and
+  `sse_event_max_lines: 4096` also bounds streams of short lines without a blank
+  delimiter. `sse_queue_max_bytes: 8388608` bounds queued payload bytes; a line
+  larger than 8 MiB can occupy the queue alone, up to the line/event cap.
+  The consumer's current line and producer's scanner/read buffer are additional
+  bounded storage. The 8 MiB queue budget does not reduce the maximum size of
+  one image frame. Lower line/event limits only when the supported models and
+  output sizes fit them. Explicit event byte/line settings also apply to Grok
+  billing-ping and client-tool prefilters.
+- 本地网关在客户端断连后仍由生命周期跟踪继续收集用量，保留既有流空闲超时。
+  不安装上游新增的断连后固定总排空计时器；持续活动的长流不会仅因断连超过
+  180 秒或 900 秒就被统一取消。单次读写超时与请求/流总时长仍是不同的限制。
 - H2C defaults to 50 concurrent streams per connection, a 2 MiB connection
   upload window, and a 512 KiB stream upload window.
 - Invalid credential abuse is limited in process by trusted client IP (IPv6
@@ -22,10 +50,52 @@ terminate healthy long generations and streams.
   per-instance safety net; multi-instance enforcement still belongs at the
   load balancer, CDN, or WAF.
 
-Do not add a single application-wide request semaphore: an SSE request may
-legitimately occupy it for many minutes. Apply connection and unauthenticated
-request controls at the edge; authenticated user/API-key concurrency remains
-the application's responsibility.
+Do not replace these controls with a single application-wide request semaphore:
+an SSE request may legitimately occupy it for many minutes. Apply connection
+and unauthenticated request controls at the edge; authenticated user/API-key
+concurrency and buffered request bytes remain the application's responsibility.
+
+Compatibility session caches (digest sessions, Responses continuation bindings
+and Anthropic digest bindings) each have fixed limits of 16,384 entries and
+32 MiB of accounted storage, including 512 bytes of bookkeeping per entry.
+These limits are not currently configurable. The least recently used entry is
+evicted when either limit is reached, even if its TTL has not expired; a TTL is
+therefore not a guarantee that a continuation binding remains available. Active
+expiry scans run at most once a minute while the cache is nonempty, and shutdown
+stops cleanup. Monitor 503 body-budget rejections, response-too-large errors,
+allocation rate, retained heap after GC, goroutine counts, usage-worker queues
+and database connection waits when tuning capacity. Notification queues may
+skip best-effort messages on overload or shutdown and log a dropped count;
+committed-charge persistence is not dropped by that notification policy.
+平台配额 flusher 关闭时，配额镜像落库在原 usage task 中执行，并继承该任务较短的
+截止时间，最多五秒；不会在 worker 的五秒预算之后再叠加独立五秒。请求取消仍被隔离，
+但已耗尽的任务预算不会被续期。失败计数与日志保留，此路径没有持久自动重试队列，
+幂等主扣费在镜像更新前已提交。默认 sync 溢出模式仍会在提交方同步执行任务，
+worker 数量不是全局数据库并发硬上限。
+
+## Sizing the request-body budget
+
+Size `request_body_memory_budget_bytes` for the final body allocations retained
+by all active requests, plus peak workspace for requests currently being read,
+decoded or normalized. Streaming duration increases the number of retained
+bodies even after their upload has finished. The budget is not just the number
+of simultaneous uploads, and releasing an allocation's charge does not force Go
+to reclaim that unreachable memory immediately.
+
+For example, 200 long-lived streams retaining 4 MiB each account for about
+800 MiB before new uploads and decoding. Another 32 concurrent Zstd decoders
+can reserve 256 MiB of window space alone, exceeding the default 1 GiB budget
+before their input/output buffers are counted. Increase the budget for such a
+workload only with sufficient instance memory, or reduce concurrency/request
+sizes. Leave separate memory headroom for SSE frames (which may be larger than
+the queue budget), conversion state, caches, connections and GC. Setting the
+budget to `0` disables ingress memory admission rather than limiting RSS.
+
+Legacy Read tool-call completion still validates the growing JSON argument
+prefix. Incremental storage removes repeated prefix allocations, but validation
+CPU can remain quadratic for large arguments delivered in many small deltas.
+Measure this separately from allocation savings; cumulative bytes allocated in
+benchmarks are not retained heap or RSS.
 
 ## Trusted client IPs
 

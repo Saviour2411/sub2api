@@ -644,6 +644,7 @@ const escapeCSVValue = (value: unknown): string => {
   return str
 }
 
+
 const exportToCSV = async () => {
   if (exporting.value) return
   exporting.value = true
@@ -653,6 +654,7 @@ const exportToCSV = async () => {
   const exportParams = { ...normalizedFilters.value, page_size: USAGE_EXPORT_PAGE_SIZE }
   appStore.showInfo(t('usage.preparingExport'))
   try {
+
     const headers = [
       'Time',
       'API Key Name',
@@ -677,6 +679,7 @@ const exportToCSV = async () => {
       load: (cursor, signal) => usageAPI.exportPage({ ...exportParams, cursor }, { signal }),
       signal: controller.signal,
       onProgress: (count) => { exportedCount.value = count },
+      onRateLimit: (seconds) => appStore.showInfo(t('usage.exportRateLimited', { seconds })),
       consume: (logs) => {
         const rows = logs.map((log) => [
           log.created_at,

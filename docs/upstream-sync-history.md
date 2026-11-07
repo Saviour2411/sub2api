@@ -9146,3 +9146,16 @@ A	frontend/src/views/admin/__tests__/ChannelsView.webSearchEmulation.spec.ts
 ### 发布安全扫描补充
 
 - PR #50首轮发现新公布的GHSA-qr28-fpjm-wq7f / CVE-2026-118664，frontend经query-string间接锁定decode-uri-component 0.4.1。核对官方公告和0.5.1代码变更后固定到修复版并更新pnpm锁文件，保留现有扫描和例外策略，无二开功能或默认值变化。
+
+## 2026-11-07 上游 0.2.20 本地合并执行
+
+- 时间：2026-11-07T19:18:11+08:00；状态：已开始完整合并，候选验收进行中。
+- 本地目标：main；LOCAL_PRE_SYNC_SHA：a2eb674300100e68cf45d9f903b7d179aa95e422。
+- 上游：Wei-Shaw/sub2api，main；UPSTREAM_OLD_SHA：a3298b46ebe239fb0720b068a1eb3383955bdac2；UPSTREAM_NEW_SHA：6b4b37db43443b5e88e424fe3c69602cc3810dfb；实际 merge-base 与旧基线一致。
+- LAST_FULLY_INTEGRATED_UPSTREAM_SHA：a3298b46ebe239fb0720b068a1eb3383955bdac2。最终验收前不提前声明完成。
+- 备份分支：backup/pre-upstream-sync-20261107-102049-a2eb67430；同步分支：sync/upstream-20261107-6b4b37db4；main 保持原位。
+- 通过 no-ff/no-commit 完整合并 107 个提交，29 文件共 40 处文本冲突按审批逐块适配；本地行为覆盖属于 Applied + Overridden，不跳过上游历史。
+- 用户批准的原有内容已逐文件归档到 tmp/pre-sync-local-20261107：271 个未跟踪文件（25,632,745 字节）及一份受控文档，均保存原始字节、SHA256 和文档补丁。未提交诊断工具及其 CUST-OBS-004 登记不纳入本次同步，该编号仍不得复用。归档核验后清出工作区，不自动恢复脏状态。
+- 关键处理：请求体预算默认 0；保留断连排空与生命周期；配额镜像不延长 worker 的五秒预算；合并图片 2.6/尺寸粘性、MCP OAuth、管理权限和邮箱黑名单；MCP 默认关闭；保留 Gemini 200K 边际计费、签名/采样、请求模型计费、游标导出、Codex legacy 默认认证和所有本地入口。历史迁移保持原文，仅新增 249_mcp_oauth.sql；本地版本 0.1.265，来源更新为 0.2.20。
+- 本轮真实基线：默认/集成 Go 测试、lint、构建、生命周期/Redis、版本契约、前端/Canvas 构建及本地启动通过；前端 SubscriptionPlanCard 3 个断言失败；全量 unit 的分配量及断连错误文本两项失败，定向连续三轮通过；广范围竞态的 Grok 配额两项和导入探测一项失败。首次静态脚本受 Windows 归档 CRLF 影响，LF 复测全部通过，首轮日志保留。
+- 详细命令、退出码、源码树、冲突块与归档证据保存在 tmp/upstream-sync-20261107；最终逐提交处置表、代码提交映射和前后验收结果将在最后的记录提交中追加。未推送、创建 PR、打标签、部署或访问生产服务器。
