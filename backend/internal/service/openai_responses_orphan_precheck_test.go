@@ -1,6 +1,8 @@
 package service
 
 import (
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -126,6 +128,23 @@ func TestOpenAIResponsesOrphanPrecheckCompatibilityErrors(t *testing.T) {
 }
 
 func TestOpenAIResponsesOrphanPrecheckLargeEscapedContent(t *testing.T) {
+	const isolatedEnv = "SUB2API_TEST_ORPHAN_PRECHECK_ALLOCATIONS"
+	if os.Getenv(isolatedEnv) != "1" {
+		// AllocsPerRun 统计整个进程；隔离包内其他测试遗留的后台分配，保留零分配断言。
+		binary, err := os.Executable()
+		require.NoError(t, err)
+		command := exec.Command(binary, "-test.run=^TestOpenAIResponsesOrphanPrecheckLargeEscapedContent$", "-test.count=1", "-test.timeout=30s")
+		for _, variable := range os.Environ() {
+			if !strings.HasPrefix(variable, isolatedEnv+"=") {
+				command.Env = append(command.Env, variable)
+			}
+		}
+		command.Env = append(command.Env, isolatedEnv+"=1")
+		output, err := command.CombinedOutput()
+		require.NoError(t, err, "隔离进程的零分配检查失败：%s", output)
+		return
+	}
+
 	body := []byte(`{"vendor":"` + strings.Repeat(`\n\"`, 1<<16) + `","input":[{"content":"` + strings.Repeat(`\n\"`, 1<<16) + `","type":"message"}]}`)
 	require.False(t, openAIResponsesInputMayNeedOrphanCleanup(body))
 	allocations := testing.AllocsPerRun(5, func() {

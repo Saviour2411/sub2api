@@ -10074,3 +10074,13 @@ A	frontend/src/views/admin/__tests__/ChannelsView.webSearchEmulation.spec.ts
 
 - 提交远端 PR 前重新核对当前工作流：CI 与 Security Scan 的前端任务均使用 Node 24，shell 任务使用 macos-15-intel。上文完整同步验收的未验证项将远端 Node 版本误写为 20，现更正为 24。
 - 本地前端验收实际使用 Node 24.15.0；此处仅补充文档勘误，不改变已有测试结果、应用行为或 CI 配置。远端检查结果以随后针对 PR 最新提交的 GitHub Actions 运行为准。
+
+### 2026-11-07 远端 CI 零分配测试隔离
+
+- 用户已授权提交、通过 CI 后合入主线；同步分支已推送并创建 PR #54。GitHub 曾因 fork 工作流的计算使用而自动停用 Actions，维护者页面重新启用后恢复运行；CI、安全扫描和发布工作流文件均未修改。
+- 首轮远端提交为 6c1472d68dee2f8fc0d30ef8170fd9288855e8d0。CI 运行 42382660860 的九项任务中八项通过，test 在 unit 阶段失败并跳过 integration；Security Scan 运行 42382663733 的两项任务通过。原始结果与完整失败日志保存在 tmp/upstream-sync-20261107/github-ci。
+- 唯一失败为 TestOpenAIResponsesOrphanPrecheckLargeEscapedContent：期望零次分配，实际测得 54。Go 1.27.3 的 testing.AllocsPerRun 使用进程级 runtime.MemStats.Mallocs，包内其他用例遗留的后台 goroutine 可污染计数；不能据此把真实拷贝回归的允许阈值提高。
+- 仅调整 backend/internal/service/openai_responses_orphan_precheck_test.go：沿用仓库已有测试子进程模式，在独立进程执行原零分配用例，保留原输入、清理判定和 require.Zero 断言，子进程失败回传父测试，并设置 30 秒测试超时。生产预检查代码、二开行为和默认值不变。
+- 上游来源为 6c140b89762d3a985c1ccbe214d653d019589598，继续归入 Applied + Overridden；固定范围与 90 个 Applied、17 个 Applied + Overridden 的总数不变。此处为纯测试适配，不新增二开编号。
+- 本地 Go 1.27.3 执行 go test -tags=unit -run '^TestOpenAIResponsesOrphanPrecheck' -count=20 ./internal/service，退出 0，连续 20 轮通过；gofmt 与 git diff --check 通过。反向验证使用工作目录内临时 Go overlay，相关命令结果单独保留，不修改受控生产源码。
+- 本次提交推送后重新执行完整远端 CI 与安全扫描，合并前以最新 PR 提交的实际结果为准；首轮失败不会被后续成功结果覆盖。
