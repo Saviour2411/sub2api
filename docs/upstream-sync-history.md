@@ -9159,3 +9159,13 @@ A	frontend/src/views/admin/__tests__/ChannelsView.webSearchEmulation.spec.ts
 - 关键处理：请求体预算默认 0；保留断连排空与生命周期；配额镜像不延长 worker 的五秒预算；合并图片 2.6/尺寸粘性、MCP OAuth、管理权限和邮箱黑名单；MCP 默认关闭；保留 Gemini 200K 边际计费、签名/采样、请求模型计费、游标导出、Codex legacy 默认认证和所有本地入口。历史迁移保持原文，仅新增 249_mcp_oauth.sql；本地版本 0.1.265，来源更新为 0.2.20。
 - 本轮真实基线：默认/集成 Go 测试、lint、构建、生命周期/Redis、版本契约、前端/Canvas 构建及本地启动通过；前端 SubscriptionPlanCard 3 个断言失败；全量 unit 的分配量及断连错误文本两项失败，定向连续三轮通过；广范围竞态的 Grok 配额两项和导入探测一项失败。首次静态脚本受 Windows 归档 CRLF 影响，LF 复测全部通过，首轮日志保留。
 - 详细命令、退出码、源码树、冲突块与归档证据保存在 tmp/upstream-sync-20261107；最终逐提交处置表、代码提交映射和前后验收结果将在最后的记录提交中追加。未推送、创建 PR、打标签、部署或访问生产服务器。
+
+### 2026-11-07 候选缓存扫描测试适配
+
+- 全量默认测试新增一项失败：TestEnforceCacheControlLimit_BorrowedCollectionKeepsDuplicateWireFields。新用例假设出口统一提升客户端 TTL，而本地 CUST-PROTO-003/004 明确保留客户端显式值。
+- 在已批准的本地策略保留范围内，只适配测试契约，增加非法 thinking 缓存块清理场景；继续验证重复键首键语义、未知数字/Unicode 原字节及重复执行幂等性，生产代码不变。对应上游 JSON 热路径提交仍记为 Applied + Overridden，初轮失败不覆盖。
+
+### 2026-11-07 异步用量上下文测试适配
+
+- 全量 unit 新增 TestGatewayUsageKeepsModelAfterGinContextReuse 的两个子场景失败，日志明确为 public-model-A 缺少价格；此结果符合本地严格请求模型计费。
+- 仅将夹具公开模型换成有价格的 claude-opus-4.6，保持其与上游正文及第二请求模型不同，并保留阻塞队列、同一 Gin Context 复用和真实用量落库断言；生产实现不变。原失败与复测记录分别保留。

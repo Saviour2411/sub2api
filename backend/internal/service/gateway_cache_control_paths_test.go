@@ -107,10 +107,16 @@ func TestCollectCacheControlPaths_ConcurrentImmutableInput(t *testing.T) {
 
 func TestEnforceCacheControlLimit_BorrowedCollectionKeepsDuplicateWireFields(t *testing.T) {
 	body := `{"opaque":9007199254740993,"system":[{"type":"text","text":"s","cache_control":{"type":"ephemeral","ttl":"5m"}}],"system":[{"type":"text","text":"untouched duplicate","cache_control":{"type":"ephemeral","ttl":"5m"}}],"messages":[{"role":"user","content":[{"type":"text","text":"m","cache_control":{"type":"ephemeral","ttl":"1h"}}]}],"unknown":{"decimal":1.2300e+04,"text":"\u4f60\u597d"}}`
-	want := strings.Replace(body, `"ttl":"5m"`, `"ttl":"1h"`, 1)
 	out := enforceCacheControlLimit([]byte(body))
-	require.Equal(t, want, string(out), "both passes must keep first-key semantics and preserve unrelated bytes")
-	require.Equal(t, out, enforceCacheControlLimit(out), "a valid TTL order must remain byte-for-byte unchanged")
+	require.Equal(t, body, string(out), "本地策略保留客户端显式 TTL 及重复字段的原始字节")
+
+	// 使用非法 thinking 缓存块触发清理，同时验证首键语义和无关字节保留。
+	invalid := `{"type":"thinking","thinking":"opaque","cache_control":{"type":"ephemeral","ttl":"1h"}}`
+	withInvalid := strings.Replace(body, `],"system":`, `,`+invalid+`],"system":`, 1)
+	want := strings.Replace(withInvalid, invalid, `{"type":"thinking","thinking":"opaque"}`, 1)
+	out = enforceCacheControlLimit([]byte(withInvalid))
+	require.Equal(t, want, string(out), "清理必须保持首键语义、显式 TTL 与无关字节")
+	require.Equal(t, out, enforceCacheControlLimit(out), "再次清理必须保持字节一致")
 }
 
 func cacheControlPathsBenchmarkBody(payloadBytes int) []byte {

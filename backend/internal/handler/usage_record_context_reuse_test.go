@@ -66,9 +66,10 @@ func TestGatewayUsageKeepsModelAfterGinContextReuse(t *testing.T) {
 			apiKey := &service.APIKey{ID: 9302, UserID: 9303, GroupID: &groupID, Group: group, User: &service.User{ID: 9303, Balance: 100}}
 			var first *gin.Context
 			router := gin.New()
+			// 本地严格按请求模型计费，使用有价格且与上游正文不同的公开模型。
 			router.POST("/v1/"+endpoint, func(c *gin.Context) {
 				first = c
-				c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), ctxkey.RequestedPublicModel, "public-model-A"))
+				c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), ctxkey.RequestedPublicModel, "claude-opus-4.6"))
 				c.Set(string(middleware.ContextKeyAPIKey), apiKey)
 				c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 9303})
 				if endpoint == "chat/completions" {
@@ -96,7 +97,7 @@ func TestGatewayUsageKeepsModelAfterGinContextReuse(t *testing.T) {
 			unblock()
 			select {
 			case usage := <-usageRepo.created:
-				require.Equal(t, "public-model-A", usage.RequestedModel)
+				require.Equal(t, "claude-opus-4.6", usage.RequestedModel)
 			case <-time.After(2 * time.Second):
 				t.Fatal("queued request usage was not recorded")
 			}
