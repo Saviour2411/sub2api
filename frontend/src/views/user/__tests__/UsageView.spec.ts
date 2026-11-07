@@ -73,6 +73,7 @@ const messages: Record<string, string> = {
   'usage.preparingExport': 'Preparing export',
   'usage.exportSuccess': 'Export success',
   'usage.exportFailed': 'Export failed',
+  'usage.exportRateLimited': 'Rate limited',
   'common.refresh': 'Refresh',
   'common.reset': 'Reset',
 }
@@ -529,6 +530,66 @@ describe('user UsageView', () => {
       clickSpy.mockRestore()
       wrapper.unmount()
       vi.useRealTimers()
+    }
+  })
+
+  it('游标导出遵循 Retry-After 秒数并重试相同游标', async () => {
+    const wrapper = mountUsageView()
+    await flushPromises()
+    exportPage.mockClear()
+    exportPage.mockResolvedValue({ items: [usageLog], next_cursor: '' })
+    exportPage.mockRejectedValueOnce({ status: 429, code: 'RATE_LIMITED', retry_after_seconds: 2 })
+    const originalCreateObjectURL = window.URL.createObjectURL
+    const originalRevokeObjectURL = window.URL.revokeObjectURL
+    window.URL.createObjectURL = vi.fn(() => 'blob:usage-export') as typeof window.URL.createObjectURL
+    window.URL.revokeObjectURL = vi.fn(() => {}) as typeof window.URL.revokeObjectURL
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    vi.useFakeTimers()
+
+    try {
+      const exporting = (wrapper.vm as any).exportToCSV()
+      await vi.advanceTimersByTimeAsync(2249)
+      expect(exportPage).toHaveBeenCalledTimes(1)
+      expect(showInfo).toHaveBeenCalledWith('Rate limited')
+
+      await vi.advanceTimersByTimeAsync(1)
+      await exporting
+      expect(exportPage).toHaveBeenCalledTimes(2)
+      expect(exportPage.mock.calls[1]).toEqual(exportPage.mock.calls[0])
+      expect(clickSpy).toHaveBeenCalled()
+      expect(showSuccess).toHaveBeenCalledWith('Export success')
+      expect(showError).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+      window.URL.createObjectURL = originalCreateObjectURL
+      window.URL.revokeObjectURL = originalRevokeObjectURL
+      clickSpy.mockRestore()
+      wrapper.unmount()
+    }
+  })
+
+  it('持续限流达到既有五次重试上限后停止导出', async () => {
+    const wrapper = mountUsageView()
+    await flushPromises()
+    exportPage.mockClear()
+    exportPage.mockRejectedValue({ status: 429, code: 'RATE_LIMITED', retry_after_seconds: 1 })
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.useFakeTimers()
+
+    try {
+      const exporting = (wrapper.vm as any).exportToCSV()
+      await vi.advanceTimersByTimeAsync(6250)
+      await exporting
+      expect(exportPage).toHaveBeenCalledTimes(6)
+      expect(clickSpy).not.toHaveBeenCalled()
+      expect(showError).toHaveBeenCalledWith('Export failed')
+      expect((wrapper.vm as any).exporting).toBe(false)
+    } finally {
+      vi.useRealTimers()
+      vi.mocked(console.error).mockRestore()
+      clickSpy.mockRestore()
+      wrapper.unmount()
     }
   })
 

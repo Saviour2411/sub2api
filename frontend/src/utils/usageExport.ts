@@ -33,10 +33,11 @@ export function waitForExport(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 function retryDelay(error: unknown, attempt: number): number | null {
-  const value = error as { status?: number; retryAfter?: string | number } | null
+  const value = error as { status?: number; retryAfter?: string | number; retry_after_seconds?: number } | null
   if (![0, 429, 500, 502, 503, 504].includes(value?.status ?? -1)) return null
-  if (value?.retryAfter != null) {
-    const raw = String(value.retryAfter)
+  const retryAfter = value?.retryAfter ?? value?.retry_after_seconds
+  if (retryAfter != null) {
+    const raw = String(retryAfter)
     const delay = /^\d+(\.\d+)?$/.test(raw) ? Number(raw) * 1000 : Date.parse(raw) - Date.now()
     if (Number.isFinite(delay) && delay > 0) return Math.min(delay, 300_000) + 250
   }
@@ -49,6 +50,7 @@ export async function exportUsagePages<T>(options: {
   consume: (items: T[]) => void | Promise<void>
   signal: AbortSignal
   onProgress?: (count: number) => void
+  onRateLimit?: (seconds: number) => void
 }): Promise<number> {
   let cursor = ''
   let count = 0
@@ -63,6 +65,9 @@ export async function exportUsagePages<T>(options: {
         throwIfCanceled(options.signal)
         const delay = retryDelay(error, attempt)
         if (isExportCanceled(error) || delay === null || attempt >= MAX_RETRIES) throw error
+        if ((error as { status?: number })?.status === 429) {
+          options.onRateLimit?.(Math.ceil(delay / 1000))
+        }
         await waitForExport(delay, options.signal)
       }
     }
