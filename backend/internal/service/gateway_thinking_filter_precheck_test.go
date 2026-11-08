@@ -3,6 +3,8 @@ package service
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -75,6 +77,23 @@ func signedThinkingHistoryBody() []byte {
 }
 
 func TestFilterThinkingBlocksSignedHistorySkipsDecode(t *testing.T) {
+	const isolatedEnv = "SUB2API_TEST_THINKING_PRECHECK_ALLOCATIONS"
+	if os.Getenv(isolatedEnv) != "1" {
+		// AllocsPerRun统计整个进程；隔离其他测试的后台分配，保留原分配阈值和原始切片断言。
+		binary, err := os.Executable()
+		require.NoError(t, err)
+		command := exec.Command(binary, "-test.run=^TestFilterThinkingBlocksSignedHistorySkipsDecode$", "-test.count=1", "-test.timeout=30s")
+		for _, variable := range os.Environ() {
+			if !strings.HasPrefix(variable, isolatedEnv+"=") {
+				command.Env = append(command.Env, variable)
+			}
+		}
+		command.Env = append(command.Env, isolatedEnv+"=1")
+		output, err := command.CombinedOutput()
+		require.NoError(t, err, "隔离进程的分配检查失败：%s", output)
+		return
+	}
+
 	body := signedThinkingHistoryBody()
 	allocs := testing.AllocsPerRun(5, func() {
 		got := filterThinkingBlocksInternal(body, false)
