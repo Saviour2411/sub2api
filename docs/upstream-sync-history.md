@@ -10084,3 +10084,9 @@ A	frontend/src/views/admin/__tests__/ChannelsView.webSearchEmulation.spec.ts
 - 上游来源为 6c140b89762d3a985c1ccbe214d653d019589598，继续归入 Applied + Overridden；固定范围与 90 个 Applied、17 个 Applied + Overridden 的总数不变。此处为纯测试适配，不新增二开编号。
 - 本地 Go 1.27.3 执行 go test -tags=unit -run '^TestOpenAIResponsesOrphanPrecheck' -count=20 ./internal/service，退出 0，连续 20 轮通过；gofmt 与 git diff --check 通过。反向验证使用工作目录内临时 Go overlay，相关命令结果单独保留，不修改受控生产源码。
 - 本次提交推送后重新执行完整远端 CI 与安全扫描，合并前以最新 PR 提交的实际结果为准；首轮失败不会被后续成功结果覆盖。
+
+### 2026-11-08 上游249迁移的发布兼容适配
+
+- PR #54及主线CI通过后，用户要求更新tag自动蓝绿部署。生产仍为v0.1.265，唯一新增数据库迁移为原始 `249_mcp_oauth.sql`，不扩大此前上游同步范围。
+- 为 `CUST-OPS-007` 补齐固定249专项，绑定旧提交 `d2fa2526803acf275a0e560fb5f5ce5cdb1e56ea`、原始SQL摘要和旧用户仓库/Ent契约。三表和账本同事务、NOWAIT、PostgreSQL18、16MiB及1/5/10秒预算；保留通用迁移拒绝规则，重复启动核验完整结构。
+- 旧版显式列名读写与软删除仍有效；MCP默认关闭，应用回退保留新授权数据。源码、门禁、隔离回归和发布证据范围详见 `docs/operations/2026-11-08-v0.1.266-release.md`。

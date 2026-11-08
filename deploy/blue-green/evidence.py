@@ -16,6 +16,9 @@ REQUIRED = {
 }
 MIGRATION_PATHS = ["backend/migrations", "backend/ent/schema"]
 APPROVALS_PATH = "deploy/blue-green/expand-approvals.json"
+MCP249_BASE = "d2fa2526803acf275a0e560fb5f5ce5cdb1e56ea"
+MCP249_PROFILE = "mcp-oauth-additive-249-v1"
+MCP249_FILE = "249_mcp_oauth.sql"
 IMAGE248_BASE = "9796796638ea87226bcc5d936033ae53bfedc313"
 IMAGE248_PROFILE = "image-count-additive-248-v1"
 IMAGE248_FILE = "248_group_image_count_billing.sql"
@@ -33,6 +36,7 @@ RELEASE260_FILES = {
     "247_scoped_admin_api_keys.sql": "03445774e2dfad32da9e23279193d1bca02953896bc3d3b8a87ba0b36b6ed577",
 }
 SPECIAL_MIGRATIONS = {
+    MCP249_FILE: (MCP249_PROFILE, "751a1dcee6108afcecbd580b6e3140cca3480853fecd2174861b02f3a71e54a1"),
     IMAGE248_FILE: (IMAGE248_PROFILE, "a872dde339b19f311feb5fa6fd85c8ff7b11d69794c35a18e2086d9846b3499c"),
     "246_model_quality.sql": (MODEL_QUALITY_PROFILE, "1bb3d0dd89a9e48f4c524f306b3c248873581b6a33aa1f37f1e24fc3caab545e"),
     "242_drop_platform_check_constraints.sql": ("platform-guarded-242-v1", "a7725f31f637208d200e0f37d5270e9f263743d99fa9e4f1bb9a7387e8be5a61"),
@@ -181,6 +185,10 @@ def migration_evidence(base, sha, git):
         if special:
             require(checksum(content) == special[1], "专项迁移固定 SQL 摘要不符")
             contract = {"profile": special[0]}
+            if special[0] == MCP249_PROFILE:
+                require(base == MCP249_BASE and all(item == "A\t"+path
+                    or re.fullmatch(r"[AM]\tbackend/migrations/[a-zA-Z0-9_]+_test\.go", item)
+                    for item in changed.splitlines()), "249专项仅覆盖v0.1.265到原始MCP OAuth迁移")
             if special[0] == IMAGE248_PROFILE:
                 reviewed_image248_schema(base, sha, changed, git)
             if special[0] == RELEASE260_PROFILE:

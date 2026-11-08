@@ -437,5 +437,53 @@ class EvidenceTests(unittest.TestCase):
                 e.migration_evidence(base, sha, git)
 
 
+    def mcp249_fixture(self):
+        base, sha = e.MCP249_BASE, "b"*40
+        approval = copy.deepcopy(next(item for item in json.loads((ROOT/e.APPROVALS_PATH).read_text())["approvals"]
+                                      if item.get("profile") == e.MCP249_PROFILE))
+        values = {"diff": "A\t"+approval["path"],
+                  sha+":"+approval["path"]: (ROOT/approval["path"]).read_text()}
+        for contract in approval["legacy_contracts"]:
+            contract["checksum"] = e.checksum("旧用户显式列名读写与软删除")
+            values[base+":"+contract["path"]] = "旧用户显式列名读写与软删除"
+        values[sha+":"+e.APPROVALS_PATH] = json.dumps({"version": 1, "approvals": [approval]})
+        def git(*args):
+            return values["diff"] if args[0] == "diff" else values[args[1]] if args[0] == "show" else ""
+        return base, sha, approval, values, git
+
+    def test_249_binds_exact_base_and_only_original_sql(self):
+        base, sha, approval, values, git = self.mcp249_fixture()
+        result = e.migration_evidence(base, sha, git)
+        self.assertEqual("expand", result["migration_class"])
+        self.assertTrue(result["rollback_compatible"])
+        self.assertEqual([{"filename": e.MCP249_FILE, "checksum": approval["checksum"], "profile": e.MCP249_PROFILE}],
+                         result["migration_policy"]["migrations"])
+        original = values["diff"]
+        for diff in (original.replace("A\t", "M\t"), original+"\nA\tbackend/migrations/999_other.sql",
+                     original+"\nM\tbackend/ent/schema/user.go", original+"\nA\tbackend/migrations/fake_testXgo"):
+            values["diff"] = diff
+            with self.subTest(diff=diff), self.assertRaises(RuntimeError):
+                e.migration_evidence(base, sha, git)
+        values["diff"] = original
+        with self.assertRaises(RuntimeError):
+            e.migration_evidence("c"*40, sha, git)
+        values["diff"] += "\nA\tbackend/migrations/mcp_oauth_test.go"
+        self.assertEqual(result, e.migration_evidence(base, sha, git))
+
+    def test_249_rejects_sql_legacy_and_approval_drift(self):
+        base, sha, approval, values, git = self.mcp249_fixture()
+        for key in (sha+":"+approval["path"], *(base+":"+item["path"] for item in approval["legacy_contracts"])):
+            original = values[key]
+            values[key] += "\n未经审查的变化"
+            with self.subTest(key=key), self.assertRaises(RuntimeError):
+                e.migration_evidence(base, sha, git)
+            values[key] = original
+        for entries in ([], [approval, approval], [dict(approval, legacy_contracts=[])],
+                        [dict(approval, profile="unknown")], [dict(approval, checksum="0"*64)]):
+            values[sha+":"+e.APPROVALS_PATH] = json.dumps({"version": 1, "approvals": entries})
+            with self.subTest(entries=entries), self.assertRaises(RuntimeError):
+                e.migration_evidence(base, sha, git)
+
+
 if __name__ == "__main__":
     unittest.main()
