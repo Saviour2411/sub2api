@@ -2,6 +2,43 @@
   "version": 1,
   "approvals": [
     {
+      "compatible_from": "d2fa2526803acf275a0e560fb5f5ce5cdb1e56ea",
+      "path": "backend/migrations/249_mcp_oauth.sql",
+      "checksum": "751a1dcee6108afcecbd580b6e3140cca3480853fecd2174861b02f3a71e54a1",
+      "profile": "mcp-oauth-additive-249-v1",
+      "legacy_contracts": [
+        {
+          "path": "backend/internal/repository/user_repo.go",
+          "checksum": "150eba1f273da9416fae30ac8744c5327f52817583e69ba13d2f5171fdadcc1b"
+        },
+        {
+          "path": "backend/ent/schema/user.go",
+          "checksum": "6f454b09374797767de8467e75f1809d73aa88049590ca0102de544249a67ada"
+        },
+        {
+          "path": "backend/ent/schema/mixins/soft_delete.go",
+          "checksum": "e7e731a9a3933f46c56a8025d04ab869ec5a9e607c5e0cd887f5650dba182f59"
+        },
+        {
+          "path": "backend/ent/user/user.go",
+          "checksum": "a3f2231dc74d9838d92494a1720ba5185d8be88f7cf69f3c8e4ffdce38c35514"
+        },
+        {
+          "path": "backend/ent/user_create.go",
+          "checksum": "2d10c8cdb0859aed72389928b1b98bfe3075f30397aaa15219c1d8b4388fea24"
+        },
+        {
+          "path": "backend/ent/user_update.go",
+          "checksum": "c4d7f815240f62cde450fec6629bed022533b812f0f51422334888538ff0905b"
+        },
+        {
+          "path": "backend/ent/user_query.go",
+          "checksum": "b5841d1c9daebc0d5fd3cef35bd89318a640edbaffe845e06beaab780338cab3"
+        }
+      ],
+      "review": "2026-11-08按用户更新tag自动蓝绿部署要求，绑定生产v0.1.265、原始249及旧用户仓库和Ent摘要。旧版显式列名读写且正常删除使用软删，不访问MCP新表；原249仅新建三表及索引。PostgreSQL18、users和账本16MiB、固定鉴权触发器、NOWAIT及1/5/10秒预算；原文与账本同事务，拒绝同名对象和DDL触发器，重验字段、约束、索引、类型、RLS及触发器。失败保留旧流量，回退保留MCP授权数据，旧版不提供MCP功能；MCP默认关闭。"
+    },
+    {
       "compatible_from": "9796796638ea87226bcc5d936033ae53bfedc313",
       "path": "backend/migrations/248_group_image_count_billing.sql",
       "checksum": "a872dde339b19f311feb5fa6fd85c8ff7b11d69794c35a18e2086d9846b3499c",
