@@ -206,7 +206,8 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	if !mimicClaudeCode {
 		for key, values := range clientHeaders {
 			lowerKey := strings.ToLower(key)
-			if allowedHeaders[lowerKey] {
+			// Chat / Responses 转 Anthropic 共用此处，仅开启透传的账号放行渠道会话头。
+			if allowedHeaders[lowerKey] || (lowerKey == "x-session-id" && account.IsAnthropicAPIKeyPassthroughEnabled()) {
 				wireKey := resolveWireCasing(key)
 				for _, v := range values {
 					addHeaderRaw(req.Header, wireKey, v)

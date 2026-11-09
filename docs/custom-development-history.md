@@ -317,6 +317,12 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 
 ## 变更记录
 
+### 2026-11-09 Anthropic 透传保留 X-Session-ID
+
+- 修复 Anthropic API Key 账号开启 `anthropic_passthrough` 后，客户端 `X-Session-ID` 仍被出站白名单过滤的问题；覆盖 Messages、count_tokens 及 Chat Completions / Responses 转 Anthropic 的入口。
+- 按 HTTP 头名大小写不敏感规则保留客户端值；缺失时不生成，也不与 `X-Claude-Code-Session-Id` 相互替换。非透传白名单、认证替换及账号请求头覆写优先级保持原有行为。
+- 增加四个入口的实际出站回归，覆盖透传开关切换、多轮同一会话、独立会话、大小写、多值和缺失头，并检查客户端鉴权、Cookie 及其他未允许的头不会被转发；使用模拟上游验证，无外部模型调用费用。
+
 ### 2026-11-05 Anthropic 透传保留签名绑定（v0.1.265 发布候选）
 
 - 新增 `CUST-PROTO-009`。客户要求透传不删除签名绑定字段；生产复测确认无绑定 beta 时，网关删除 `thinking.block_binding.prefix_mismatch_behavior=error`，造成同一签名换 system 后直连渠道400、经网关200。

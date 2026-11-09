@@ -425,7 +425,8 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 	if c != nil && c.Request != nil {
 		for key, values := range c.Request.Header {
 			lowerKey := strings.ToLower(strings.TrimSpace(key))
-			if !allowedHeaders[lowerKey] {
+			// 透传时保留渠道会话亲和头，与 X-Claude-Code-Session-Id 相互独立。
+			if !allowedHeaders[lowerKey] && lowerKey != "x-session-id" {
 				continue
 			}
 			wireKey := resolveWireCasing(key)
