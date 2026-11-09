@@ -482,7 +482,8 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 	if c != nil && c.Request != nil {
 		for key, values := range c.Request.Header {
 			lowerKey := strings.ToLower(strings.TrimSpace(key))
-			if !allowedHeaders[lowerKey] {
+			// 与 Messages 透传路径一致，保留渠道会话亲和头。
+			if !allowedHeaders[lowerKey] && lowerKey != "x-session-id" {
 				continue
 			}
 			wireKey := resolveWireCasing(key)
