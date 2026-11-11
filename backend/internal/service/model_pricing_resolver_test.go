@@ -68,7 +68,11 @@ func TestResolverOpenAICacheWriteTTLOnly(t *testing.T) {
 			} else {
 				entry.CacheWrite12hPrice = &price
 			}
-			r := newResolverWithChannel(t, []ChannelModelPricing{entry})
+			channel := &ChannelService{}
+			channel.cache.Store(populateChannelCache([]Channel{{
+				ID: 1, Status: StatusActive, GroupIDs: []int64{100}, ModelPricing: []ChannelModelPricing{entry},
+			}}, map[int64]string{100: PlatformOpenAI}))
+			r := NewModelPricingResolver(channel, newTestBillingServiceForResolver())
 			resolved := r.Resolve(context.Background(), PricingInput{Model: "unknown-ttl-only-model", GroupID: groupIDPtr()})
 			require.True(t, resolved.ChannelPricingConfigured)
 			require.True(t, resolved.TokenPricingConfigured)
