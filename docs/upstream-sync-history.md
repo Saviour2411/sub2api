@@ -10097,3 +10097,16 @@ A	frontend/src/views/admin/__tests__/ChannelsView.webSearchEmulation.spec.ts
 - 沿用已有OpenAI预检测试的子进程隔离方式，仅隔离thinking预检的分配测量，保留原始切片指针和小于16次的断言，不改生产过滤实现或降低门禁。
 - 上游来源 `f654c23eb7af2da100c3c23c7a4e58afa2ee6400` 在本次后续发布补丁中归为 Applied + Overridden。此前逐提交表和90/17统计记录的是原PR #54验收时状态；本条记录新增的测试覆盖，不改原始验收事实或同步范围。
 - 修复前独立运行20轮通过；子进程隔离后再连续20轮通过。临时Go overlay额外引入17次分配时，原小于16次断言准确失败，证明门禁未被跳过或放宽；临时变体不进入受控源码。
+
+## 2026-11-12 固定范围增量同步：执行记录
+
+- 执行状态：完成基线后进入本地完整合并，候选验收待执行；最终状态见后续同日验收记录。
+- 本地目标：main；LOCAL_PRE_SYNC_SHA：abf26eedac45817facf8a5f2132df910e3964680。
+- 上游：Wei-Shaw/sub2api，远端HEAD已确认为main；UPSTREAM_OLD_SHA：6b4b37db43443b5e88e424fe3c69602cc3810dfb；固定UPSTREAM_NEW_SHA：530c5e3a4f9c73ca2b0881191d0ef8e0d82c5484。
+- 实际merge-base等于旧SHA，旧SHA为双方祖先；本次83提交（45普通、38合并），无范围扩展。
+- LAST_FULLY_INTEGRATED_UPSTREAM_SHA：530c5e3a4f9c73ca2b0881191d0ef8e0d82c5484，随本次完整merge保留全部上游祖先关系；此字段不代表验收或生产发布通过。
+- 备份分支：backup/pre-upstream-sync-20261112-031521-abf26eeda；同步分支：sync/upstream-20261112-530c5e3a4。
+- 原6项未提交改动已按批准方案归档到tmp/pre-sync-local-20261112，逐文件SHA256核对；不恢复到本次合并。
+- 12文件17块预审冲突按批准方案逐块适配；保留0.1.267、请求体预算默认0、严格请求模型和独立定价区间、WebSocket逐轮结算、Claude透传选项及原输出速率测试。
+- 两条新增迁移保留上游原文；所有历史SQL及生产蓝绿放行规则不改。未push、创建PR/tag、部署或连接生产服务器。
+- 完整逐提交表、代码提交SHA、实际冲突数和前后测试结果在最终验收记录追加。

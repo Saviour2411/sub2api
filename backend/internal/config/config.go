@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/sysutil"
 	"github.com/spf13/viper"
 	"golang.org/x/net/http/httpguts"
 )
@@ -572,6 +573,22 @@ func shouldApplyLegacyWeChatEnv(configKey, envKey string) bool {
 	return !hasNewEnv
 }
 
+// detectMemoryLimitBytes is replaced in tests so defaults do not depend on the host.
+var detectMemoryLimitBytes = sysutil.MemoryLimitBytes
+
+const (
+	defaultRequestBodyMemoryBudgetBytes = int64(1 << 30)
+	// requestBodyMemoryBudgetDivisor leaves the rest of memory for conversion
+	// state, SSE buffers, caches and GC headroom.
+	requestBodyMemoryBudgetDivisor = 4
+)
+
+// autoRequestBodyMemoryBudget 保留上游预算算法供验证；本地加载配置时不自动启用。
+func autoRequestBodyMemoryBudget(memoryLimitBytes uint64) int64 {
+	// uint64 / 4 always fits in int64.
+	return max(int64(memoryLimitBytes/requestBodyMemoryBudgetDivisor), defaultRequestBodyMemoryBudgetBytes)
+}
+
 func hasExplicitConfigOrEnv(configKey, envKey string) bool {
 	if viper.InConfig(configKey) {
 		return true
@@ -1058,6 +1075,7 @@ type GatewayConfig struct {
 	// 请求体最大字节数，用于网关请求体大小限制
 	MaxBodySize int64 `mapstructure:"max_body_size"`
 	// RequestBodyMemoryBudgetBytes bounds buffered ingress allocations per instance; 0 disables it.
+	// 未配置或环境变量为空时保持默认 0，仅显式正值启用。
 	RequestBodyMemoryBudgetBytes int64 `mapstructure:"request_body_memory_budget_bytes"`
 	// RequestBodyReadTimeoutSeconds bounds each socket read during upload; 0 disables it.
 	RequestBodyReadTimeoutSeconds int `mapstructure:"request_body_read_timeout_seconds"`
@@ -2615,6 +2633,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.antigravity_fallback_cooldown_minutes", 1)
 	viper.SetDefault("gateway.antigravity_extra_retries", 10)
 	viper.SetDefault("gateway.max_body_size", int64(256*1024*1024))
+	// 请求体预算沿用本地默认关闭行为，仅显式正值启用。
 	viper.SetDefault("gateway.request_body_memory_budget_bytes", int64(0))
 	viper.SetDefault("gateway.request_body_read_timeout_seconds", 120)
 	viper.SetDefault("gateway.downstream_write_timeout_seconds", 120)

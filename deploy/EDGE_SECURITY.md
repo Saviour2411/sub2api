@@ -82,14 +82,11 @@ bodies even after their upload has finished. The budget is not just the number
 of simultaneous uploads, and releasing an allocation's charge does not force Go
 to reclaim that unreachable memory immediately.
 
-For example, 200 long-lived streams retaining 4 MiB each account for about
-800 MiB before new uploads and decoding. Another 32 concurrent Zstd decoders
-can reserve 256 MiB of window space alone, exceeding the default 1 GiB budget
-before their input/output buffers are counted. Increase the budget for such a
-workload only with sufficient instance memory, or reduce concurrency/request
-sizes. Leave separate memory headroom for SSE frames (which may be larger than
-the queue budget), conversion state, caches, connections and GC. Setting the
-budget to `0` disables ingress memory admission rather than limiting RSS.
+例如，200 条长流各保留 4 MiB 请求体，共约 800 MiB；另外 32 个 Zstd
+解码器仅窗口就可能占用 256 MiB，尚未计入上传和解码缓冲就会超过显式设置的 1 GiB 预算。
+应依据实例内存与实测并发配置正值，并为 SSE、转换状态、缓存、连接和 GC 预留空间。
+本地默认值仍为 `0`；删除配置项或设置空环境变量不会按内存自动启用预算。
+显式 `0` 关闭请求体准入预算，不代表限制 RSS。
 
 Legacy Read tool-call completion still validates the growing JSON argument
 prefix. Incremental storage removes repeated prefix allocations, but validation

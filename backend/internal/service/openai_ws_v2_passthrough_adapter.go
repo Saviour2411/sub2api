@@ -1280,6 +1280,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			InitialRequestModel: capturedSessionModel,
 			WriteTimeout:        s.openAIWSWriteTimeout(),
 			FirstTurnStartedAt:  firstTurnStartedAt,
+			IsFirstTokenEvent:   openAIWSFirstTokenEventFunc(s.openAITTFTMode(ctx)),
 			TakeNextTurnStartedAt: func() time.Time {
 				startedAt := acceptedTurnStartedAt.Swap(nil)
 				if startedAt == nil {
@@ -1732,6 +1733,16 @@ func openAIWSTurnOutcomeError(eventType string, payload []byte, clientDisconnect
 	}
 	outcome.ClientDisconnect = clientDisconnect
 	return outcome
+}
+
+// WebSocket 按配置的 TTFT 模式判断首 Token，带外 codex 事件不计为模型输出。
+func openAIWSFirstTokenEventFunc(mode string) func(eventType string, message []byte) bool {
+	return func(eventType string, message []byte) bool {
+		if strings.HasPrefix(strings.TrimSpace(eventType), "codex.") {
+			return false
+		}
+		return openAIStreamDataStartsTTFT(string(message), eventType, false, mode)
+	}
 }
 
 func openAIWSFirstTokenMsForLog(firstTokenMs *int) int {
