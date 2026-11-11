@@ -10115,3 +10115,6 @@ A	frontend/src/views/admin/__tests__/ChannelsView.webSearchEmulation.spec.ts
 
 - 合并提交为86961044f08c9e764808208e39a478a30381a7ef。新增的12小时单独定价测试最初复用了固定Anthropic分组的旧helper；审阅后改用明确OpenAI分组的价卡缓存，保留全部断言及平台隔离。
 - 此补丁仅调整本轮新增测试和记录，生产代码不变；初版候选日志保留，最终快照将重新运行完整unit及重点回归。最终验收记录追加实际结果。
+
+- 完整default/integration检出本地 `TestMimicRequestVersionSnapshotSurvivesResolverChanges` 的旧2.1.280/281夹具低于新2.1.321下限；复用本次上游引入的动态版本helper，保留请求内版本一致性断言。上游 `ea6b3de8082d5871ce5e90a61f4fe75c8ba6b506` 因补齐本地用例适配记为Applied + Overridden。
+- 首轮default另有 `TestOpenAIResponseFlush_BareErrorTimeoutSynthesizesFailed/stream_interval_timeout` 超过3秒；保留原日志和断言，在降低并行测试负载后定向与完整复测，实际结论见最终验收。

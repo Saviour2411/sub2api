@@ -944,4 +944,6 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 
 验收补充：`CUST-BILL-002` 的仅12小时价格回归使用明确的OpenAI分组和价卡，避免复用旧Anthropic分组夹具；断言仍要求显式零价有效、未知模型仅凭显式token价建立定价、按次区间不受影响。不改生产逻辑。
 
+`CUST-PROTO-003` 的请求内版本快照测试复用上游 `claudeCodeTestVersion`，随内置CLI下限生成有效版本，继续断言同一请求的User-Agent与billing header使用同一个快照；只修正旧版号夹具，不改请求行为。
+
 执行时先完成隔离基线；候选测试及最终验收结果追加在 `docs/upstream-sync-history.md` 的2026-11-12条目，基线已有失败及未验证项目单独记录。本轮仅限本地，不代表生产验证或发布许可。
