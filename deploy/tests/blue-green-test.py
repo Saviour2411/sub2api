@@ -889,6 +889,43 @@ class BlueGreenTests(unittest.TestCase):
                 self.deployment.deploy(release,window=0)
         self.assertEqual("blue",self.deployment.routed)
 
+    def test_cache250_guard_blocks_switch(self):
+        release = self.special_release()
+        release["migration_policy"]["migrations"] = [{"profile":"openai-cache-249-250-v1"}]
+        for missing in ("valid", "migrations"):
+            report = {"valid":True,"migrations":True,missing:False}
+            with patch.object(self.deployment,"cache250_guard_database",return_value=report):
+                with self.assertRaisesRegex(bg.Refused,"249/250"):
+                    self.deployment.deploy(release,window=0)
+            self.assertEqual("blue",self.deployment.routed)
+
+    def test_cache250_guard_release_only_after_retirement(self):
+        release = self.special_release()
+        release["migration_policy"]["migrations"] = [{"profile":"openai-cache-249-250-v1"}]
+        self.deployment.busy.add("blue")
+        events = []
+        def database(mode):
+            events.append((mode,self.deployment.state["phase"],self.deployment.state.get("pending")))
+            if mode == "check": return {"valid":True,"migrations":True}
+        with patch.object(self.deployment,"cache250_guard_database",side_effect=database):
+            self.deployment.deploy(release,window=0)
+            self.assertEqual(["check"],[event[0] for event in events])
+            self.deployment.busy.clear()
+            self.deployment.deploy(release,window=0)
+            self.deployment.deploy(release,window=0)
+        self.assertTrue(all(phase == "stable" and pending is None for mode,phase,pending in events if mode == "release"))
+        self.assertEqual("released",self.deployment.state["cache250_guard_result"]["status"])
+
+    def test_cache250_rollback_retains_guard(self):
+        release = self.special_release()
+        release["migration_policy"]["migrations"] = [{"profile":"openai-cache-249-250-v1"}]
+        self.deployment.busy.add("blue")
+        with patch.object(self.deployment,"cache250_guard_database",return_value={"valid":True,"migrations":True}) as database:
+            self.deployment.deploy(release,window=0)
+            self.deployment.rollback(window=0)
+            self.assertTrue(all(call.args == ("check",) for call in database.call_args_list))
+        self.assertEqual("blue",self.deployment.routed)
+
     def test_pricing_guard_release_follows_retirement_and_recovers(self):
         release = self.special_release()
         events = []

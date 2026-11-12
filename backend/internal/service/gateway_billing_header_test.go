@@ -25,9 +25,9 @@ func TestMimicRequestVersionSnapshotSurvivesResolverChanges(t *testing.T) {
 				claude.SetCLIVersionResolver(func() string {
 					calls++
 					if calls%2 == 1 {
-						return "2.1.280"
+						return claudeCodeTestVersion(1)
 					}
-					return "2.1.281"
+					return claudeCodeTestVersion(2)
 				})
 				defer claude.SetCLIVersionResolver(nil)
 				c, _ := gin.CreateTestContext(httptest.NewRecorder())
@@ -45,8 +45,8 @@ func TestMimicRequestVersionSnapshotSurvivesResolverChanges(t *testing.T) {
 				}
 				require.NoError(t, err)
 				defer func() { require.NoError(t, req.Body.Close()) }()
-				require.Equal(t, "claude-cli/2.1.280 (external, cli)", getHeaderRaw(req.Header, "User-Agent"))
-				require.Contains(t, gjson.GetBytes(wireBody, "system.0.text").String(), "cc_version=2.1.280;")
+				require.Equal(t, "claude-cli/"+claudeCodeTestVersion(1)+" (external, cli)", getHeaderRaw(req.Header, "User-Agent"))
+				require.Contains(t, gjson.GetBytes(wireBody, "system.0.text").String(), "cc_version="+claudeCodeTestVersion(1)+";")
 				actual, err := io.ReadAll(req.Body)
 				require.NoError(t, err)
 				require.Equal(t, wireBody, actual)

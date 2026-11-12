@@ -16,6 +16,22 @@ REQUIRED = {
 }
 MIGRATION_PATHS = ["backend/migrations", "backend/ent/schema"]
 APPROVALS_PATH = "deploy/blue-green/expand-approvals.json"
+CACHE250_BASE = "1ab1977341093ae2c97854c729173eb9a0294cc6"
+CACHE250_PROFILE = "openai-cache-249-250-v1"
+CACHE250_FILES = {
+    "249_add_usage_logs_api_key_cost_index_notx.sql": "94f124c3e50405f7b75746885111a4f662c331985a697de46fe946a17ff1f7d9",
+    "250_openai_cache_write_ttl.sql": "532551ce7aee86b2ee0a78d397d422424ceed4051e31d5f542277c80c21b8b98",
+}
+CACHE250_SCHEMA = {
+    "path": "backend/ent/schema/usage_log.go",
+    "from_checksum": "db5331016a7c63df52da7dc1ee9b240234cf287a9d10446c12d20c6c25b71a32",
+    "to_checksum": "10cd7bf0fd17f3eef70fb95ce5a6332bb199ad0abfab9217907c58229ef40f38",
+}
+CACHE250_LEGACY_PATHS = {
+    "backend/ent/schema/usage_log.go", "backend/ent/usagelog/usagelog.go",
+    "backend/internal/repository/usage_log_repo_insert.go", "backend/internal/repository/usage_log_repo_query.go",
+    "backend/internal/repository/channel_repo_pricing.go", "backend/internal/repository/channel_repo_account_stats_pricing.go",
+}
 MCP249_BASE = "d2fa2526803acf275a0e560fb5f5ce5cdb1e56ea"
 MCP249_PROFILE = "mcp-oauth-additive-249-v1"
 MCP249_FILE = "249_mcp_oauth.sql"
@@ -55,6 +71,7 @@ UPSTREAM216_FILES = {
 }
 SPECIAL_MIGRATIONS.update({name: (UPSTREAM216_PROFILE, digest) for name, digest in UPSTREAM216_FILES.items()})
 SPECIAL_MIGRATIONS.update({name: (RELEASE260_PROFILE, digest) for name, digest in RELEASE260_FILES.items()})
+SPECIAL_MIGRATIONS.update({name: (CACHE250_PROFILE, digest) for name, digest in CACHE250_FILES.items()})
 UPSTREAM216_SCHEMA = {
     "path": "backend/ent/schema/group.go",
     "from_checksum": "ab46f4e37b0287cd795622eb89d5841f76838c9dccedf88361e27fc045ea4881",
@@ -81,6 +98,16 @@ PLATFORM242_SCHEMAS = [
         "to_checksum": "cc2e48c8fe7305805f106de7b8cec77a94aee3650cb0009ae5d60cba2434f6d6"
     }
 ]
+
+
+def reviewed_cache250_schema(base, sha, changed, git):
+    lines = {line for line in changed.splitlines()
+             if not re.fullmatch(r"[AM]\tbackend/migrations/[a-zA-Z0-9_]+_test\.go", line)}
+    expected = {"A\tbackend/migrations/"+name for name in CACHE250_FILES}
+    expected.add("M\t"+CACHE250_SCHEMA["path"])
+    require(base == CACHE250_BASE and lines == expected, "249/250仅覆盖v0.1.267到两条固定迁移及用量Ent差异")
+    for revision, key in ((base, "from_checksum"), (sha, "to_checksum")):
+        require(checksum(git("show", revision+":"+CACHE250_SCHEMA["path"])) == CACHE250_SCHEMA[key], "249/250用量Ent固定摘要不符")
 
 
 def reviewed_image248_schema(base, sha, changed, git):
@@ -163,6 +190,9 @@ def migration_evidence(base, sha, git):
         fields = line.split("\t")
         require(len(fields) == 2, "迁移差异格式不受支持")
         status, path = fields
+        if status == "M" and path == CACHE250_SCHEMA["path"]:
+            reviewed_cache250_schema(base, sha, changed, git)
+            continue
         if status == "M" and path == IMAGE248_SCHEMA["path"] and "A\tbackend/migrations/" + IMAGE248_FILE in changed.splitlines():
             reviewed_image248_schema(base, sha, changed, git)
             continue
@@ -185,6 +215,8 @@ def migration_evidence(base, sha, git):
         if special:
             require(checksum(content) == special[1], "专项迁移固定 SQL 摘要不符")
             contract = {"profile": special[0]}
+            if special[0] == CACHE250_PROFILE:
+                reviewed_cache250_schema(base, sha, changed, git)
             if special[0] == MCP249_PROFILE:
                 require(base == MCP249_BASE and all(item == "A\t"+path
                     or re.fullmatch(r"[AM]\tbackend/migrations/[a-zA-Z0-9_]+_test\.go", item)
@@ -229,6 +261,10 @@ def migration_evidence(base, sha, git):
             require(approval.get("column") == contract and "profile" not in approval, "新增字段与兼容审批不符")
         contracts = approval.get("legacy_contracts", [])
         require(isinstance(contracts, list) and contracts, "缺少旧版读写契约审查")
+        if special and special[0] == CACHE250_PROFILE:
+            require(approval.get("schema_change") == CACHE250_SCHEMA, "249/250审批缺少固定用量Ent差异")
+            require(len(contracts) == len(CACHE250_LEGACY_PATHS) and
+                    {item.get("path") for item in contracts} == CACHE250_LEGACY_PATHS, "249/250旧用量及定价读写契约不完整")
         for legacy_contract in contracts:
             source = legacy_contract.get("path", "")
             require(re.fullmatch(r"backend/[a-zA-Z0-9_/]+\.go", source) is not None and not source.endswith("_test.go"), "旧版契约路径无效")

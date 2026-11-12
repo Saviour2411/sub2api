@@ -57,6 +57,35 @@ func TestResolve_UnknownModel(t *testing.T) {
 	require.Equal(t, "fallback", resolved.Source)
 }
 
+func TestResolverOpenAICacheWriteTTLOnly(t *testing.T) {
+	for _, interval := range []bool{false, true} {
+		for _, price := range []float64{0, 2e-6} {
+			entry := ChannelModelPricing{
+				Platform: "openai", Models: []string{"unknown-ttl-only-model"}, BillingMode: BillingModeToken,
+			}
+			if interval {
+				entry.Intervals = []PricingInterval{{MinTokens: 0, CacheWrite12hPrice: &price}}
+			} else {
+				entry.CacheWrite12hPrice = &price
+			}
+			channel := &ChannelService{}
+			channel.cache.Store(populateChannelCache([]Channel{{
+				ID: 1, Status: StatusActive, GroupIDs: []int64{100}, ModelPricing: []ChannelModelPricing{entry},
+			}}, map[int64]string{100: PlatformOpenAI}))
+			r := NewModelPricingResolver(channel, newTestBillingServiceForResolver())
+			resolved := r.Resolve(context.Background(), PricingInput{Model: "unknown-ttl-only-model", GroupID: groupIDPtr()})
+			require.True(t, resolved.ChannelPricingConfigured)
+			require.True(t, resolved.TokenPricingConfigured)
+			require.Empty(t, resolved.RequestTiers)
+			pricing := r.GetIntervalPricing(resolved, 100)
+			require.NotNil(t, pricing)
+			require.NotNil(t, pricing.CacheCreation12hPricePerToken)
+			cost := r.billingService.computeTokenBreakdown(pricing, UsageTokens{CacheCreationTokens: 100, CacheCreation12hTokens: 100}, 1, "", false)
+			require.InDelta(t, 100*price, cost.CacheCreationCost, 1e-12)
+		}
+	}
+}
+
 func TestResolve_EmptyChannelEntryIsNotConfigured(t *testing.T) {
 	t.Run("known model keeps global pricing", func(t *testing.T) {
 		r := newResolverWithChannel(t, []ChannelModelPricing{{
@@ -844,6 +873,16 @@ func TestFilterValidPricingIntervals(t *testing.T) {
 			intervals: []PricingInterval{
 				{MinTokens: 0, CacheReadPrice: testPtrFloat64(0.5e-6)},
 			},
+			wantTokenLen: 1,
+		},
+		{
+			name:         "仅12小时缓存写入价格属于token区间",
+			intervals:    []PricingInterval{{MinTokens: 0, CacheWrite12hPrice: testPtrFloat64(2e-6)}},
+			wantTokenLen: 1,
+		},
+		{
+			name:         "12小时缓存写入显式零价不被过滤",
+			intervals:    []PricingInterval{{MinTokens: 0, CacheWrite12hPrice: testPtrFloat64(0)}},
 			wantTokenLen: 1,
 		},
 		{

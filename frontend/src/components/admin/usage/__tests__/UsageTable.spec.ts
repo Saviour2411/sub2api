@@ -146,6 +146,26 @@ const baseImageRow = {
 }
 
 describe('admin UsageTable tooltip', () => {
+  it('分别显示 OpenAI 两种缓存时长且不混入 Anthropic 时长标签', async () => {
+    const row = { ...baseImageRow, image_count: 0, billing_mode: 'token', cache_creation_tokens: 2399, cache_creation_30m_tokens: 9, cache_creation_12h_tokens: 2390 }
+    const wrapper = mount(UsageTable, {
+      props: { data: [row], loading: false, columns: [] },
+      global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+    })
+    try {
+      await wrapper.find('.group.relative').trigger('mouseenter')
+      await nextTick()
+      const text = wrapper.get('.fixed').text()
+      expect(text).toContain('30m')
+      expect(text).toContain('12h')
+      expect(text).toContain('2,390')
+      expect(text).not.toContain('5m')
+      expect(text).not.toMatch(/\b1h\b/)
+    } finally {
+      wrapper.unmount()
+    }
+  })
+
   it('在总耗时下方显示输出速率', () => {
     const wrapper = mount(UsageTable, {
       props: { data: [{ ...baseImageRow, image_count: 0, billing_mode: 'token', request_type: 'stream', stream: true, output_tokens: 1000, duration_ms: 12000, first_token_ms: 2000 }] as any, columns: [] },

@@ -137,7 +137,7 @@ class EvidenceTests(unittest.TestCase):
         for approval in approvals["approvals"]:
             if "profile" not in approval:
                 continue
-            if approval["profile"] in ("platform-guarded-242-v1", e.UPSTREAM216_PROFILE, e.RELEASE260_PROFILE, e.IMAGE248_PROFILE):
+            if approval["profile"] in ("platform-guarded-242-v1", e.UPSTREAM216_PROFILE, e.RELEASE260_PROFILE, e.IMAGE248_PROFILE, e.CACHE250_PROFILE):
                 # 关联多个结构或迁移的审批边界在专用夹具中验证。
                 continue
             for contract in approval["legacy_contracts"]:
@@ -480,6 +480,53 @@ class EvidenceTests(unittest.TestCase):
             values[key] = original
         for entries in ([], [approval, approval], [dict(approval, legacy_contracts=[])],
                         [dict(approval, profile="unknown")], [dict(approval, checksum="0"*64)]):
+            values[sha+":"+e.APPROVALS_PATH] = json.dumps({"version": 1, "approvals": entries})
+            with self.subTest(entries=entries), self.assertRaises(RuntimeError):
+                e.migration_evidence(base, sha, git)
+
+
+    def cache250_fixture(self):
+        base, sha = e.CACHE250_BASE, "b"*40
+        approvals = copy.deepcopy([item for item in json.loads((ROOT/e.APPROVALS_PATH).read_text())["approvals"]
+                                   if item.get("profile") == e.CACHE250_PROFILE])
+        values = {"diff": "\n".join(["M\t"+e.CACHE250_SCHEMA["path"]]+["A\t"+item["path"] for item in approvals])}
+        for approval in approvals:
+            values[sha+":"+approval["path"]] = (ROOT/approval["path"]).read_text()
+            for contract in approval["legacy_contracts"]:
+                source = ((ROOT/"deploy/tests/fixtures/usage-log-before-250.go.txt").read_text()
+                          if contract["path"] == e.CACHE250_SCHEMA["path"] else "旧用量明确列名读写；旧定价整体替换")
+                contract["checksum"] = e.checksum(source)
+                values[base+":"+contract["path"]] = source
+        values[sha+":"+e.CACHE250_SCHEMA["path"]] = (ROOT/"deploy/tests/fixtures/usage-log-after-250.go.txt").read_text()
+        values[sha+":"+e.APPROVALS_PATH] = json.dumps({"version": 1, "approvals": approvals})
+        def git(*args):
+            return values["diff"] if args[0] == "diff" else values[args[1]] if args[0] == "show" else ""
+        return base, sha, approvals, values, git
+
+    def test_cache250_exact_scope_and_legacy_contracts(self):
+        base, sha, approvals, values, git = self.cache250_fixture()
+        result = e.migration_evidence(base, sha, git)
+        self.assertEqual("expand", result["migration_class"])
+        self.assertEqual(2, len(result["migration_policy"]["migrations"]))
+        original = values["diff"]
+        for diff in (original+"\nA\tbackend/migrations/999_extra.sql", original.replace("A\t", "M\t"),
+                     original+"\nM\tbackend/ent/schema/user.go", original.split("\n", 1)[1]):
+            values["diff"] = diff
+            with self.subTest(diff=diff), self.assertRaises(RuntimeError):
+                e.migration_evidence(base, sha, git)
+        values["diff"] = original
+        with self.assertRaises(RuntimeError):
+            e.migration_evidence("c"*40, sha, git)
+        for key in (sha+":"+e.CACHE250_SCHEMA["path"], *(sha+":"+item["path"] for item in approvals),
+                    *(base+":"+item["path"] for item in approvals[0]["legacy_contracts"])):
+            original_value = values[key]
+            values[key] += "\n未经审核的变更"
+            with self.subTest(key=key), self.assertRaises(RuntimeError):
+                e.migration_evidence(base, sha, git)
+            values[key] = original_value
+        for entries in (approvals[:1], approvals+approvals[:1],
+                        [dict(item, legacy_contracts=item["legacy_contracts"][:1]) for item in approvals],
+                        [dict(item, schema_change={}) for item in approvals]):
             values[sha+":"+e.APPROVALS_PATH] = json.dumps({"version": 1, "approvals": entries})
             with self.subTest(entries=entries), self.assertRaises(RuntimeError):
                 e.migration_evidence(base, sha, git)
