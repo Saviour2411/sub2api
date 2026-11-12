@@ -2,6 +2,82 @@
   "version": 1,
   "approvals": [
     {
+      "compatible_from": "1ab1977341093ae2c97854c729173eb9a0294cc6",
+      "path": "backend/migrations/249_add_usage_logs_api_key_cost_index_notx.sql",
+      "checksum": "94f124c3e50405f7b75746885111a4f662c331985a697de46fe946a17ff1f7d9",
+      "profile": "openai-cache-249-250-v1",
+      "schema_change": {
+        "path": "backend/ent/schema/usage_log.go",
+        "from_checksum": "db5331016a7c63df52da7dc1ee9b240234cf287a9d10446c12d20c6c25b71a32",
+        "to_checksum": "10cd7bf0fd17f3eef70fb95ce5a6332bb199ad0abfab9217907c58229ef40f38"
+      },
+      "legacy_contracts": [
+        {
+          "path": "backend/ent/schema/usage_log.go",
+          "checksum": "db5331016a7c63df52da7dc1ee9b240234cf287a9d10446c12d20c6c25b71a32"
+        },
+        {
+          "path": "backend/ent/usagelog/usagelog.go",
+          "checksum": "2564d39e7f09c4c73aca7bf146633875967bfe53b5b019ee501fc09de53b0244"
+        },
+        {
+          "path": "backend/internal/repository/usage_log_repo_insert.go",
+          "checksum": "7e597286d72b6287a3cc943298690f86591784790b74f1f69805953fcce19fda"
+        },
+        {
+          "path": "backend/internal/repository/usage_log_repo_query.go",
+          "checksum": "07c737a2a7e5696f65b17b742c3039f1940d9a9f98afbd73830fb948c86745a6"
+        },
+        {
+          "path": "backend/internal/repository/channel_repo_pricing.go",
+          "checksum": "70ec19730bd9cae6065d8b35946a5229fad950556e0b4c4d7d91d18060e50cf0"
+        },
+        {
+          "path": "backend/internal/repository/channel_repo_account_stats_pricing.go",
+          "checksum": "c42c5144db49dfbfbbc7b8e037b8bdd6cc60fc45de4995ef08b2b0d303994f9c"
+        }
+      ],
+      "review": "2026-11-12按用户提交、CI后合并及tag自动蓝绿部署授权完成固定适配。仅v0.1.267、两条原始SQL及用量Ent固定差异。PostgreSQL18，usage_logs限64GiB、其他表16MiB；索引CONCURRENTLY限120秒，字段NOWAIT及1/5/10秒预算且禁止重写。旧用量明确列名读写；旧渠道整表替换会丢失12h价，因此四表保护价为NULL，旧槽退役并核验身份/挂载/健康后解除。索引失败仅重建固定定义的无效索引，账本缺失重验后续写；250字段与保护及账本原子提交。回退保留结构及数据。"
+    },
+    {
+      "compatible_from": "1ab1977341093ae2c97854c729173eb9a0294cc6",
+      "path": "backend/migrations/250_openai_cache_write_ttl.sql",
+      "checksum": "532551ce7aee86b2ee0a78d397d422424ceed4051e31d5f542277c80c21b8b98",
+      "profile": "openai-cache-249-250-v1",
+      "schema_change": {
+        "path": "backend/ent/schema/usage_log.go",
+        "from_checksum": "db5331016a7c63df52da7dc1ee9b240234cf287a9d10446c12d20c6c25b71a32",
+        "to_checksum": "10cd7bf0fd17f3eef70fb95ce5a6332bb199ad0abfab9217907c58229ef40f38"
+      },
+      "legacy_contracts": [
+        {
+          "path": "backend/ent/schema/usage_log.go",
+          "checksum": "db5331016a7c63df52da7dc1ee9b240234cf287a9d10446c12d20c6c25b71a32"
+        },
+        {
+          "path": "backend/ent/usagelog/usagelog.go",
+          "checksum": "2564d39e7f09c4c73aca7bf146633875967bfe53b5b019ee501fc09de53b0244"
+        },
+        {
+          "path": "backend/internal/repository/usage_log_repo_insert.go",
+          "checksum": "7e597286d72b6287a3cc943298690f86591784790b74f1f69805953fcce19fda"
+        },
+        {
+          "path": "backend/internal/repository/usage_log_repo_query.go",
+          "checksum": "07c737a2a7e5696f65b17b742c3039f1940d9a9f98afbd73830fb948c86745a6"
+        },
+        {
+          "path": "backend/internal/repository/channel_repo_pricing.go",
+          "checksum": "70ec19730bd9cae6065d8b35946a5229fad950556e0b4c4d7d91d18060e50cf0"
+        },
+        {
+          "path": "backend/internal/repository/channel_repo_account_stats_pricing.go",
+          "checksum": "c42c5144db49dfbfbbc7b8e037b8bdd6cc60fc45de4995ef08b2b0d303994f9c"
+        }
+      ],
+      "review": "2026-11-12按用户提交、CI后合并及tag自动蓝绿部署授权完成固定适配。仅v0.1.267、两条原始SQL及用量Ent固定差异。PostgreSQL18，usage_logs限64GiB、其他表16MiB；索引CONCURRENTLY限120秒，字段NOWAIT及1/5/10秒预算且禁止重写。旧用量明确列名读写；旧渠道整表替换会丢失12h价，因此四表保护价为NULL，旧槽退役并核验身份/挂载/健康后解除。索引失败仅重建固定定义的无效索引，账本缺失重验后续写；250字段与保护及账本原子提交。回退保留结构及数据。"
+    },
+    {
       "compatible_from": "d2fa2526803acf275a0e560fb5f5ce5cdb1e56ea",
       "path": "backend/migrations/249_mcp_oauth.sql",
       "checksum": "751a1dcee6108afcecbd580b6e3140cca3480853fecd2174861b02f3a71e54a1",

@@ -263,6 +263,9 @@ class Deployment:
 
     def verify_migration_guards(self, release):
         self.verify_pricing_guard(release)
+        if self.cache250_guard(release):
+            report = self.cache250_guard_database("check")
+            require(report.get("valid") is True and report.get("migrations") is True, "249/250定价保护或账本不完整，禁止切流或回滚")
         if self.platform_guard(release):
             report = self.platform_guard_database("check")
             require(all(report.get(key) is True for key in ("valid", "migrations", "schema")), "241平台保护或迁移账本不完整，禁止切流或回滚")
@@ -286,11 +289,26 @@ class Deployment:
     def finish_migration_guards(self):
         self.finish_pricing_guard()
         release = self.state.get("release", {})
+        if self.cache250_guard(release) and not self.state.get("rollback"):
+            self.finish_migration_guard(release, self.cache250_guard_database, "cache250_guard_result")
         if self.platform_guard(release) and not self.state.get("rollback"):
             self.finish_migration_guard(release, self.platform_guard_database, "platform_guard_result")
         if self.platform242_guard(release) and not self.state.get("rollback"):
             self.finish_migration_guard(release, self.platform242_guard_database, "platform242_guard_result")
         self.finish_inflight_accounting()
+
+    def cache250_guard(self, release):
+        return any(entry.get("profile") == "openai-cache-249-250-v1"
+                   for entry in release.get("migration_policy", {}).get("migrations", []))
+
+    def cache250_guard_database(self, mode):
+        spec = importlib.util.spec_from_file_location("cache250_guard", Path(__file__).with_name("cache250-guard.py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        sql = module.release_sql() if mode == "release" else "BEGIN READ ONLY; SET LOCAL statement_timeout='5s'; " + module.check_sql() + "; COMMIT;"
+        result = self.run("docker", "exec", "sub2api-postgres", "sh", "-c",
+                          'exec psql -X -qAt -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-sub2api}" -c "$1"', "guard", sql)
+        return json.loads(result.stdout) if mode == "check" else None
 
     def set_inflight_mode(self, mode, owner=""):
         require(mode in ("compat", "aggregate"), "非法预留统计模式")
