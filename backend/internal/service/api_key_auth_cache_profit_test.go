@@ -46,7 +46,7 @@ func profitAuthTestAPIKey() *APIKey {
 			LongContextPricingEnabled: true,
 			ImageCountBilling:         true,
 			RequirePrivacySet:         true,
-			ForceOpenAIUltrafast:       true,
+			ForceOpenAIUltrafast:      true,
 			ModelPricing: []ChannelModelPricing{{
 				Platform:       PlatformOpenAI,
 				Models:         []string{"gpt-cache-roundtrip"},

@@ -10633,3 +10633,5 @@ A	frontend/src/views/admin/__tests__/ChannelsView.webSearchEmulation.spec.ts
 完整unit还发现服务层两条保活/间隔超时用例与默认守卫前提不符，扩展为开关双场景，保留原断言并检查默认守卫不提交前导。Claude Code逐轮配置测试补入handler的可信识别上下文，新增仅伪装UA仍走模拟策略的反例。按批准方案保留Bedrock既有默认模型，覆盖734b922bd的共享默认值改动并记为Applied + Overridden；普通Anthropic/Antigravity仍使用本地Opus 5。上游说明旧Sonnet模型计划退役，实际Provider可用性未验证，后续默认值调整需独立决策，不借同步修改既定策略。
 
 首次完整integration发现TestBlueGreen250CompleteOldSchema将所有后续SQL混入旧库夹具，导致251/252更新触发器后被旧蓝绿策略拒绝。测试改为固定截至250的历史快照，保留原升级与重放断言，并补充完整待执行清单未获批准时249/250也不得部分执行、普通升级后的新触发器仍被旧蓝绿策略拒绝两项检查。生产门禁、固定摘要和迁移批准清单均未放宽。
+
+首次lint仅报告鉴权快照测试新字段的gofmt对齐问题；按Go1.27.4格式化该文件，git diff --ignore-all-space确认只有空白差异。完整单元测试快照不被中途覆盖，格式修正后单独复跑静态检查。
