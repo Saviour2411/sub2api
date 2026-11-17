@@ -177,13 +177,18 @@ func TestForward_PerTurnControlMessageOutputConfig(t *testing.T) {
 		`"messages":[{"role":"user","content":"Hello"},{"role":"assistant","content":"Hi"},` +
 		`{"role":"system","content":[],"output_config":{"effort":"low"}},` +
 		`{"role":"user","content":"Summarize that in one sentence."}]}`
-	for _, mode := range []string{"oauth_claude_code", "oauth_mimic", "apikey", "apikey_passthrough"} {
+	for _, mode := range []string{"oauth_claude_code", "oauth_unverified_cli", "oauth_mimic", "apikey", "apikey_passthrough"} {
 		for _, withBeta := range []bool{true, false} {
 			name := "without_beta"
 			if withBeta {
 				name = "with_beta"
 			}
 			t.Run(mode+"/"+name, func(t *testing.T) {
+				ctx := context.Background()
+				if mode == "oauth_claude_code" {
+					// 服务层只信任handler的严格识别结果，UA本身不能证明客户端身份。
+					ctx = SetClaudeCodeClient(ctx, true)
+				}
 				c, _ := gin.CreateTestContext(httptest.NewRecorder())
 				c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
 				c.Request.Header.Set("User-Agent", "claude-cli/2.1.321")
@@ -208,13 +213,14 @@ func TestForward_PerTurnControlMessageOutputConfig(t *testing.T) {
 				parsed, err := ParseGatewayRequest(NewRequestBodyRef([]byte(body)), PlatformAnthropic)
 				require.NoError(t, err)
 				svc := newForwardPartialUsageServiceForTest(upstream)
-				_, err = svc.Forward(context.Background(), c, account, parsed)
+				_, err = svc.Forward(ctx, c, account, parsed)
 				require.NoError(t, err)
 				require.NotNil(t, upstream.lastReq)
 
 				beta := getHeaderRaw(upstream.lastReq.Header, "anthropic-beta")
-				require.Equal(t, withBeta && mode != "oauth_mimic", anthropicBetaTokensContains(beta, perTurnBeta))
-				wantControl := withBeta || mode == "oauth_mimic"
+				mimic := mode == "oauth_mimic" || mode == "oauth_unverified_cli"
+				require.Equal(t, withBeta && !mimic, anthropicBetaTokensContains(beta, perTurnBeta))
+				wantControl := withBeta || mimic
 				messages := gjson.GetBytes(upstream.lastBody, "messages").Array()
 				if wantControl {
 					require.Len(t, messages, 4)

@@ -132,7 +132,7 @@ func serveMessagesScenario(t *testing.T, sc preContentFailoverScenario) (*httpte
 		settings := service.NewSettingService(&safeHandlerSettingsRepo{values: map[string]string{
 			service.SettingKeyGatewayFirstTokenTimeoutSeconds: "0",
 		}}, cfg)
-		rateLimit = service.NewRateLimitService(nil, nil, cfg, nil, nil)
+		rateLimit = service.NewRateLimitService(repo, nil, cfg, nil, nil)
 		rateLimit.SetSettingService(settings)
 	}
 	gateway := service.NewOpenAIGatewayService(

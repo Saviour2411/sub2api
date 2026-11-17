@@ -35,6 +35,11 @@ func newPreContentContext() (*httptest.ResponseRecorder, *gin.Context, []byte) {
 
 func forwardPreContent(t *testing.T, cfg *config.Config, header http.Header, upstreamBody io.ReadCloser) (*httptest.ResponseRecorder, *gin.Context, error) {
 	t.Helper()
+	return forwardPreContentWithGuard(t, cfg, header, upstreamBody, true)
+}
+
+func forwardPreContentWithGuard(t *testing.T, cfg *config.Config, header http.Header, upstreamBody io.ReadCloser, guardEnabled bool) (*httptest.ResponseRecorder, *gin.Context, error) {
+	t.Helper()
 	rec, c, body := newPreContentContext()
 	if header == nil {
 		header = http.Header{}
@@ -42,6 +47,12 @@ func forwardPreContent(t *testing.T, cfg *config.Config, header http.Header, ups
 	header.Set("Content-Type", "text/event-stream")
 	upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: http.StatusOK, Header: header, Body: upstreamBody}}
 	svc := &OpenAIGatewayService{cfg: cfg, httpUpstream: upstream, responseHeaderFilter: compileResponseHeaderFilter(cfg)}
+	if !guardEnabled {
+		settings := NewSettingService(&safeRetrySettingsRepo{customFeatureSettingsRepoStub{values: map[string]string{
+			SettingKeyGatewayFirstTokenTimeoutSeconds: "0",
+		}}}, cfg)
+		svc.rateLimitService = &RateLimitService{settingService: settings}
+	}
 	_, err := svc.ForwardAsAnthropic(context.Background(), c, rawChatCompletionsTestAccount(), body, "", "")
 	return rec, c, err
 }
@@ -79,25 +90,38 @@ func TestForwardAsAnthropic_PreContentReadErrorDoesNotFailOver(t *testing.T) {
 }
 
 func TestForwardAsAnthropic_PreContentPingKeepsFailover(t *testing.T) {
-	cfg := rawChatCompletionsTestConfig()
-	cfg.Gateway.StreamKeepaliveInterval = 1
-	pr, pw := io.Pipe()
-	go func() {
-		_, _ = io.WriteString(pw, preContentCreatedFrame)
-		time.Sleep(1300 * time.Millisecond)
-		_, _ = io.WriteString(pw, preContentFailoverFailed)
-		_ = pw.Close()
-	}()
-	rec, c, err := forwardPreContent(t, cfg, http.Header{"X-Request-Id": []string{"attempt-1"}}, pr)
+	for _, guardEnabled := range []bool{false, true} {
+		name := "守卫关闭时保活已提交"
+		if guardEnabled {
+			name = "默认守卫缓存保活"
+		}
+		t.Run(name, func(t *testing.T) {
+			cfg := rawChatCompletionsTestConfig()
+			cfg.Gateway.StreamKeepaliveInterval = 1
+			pr, pw := io.Pipe()
+			go func() {
+				_, _ = io.WriteString(pw, preContentCreatedFrame)
+				time.Sleep(1300 * time.Millisecond)
+				_, _ = io.WriteString(pw, preContentFailoverFailed)
+				_ = pw.Close()
+			}()
+			rec, c, err := forwardPreContentWithGuard(t, cfg, http.Header{"X-Request-Id": []string{"attempt-1"}}, pr, guardEnabled)
 
-	var failoverErr *UpstreamFailoverError
-	require.True(t, errors.As(err, &failoverErr), "ping-only output must keep failover: %T: %v", err, err)
-	body := rec.Body.String()
-	require.GreaterOrEqual(t, strings.Count(body, "event: ping"), 1)
-	require.NotContains(t, body, "message_start")
-	require.Equal(t, "text/event-stream", rec.Header().Get("Content-Type"))
-	require.Empty(t, rec.Header().Get("X-Request-Id"), "account headers must stay private while the prelude is held")
-	require.Equal(t, -1, OpenAICompactKeepaliveAdjustedWrittenSize(c))
+			var failoverErr *UpstreamFailoverError
+			require.True(t, errors.As(err, &failoverErr), "ping-only output must keep failover: %T: %v", err, err)
+			body := rec.Body.String()
+			if guardEnabled {
+				require.Empty(t, body)
+				require.False(t, c.Writer.Written())
+			} else {
+				require.GreaterOrEqual(t, strings.Count(body, "event: ping"), 1)
+				require.Equal(t, "text/event-stream", rec.Header().Get("Content-Type"))
+			}
+			require.NotContains(t, body, "message_start")
+			require.Empty(t, rec.Header().Get("X-Request-Id"), "account headers must stay private while the prelude is held")
+			require.Equal(t, -1, OpenAICompactKeepaliveAdjustedWrittenSize(c))
+		})
+	}
 }
 
 func TestForwardAsAnthropic_ContentReleasedNeverFailsOver(t *testing.T) {
@@ -130,20 +154,33 @@ func TestForwardAsAnthropic_TerminalBeforeContentReleasesPrelude(t *testing.T) {
 }
 
 func TestForwardAsAnthropic_IntervalTimeoutReleasesPrelude(t *testing.T) {
-	cfg := rawChatCompletionsTestConfig()
-	cfg.Gateway.StreamDataIntervalTimeout = 1
-	pr, pw := io.Pipe()
-	defer func() { _ = pw.Close() }()
-	go func() {
-		_, _ = io.WriteString(pw, preContentCreatedFrame)
-	}()
-	rec, _, err := forwardPreContent(t, cfg, nil, pr)
+	for _, guardEnabled := range []bool{false, true} {
+		name := "守卫关闭时释放前导"
+		if guardEnabled {
+			name = "默认守卫继续缓存前导"
+		}
+		t.Run(name, func(t *testing.T) {
+			cfg := rawChatCompletionsTestConfig()
+			cfg.Gateway.StreamDataIntervalTimeout = 1
+			pr, pw := io.Pipe()
+			defer func() { _ = pw.Close() }()
+			go func() {
+				_, _ = io.WriteString(pw, preContentCreatedFrame)
+			}()
+			rec, c, err := forwardPreContentWithGuard(t, cfg, nil, pr, guardEnabled)
 
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "stream data interval timeout")
-	var failoverErr *UpstreamFailoverError
-	require.False(t, errors.As(err, &failoverErr))
-	require.Contains(t, rec.Body.String(), "message_start")
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "stream data interval timeout")
+			var failoverErr *UpstreamFailoverError
+			require.False(t, errors.As(err, &failoverErr))
+			if guardEnabled {
+				require.Empty(t, rec.Body.String())
+				require.False(t, c.Writer.Written())
+			} else {
+				require.Contains(t, rec.Body.String(), "message_start")
+			}
+		})
+	}
 }
 
 func TestWriteAnthropicErrorAfterCommittedSSE(t *testing.T) {
