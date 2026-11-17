@@ -68,14 +68,7 @@ func BenchmarkEnforceCacheControlLimit(b *testing.B) {
 		{"with_1h", claudeCodeLikeBody(4, true)},
 	}
 	for _, tc := range cases {
-		b.Run(tc.name+"/legacy", func(b *testing.B) {
-			b.SetBytes(int64(len(tc.body)))
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				_ = legacyEnforceCacheControlLimit(tc.body)
-			}
-		})
-		b.Run(tc.name+"/optimized", func(b *testing.B) {
+		b.Run(tc.name+"/preserve_client_ttl", func(b *testing.B) {
 			b.SetBytes(int64(len(tc.body)))
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
