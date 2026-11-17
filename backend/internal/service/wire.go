@@ -995,7 +995,13 @@ var ProviderSet = wire.NewSet(
 	ProvideChannelMonitorV2Aggregator,
 	NewChannelMonitorRequestTemplateService,
 	ProvideUserPlatformQuotaUsageFlusher,
+	ProvideUsageBillingRepository,
 )
+
+// ProvideUsageBillingRepository 保留原仓储与按用户串行任务的截止时间，不启用重置超时的合并器。
+func ProvideUsageBillingRepository(repo UsageBillingBatchRepository) UsageBillingRepository {
+	return repo
+}
 
 // ProvideUserPlatformQuotaUsageFlusher 创建并启动 UserPlatformQuotaUsageFlusher。
 func ProvideUserPlatformQuotaUsageFlusher(cfg *config.Config, cache BillingCache, quotaRepo UserPlatformQuotaRepository, tw *TimingWheelService) *UserPlatformQuotaUsageFlusher {

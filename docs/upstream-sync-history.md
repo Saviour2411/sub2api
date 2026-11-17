@@ -10600,3 +10600,22 @@ A	frontend/src/views/admin/__tests__/ChannelsView.webSearchEmulation.spec.ts
 - M frontend/src/views/user/KeysView.vue
 - M frontend/src/views/user/PaymentView.vue
 - M frontend/src/views/user/__tests__/KeysView.spec.ts
+
+
+## 2026-11-18 固定范围增量同步：执行记录
+
+- 时间：2026-11-18T00:31:35+08:00；状态：已完成同步前基线，按批准方案形成完整合并候选，最终验收待执行。
+- 目标分支：main；LOCAL_PRE_SYNC_SHA：38ee94717175b71d86bf82eac31646195e740f22。
+- 上游仓库：Wei-Shaw/sub2api；已验证默认分支main；UPSTREAM_OLD_SHA：530c5e3a4f9c73ca2b0881191d0ef8e0d82c5484；固定UPSTREAM_NEW_SHA：15871f904056f548dd874a1d069ffc6cdf777b78。
+- ACTUAL_MERGE_BASE：530c5e3a4f9c73ca2b0881191d0ef8e0d82c5484，旧SHA为双方祖先；范围186提交（107普通、79合并），339个上游变化文件。无完整等价普通提交；Go升级有部分重叠。7f3fe5bfde146f940aaad88e89f6e8944e1f5ceb的额外调度冲突解决已审阅。
+- LAST_FULLY_INTEGRATED_UPSTREAM_SHA：15871f904056f548dd874a1d069ffc6cdf777b78，随完整merge保留全部上游祖先；此字段不表示候选验收或生产发布通过。
+- 备份分支：backup/pre-upstream-sync-20261117-223632-38ee94717；同步分支：sync/upstream-20261117-15871f904。
+- 预检工作区干净、无stash及未完成Git操作、无使用中的submodule/LFS；origin/main两次fetch连接重置，GitHub API核验仍等于同步前HEAD。未自动pull、清理或stash。
+- 实际文本冲突23文件33块，逐块保留双方必要逻辑；另按审批处理注入、共享可变字段、252迁移和来源元数据等语义冲突。保留本地0.1.268及68项CUST编号，不整文件选ours/theirs。
+- 计费批量接口与合并器保留，生产注入继续原仓储和SubmitKeyed；严格缺价、显式零价、独立区间、未知Gemini存储型号不猜价及默认价专属Vertex倍率同时保留。
+- Claude一次401轮换重试保留首输出生命周期、提前保活收尾、签名和采样策略；缓存控制不恢复TTL重排。流式安全换号、SSE错误和模型观测继续经过本地outcome归因与一次结算。
+- 调度bucket合并及冷却恢复接入，但所有共享结果深复制可变字段；投影保留Pool、重试、Anthropic透传并新增OpenAI能力及过滤字段。
+- 两条251迁移逐字保留，252仅替换INSERT触发器；当日遇锁放行，历史及跨午夜等待后按expired/building/dirty状态失效。没有修改历史SQL或放宽生产迁移白名单。
+- 基线已执行39条命令，非零结果：gateway-race=1；sync-regression=1。完整命令、退出码、时间和日志保存在tmp/upstream-sync-20261117/baseline/results.tsv与frontend-results.tsv，最终验收追加逐条表及失败诊断。
+- 本地环境：Windows Node24.15.0/pnpm9.15.9；WSL Ubuntu24.04、Go1.27.4/golangci-lint2.14.0，GOMAXPROCS=2、GOMEMLIMIT=2GiB、GOFLAGS=-p=1。使用隔离的本地PostgreSQL18与Redis8.4，合成凭据，无生产连接。
+- 本地代码提交SHA、186项处置表、候选验证与未验证边界由最终记录追加；目标main在验收前保持原位。未push、PR、tag、部署或连接远程服务器。
