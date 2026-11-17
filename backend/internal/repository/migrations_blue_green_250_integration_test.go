@@ -91,20 +91,35 @@ func TestBlueGreen250CompleteOldSchema(t *testing.T) {
 	_, err := db.Exec("DROP SCHEMA public CASCADE; CREATE SCHEMA public")
 	require.NoError(t, err)
 	old := fstest.MapFS{}
+	supported := fstest.MapFS{}
 	names, err := fs.Glob(migrations.FS, "*.sql")
 	require.NoError(t, err)
 	for _, name := range names {
-		if name == blueGreen250Migrations[0].Filename || name == blueGreen250Migrations[1].Filename {
+		// 固定249/250策略对应的历史快照，后续迁移不能混入旧库夹具。
+		if name > blueGreen250Migrations[1].Filename {
 			continue
 		}
 		raw, err := migrations.FS.ReadFile(name)
 		require.NoError(t, err)
-		old[name] = &fstest.MapFile{Data: raw}
+		supported[name] = &fstest.MapFile{Data: raw}
+		if name != blueGreen250Migrations[0].Filename && name != blueGreen250Migrations[1].Filename {
+			old[name] = supported[name]
+		}
 	}
 	require.NoError(t, applyMigrationsFS(context.Background(), db, old))
-	require.NoError(t, applyMigrationsFSWithPolicy(context.Background(), db, migrations.FS,
+	require.ErrorContains(t, applyMigrationsFSWithPolicy(context.Background(), db, migrations.FS,
+		&blueGreenMigrationPolicy{Version: 1, Migrations: blueGreen250Migrations}), "蓝绿待执行迁移未获批准")
+	var applied int
+	require.NoError(t, db.QueryRow("SELECT count(*) FROM schema_migrations WHERE filename IN ($1,$2)",
+		blueGreen250Migrations[0].Filename, blueGreen250Migrations[1].Filename).Scan(&applied))
+	require.Zero(t, applied, "新增迁移未获批准时不能部分执行249/250")
+	require.NoError(t, applyMigrationsFSWithPolicy(context.Background(), db, supported,
 		&blueGreenMigrationPolicy{Version: 1, Migrations: blueGreen250Migrations}))
 	require.NoError(t, runMigration250(t, db))
+
+	// 普通迁移可以升级隔离测试库，但新触发器不能通过旧蓝绿策略的固定摘要检查。
+	require.NoError(t, applyMigrationsFS(context.Background(), db, migrations.FS))
+	require.ErrorContains(t, runMigration250(t, db), "蓝绿249/250既有表大小、类型、RLS、规则或触发器不符：usage_logs")
 }
 
 func TestBlueGreen250LargeUsageTableAndSessionSettings(t *testing.T) {
