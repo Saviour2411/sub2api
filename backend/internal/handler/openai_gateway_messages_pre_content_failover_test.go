@@ -5,6 +5,7 @@ package handler
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -80,10 +81,11 @@ type unexpectedEOFReader struct{}
 func (unexpectedEOFReader) Read([]byte) (int, error) { return 0, io.ErrUnexpectedEOF }
 
 type preContentFailoverScenario struct {
-	accounts    []service.Account
-	respond     func(call int) (*http.Response, error)
-	passthrough *service.ErrorPassthroughService
-	requestBody string
+	accounts            []service.Account
+	respond             func(call int) (*http.Response, error)
+	passthrough         *service.ErrorPassthroughService
+	requestBody         string
+	preContentKeepalive bool
 }
 
 func preContentAccounts(count int) []service.Account {
@@ -101,7 +103,8 @@ func preContentAccounts(count int) []service.Account {
 func servePreContentFailoverMessages(t *testing.T, accountCount int) (*httptest.ResponseRecorder, *preContentFailoverUpstream) {
 	t.Helper()
 	return serveMessagesScenario(t, preContentFailoverScenario{
-		accounts: preContentAccounts(accountCount),
+		accounts:            preContentAccounts(accountCount),
+		preContentKeepalive: true,
 		respond: func(call int) (*http.Response, error) {
 			if call == 1 {
 				return preContentStallThenFail(preContentHandlerFailed), nil
@@ -123,9 +126,18 @@ func serveMessagesScenario(t *testing.T, sc preContentFailoverScenario) (*httpte
 	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
 	billingCache := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
 	t.Cleanup(billingCache.Stop)
+	var rateLimit *service.RateLimitService
+	if sc.preContentKeepalive {
+		// 此分支专门覆盖首输出守卫关闭、保活已提交后的SSE错误格式。
+		settings := service.NewSettingService(&safeHandlerSettingsRepo{values: map[string]string{
+			service.SettingKeyGatewayFirstTokenTimeoutSeconds: "0",
+		}}, cfg)
+		rateLimit = service.NewRateLimitService(nil, nil, cfg, nil, nil)
+		rateLimit.SetSettingService(settings)
+	}
 	gateway := service.NewOpenAIGatewayService(
 		repo, nil, nil, nil, nil, nil, nil, cfg, nil, nil,
-		service.NewBillingService(cfg, nil), nil, billingCache, upstream,
+		service.NewBillingService(cfg, nil), rateLimit, billingCache, upstream,
 		&service.DeferredService{}, nil, nil, nil, nil, nil, nil, nil,
 	)
 	cache := &concurrencyCacheMock{
@@ -190,7 +202,8 @@ func TestOpenAIMessagesKeepaliveThenFailoverExhaustedEndsWithSSEError(t *testing
 
 func TestOpenAIMessagesFailoverThenSecondAccountReadErrorEndsWithSSEError(t *testing.T) {
 	rec, upstream := serveMessagesScenario(t, preContentFailoverScenario{
-		accounts: preContentAccounts(2),
+		accounts:            preContentAccounts(2),
+		preContentKeepalive: true,
 		respond: func(call int) (*http.Response, error) {
 			if call == 1 {
 				return preContentStallThenFail(preContentHandlerFailed), nil
@@ -209,7 +222,8 @@ func TestOpenAIMessagesFailoverThenSecondAccountCredentialErrorEndsWithSSEError(
 	accounts := preContentAccounts(2)
 	accounts[1].Credentials = map[string]any{"base_url": "http://upstream.example"}
 	rec, upstream := serveMessagesScenario(t, preContentFailoverScenario{
-		accounts: accounts,
+		accounts:            accounts,
+		preContentKeepalive: true,
 		respond: func(call int) (*http.Response, error) {
 			return preContentStallThenFail(preContentHandlerFailed), nil
 		},
@@ -219,6 +233,34 @@ func TestOpenAIMessagesFailoverThenSecondAccountCredentialErrorEndsWithSSEError(
 	require.Equal(t, 1, upstream.calls(), "body: %q", body)
 	require.NotContains(t, body, "message_start")
 	requireEndsWithSSEError(t, body)
+}
+
+func TestOpenAIMessagesFirstTokenGuardPreservesPreContentFailover(t *testing.T) {
+	for _, count := range []int{1, 2} {
+		t.Run(fmt.Sprintf("accounts=%d", count), func(t *testing.T) {
+			rec, upstream := serveMessagesScenario(t, preContentFailoverScenario{
+				accounts: preContentAccounts(count),
+				respond: func(call int) (*http.Response, error) {
+					if call == 1 {
+						return preContentStallThenFail(preContentHandlerFailed), nil
+					}
+					return preContentSSEResponse(io.NopCloser(strings.NewReader(preContentHandlerSuccess))), nil
+				},
+			})
+			body := rec.Body.String()
+			require.Equal(t, count, upstream.calls())
+			if count == 1 {
+				require.GreaterOrEqual(t, rec.Code, http.StatusBadRequest)
+				require.NotContains(t, body, "event: ping")
+				require.True(t, gjson.Valid(body))
+				require.Equal(t, "error", gjson.Get(body, "type").String())
+			} else {
+				require.Equal(t, http.StatusOK, rec.Code)
+				require.Equal(t, 1, strings.Count(body, "event: message_start"))
+				require.Contains(t, body, "answer from second account")
+			}
+		})
+	}
 }
 
 func TestOpenAIMessagesSlotAcquireFailureAfterKeepaliveIsSSE(t *testing.T) {
