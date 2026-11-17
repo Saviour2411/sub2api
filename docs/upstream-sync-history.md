@@ -10619,3 +10619,7 @@ A	frontend/src/views/admin/__tests__/ChannelsView.webSearchEmulation.spec.ts
 - 基线已执行39条命令，非零结果：gateway-race=1；sync-regression=1。完整命令、退出码、时间和日志保存在tmp/upstream-sync-20261117/baseline/results.tsv与frontend-results.tsv，最终验收追加逐条表及失败诊断。
 - 本地环境：Windows Node24.15.0/pnpm9.15.9；WSL Ubuntu24.04、Go1.27.4/golangci-lint2.14.0，GOMAXPROCS=2、GOMEMLIMIT=2GiB、GOFLAGS=-p=1。使用隔离的本地PostgreSQL18与Redis8.4，合成凭据，无生产连接。
 - 本地代码提交SHA、186项处置表、候选验证与未验证边界由最终记录追加；目标main在验收前保持原位。未push、PR、tag、部署或连接远程服务器。
+
+### 候选编译兼容修正
+
+首次重点回归因新增测试引用本地已替换的TTL重排函数、响应模型计费辅助函数及Gemini缺少domain导入而编译失败，原始日志保留。按已批准语义补齐导入；缓存测试保留固定样本及5000个随机样本，检查非法块清理、四断点上限、剩余缓存声明与输入不变，TTL注入只补缺失值。原生Anthropic观测测试继续验证响应模型、服务层级与日志，使用明确价卡并断言响应观测不能覆盖请求模型计费。对应d30179f4b记为Applied + Overridden。业务实现未恢复TTL重排或响应模型计费。

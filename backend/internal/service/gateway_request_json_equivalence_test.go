@@ -10,43 +10,21 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 )
 
-// legacyEnforceCacheControlLimit / legacyNormalizeCacheControlTTLOrder /
-// legacyForceEphemeralCacheControlTTL are verbatim copies of the
-// implementations before the fast path was introduced. The tests below compare
-// the optimized code against them byte for byte.
-func legacyEnforceCacheControlLimit(body []byte) []byte {
-	return legacyNormalizeCacheControlTTLOrder(enforceCacheControlBlockLimit(body))
-}
-
-func legacyNormalizeCacheControlTTLOrder(body []byte) []byte {
-	_, messagePaths, toolPaths, systemPaths := collectCacheControlPaths(body)
-	paths := make([]string, 0, len(toolPaths)+len(systemPaths)+len(messagePaths)+1)
-	paths = append(paths, toolPaths...)
-	paths = append(paths, systemPaths...)
-	paths = append(paths, messagePaths...)
-	if gjson.GetBytes(body, "cache_control").Exists() {
+// 缓存优化必须满足本地策略：清理非法块、限制数量，并保留所有剩余断点的客户端声明。
+func assertCacheControlPolicy(t *testing.T, before, after []byte) {
+	t.Helper()
+	invalid, messages, tools, system := collectCacheControlPaths(after)
+	require.Empty(t, invalid)
+	paths := append(append(tools, system...), messages...)
+	if gjson.GetBytes(after, "cache_control").Exists() {
 		paths = append(paths, "cache_control")
 	}
-	last1h := -1
-	for i, path := range paths {
-		if gjson.GetBytes(body, path+".ttl").String() == cacheTTLTarget1h {
-			last1h = i
-		}
+	require.LessOrEqual(t, len(paths), maxCacheControlBlocks)
+	for _, path := range paths {
+		require.Equal(t, gjson.GetBytes(before, path).Raw, gjson.GetBytes(after, path).Raw, "不得改写客户端缓存声明：%s", path)
 	}
-	out := body
-	for _, path := range paths[:last1h+1] {
-		cc := gjson.GetBytes(out, path)
-		if cc.Get("type").String() != "ephemeral" || cc.Get("ttl").String() == cacheTTLTarget1h {
-			continue
-		}
-		if next, err := sjson.SetBytes(out, path+".ttl", cacheTTLTarget1h); err == nil {
-			out = next
-		}
-	}
-	return out
 }
 
 func cacheControlEquivalenceCases() map[string]string {
@@ -72,24 +50,22 @@ func cacheControlEquivalenceCases() map[string]string {
 	}
 }
 
-func TestEnforceCacheControlLimitMatchesLegacy(t *testing.T) {
+func TestEnforceCacheControlLimitPreservesLocalPolicy(t *testing.T) {
 	for name, raw := range cacheControlEquivalenceCases() {
 		t.Run(name, func(t *testing.T) {
 			body := []byte(raw)
-			want := legacyEnforceCacheControlLimit(append([]byte(nil), body...))
 			got := enforceCacheControlLimit(append([]byte(nil), body...))
-			require.Equal(t, string(want), string(got))
+			assertCacheControlPolicy(t, body, got)
 		})
 	}
 }
 
-func TestEnforceCacheControlLimitMatchesLegacyRandomized(t *testing.T) {
+func TestEnforceCacheControlLimitPreservesLocalPolicyRandomized(t *testing.T) {
 	rng := rand.New(rand.NewSource(20261111))
 	for i := 0; i < 3000; i++ {
 		body := randomCacheControlBody(rng)
-		want := legacyEnforceCacheControlLimit(append([]byte(nil), body...))
 		got := enforceCacheControlLimit(append([]byte(nil), body...))
-		require.Equal(t, string(want), string(got), "case %d body=%s", i, body)
+		assertCacheControlPolicy(t, body, got)
 	}
 }
 
@@ -104,7 +80,7 @@ func TestEnforceCacheControlLimitDoesNotMutateInput(t *testing.T) {
 	}
 }
 
-func TestNormalizeCacheControlTTLOrderMatchesLegacy(t *testing.T) {
+func TestEnforceCacheControlLimitDoesNotReorderClientTTL(t *testing.T) {
 	rng := rand.New(rand.NewSource(7))
 	cases := cacheControlEquivalenceCases()
 	for i := 0; i < 2000; i++ {
@@ -113,19 +89,19 @@ func TestNormalizeCacheControlTTLOrderMatchesLegacy(t *testing.T) {
 	for name, raw := range cases {
 		body := []byte(raw)
 		before := append([]byte(nil), body...)
-		want := legacyNormalizeCacheControlTTLOrder(append([]byte(nil), body...))
-		got := normalizeCacheControlTTLOrder(body)
-		require.Equal(t, string(want), string(got), name)
+		got := enforceCacheControlLimit(body)
+		assertCacheControlPolicy(t, before, got)
 		require.Equal(t, string(before), string(body), "%s: input must not be mutated", name)
 	}
 }
 
-func TestForceEphemeralCacheControlTTLDoesNotMutateInput(t *testing.T) {
+func TestFillMissingEphemeralCacheControlTTLDoesNotMutateInput(t *testing.T) {
 	body := []byte(`{"cache_control":{"type":"ephemeral"},"system":[{"type":"text","text":"s","cache_control":{"type":"ephemeral","ttl":"5m"}}],"messages":[{"role":"user","content":[{"type":"text","text":"a","cache_control":{"type":"ephemeral"}}]}],"tools":[{"name":"t","cache_control":{"type":"ephemeral"}}]}`)
 	before := append([]byte(nil), body...)
-	got := forceEphemeralCacheControlTTL(body, cacheTTLTarget1h)
+	got := fillMissingEphemeralCacheControlTTL(body, cacheTTLTarget1h)
 	require.Equal(t, string(before), string(body))
-	require.Equal(t, 4, strings.Count(string(got), `"ttl":"1h"`))
+	require.Equal(t, 3, strings.Count(string(got), `"ttl":"1h"`))
+	require.Equal(t, "5m", gjson.GetBytes(got, "system.0.cache_control.ttl").String())
 	require.True(t, gjson.ValidBytes(got))
 }
 

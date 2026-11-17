@@ -93,7 +93,7 @@ func TestNativeAnthropicResponseObservationReachesUsage(t *testing.T) {
 			upstream := &httpUpstreamRecorder{resp: resp}
 			svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
 			body, err := json.Marshal(map[string]any{
-				"model": "client-model", "max_tokens": 32, "stream": tt.stream,
+				"model": "gpt-5.4", "max_tokens": 32, "stream": tt.stream,
 				"messages": []map[string]string{{"role": "user", "content": "hi"}},
 			})
 			require.NoError(t, err)
@@ -114,7 +114,7 @@ func TestNativeAnthropicResponseObservationReachesUsage(t *testing.T) {
 			}
 			require.NotNil(t, result)
 			require.Equal(t, "k3", gjson.GetBytes(upstream.lastBody, "model").String())
-			require.Equal(t, "client-model", result.Model)
+			require.Equal(t, "gpt-5.4", result.Model)
 			require.Equal(t, "k3", result.BillingModel)
 			require.Equal(t, "k3", result.UpstreamModel)
 			require.Equal(t, 20, result.Usage.InputTokens)
@@ -153,7 +153,7 @@ func TestNativeAnthropicResponseObservationReachesUsage(t *testing.T) {
 	}
 }
 
-func TestNativeAnthropicResponseObservationRespectsBillingSource(t *testing.T) {
+func TestNativeAnthropicResponseObservationPreservesRequestedModelBilling(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	for _, stream := range []bool{false, true} {
 		for _, source := range []string{BillingModelSourceChannelMapped, BillingModelSourceResponse} {
@@ -165,8 +165,11 @@ func TestNativeAnthropicResponseObservationRespectsBillingSource(t *testing.T) {
 				usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 				userRepo := &openAIRecordUsageUserRepoStub{}
 				usageSvc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{}, nil)
-				cheaper, pricier, cheapCost, baselineCost := orderedResponseBillingModels(t, usageSvc.billingService,
-					UsageTokens{InputTokens: 20, OutputTokens: 10}, openAICheapFixtureModel, openAIPriceyFixtureModel)
+				const cheaper, pricier = "gpt-5.4", "gpt-5.5"
+				usage := OpenAIUsage{InputTokens: 20, OutputTokens: 10}
+				cheapCost := expectedOpenAICost(t, usageSvc, cheaper, usage, 1.1)
+				baselineCost := expectedOpenAICost(t, usageSvc, pricier, usage, 1.1)
+				require.Less(t, cheapCost.ActualCost, baselineCost.ActualCost)
 				resp, _ := nativeObservationResponse(t, stream, cheaper, "standard", false, false, false)
 				upstream := &httpUpstreamRecorder{resp: resp}
 				svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
@@ -182,11 +185,11 @@ func TestNativeAnthropicResponseObservationRespectsBillingSource(t *testing.T) {
 					Result: result, APIKey: &APIKey{ID: 10}, User: &User{ID: 20}, Account: account,
 					ChannelUsageFields: ChannelUsageFields{ChannelID: 9, OriginalModel: pricier, ChannelMappedModel: pricier, BillingModelSource: source},
 				}))
+				// 响应模型只参与观测，保留本地按请求模型计费的语义。
 				wantCost := baselineCost
-				if source == BillingModelSourceResponse {
-					wantCost = cheapCost
-				}
 				require.NotNil(t, usageRepo.lastLog)
+				require.Equal(t, pricier, usageRepo.lastLog.Model)
+				require.Equal(t, cheaper, result.UpstreamResponseModel)
 				require.InDelta(t, wantCost.ActualCost, usageRepo.lastLog.ActualCost, 1e-12)
 				require.InDelta(t, wantCost.ActualCost, userRepo.lastAmount, 1e-12)
 			})
