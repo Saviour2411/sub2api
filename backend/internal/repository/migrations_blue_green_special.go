@@ -29,6 +29,13 @@ func approvedBlueGreenSpecial(entry blueGreenMigration) bool {
 		return false
 	}
 	switch entry.Profile {
+	case blueGreen251Profile:
+		for _, expected := range blueGreen251Migrations {
+			if entry == expected {
+				return true
+			}
+		}
+		return false
 	case blueGreen250Profile:
 		for _, expected := range blueGreen250Migrations {
 			if entry == expected {
@@ -72,6 +79,9 @@ func approvedBlueGreenSpecial(entry blueGreenMigration) bool {
 }
 
 func applyBlueGreenSpecial(ctx context.Context, conn *sql.Conn, entry blueGreenMigration, content string) error {
+	if entry.Profile == blueGreen251Profile {
+		return applyBlueGreen251(ctx, conn, entry)
+	}
 	if entry.Profile == blueGreen250Profile {
 		if entry == blueGreen250Migrations[0] {
 			return applyBlueGreen250Index(ctx, conn, content)
