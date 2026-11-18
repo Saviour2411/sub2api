@@ -482,7 +482,8 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 				APIKeyID:  apiKey.ID,
 			}
 		}
-		sessionHash = h.gatewayService.GenerateSessionHash(parsedReqForAudit)
+		// 其他客户端：按 API Key + 模型 + tools + systemInstruction + 第一条 user contents 的 parts 生成内容哈希
+		sessionHash = service.GenerateGeminiContentSessionHash(apiKey.ID, reqModel, body)
 	}
 	sessionKey := sessionHash
 	if sessionHash != "" {

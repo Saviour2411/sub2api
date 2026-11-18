@@ -299,7 +299,8 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 	//   applyToolNameRewriteToBody 同步映射为假名
 	// - 其他形态（auto/any/none）原样透传
 	// 如果 body 里完全没有 tools（空数组），tool_choice 没意义时才删除
-	if !gjson.GetBytes(out, "tools").IsArray() || len(gjson.GetBytes(out, "tools").Array()) == 0 {
+	toolsResult := gjson.GetBytes(out, "tools")
+	if !toolsResult.IsArray() || !toolsResult.Get("0").Exists() {
 		if !isClaude55SignedThinkingModel(modelID) && gjson.GetBytes(out, "tool_choice").Exists() {
 			if next, ok := deleteJSONPathBytes(out, "tool_choice"); ok {
 				out = next

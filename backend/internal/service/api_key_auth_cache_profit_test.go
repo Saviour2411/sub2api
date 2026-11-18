@@ -46,6 +46,7 @@ func profitAuthTestAPIKey() *APIKey {
 			LongContextPricingEnabled: true,
 			ImageCountBilling:         true,
 			RequirePrivacySet:         true,
+			ForceOpenAIUltrafast:      true,
 			ModelPricing: []ChannelModelPricing{{
 				Platform:       PlatformOpenAI,
 				Models:         []string{"gpt-cache-roundtrip"},
@@ -70,7 +71,7 @@ func TestAPIKeyAuthSnapshotProfitControlRoundtrip(t *testing.T) {
 	snapshot := svc.snapshotFromAPIKey(context.Background(), apiKey)
 	require.NotNil(t, snapshot)
 	require.Equal(t, apiKeyAuthSnapshotVersion, snapshot.Version)
-	require.Equal(t, 27, snapshot.Version, "v27 保留本地计费字段并携带隐私要求与分组 RPM 覆盖")
+	require.Equal(t, 28, snapshot.Version, "v28 保留本地计费、隐私和分组RPM字段，并携带Ultra Fast配置")
 
 	// 模拟 L2 缓存的完整 JSON 往返（与 apiKeyCache.SetAuthCache/GetAuthCache 同构）。
 	payload, err := json.Marshal(&APIKeyAuthCacheEntry{Snapshot: snapshot})
@@ -90,6 +91,7 @@ func TestAPIKeyAuthSnapshotProfitControlRoundtrip(t *testing.T) {
 	require.True(t, materialized.Group.LongContextPricingEnabled)
 	require.True(t, materialized.Group.ImageCountBilling)
 	require.True(t, materialized.Group.RequirePrivacySet)
+	require.True(t, materialized.Group.ForceOpenAIUltrafast)
 	require.Len(t, materialized.Group.ModelPricing, 1)
 	require.Equal(t, []string{"gpt-cache-roundtrip"}, materialized.Group.ModelPricing[0].Models)
 	require.InDelta(t, 1.25e-6, *materialized.Group.ModelPricing[0].InputPrice, 1e-12)
@@ -114,6 +116,7 @@ func TestAPIKeyAuthSnapshotOldVersionEvicted(t *testing.T) {
 		{name: "v24", version: 24},
 		{name: "v25", version: 25},
 		{name: "v26", version: 26},
+		{name: "v27", version: 27},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			svc := &APIKeyService{}

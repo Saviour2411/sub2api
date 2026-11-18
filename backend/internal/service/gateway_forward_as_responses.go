@@ -130,37 +130,50 @@ func (s *GatewayService) ForwardAsResponses(
 		proxyURL = account.Proxy.URL()
 	}
 
-	// 10. Build upstream request
+	// 同一次首输出尝试内最多恢复一次令牌轮换，保留原计时与取消边界。
 	firstTokenAttempt := newFirstTokenAttempt(ctx, c, s.rateLimitService, account, mappedModel, clientStream)
-	upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, reqStream)
-	upstreamReq, forwardedBody, err := s.buildUpstreamRequest(upstreamCtx, c, account, anthropicBody, token, tokenType, mappedModel, reqStream, shouldMimicClaudeCode)
-	releaseUpstreamCtx()
-	if err != nil {
-		firstTokenAttempt.stopBeforeStreaming()
-		return nil, fmt.Errorf("build upstream request: %w", err)
+	var upstreamReq *http.Request
+	var forwardedBody []byte
+	var resp *http.Response
+	for retriedRotatedToken := false; ; {
+		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, reqStream)
+		upstreamReq, forwardedBody, err = s.buildUpstreamRequest(upstreamCtx, c, account, anthropicBody, token, tokenType, mappedModel, reqStream, shouldMimicClaudeCode)
+		releaseUpstreamCtx()
+		if err != nil {
+			firstTokenAttempt.stopBeforeStreaming()
+			return nil, fmt.Errorf("build upstream request: %w", err)
+		}
+		upstreamReq = firstTokenAttempt.bindRequest(upstreamReq)
+		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+		StopPreResponseKeepaliveBeforeResponseFromContext(ctx)
+		if err != nil {
+			attemptErr := firstTokenAttempt.finishRequestError(err)
+			if resp != nil && resp.Body != nil {
+				_ = resp.Body.Close()
+			}
+			if isFirstTokenTimeoutFailover(attemptErr) {
+				return nil, attemptErr
+			}
+			return nil, s.handleUpstreamTransportError(ctx, c, account, err, OpsUpstreamErrorEvent{
+				UpstreamURL: safeUpstreamURL(upstreamReq.URL.String()),
+			})
+		}
+		if resp.StatusCode == http.StatusUnauthorized && !retriedRotatedToken {
+			if rotatedToken := s.rotatedClaudeAccessToken(ctx, account, token); rotatedToken != "" {
+				_ = resp.Body.Close()
+				token = rotatedToken
+				retriedRotatedToken = true
+				continue
+			}
+		}
+		break
 	}
-	upstreamReq = firstTokenAttempt.bindRequest(upstreamReq)
+	defer func() { _ = resp.Body.Close() }()
+
 	// Bill the final Anthropic effort after conversion and account normalization.
 	// For example, OpenAI xhigh is forwarded as output_config.effort=max.
 	reasoningEffort := NormalizeClaudeOutputEffort(gjson.GetBytes(forwardedBody, "output_config.effort").String())
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, forwardedBody, mappedModel)
-
-	// 11. Send request
-	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
-	StopPreResponseKeepaliveBeforeResponseFromContext(ctx)
-	if err != nil {
-		attemptErr := firstTokenAttempt.finishRequestError(err)
-		if isFirstTokenTimeoutFailover(attemptErr) {
-			return nil, attemptErr
-		}
-		if resp != nil && resp.Body != nil {
-			_ = resp.Body.Close()
-		}
-		return nil, s.handleUpstreamTransportError(ctx, c, account, err, OpsUpstreamErrorEvent{
-			UpstreamURL: safeUpstreamURL(upstreamReq.URL.String()),
-		})
-	}
-	defer func() { _ = resp.Body.Close() }()
 
 	// 12. Handle error response with failover
 	if resp.StatusCode >= 400 {
@@ -393,6 +406,7 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 	startTime time.Time,
 	clientToolMapping apicompat.ResponsesClientToolMapping,
 ) (*ForwardResult, error) {
+	observer := beginUpstreamResponseModelObservation(c)
 	requestID := resp.Header.Get("x-request-id")
 
 	scanner := bufio.NewScanner(resp.Body)
@@ -435,6 +449,7 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 			continue
 		}
 
+		observer.ObserveAnthropic([]byte(payload))
 		streamStatus.observe(&event, payload)
 		if streamStatus.upstreamErrType != "" {
 			break
@@ -491,7 +506,10 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 		_ = resp.Body.Close()
 		writeResponsesError(c, http.StatusBadGateway, "server_error", failure.message)
 		return &ForwardResult{
-			RequestID: requestID, UpstreamHeaders: resp.Header, Usage: usage,
+			UpstreamResponseModel:         observer.Model(),
+			UpstreamResponseModelConflict: observer.Conflict(),
+			UpstreamResponseServiceTier:   observer.ServiceTier(),
+			RequestID:                     requestID, UpstreamHeaders: resp.Header, Usage: usage,
 			Model: originalModel, UpstreamModel: mappedModel, ReasoningEffort: reasoningEffort,
 			Duration: time.Since(startTime),
 		}, failure.err
@@ -540,14 +558,17 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 	}
 
 	return &ForwardResult{
-		RequestID:       requestID,
-		UpstreamHeaders: resp.Header,
-		Usage:           usage,
-		Model:           originalModel,
-		UpstreamModel:   mappedModel,
-		ReasoningEffort: reasoningEffort,
-		Stream:          false,
-		Duration:        time.Since(startTime),
+		UpstreamResponseModel:         observer.Model(),
+		UpstreamResponseModelConflict: observer.Conflict(),
+		UpstreamResponseServiceTier:   observer.ServiceTier(),
+		RequestID:                     requestID,
+		UpstreamHeaders:               resp.Header,
+		Usage:                         usage,
+		Model:                         originalModel,
+		UpstreamModel:                 mappedModel,
+		ReasoningEffort:               reasoningEffort,
+		Stream:                        false,
+		Duration:                      time.Since(startTime),
 	}, nil
 }
 
@@ -562,6 +583,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	startTime time.Time,
 	clientToolMapping apicompat.ResponsesClientToolMapping,
 ) (*ForwardResult, error) {
+	observer := beginUpstreamResponseModelObservation(c)
 	requestID := resp.Header.Get("x-request-id")
 
 	if s.responseHeaderFilter != nil {
@@ -587,16 +609,19 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 
 	resultWithUsage := func() *ForwardResult {
 		return &ForwardResult{
-			RequestID:        requestID,
-			UpstreamHeaders:  resp.Header,
-			Usage:            usage,
-			Model:            originalModel,
-			UpstreamModel:    mappedModel,
-			ReasoningEffort:  reasoningEffort,
-			Stream:           true,
-			Duration:         time.Since(startTime),
-			FirstTokenMs:     firstTokenMs,
-			ClientDisconnect: stream.clientDisconnected,
+			UpstreamResponseModel:         observer.Model(),
+			UpstreamResponseModelConflict: observer.Conflict(),
+			UpstreamResponseServiceTier:   observer.ServiceTier(),
+			RequestID:                     requestID,
+			UpstreamHeaders:               resp.Header,
+			Usage:                         usage,
+			Model:                         originalModel,
+			UpstreamModel:                 mappedModel,
+			ReasoningEffort:               reasoningEffort,
+			Stream:                        true,
+			Duration:                      time.Since(startTime),
+			FirstTokenMs:                  firstTokenMs,
+			ClientDisconnect:              stream.clientDisconnected,
 		}
 	}
 
@@ -674,7 +699,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 				if err != nil {
 					continue
 				}
-				out := string(reverseToolNamesIfPresent(c, []byte(sse)))
+				out := reverseToolNamesIfPresentString(c, sse)
 				fmt.Fprint(c.Writer, out) //nolint:errcheck
 			}
 			c.Writer.Flush()
@@ -713,6 +738,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 			continue
 		}
 
+		observer.ObserveAnthropic([]byte(payload))
 		stream.observe(&event, payload)
 		if stream.upstreamErrType != "" {
 			break
