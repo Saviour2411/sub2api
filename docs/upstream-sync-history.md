@@ -11396,3 +11396,9 @@ A	frontend/src/views/admin/__tests__/ChannelsView.webSearchEmulation.spec.ts
 - frontend/src/views/admin/__tests__/GroupsView.openaiForcedTier.spec.ts
 - frontend/src/views/admin/__tests__/groupsOpenAIFast.spec.ts
 - frontend/src/views/user/UsageView.vue
+
+## 2026-11-18 上游15871f904后续发布兼容适配
+
+用户追加授权更新tag自动蓝绿部署，固定同步范围与LAST_FULLY_INTEGRATED_UPSTREAM_SHA仍为`15871f904056f548dd874a1d069ffc6cdf777b78`。本次补齐CUST-OPS-007的`group-rollup-251-252-v1`：绑定生产v0.1.268、两条251和一条252原SQL、分组Ent及七处旧读写摘要。三条迁移及账本使用NOWAIT和1/5/10秒预算原子执行，核验函数、触发器、状态列及表未重写；失败整体回滚，重放拒绝漂移。普通迁移规则和历史SQL不变。
+
+这是上游同步后的发布适配，先前“迁移尚未生产放行”的记录保留为当时事实。生产基线、后续测试及发布结果见`docs/operations/2026-11-18-v0.1.269-release.md`；在tag、CI及部署实际完成前不宣称已上线。

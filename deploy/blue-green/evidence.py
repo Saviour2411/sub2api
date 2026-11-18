@@ -16,6 +16,23 @@ REQUIRED = {
 }
 MIGRATION_PATHS = ["backend/migrations", "backend/ent/schema"]
 APPROVALS_PATH = "deploy/blue-green/expand-approvals.json"
+ROLLUP251_BASE = "9f2de1742f034c0f1019feb0792cf43a3595d05c"
+ROLLUP251_PROFILE = "group-rollup-251-252-v1"
+ROLLUP251_FILES = {
+    "251_group_force_openai_ultrafast.sql": "d78e605d4fc2038c57f620dff398022823a850ea8994b129b50774ac49e20af1",
+    "251_group_usage_rollup_nonblocking_build.sql": "5b6e9b57f9b354a96c6870185c034db8adc7def944efcddf654e39cd97770718",
+    "252_group_usage_rollup_current_insert_nonblocking.sql": "b9c27f1710131a16937b7c5a42fea3be51650b1412dd963c8938aca4af6d0e58",
+}
+ROLLUP251_SCHEMA = {
+    "path": "backend/ent/schema/group.go",
+    "from_checksum": "e7b69fe98e8570cf9992f8cebfab97eed8b16d77ff612749a3eb748ba74cb6d3",
+    "to_checksum": "b9f8f7a526d57f223f5ad4edd4edc18e71b77d7d2b7736d9e8f24939a7830441",
+}
+ROLLUP251_LEGACY_PATHS = {
+    "backend/ent/schema/group.go", "backend/ent/group/group.go", "backend/internal/repository/group_repo.go",
+    "backend/internal/repository/custom_group_usage_rollup_repo.go", "backend/internal/repository/usage_cleanup_repo.go",
+    "backend/internal/repository/usage_log_repo_insert.go", "backend/internal/repository/usage_log_repo_query.go",
+}
 CACHE250_BASE = "1ab1977341093ae2c97854c729173eb9a0294cc6"
 CACHE250_PROFILE = "openai-cache-249-250-v1"
 CACHE250_FILES = {
@@ -72,6 +89,7 @@ UPSTREAM216_FILES = {
 SPECIAL_MIGRATIONS.update({name: (UPSTREAM216_PROFILE, digest) for name, digest in UPSTREAM216_FILES.items()})
 SPECIAL_MIGRATIONS.update({name: (RELEASE260_PROFILE, digest) for name, digest in RELEASE260_FILES.items()})
 SPECIAL_MIGRATIONS.update({name: (CACHE250_PROFILE, digest) for name, digest in CACHE250_FILES.items()})
+SPECIAL_MIGRATIONS.update({name: (ROLLUP251_PROFILE, digest) for name, digest in ROLLUP251_FILES.items()})
 UPSTREAM216_SCHEMA = {
     "path": "backend/ent/schema/group.go",
     "from_checksum": "ab46f4e37b0287cd795622eb89d5841f76838c9dccedf88361e27fc045ea4881",
@@ -108,6 +126,17 @@ def reviewed_cache250_schema(base, sha, changed, git):
     require(base == CACHE250_BASE and lines == expected, "249/250仅覆盖v0.1.267到两条固定迁移及用量Ent差异")
     for revision, key in ((base, "from_checksum"), (sha, "to_checksum")):
         require(checksum(git("show", revision+":"+CACHE250_SCHEMA["path"])) == CACHE250_SCHEMA[key], "249/250用量Ent固定摘要不符")
+
+
+def reviewed_rollup251_schema(base, sha, changed, git):
+    lines = {line for line in changed.splitlines()
+             if not re.fullmatch(r"[AM]\tbackend/migrations/[a-zA-Z0-9_]+_test\.go", line)}
+    expected = {"A\tbackend/migrations/"+name for name in ROLLUP251_FILES}
+    expected.add("M\t"+ROLLUP251_SCHEMA["path"])
+    require(base == ROLLUP251_BASE and lines == expected, "251/252仅覆盖v0.1.268、三条原SQL和固定分组Ent差异")
+    for revision, key in ((base, "from_checksum"), (sha, "to_checksum")):
+        require(checksum(git("show", revision+":"+ROLLUP251_SCHEMA["path"])) == ROLLUP251_SCHEMA[key],
+                "251/252分组Ent固定摘要不符")
 
 
 def reviewed_image248_schema(base, sha, changed, git):
@@ -190,6 +219,9 @@ def migration_evidence(base, sha, git):
         fields = line.split("\t")
         require(len(fields) == 2, "迁移差异格式不受支持")
         status, path = fields
+        if status == "M" and path == ROLLUP251_SCHEMA["path"] and "A\tbackend/migrations/251_group_force_openai_ultrafast.sql" in changed.splitlines():
+            reviewed_rollup251_schema(base, sha, changed, git)
+            continue
         if status == "M" and path == CACHE250_SCHEMA["path"]:
             reviewed_cache250_schema(base, sha, changed, git)
             continue
@@ -215,6 +247,8 @@ def migration_evidence(base, sha, git):
         if special:
             require(checksum(content) == special[1], "专项迁移固定 SQL 摘要不符")
             contract = {"profile": special[0]}
+            if special[0] == ROLLUP251_PROFILE:
+                reviewed_rollup251_schema(base, sha, changed, git)
             if special[0] == CACHE250_PROFILE:
                 reviewed_cache250_schema(base, sha, changed, git)
             if special[0] == MCP249_PROFILE:
@@ -261,6 +295,11 @@ def migration_evidence(base, sha, git):
             require(approval.get("column") == contract and "profile" not in approval, "新增字段与兼容审批不符")
         contracts = approval.get("legacy_contracts", [])
         require(isinstance(contracts, list) and contracts, "缺少旧版读写契约审查")
+        if special and special[0] == ROLLUP251_PROFILE:
+            require(approval.get("schema_change") == ROLLUP251_SCHEMA, "251/252审批缺少固定分组Ent差异")
+            require(len(contracts) == len(ROLLUP251_LEGACY_PATHS) and
+                    {item.get("path") for item in contracts} == ROLLUP251_LEGACY_PATHS,
+                    "251/252旧分组、汇总、清理和用量读写契约不完整")
         if special and special[0] == CACHE250_PROFILE:
             require(approval.get("schema_change") == CACHE250_SCHEMA, "249/250审批缺少固定用量Ent差异")
             require(len(contracts) == len(CACHE250_LEGACY_PATHS) and

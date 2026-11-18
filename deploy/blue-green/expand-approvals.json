@@ -2,6 +2,132 @@
   "version": 1,
   "approvals": [
     {
+      "compatible_from": "9f2de1742f034c0f1019feb0792cf43a3595d05c",
+      "path": "backend/migrations/251_group_force_openai_ultrafast.sql",
+      "checksum": "d78e605d4fc2038c57f620dff398022823a850ea8994b129b50774ac49e20af1",
+      "profile": "group-rollup-251-252-v1",
+      "schema_change": {
+        "path": "backend/ent/schema/group.go",
+        "from_checksum": "e7b69fe98e8570cf9992f8cebfab97eed8b16d77ff612749a3eb748ba74cb6d3",
+        "to_checksum": "b9f8f7a526d57f223f5ad4edd4edc18e71b77d7d2b7736d9e8f24939a7830441"
+      },
+      "legacy_contracts": [
+        {
+          "path": "backend/ent/schema/group.go",
+          "checksum": "e7b69fe98e8570cf9992f8cebfab97eed8b16d77ff612749a3eb748ba74cb6d3"
+        },
+        {
+          "path": "backend/ent/group/group.go",
+          "checksum": "fe2f451a500f7cf3313cc186a2637734fbc498b867e6c4a74b26b552ef2c1bcf"
+        },
+        {
+          "path": "backend/internal/repository/group_repo.go",
+          "checksum": "55f90b0eb6b9a06d07d61425272a522ea5df0584742539f0d409b8fc0f2b1bdb"
+        },
+        {
+          "path": "backend/internal/repository/custom_group_usage_rollup_repo.go",
+          "checksum": "9b1c3fa14da3ddfdd0a284676dd3f2384390c790f720ed67b0dd9e6061fe7b96"
+        },
+        {
+          "path": "backend/internal/repository/usage_log_repo_insert.go",
+          "checksum": "5124484c4ddfcd4e6305f9dc6527d4996196fbce2db36caa88d33e0b82d1f8ff"
+        },
+        {
+          "path": "backend/internal/repository/usage_log_repo_query.go",
+          "checksum": "de2707047146b9948c97a4759b90e6beeb469c7e6bfb109d9cb3e98e9ddaa633"
+        },
+        {
+          "path": "backend/internal/repository/usage_cleanup_repo.go",
+          "checksum": "a749e4355207eabde9826c757bf05af349b03fad7f8fb2afa3fabac38b8867e5"
+        }
+      ],
+      "review": "2026-11-18用户授权更新tag自动蓝绿部署。仅绑定生产v0.1.268、两条251和一条252原SQL及分组Ent差异。三条迁移和账本同事务，PostgreSQL18、NOWAIT锁和1/5/10秒预算；旧汇总触发器按定义及函数摘要核验，新增列保留默认false/epoch及NULL。旧版明确列名读写，重建通过状态行锁串行；当日INSERT保留NOWAIT，历史写入与跨午夜等待失效，回退保留新增结构和数据。"
+    },
+    {
+      "compatible_from": "9f2de1742f034c0f1019feb0792cf43a3595d05c",
+      "path": "backend/migrations/251_group_usage_rollup_nonblocking_build.sql",
+      "checksum": "5b6e9b57f9b354a96c6870185c034db8adc7def944efcddf654e39cd97770718",
+      "profile": "group-rollup-251-252-v1",
+      "schema_change": {
+        "path": "backend/ent/schema/group.go",
+        "from_checksum": "e7b69fe98e8570cf9992f8cebfab97eed8b16d77ff612749a3eb748ba74cb6d3",
+        "to_checksum": "b9f8f7a526d57f223f5ad4edd4edc18e71b77d7d2b7736d9e8f24939a7830441"
+      },
+      "legacy_contracts": [
+        {
+          "path": "backend/ent/schema/group.go",
+          "checksum": "e7b69fe98e8570cf9992f8cebfab97eed8b16d77ff612749a3eb748ba74cb6d3"
+        },
+        {
+          "path": "backend/ent/group/group.go",
+          "checksum": "fe2f451a500f7cf3313cc186a2637734fbc498b867e6c4a74b26b552ef2c1bcf"
+        },
+        {
+          "path": "backend/internal/repository/group_repo.go",
+          "checksum": "55f90b0eb6b9a06d07d61425272a522ea5df0584742539f0d409b8fc0f2b1bdb"
+        },
+        {
+          "path": "backend/internal/repository/custom_group_usage_rollup_repo.go",
+          "checksum": "9b1c3fa14da3ddfdd0a284676dd3f2384390c790f720ed67b0dd9e6061fe7b96"
+        },
+        {
+          "path": "backend/internal/repository/usage_log_repo_insert.go",
+          "checksum": "5124484c4ddfcd4e6305f9dc6527d4996196fbce2db36caa88d33e0b82d1f8ff"
+        },
+        {
+          "path": "backend/internal/repository/usage_log_repo_query.go",
+          "checksum": "de2707047146b9948c97a4759b90e6beeb469c7e6bfb109d9cb3e98e9ddaa633"
+        },
+        {
+          "path": "backend/internal/repository/usage_cleanup_repo.go",
+          "checksum": "a749e4355207eabde9826c757bf05af349b03fad7f8fb2afa3fabac38b8867e5"
+        }
+      ],
+      "review": "2026-11-18用户授权更新tag自动蓝绿部署。仅绑定生产v0.1.268、两条251和一条252原SQL及分组Ent差异。三条迁移和账本同事务，PostgreSQL18、NOWAIT锁和1/5/10秒预算；旧汇总触发器按定义及函数摘要核验，新增列保留默认false/epoch及NULL。旧版明确列名读写，重建通过状态行锁串行；当日INSERT保留NOWAIT，历史写入与跨午夜等待失效，回退保留新增结构和数据。"
+    },
+    {
+      "compatible_from": "9f2de1742f034c0f1019feb0792cf43a3595d05c",
+      "path": "backend/migrations/252_group_usage_rollup_current_insert_nonblocking.sql",
+      "checksum": "b9c27f1710131a16937b7c5a42fea3be51650b1412dd963c8938aca4af6d0e58",
+      "profile": "group-rollup-251-252-v1",
+      "schema_change": {
+        "path": "backend/ent/schema/group.go",
+        "from_checksum": "e7b69fe98e8570cf9992f8cebfab97eed8b16d77ff612749a3eb748ba74cb6d3",
+        "to_checksum": "b9f8f7a526d57f223f5ad4edd4edc18e71b77d7d2b7736d9e8f24939a7830441"
+      },
+      "legacy_contracts": [
+        {
+          "path": "backend/ent/schema/group.go",
+          "checksum": "e7b69fe98e8570cf9992f8cebfab97eed8b16d77ff612749a3eb748ba74cb6d3"
+        },
+        {
+          "path": "backend/ent/group/group.go",
+          "checksum": "fe2f451a500f7cf3313cc186a2637734fbc498b867e6c4a74b26b552ef2c1bcf"
+        },
+        {
+          "path": "backend/internal/repository/group_repo.go",
+          "checksum": "55f90b0eb6b9a06d07d61425272a522ea5df0584742539f0d409b8fc0f2b1bdb"
+        },
+        {
+          "path": "backend/internal/repository/custom_group_usage_rollup_repo.go",
+          "checksum": "9b1c3fa14da3ddfdd0a284676dd3f2384390c790f720ed67b0dd9e6061fe7b96"
+        },
+        {
+          "path": "backend/internal/repository/usage_log_repo_insert.go",
+          "checksum": "5124484c4ddfcd4e6305f9dc6527d4996196fbce2db36caa88d33e0b82d1f8ff"
+        },
+        {
+          "path": "backend/internal/repository/usage_log_repo_query.go",
+          "checksum": "de2707047146b9948c97a4759b90e6beeb469c7e6bfb109d9cb3e98e9ddaa633"
+        },
+        {
+          "path": "backend/internal/repository/usage_cleanup_repo.go",
+          "checksum": "a749e4355207eabde9826c757bf05af349b03fad7f8fb2afa3fabac38b8867e5"
+        }
+      ],
+      "review": "2026-11-18用户授权更新tag自动蓝绿部署。仅绑定生产v0.1.268、两条251和一条252原SQL及分组Ent差异。三条迁移和账本同事务，PostgreSQL18、NOWAIT锁和1/5/10秒预算；旧汇总触发器按定义及函数摘要核验，新增列保留默认false/epoch及NULL。旧版明确列名读写，重建通过状态行锁串行；当日INSERT保留NOWAIT，历史写入与跨午夜等待失效，回退保留新增结构和数据。"
+    },
+    {
       "compatible_from": "1ab1977341093ae2c97854c729173eb9a0294cc6",
       "path": "backend/migrations/249_add_usage_logs_api_key_cost_index_notx.sql",
       "checksum": "94f124c3e50405f7b75746885111a4f662c331985a697de46fe946a17ff1f7d9",
