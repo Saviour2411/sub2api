@@ -11427,3 +11427,7 @@ A	frontend/src/views/admin/__tests__/ChannelsView.webSearchEmulation.spec.ts
 ### 本轮缓存用量测试的终态边界适配
 
 候选33519ee8d的竞态回归中，上游新增TestAnthropicCacheCreationMissingDetailForwardBillingBoundary期望透传重复message_stop，与CUST-GW-001既有首个合法终态结束规则不一致。测试继续发送两个终态，改为精确断言首个终态前的完整内容，全部缓存用量与CUST-BILL-001扣费断言保持；不改变业务实现。该失败及Gin全局模式竞态日志保留，修正后的完整候选重新验证。
+
+### 本轮Grok图片编辑测试夹具适配
+
+候选e95a10e1d的unit检查发现上游新增5张图测试携带mask，并假设image/images可同时转发，与CUST-PROD-007已记录的本地协议规则冲突。保留业务实现，将数量与错误归因夹具改为合法无mask输入，断言多图只含images；原JSON mask拒绝用例保持，并补multipart URL与上传mask拒绝覆盖。继续保留CUST-GW-006本地输入校验与上游失败归因边界。该项属于保留已批准定制的测试适配，未放宽mask或改变真实错误处理。

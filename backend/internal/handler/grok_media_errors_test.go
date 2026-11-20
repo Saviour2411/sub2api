@@ -39,7 +39,8 @@ func TestGrokImageEditLocalValidationSyncAndAsync(t *testing.T) {
 							body, err := io.ReadAll(req.Body)
 							assert.NoError(t, err)
 							assert.Len(t, gjson.GetBytes(body, "images").Array(), count)
-							assert.NotEmpty(t, gjson.GetBytes(body, "mask.url").String())
+							assert.False(t, gjson.GetBytes(body, "mask").Exists())
+							assert.False(t, gjson.GetBytes(body, "image").Exists())
 							return &http.Response{StatusCode: http.StatusBadRequest, Header: http.Header{"Content-Type": {"application/json"}},
 								Body: io.NopCloser(strings.NewReader(`{"code":"invalid_image","error":"upstream image rejection"}`))}, nil
 						}
@@ -103,7 +104,7 @@ func grokImageEditLimitBody(t *testing.T, format string, count int) ([]byte, str
 		for index := range images {
 			images[index] = fmt.Sprintf("https://example.test/%d.png", index)
 		}
-		body, err := json.Marshal(map[string]any{"model": "grok-imagine-image-2.0", "prompt": "test", "images": images, "mask": "https://example.test/mask.png"})
+		body, err := json.Marshal(map[string]any{"model": "grok-imagine-image-2.0", "prompt": "test", "images": images})
 		require.NoError(t, err)
 		return body, "application/json"
 	}
@@ -121,10 +122,6 @@ func grokImageEditLimitBody(t *testing.T, format string, count int) ([]byte, str
 			require.NoError(t, err)
 		}
 	}
-	part, err := writer.CreateFormFile("mask", "mask.png")
-	require.NoError(t, err)
-	_, err = part.Write([]byte("\x89PNG\r\n\x1a\nmask"))
-	require.NoError(t, err)
 	require.NoError(t, writer.Close())
 	return buffer.Bytes(), writer.FormDataContentType()
 }

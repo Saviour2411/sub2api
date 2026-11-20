@@ -21,14 +21,13 @@ func TestPrepareGrokImageEditSourceLimit(t *testing.T) {
 				var body []byte
 				contentType := "application/json"
 				if format == "json" {
-					images := make([]string, count-1)
+					images := make([]string, count)
 					for index := range images {
 						images[index] = fmt.Sprintf("https://example.test/%d.png", index+1)
 					}
 					var err error
 					body, err = json.Marshal(map[string]any{
-						"image": "https://example.test/0.png", "images": images,
-						"mask": "https://example.test/mask.png",
+						"images": images,
 					})
 					require.NoError(t, err)
 				} else {
@@ -44,14 +43,6 @@ func TestPrepareGrokImageEditSourceLimit(t *testing.T) {
 							require.NoError(t, err)
 						}
 					}
-					if format == "multipart URLs" {
-						require.NoError(t, writer.WriteField("mask", "https://example.test/mask.png"))
-					} else {
-						part, err := writer.CreateFormFile("mask", "mask.png")
-						require.NoError(t, err)
-						_, err = part.Write([]byte("\x89PNG\r\n\x1a\nmask"))
-						require.NoError(t, err)
-					}
 					require.NoError(t, writer.Close())
 					body, contentType = buffer.Bytes(), writer.FormDataContentType()
 				}
@@ -65,13 +56,10 @@ func TestPrepareGrokImageEditSourceLimit(t *testing.T) {
 				}
 				require.NoError(t, err)
 				require.Equal(t, "application/json", outputType)
-				if format == "json" {
-					require.Len(t, gjson.GetBytes(out, "images").Array(), count-1)
-				} else {
-					require.Len(t, gjson.GetBytes(out, "images").Array(), count)
-				}
-				require.NotEmpty(t, gjson.GetBytes(out, "image.url").String())
-				require.NotEmpty(t, gjson.GetBytes(out, "mask.url").String())
+				require.Len(t, gjson.GetBytes(out, "images").Array(), count)
+				require.NotEmpty(t, gjson.GetBytes(out, "images.0.url").String())
+				require.False(t, gjson.GetBytes(out, "image").Exists())
+				require.False(t, gjson.GetBytes(out, "mask").Exists())
 			})
 		}
 	}
@@ -94,6 +82,28 @@ func TestGrokMediaInternalErrorsAreNotInputValidation(t *testing.T) {
 			require.Error(t, err)
 			var validationErr *GrokMediaInputValidationError
 			require.NotErrorAs(t, err, &validationErr)
+		})
+	}
+}
+
+func TestPrepareGrokImageEditRejectsMultipartMasks(t *testing.T) {
+	for _, upload := range []bool{false, true} {
+		t.Run(fmt.Sprintf("upload=%t", upload), func(t *testing.T) {
+			var buffer bytes.Buffer
+			writer := multipart.NewWriter(&buffer)
+			require.NoError(t, writer.WriteField("image", "https://example.test/source.png"))
+			if upload {
+				part, err := writer.CreateFormFile("mask", "mask.png")
+				require.NoError(t, err)
+				_, err = part.Write([]byte("\x89PNG\r\n\x1a\nmask"))
+				require.NoError(t, err)
+			} else {
+				require.NoError(t, writer.WriteField("mask", "https://example.test/mask.png"))
+			}
+			require.NoError(t, writer.Close())
+			out, _, err := prepareGrokMediaForwardBody(GrokMediaEndpointImagesEdits, buffer.Bytes(), writer.FormDataContentType())
+			require.ErrorContains(t, err, "does not support masks")
+			require.Nil(t, out)
 		})
 	}
 }
