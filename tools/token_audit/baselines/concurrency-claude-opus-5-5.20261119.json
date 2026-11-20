@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "test": "concurrency",
+  "id": "trusted-saviour-claude-opus-5-5-200-20261119",
+  "reference_url": "https://direct.saviour.cc.cd/v1/messages",
+  "trusted_by": "用户指定可信渠道；不是固定性能门槛",
+  "sampled_at": "2026-11-19T02:21:56.927+08:00",
+  "finished_at": "2026-11-19T02:22:14.937+08:00",
+  "origin": {
+    "label": "服务器1",
+    "platform": "Linux",
+    "python": "3.13.5",
+    "connection": "独立新TLS连接，直接请求渠道"
+  },
+  "profile": {
+    "version": 1,
+    "request_template": {
+      "model": "claude-opus-5-5",
+      "max_tokens": 2048,
+      "stream": true,
+      "messages": [
+        {
+          "role": "user",
+          "content": "请用中文写一段80至100字的说明，介绍排查HTTP API请求超时的基本步骤，涵盖客户端、网络、网关和上游服务。只输出正文，不要标题、列表、代码或额外解释。"
+        }
+      ]
+    },
+    "requests": 200,
+    "concurrency": 200,
+    "timeout_seconds": 180.0,
+    "connect_timeout_seconds": 30.0,
+    "auth": "x-api-key",
+    "http_version": "1.1",
+    "reuse_connections": false,
+    "headers": {
+      "Content-Type": "application/json",
+      "Accept": "text/event-stream, application/json",
+      "anthropic-version": "2023-06-01",
+      "User-Agent": "claude-cli/2.1.294 (external, sdk-py)",
+      "x-app": "cli"
+    },
+    "session_strategy": "unique_metadata_v1"
+  },
+  "profile_sha256": "7f860bf355f06544e1ab2a20cdac556234eba68c69a297691b0b2e8adfdb6791",
+  "metrics": {
+    "requests": 200,
+    "successful_requests": 200,
+    "protocol_successful_requests": 200,
+    "success_rate": 1.0,
+    "protocol_success_rate": 1.0,
+    "failure_counts": {},
+    "http_status_counts": {
+      "200": 200
+    },
+    "response_model_counts": {
+      "claude-opus-5-5": 200
+    },
+    "response_format_counts": {
+      "sse": 200
+    },
+    "peak_in_flight": 200,
+    "peak_sent_in_flight": 200,
+    "sent_requests": 200,
+    "start_spread_seconds": 0.030333708971738815,
+    "send_spread_seconds": 0.1922797281295061,
+    "wave_elapsed_seconds": 18.007119345478714,
+    "successful_requests_per_second": 11.106718190892462,
+    "first_text_seconds_success": {
+      "mean": 12.029381,
+      "min": 7.593437,
+      "max": 17.308642,
+      "p50": 12.032742,
+      "p90": 14.374431,
+      "p95": 15.431927,
+      "p99": 16.791131,
+      "n": 200
+    },
+    "response_seconds_success": {
+      "mean": 12.714637,
+      "min": 8.341617,
+      "max": 17.968561,
+      "p50": 12.697809,
+      "p90": 15.058488,
+      "p95": 16.124343,
+      "p99": 17.447079,
+      "n": 200
+    },
+    "first_text_seconds_all_observed": {
+      "mean": 12.029381,
+      "min": 7.593437,
+      "max": 17.308642,
+      "p50": 12.032742,
+      "p90": 14.374431,
+      "p95": 15.431927,
+      "p99": 16.791131,
+      "n": 200
+    },
+    "observed_seconds_all": {
+      "mean": 12.714641,
+      "min": 8.341627,
+      "max": 17.968565,
+      "p50": 12.697812,
+      "p90": 15.058491,
+      "p95": 16.124347,
+      "p99": 17.447082,
+      "n": 200
+    },
+    "failed_request_seconds": {
+      "mean": null,
+      "min": null,
+      "max": null,
+      "p50": null,
+      "p90": null,
+      "p95": null,
+      "p99": null,
+      "n": 0
+    },
+    "connect_seconds_all": {
+      "mean": 0.164002,
+      "min": 0.072959,
+      "max": 0.261694,
+      "p50": 0.160991,
+      "p90": 0.233918,
+      "p95": 0.241553,
+      "p99": 0.250037,
+      "n": 200
+    },
+    "headers_seconds_all": {
+      "mean": 1.454381,
+      "min": 0.68574,
+      "max": 5.744748,
+      "p50": 1.217649,
+      "p90": 2.091245,
+      "p95": 3.306703,
+      "p99": 4.099217,
+      "n": 200
+    },
+    "output_tokens_success": {
+      "mean": 1245.61,
+      "min": 750.0,
+      "max": 1952.0,
+      "p50": 1228.0,
+      "p90": 1520.5,
+      "p95": 1567.4,
+      "p99": 1762.61,
+      "n": 200
+    }
+  },
+  "definitions": {
+    "full_success": "HTTP200、完整终态、非空正文、end_turn、返回模型名匹配、无错误",
+    "protocol_success": "HTTP200且完整终态无协议错误，包含max_tokens预算停止",
+    "first_text": "收到第一个非空白可见文本；不含响应头、ping和思考",
+    "response_latency": "收到并解析完整message_stop，JSON按完整消息",
+    "percentiles": "仅完整成功样本，线性插值(n-1)*p",
+    "scope": "单轮突发；环境、时段、默认思考和输出长度影响结果"
+  },
+  "provenance": {
+    "request_records_sha256": "abbf1d4e38344ad3ae93e6a2dcaedb27c5dad5b8a0139ff79b6d15befbdac7fa",
+    "summary_sha256": "f637c2ab817e523de0c51cfd0e54cf8fe40c60739fcff3e05891fe417e78e58f",
+    "probe_sha256": "6876d91a66fdf4fe9134428947bb54c1abaf80a5efc657ad11e92014374891e8",
+    "parser_sha256": "60680f34c6cdfe74353d43d194b800caf3a073db0633e7535192f65df9954010"
+  }
+}
