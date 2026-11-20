@@ -36,8 +36,9 @@ func TestGatewayRoutesRejectConflictingFieldsMountedOnEveryGatewayRoute(t *testi
 	for _, chain := range []string{
 		`gateway.Use(rejectConflictingFields)` + "\n\t" + `gateway.Use(compositeTarget)`,
 		`gemini.Use(rejectConflictingFields)` + "\n\t" + `gemini.Use(compositeGeminiTarget)`,
-		`groupModelAllowlist, rejectConflictingFields, compositeTarget, requireGroupAnthropic, handler)`,
-		`groupModelAllowlist, rejectConflictingFields, compositeTarget, requireGroupAnthropic)`,
+		`groupModelAllowlist, rejectConflictingFields, compositeTarget, requireGroupAnthropic}`,
+		`handlers = append(handlers, extra...)` + "\n\t\t" + `handlers = append(handlers, handler)`,
+		`groupModelAllowlist, rejectConflictingFields, compositeTarget, requireGroupAnthropic, trackImageGroupResult)`,
 	} {
 		require.Contains(t, source, chain)
 	}

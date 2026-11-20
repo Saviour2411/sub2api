@@ -1454,7 +1454,7 @@ func TestHandleGeminiStreamingResponse_ForwardedCommentFrames(t *testing.T) {
 			c.Request.Header.Set("User-Agent", tc.userAgent)
 			resp := &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(stream)), Header: http.Header{}}
 
-			_, err := svc.handleGeminiStreamingResponse(c, resp, time.Now())
+			_, err := svc.handleGeminiStreamingResponse(c, resp, &Account{}, time.Now())
 			require.NoError(t, err)
 			require.Equal(t, first+tc.forwardedComment+second, rec.Body.String())
 		})

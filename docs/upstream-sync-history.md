@@ -11419,3 +11419,7 @@ A	frontend/src/views/admin/__tests__/ChannelsView.webSearchEmulation.spec.ts
 ### 本轮候选编译修正
 
 候选 `df143f980911e47f8dbdb85a22756755c18572e0` 的 `merge-targeted` 退出1：图片预扫描引用的 `jsonUnicodeEscapeBytes` 随上游TTL扫描适配未被引入。将相同原文常量保留在图片文件，恢复编译，不改变已批准的本地TTL、权限及计费规则；关联 `CUST-PROTO-004`、`CUST-BILL-004`。正在执行的该快照后端总套件及独立竞态套件停止，原始日志保留；前端源码未变，其检查继续。后端使用新提交快照重新执行，最终验收尚未完成。
+
+### 本轮上游新增测试的本地契约适配
+
+候选e69d27555的关键检查发现4处新增测试调用仍使用上游签名：管理员配额构造器补齐本地计划与失败保护参数；Gemini流式测试传入账号；SystemOne计费模型测试显式断言错误为空；Grok搜索用量测试分别传入上游与客户端流式标志。路由源码断言同时保留根路由扩展链顺序和Codex图片结果追踪。涉及CUST-GW-001、CUST-PROTO-001、CUST-ACC-007、CUST-BILL-001、CUST-BILL-004，仅测试契约适配，不改业务实现或删除断言。原始失败保留，修正快照重跑。

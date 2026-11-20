@@ -140,7 +140,7 @@ func forwardGrokResponsesSearchCount(t *testing.T, streaming bool, upstreamBody 
 		grokTokenProvider: NewGrokTokenProvider(repo, nil),
 		accountRepo:       repo,
 	}
-	result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "grok", streaming, time.Now())
+	result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "grok", streaming, streaming, time.Now())
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	return result.SearchCount

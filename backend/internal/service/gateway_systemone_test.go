@@ -132,7 +132,9 @@ func TestForwardSystemOneAppliesAccountModelMapping(t *testing.T) {
 	require.Equal(t, []byte(responseBody), result.Body)
 	apiKey := &APIKey{Group: &Group{Platform: PlatformTypeSafe}}
 	usageFields := ChannelUsageFields{OriginalModel: result.Model, BillingModelSource: BillingModelSourceUpstream}
-	require.Equal(t, typesafe.JevLatestModel, svc.recordUsageBillingModel(context.Background(), apiKey, &result.ForwardResult, usageFields))
+	billingModel, err := svc.recordUsageBillingModel(context.Background(), apiKey, &result.ForwardResult, usageFields)
+	require.NoError(t, err)
+	require.Equal(t, typesafe.JevLatestModel, billingModel)
 }
 
 func TestForwardSystemOneAllowsSuccessfulResponseWithoutModel(t *testing.T) {
