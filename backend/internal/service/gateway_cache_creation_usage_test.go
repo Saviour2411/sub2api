@@ -154,10 +154,12 @@ func TestAnthropicCacheCreationMissingDetailForwardBillingBoundary(t *testing.T)
 						payload += "event: message_delta\ndata: {\"type\":\"message_delta\",\"usage\":" + test.delta + "}\n\n"
 					}
 					payload += "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"cache_creation_input_tokens\":null,\"cache_creation\":{\"ephemeral_5m_input_tokens\":null,\"ephemeral_1h_input_tokens\":null},\"output_tokens\":2}}\n\n"
+					expectedPassthrough := payload
 					if terminal == "stop" {
-						for range 2 {
-							payload += "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
-						}
+						stopEvent := "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+						payload += strings.Repeat(stopEvent, 2)
+						// 本地透传在首个合法终态结束，重复上游终态不能重复交付。
+						expectedPassthrough += stopEvent
 					}
 					recorder := httptest.NewRecorder()
 					ctx, _ := gin.CreateTestContext(recorder)
@@ -173,7 +175,7 @@ func TestAnthropicCacheCreationMissingDetailForwardBillingBoundary(t *testing.T)
 							streamed, err = service.handleStreamingResponse(context.Background(), response, ctx, &Account{ID: 701}, time.Now(), "claude-sonnet-4", "claude-sonnet-4", false)
 						} else {
 							streamed, err = service.handleStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), response, ctx, &Account{ID: 701}, time.Now(), "claude-sonnet-4")
-							require.Equal(t, payload, recorder.Body.String())
+							require.Equal(t, expectedPassthrough, recorder.Body.String())
 						}
 						require.NotNil(t, streamed)
 						result = &ForwardResult{RequestID: "cache_creation", Model: "claude-sonnet-4", Usage: *streamed.usage, Duration: time.Second}

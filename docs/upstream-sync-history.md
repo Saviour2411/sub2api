@@ -11423,3 +11423,7 @@ A	frontend/src/views/admin/__tests__/ChannelsView.webSearchEmulation.spec.ts
 ### 本轮上游新增测试的本地契约适配
 
 候选e69d27555的关键检查发现4处新增测试调用仍使用上游签名：管理员配额构造器补齐本地计划与失败保护参数；Gemini流式测试传入账号；SystemOne计费模型测试显式断言错误为空；Grok搜索用量测试分别传入上游与客户端流式标志。路由源码断言同时保留根路由扩展链顺序和Codex图片结果追踪。涉及CUST-GW-001、CUST-PROTO-001、CUST-ACC-007、CUST-BILL-001、CUST-BILL-004，仅测试契约适配，不改业务实现或删除断言。原始失败保留，修正快照重跑。
+
+### 本轮缓存用量测试的终态边界适配
+
+候选33519ee8d的竞态回归中，上游新增TestAnthropicCacheCreationMissingDetailForwardBillingBoundary期望透传重复message_stop，与CUST-GW-001既有首个合法终态结束规则不一致。测试继续发送两个终态，改为精确断言首个终态前的完整内容，全部缓存用量与CUST-BILL-001扣费断言保持；不改变业务实现。该失败及Gin全局模式竞态日志保留，修正后的完整候选重新验证。
