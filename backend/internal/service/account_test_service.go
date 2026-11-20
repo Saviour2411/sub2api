@@ -324,7 +324,7 @@ func createTestPayload(modelID string, prompts ...string) (map[string]any, error
 	}
 	testPrompt := firstNonEmptyPrompt(prompts, DefaultScheduledTestPrompt)
 
-	return map[string]any{
+	payload := map[string]any{
 		"model": modelID,
 		"messages": []map[string]any{
 			{
@@ -352,10 +352,13 @@ func createTestPayload(modelID string, prompts ...string) (map[string]any, error
 		"metadata": map[string]string{
 			"user_id": sessionID,
 		},
-		"max_tokens":  1024,
-		"temperature": 1,
-		"stream":      true,
-	}, nil
+		"max_tokens": 1024,
+		"stream":     true,
+	}
+	if !claude.RejectsTemperature(modelID) {
+		payload["temperature"] = 1
+	}
+	return payload, nil
 }
 
 func createPlainAnthropicTestPayload(modelID string, prompts ...string) map[string]any {
@@ -779,6 +782,29 @@ func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Con
 	return s.processClaudeStream(c, resp.Body, account)
 }
 
+func buildBedrockTestPayload(modelID string, prompts ...string) map[string]any {
+	testPrompt := firstNonEmptyPrompt(prompts, "hi")
+	payload := map[string]any{
+		"anthropic_version": "bedrock-2023-05-31",
+		"messages": []map[string]any{
+			{
+				"role": "user",
+				"content": []map[string]any{
+					{
+						"type": "text",
+						"text": testPrompt,
+					},
+				},
+			},
+		},
+		"max_tokens": 256,
+	}
+	if !claude.RejectsTemperature(modelID) {
+		payload["temperature"] = 1
+	}
+	return payload
+}
+
 // testBedrockAccountConnection tests a Bedrock (SigV4 or API Key) account using non-streaming invoke
 func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx context.Context, account *Account, testModelID string, prompts ...string) error {
 	region := bedrockRuntimeRegion(account)
@@ -797,23 +823,7 @@ func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx co
 
 	// Create a minimal Bedrock-compatible payload (no stream, no cache_control)
 	testPrompt := s.resolveTextTestPrompt(ctx, firstNonEmptyPrompt(prompts, ""))
-	bedrockPayload := map[string]any{
-		"anthropic_version": "bedrock-2023-05-31",
-		"messages": []map[string]any{
-			{
-				"role": "user",
-				"content": []map[string]any{
-					{
-						"type": "text",
-						"text": testPrompt,
-					},
-				},
-			},
-		},
-		"max_tokens":  256,
-		"temperature": 1,
-	}
-	bedrockBody, _ := json.Marshal(bedrockPayload)
+	bedrockBody, _ := json.Marshal(buildBedrockTestPayload(testModelID, testPrompt))
 
 	// 恢复探测需要真实流式首输出，普通手动测试仍保持非流式。
 	recoveryStream := firstTokenRecoveryProbeFromContext(ctx) != nil

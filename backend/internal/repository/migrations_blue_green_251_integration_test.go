@@ -91,20 +91,29 @@ func TestBlueGreen251CompleteOldSchemaUpgrade(t *testing.T) {
 	_, err := db.Exec("DROP SCHEMA public CASCADE; CREATE SCHEMA public")
 	require.NoError(t, err)
 	old := fstest.MapFS{}
+	supported := migration251Files(t)
 	names, err := fs.Glob(migrations.FS, "*.sql")
 	require.NoError(t, err)
 	for _, name := range names {
+		// 固定旧历史与251专项迁移，后续同编号迁移也不能混入。
 		if name >= blueGreen251Migrations[0].Filename {
 			continue
 		}
 		raw, err := migrations.FS.ReadFile(name)
 		require.NoError(t, err)
 		old[name] = &fstest.MapFile{Data: raw}
+		supported[name] = old[name]
 	}
 	require.NoError(t, applyMigrationsFS(context.Background(), db, old))
 	_, err = db.Exec("INSERT INTO groups(name,platform,rate_multiplier) VALUES('legacy','openai',1.25)")
 	require.NoError(t, err)
-	require.NoError(t, applyMigrationsFSWithPolicy(context.Background(), db, migrations.FS,
+	require.ErrorContains(t, applyMigrationsFSWithPolicy(context.Background(), db, migrations.FS,
+		&blueGreenMigrationPolicy{Version: 1, Migrations: blueGreen251Migrations}), "蓝绿待执行迁移未获批准")
+	assertMigration251Unchanged(t, db)
+	var extraColumn int
+	require.NoError(t, db.QueryRow("SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND column_name='ultrafast_multiplier'").Scan(&extraColumn))
+	require.Zero(t, extraColumn, "未批准的新增迁移不得部分执行")
+	require.NoError(t, applyMigrationsFSWithPolicy(context.Background(), db, supported,
 		&blueGreenMigrationPolicy{Version: 1, Migrations: blueGreen251Migrations}))
 	require.NoError(t, runMigration251(t, db))
 	_, err = db.Exec("UPDATE groups SET name='legacy-updated' WHERE name='legacy'")

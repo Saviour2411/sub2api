@@ -173,6 +173,8 @@ docs/screenshots/*
 frontend/coverage/
 aicodex
 output/
+# 本地诊断日志、报告和临时归档
+/outputs/
 .codegraph/
 issues/
 
