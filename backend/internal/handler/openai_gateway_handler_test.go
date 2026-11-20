@@ -2076,6 +2076,8 @@ type openAIResponsesWSUsageLogCase struct {
 	firstFrameCloseExpected bool
 	// secondTurnCloseExpected：第二个 turn 被拒（连接被 1008 关闭）。
 	secondTurnCloseExpected bool
+	// midFrameCloseExpected：midPayload 被拒（连接被 1008 关闭），帧不到达上游。
+	midFrameCloseExpected bool
 }
 
 type openAIResponsesWSUsageLogResult struct {
@@ -3085,7 +3087,7 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 	gin.SetMode(gin.TestMode)
 
 	clientPayloads := append([]string{tc.firstPayload}, tc.followupPayloads...)
-	if tc.midPayload != "" {
+	if tc.midPayload != "" && !tc.midFrameCloseExpected {
 		tc.beforeFollowupPayloads = append([]string{tc.midPayload}, tc.beforeFollowupPayloads...)
 	}
 	if strings.TrimSpace(tc.secondPayload) != "" {
@@ -3093,7 +3095,7 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 	}
 	turnCount := len(clientPayloads)
 	upstreamPayloadCh := make(chan []byte, len(clientPayloads))
-	upstreamControlPayloadCh := make(chan []byte, len(tc.beforeFollowupPayloads))
+	upstreamControlPayloadCh := make(chan []byte, len(tc.beforeFollowupPayloads)+1)
 	upstreamErrCh := make(chan error, 1)
 	var channelSvc *service.ChannelService
 	upstreamServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -3165,6 +3167,15 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 			if writeErr != nil {
 				upstreamErrCh <- writeErr
 				return
+			}
+		}
+		if tc.midFrameCloseExpected {
+			// 首轮完成后继续接收，确保拒绝断言覆盖实际的后续控制帧。
+			readCtx, cancelRead := context.WithTimeout(r.Context(), 3*time.Second)
+			_, payload, readErr := conn.Read(readCtx)
+			cancelRead()
+			if readErr == nil {
+				upstreamControlPayloadCh <- payload
 			}
 		}
 		upstreamErrCh <- nil
@@ -3377,6 +3388,31 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 		require.NoError(t, readErr)
 		require.Equal(t, "response.completed", gjson.GetBytes(event, "type").String())
 		clientEvents = append(clientEvents, append([]byte(nil), event...))
+		if i == 0 && tc.midFrameCloseExpected {
+			require.NotEmpty(t, tc.midPayload)
+			writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)
+			err = clientConn.Write(writeCtx, coderws.MessageText, []byte(tc.midPayload))
+			cancelWrite()
+			require.NoError(t, err)
+			readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
+			_, _, readErr := clientConn.Read(readCtx)
+			cancelRead()
+			require.Error(t, readErr, "重复字段控制帧必须关闭连接")
+			var closeErr coderws.CloseError
+			require.ErrorAs(t, readErr, &closeErr)
+			require.Equal(t, coderws.StatusPolicyViolation, closeErr.Code)
+			require.Contains(t, closeErr.Reason, tc.closeReason)
+			select {
+			case upstreamErr := <-upstreamErrCh:
+				require.NoError(t, upstreamErr)
+			case <-time.After(3 * time.Second):
+				t.Fatal("等待上游控制帧检查结束超时")
+			}
+			require.Len(t, upstreamPayloadCh, 1, "仅允许首轮请求到达上游")
+			require.Empty(t, upstreamControlPayloadCh, "被拒绝的控制帧不得到达上游")
+			_ = clientConn.CloseNow()
+			return openAIResponsesWSUsageLogResult{}
+		}
 	}
 	_ = clientConn.Close(coderws.StatusNormalClosure, "done")
 

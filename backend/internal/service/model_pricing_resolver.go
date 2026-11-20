@@ -273,7 +273,7 @@ func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricin
 		}
 	}
 	hasMetadataOverride := chPricing.FastMultiplier != nil || chPricing.FlexMultiplier != nil ||
-		chPricing.ImageInputPrice != nil || chPricing.ImageOutputPrice != nil ||
+		chPricing.UltrafastMultiplier != nil || chPricing.ImageInputPrice != nil || chPricing.ImageOutputPrice != nil ||
 		chPricing.TimePricing != nil
 	hasAnyOverride := hasFlatTokenPricing || len(validIntervals) > 0 || hasMetadataOverride
 
@@ -320,6 +320,7 @@ func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricin
 		}
 		resolved.BasePricing.FastMultiplier = chPricing.FastMultiplier
 		resolved.BasePricing.FlexMultiplier = chPricing.FlexMultiplier
+		resolved.BasePricing.UltrafastMultiplierOverride = chPricing.UltrafastMultiplier
 		resolved.BasePricing.ReasoningEffortMultipliers = maps.Clone(chPricing.ReasoningEffortMultipliers)
 		applyChannelImagePriceOverrides(chPricing, resolved.BasePricing)
 	}
@@ -467,6 +468,7 @@ func intervalToModelPricing(iv *PricingInterval, base *ModelPricing, chPricing *
 	if chPricing != nil {
 		pricing.FastMultiplier = chPricing.FastMultiplier
 		pricing.FlexMultiplier = chPricing.FlexMultiplier
+		pricing.UltrafastMultiplierOverride = chPricing.UltrafastMultiplier
 	}
 	applyChannelImagePriceOverrides(chPricing, pricing)
 	return pricing

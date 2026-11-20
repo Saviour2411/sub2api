@@ -11402,3 +11402,16 @@ A	frontend/src/views/admin/__tests__/ChannelsView.webSearchEmulation.spec.ts
 用户追加授权更新tag自动蓝绿部署，固定同步范围与LAST_FULLY_INTEGRATED_UPSTREAM_SHA仍为`15871f904056f548dd874a1d069ffc6cdf777b78`。本次补齐CUST-OPS-007的`group-rollup-251-252-v1`：绑定生产v0.1.268、两条251和一条252原SQL、分组Ent及七处旧读写摘要。三条迁移及账本使用NOWAIT和1/5/10秒预算原子执行，核验函数、触发器、状态列及表未重写；失败整体回滚，重放拒绝漂移。普通迁移规则和历史SQL不变。
 
 这是上游同步后的发布适配，先前“迁移尚未生产放行”的记录保留为当时事实。生产基线、后续测试及发布结果见`docs/operations/2026-11-18-v0.1.269-release.md`；在tag、CI及部署实际完成前不宣称已上线。
+
+## 2026-11-20 上游328db26f4代码整合
+
+- 时间：2026-11-21T00:44:16.648+08:00；状态：合并及兼容适配，候选验证待完成。
+- 本地目标分支：`main`；LOCAL_PRE_SYNC_SHA：`a0c4bfe09fdd9f21dc1e86c9135e680177a1bc6a`。
+- 上游：`https://github.com/Wei-Shaw/sub2api`，分支`main`；UPSTREAM_OLD_SHA：`15871f904056f548dd874a1d069ffc6cdf777b78`；UPSTREAM_NEW_SHA：`328db26f450edbdf9f8d4344a3ea903ac6396842`。
+- 实际merge-base与旧基线相同；固定范围142提交（85普通、57合并），完整合并，不扩大目标。
+- 备份分支：`backup/pre-upstream-sync-20261120-232040-a0c4bfe09`；同步分支：`sync/upstream-20261120-328db26f4`。
+- 按获批方案逐块处理19文件28处冲突，保留请求模型严格计费、显式零价、独立区间、TTL显式值、HTTP/WS准入、失败保护、图片结果追踪、用户串行扣费与5秒任务超时。新增迁移原文保持，历史SQL与生产白名单不变。
+- 基线实际结果保存在`tmp/upstream-sync-20261120/baseline`；初次环境失败、复测和已有竞态均保留。二次开发对应条目在同一提交更新。
+- LAST_FULLY_INTEGRATED_UPSTREAM_SHA：`15871f904056f548dd874a1d069ffc6cdf777b78`；验收前保守保留旧基线，最终记录再推进。
+
+代码提交SHA、全部142项处置、具体文件和验证结果由最终记录补全；本条不宣称同步验收或生产发布完成。
