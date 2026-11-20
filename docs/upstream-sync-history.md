@@ -11431,3 +11431,7 @@ A	frontend/src/views/admin/__tests__/ChannelsView.webSearchEmulation.spec.ts
 ### 本轮Grok图片编辑测试夹具适配
 
 候选e95a10e1d的unit检查发现上游新增5张图测试携带mask，并假设image/images可同时转发，与CUST-PROD-007已记录的本地协议规则冲突。保留业务实现，将数量与错误归因夹具改为合法无mask输入，断言多图只含images；原JSON mask拒绝用例保持，并补multipart URL与上传mask拒绝覆盖。继续保留CUST-GW-006本地输入校验与上游失败归因边界。该项属于保留已批准定制的测试适配，未放宽mask或改变真实错误处理。
+
+### 本轮原生聊天批量发送测试适配
+
+候选完整unit检查发现上游2c6784496新增的批量Flush测试只期望一次发送，未计入CUST-GW-001首Token守卫释放缓冲时的Flush。将测试拆为底层流处理与完整守卫入口两个场景，分别精确断言1次与2次Flush，完整输出及用量断言保持；相邻用例继续验证等待下一批上游数据前已及时发送。仅适配测试，保留既有守卫与上游批量发送实现；首次失败及最终验证结果均留存。

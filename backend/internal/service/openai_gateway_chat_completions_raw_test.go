@@ -1308,30 +1308,40 @@ func rawStreamFlushTestEvent(content string) string {
 	return `data: {"id":"chatcmpl_f","object":"chat.completion.chunk","model":"gpt-5.4","choices":[{"index":0,"delta":{"content":"` + content + `"}}]}` + "\n\n"
 }
 
-// 一次读取里到达的多行合并成一次 flush，写给客户端的内容不变。
+// 一次读取中的多行合并发送，首 Token 守卫的释放另有一次 Flush。
 func TestStreamRawChatCompletions_CoalescesFlushesWithinOneUpstreamRead(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"stream":true}`)
-	w := &flushCountingRecorder{ResponseRecorder: httptest.NewRecorder()}
-	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
-
-	upstreamBody := rawStreamFlushTestEvent("a") + rawStreamFlushTestEvent("b") + rawStreamFlushTestEvent("c") +
-		`data: {"id":"chatcmpl_f","object":"chat.completion.chunk","model":"gpt-5.4","choices":[],"usage":{"prompt_tokens":3,"completion_tokens":3,"total_tokens":6}}` + "\n\n" +
-		"data: [DONE]\n\n"
-	upstream := &httpUpstreamRecorder{resp: &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
-		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
-	}}
-	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
-
-	result, err := svc.forwardAsRawChatCompletions(context.Background(), c, rawChatCompletionsTestAccount(), body, "")
-	require.NoError(t, err)
-	require.Equal(t, 3, result.Usage.OutputTokens)
-	require.Equal(t, upstreamBody, w.Body.String())
-	// 之前每行（含事件间空行）flush 一次，这里是 10 次。
-	require.Equal(t, 1, w.flushes)
+	for _, guarded := range []bool{false, true} {
+		t.Run(fmt.Sprintf("首Token守卫=%t", guarded), func(t *testing.T) {
+			body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"stream":true}`)
+			w := &flushCountingRecorder{ResponseRecorder: httptest.NewRecorder()}
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+			upstreamBody := rawStreamFlushTestEvent("a") + rawStreamFlushTestEvent("b") + rawStreamFlushTestEvent("c") +
+				`data: {"id":"chatcmpl_f","object":"chat.completion.chunk","model":"gpt-5.4","choices":[],"usage":{"prompt_tokens":3,"completion_tokens":3,"total_tokens":6}}` + "\n\n" +
+				"data: [DONE]\n\n"
+			response := &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+			}
+			upstream := &httpUpstreamRecorder{resp: response}
+			svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+			var result *OpenAIForwardResult
+			var err error
+			wantFlushes := 1
+			if guarded {
+				result, err = svc.forwardAsRawChatCompletions(context.Background(), c, rawChatCompletionsTestAccount(), body, "")
+				wantFlushes = 2
+			} else {
+				result, err = svc.streamRawChatCompletions(c, response, rawChatCompletionsTestAccount(), "gpt-5.4", "gpt-5.4", "gpt-5.4", nil, nil, time.Now(), len(body))
+			}
+			require.NoError(t, err)
+			require.Equal(t, 3, result.Usage.OutputTokens)
+			require.Equal(t, upstreamBody, w.Body.String())
+			require.Equal(t, wantFlushes, w.flushes)
+		})
+	}
 }
 
 // 合并不能推迟已到达的数据：开始等待上游下一批数据之前，已到达的事件必须已经 flush 给客户端。
