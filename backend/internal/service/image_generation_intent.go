@@ -43,7 +43,8 @@ var (
 	imageGenLiteralBytes = []byte("image_gen")
 	// imageModelFoldBytes 覆盖 model 分支：gpt-image-* 与 grok-imagine* 都含 imag，
 	// 模型名按 ToLower 比较，这里做 ASCII 折叠匹配。
-	imageModelFoldBytes = []byte("imag")
+	imageModelFoldBytes    = []byte("imag")
+	jsonUnicodeEscapeBytes = []byte(`\u`)
 )
 
 // openAIBodyMayDeclareImageGeneration 是生图意图扫描的字节级必要条件。

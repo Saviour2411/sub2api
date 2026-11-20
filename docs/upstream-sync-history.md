@@ -11415,3 +11415,7 @@ A	frontend/src/views/admin/__tests__/ChannelsView.webSearchEmulation.spec.ts
 - LAST_FULLY_INTEGRATED_UPSTREAM_SHA：`15871f904056f548dd874a1d069ffc6cdf777b78`；验收前保守保留旧基线，最终记录再推进。
 
 代码提交SHA、全部142项处置、具体文件和验证结果由最终记录补全；本条不宣称同步验收或生产发布完成。
+
+### 本轮候选编译修正
+
+候选 `df143f980911e47f8dbdb85a22756755c18572e0` 的 `merge-targeted` 退出1：图片预扫描引用的 `jsonUnicodeEscapeBytes` 随上游TTL扫描适配未被引入。将相同原文常量保留在图片文件，恢复编译，不改变已批准的本地TTL、权限及计费规则；关联 `CUST-PROTO-004`、`CUST-BILL-004`。正在执行的该快照后端总套件及独立竞态套件停止，原始日志保留；前端源码未变，其检查继续。后端使用新提交快照重新执行，最终验收尚未完成。
