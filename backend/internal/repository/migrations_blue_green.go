@@ -85,6 +85,9 @@ func parseBlueGreenMigrationPolicy(raw string) (*blueGreenMigrationPolicy, error
 	if err := validateBlueGreen251Policy(&policy); err != nil {
 		return nil, err
 	}
+	if err := validateBlueGreen252Policy(&policy); err != nil {
+		return nil, err
+	}
 	if _, ok := policy.find(blueGreenModelQualityMigration.Filename); ok && (len(policy.Migrations) != 1 || policy.Migrations[0] != blueGreenModelQualityMigration) {
 		return nil, fmt.Errorf("蓝绿降智检测只允许固定246迁移")
 	}
@@ -192,6 +195,9 @@ func validateBlueGreenPendingMigrations(ctx context.Context, conn *sql.Conn, fsy
 		return err
 	}
 	if err := validateBlueGreen251Applied(ctx, conn, policy, applied); err != nil {
+		return err
+	}
+	if err := validateBlueGreen252Applied(ctx, conn, policy, applied); err != nil {
 		return err
 	}
 	if _, ok := policy.find(blueGreenModelQualityMigration.Filename); ok && applied[blueGreenModelQualityMigration.Filename] != "" {

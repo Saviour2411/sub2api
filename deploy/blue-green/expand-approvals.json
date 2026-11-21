@@ -2,6 +2,35 @@
   "version": 1,
   "approvals": [
     {
+      "compatible_from": "335710cc79789e337f3bd8f0c8511afdd08fd004",
+      "path": "backend/migrations/252_channel_pricing_ultrafast_multiplier.sql",
+      "checksum": "458752b3523254ee60ab4a821261ab64df9216a6f208c1960e7b816f8c7cfd1d",
+      "profile": "channel-ultrafast-guarded-252-v1",
+      "legacy_contracts": [
+        {
+          "path": "backend/internal/repository/channel_repo.go",
+          "checksum": "65af13464766b16df777e6a6877c734e761af31668ea623d01eeea7496b4fe22"
+        },
+        {
+          "path": "backend/internal/repository/channel_repo_pricing.go",
+          "checksum": "7e90fac48c63ac391c2b9d7f398cd65e8ee983b07f86a0f5620f130fe07cf56a"
+        },
+        {
+          "path": "backend/internal/repository/channel_repo_account_stats_pricing.go",
+          "checksum": "726cdca2e951cc91482cc38dbf1722e292b52246bea003b17ba67573a4b92aa1"
+        },
+        {
+          "path": "backend/internal/service/channel_service.go",
+          "checksum": "98ba5e8a79d95ef7424ae088a17ea6d46a738f624372a550aab141af789a80ac"
+        },
+        {
+          "path": "backend/internal/handler/admin/channel_handler.go",
+          "checksum": "e96bf3388208d2e223a4e777ecc65f888b14c5e968c5d0680a77b7ba15a521cb"
+        }
+      ],
+      "review": "2026-11-21用户授权更新tag自动蓝绿部署。仅绑定生产v0.1.269及252渠道Ultrafast原SQL，无Ent差异。旧版使用明确列名，但批量保存删后重建，因此共存期间以NULL约束禁止自定义Ultrafast倍率。PostgreSQL18、两表16MiB限制、NOWAIT和1/5/10秒预算；原SQL、保护和账本原子提交，不重写定价表。旧槽全部退役并通过固定身份、挂载和双入口核验后解除专用保护，保留原正值约束。失败和回滚保留保护，解除后回退需重新审查。"
+    },
+    {
       "compatible_from": "9f2de1742f034c0f1019feb0792cf43a3595d05c",
       "path": "backend/migrations/251_group_force_openai_ultrafast.sql",
       "checksum": "d78e605d4fc2038c57f620dff398022823a850ea8994b129b50774ac49e20af1",
