@@ -1264,10 +1264,9 @@ func TestForwardAsRawChatCompletions_RestoresMappedResponseModel(t *testing.T) {
 					upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {contentType}}, Body: io.NopCloser(strings.NewReader(upstreamBody))}}
 					svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
 					account := rawChatCompletionsTestAccount()
-					expectedModel, expectedUpstream := returned, "public"
+					expectedModel, expectedUpstream := "public", "public"
 					if mapped {
 						account.Credentials["model_mapping"] = map[string]any{"public": "ZHIPU/GLM-5.3"}
-						expectedModel = "public"
 						expectedUpstream = "ZHIPU/GLM-5.3"
 					}
 					rec := httptest.NewRecorder()
@@ -1285,6 +1284,44 @@ func TestForwardAsRawChatCompletions_RestoresMappedResponseModel(t *testing.T) {
 					require.Equal(t, 1, result.Usage.OutputTokens)
 				})
 			}
+		}
+	}
+}
+
+func TestForwardAsRawChatCompletions_RestoresDeepSeekResponseModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, stream := range []bool{false, true} {
+		for _, tt := range []struct{ requested, sent, returned string }{
+			{"deepseek-flash", "deepseek-flash", "deepseek-v4.1-flash-1017"},
+			{"deepseek-v4-pro", "deepseek-v4-pro", "deepseek-v4-pro-0813"},
+			{"deepseek-v4.1-flash-1017", "deepseek-flash", "deepseek-v4.1-flash-1017"},
+		} {
+			t.Run(fmt.Sprintf("流式=%t/%s", stream, tt.requested), func(t *testing.T) {
+				body := []byte(fmt.Sprintf(`{"model":%q,"messages":[{"role":"user","content":"hello"}],"stream":%t}`, tt.requested, stream))
+				payload := `{"id":"chatcmpl_deepseek","model":"` + tt.returned + `","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":9,"completion_tokens":4,"total_tokens":13}}`
+				upstreamBody, contentType := payload, "application/json"
+				if stream {
+					upstreamBody, contentType = "data: "+payload+"\n\ndata: [DONE]\n\n", "text/event-stream"
+				}
+				upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {contentType}}, Body: io.NopCloser(strings.NewReader(upstreamBody))}}
+				svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+				account := rawChatCompletionsTestAccount()
+				account.Platform = PlatformDeepseek
+				account.Credentials["model_mapping"] = map[string]any{tt.requested: tt.sent}
+				rec := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(rec)
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+				result, err := svc.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
+				require.NoError(t, err)
+				require.Equal(t, tt.sent, gjson.GetBytes(upstream.lastBody, "model").String())
+				require.Contains(t, rec.Body.String(), strings.Replace(payload, `"model":"`+tt.returned+`"`, `"model":"`+tt.requested+`"`, 1))
+				require.Equal(t, tt.requested, result.Model)
+				require.Equal(t, tt.sent, result.UpstreamModel)
+				require.Equal(t, tt.returned, result.UpstreamResponseModel)
+				require.True(t, *upstreamModelMismatch(result.UpstreamModel, result.UpstreamResponseModel), "回写后仍保留真实上游审计")
+				require.Equal(t, 9, result.Usage.InputTokens)
+				require.Equal(t, 4, result.Usage.OutputTokens)
+			})
 		}
 	}
 }
@@ -1348,13 +1385,18 @@ func TestStreamRawChatCompletions_CoalescesFlushesWithinOneUpstreamRead(t *testi
 func TestStreamRawChatCompletions_FlushesBeforeWaitingForUpstream(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"stream":true}`)
+	upstreamEvent := func(content string) string {
+		return strings.Replace(rawStreamFlushTestEvent(content), `"model":"gpt-5.4"`, `"model":"gpt-5.4-runtime"`, 1)
+	}
 	firstEventFlushed := make(chan struct{})
+	var firstFlushedBody string
 	w := &flushCountingRecorder{ResponseRecorder: httptest.NewRecorder()}
 	w.onFlush = func(written string) {
 		if strings.Contains(written, `"content":"first"`) {
 			select {
 			case <-firstEventFlushed:
 			default:
+				firstFlushedBody = written
 				close(firstEventFlushed)
 			}
 		}
@@ -1366,7 +1408,7 @@ func TestStreamRawChatCompletions_FlushesBeforeWaitingForUpstream(t *testing.T) 
 	writerErr := make(chan error, 1)
 	go func() {
 		defer func() { _ = pw.Close() }()
-		if _, err := io.WriteString(pw, rawStreamFlushTestEvent("first")); err != nil {
+		if _, err := io.WriteString(pw, upstreamEvent("first")); err != nil {
 			writerErr <- err
 			return
 		}
@@ -1377,7 +1419,7 @@ func TestStreamRawChatCompletions_FlushesBeforeWaitingForUpstream(t *testing.T) 
 			writerErr <- errors.New("first event was not flushed before waiting for more upstream data")
 			return
 		}
-		_, err := io.WriteString(pw, rawStreamFlushTestEvent("second")+"data: [DONE]\n\n")
+		_, err := io.WriteString(pw, upstreamEvent("second")+"data: [DONE]\n\n")
 		writerErr <- err
 	}()
 
@@ -1388,9 +1430,13 @@ func TestStreamRawChatCompletions_FlushesBeforeWaitingForUpstream(t *testing.T) 
 	}}
 	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
 
-	_, err := svc.forwardAsRawChatCompletions(context.Background(), c, rawChatCompletionsTestAccount(), body, "")
+	result, err := svc.forwardAsRawChatCompletions(context.Background(), c, rawChatCompletionsTestAccount(), body, "")
 	require.NoError(t, err)
 	require.NoError(t, <-writerErr)
+	require.Contains(t, firstFlushedBody, `"model":"gpt-5.4"`, "首段已经回写且无需等待后续数据")
+	require.NotContains(t, firstFlushedBody, "gpt-5.4-runtime")
+	require.Equal(t, "gpt-5.4-runtime", result.UpstreamResponseModel)
+	require.NotNil(t, result.FirstTokenMs)
 	require.Contains(t, w.Body.String(), `"content":"second"`)
 	require.Contains(t, w.Body.String(), "data: [DONE]")
 }

@@ -26,7 +26,7 @@ func TestMappedResponseModelPreservesOtherData(t *testing.T) {
 		require.Equal(t, body, string(svc.replaceModelInResponseBody([]byte(body), "mapped", "public")))
 		require.Equal(t, "data: "+body, svc.replaceModelInSSELine("data: "+body, "mapped", "public"))
 	}
-	for _, models := range [][2]string{{"same", "same"}, {"", "public"}, {"mapped", ""}} {
+	for _, models := range [][2]string{{"", "public"}, {"mapped", ""}} {
 		body := `{"model":"alias","response":{"model":"alias"}}`
 		require.Equal(t, body, string(svc.replaceModelInResponseBody([]byte(body), models[0], models[1])))
 		require.Equal(t, "data: "+body, svc.replaceModelInSSELine("data: "+body, models[0], models[1]))
@@ -35,27 +35,40 @@ func TestMappedResponseModelPreservesOtherData(t *testing.T) {
 	require.Equal(t, `{"model":"public"}`, string(svc.replaceModelInResponseBody([]byte(`{"model":""}`), "mapped", "public")))
 }
 
-// Exercise both streaming processors so substring fast paths cannot bypass the rewrite.
+func TestUnmappedResponseModelRewrite(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	for _, model := range []string{"deepseek-flash", "deepseek-v4-pro"} {
+		t.Run(model, func(t *testing.T) {
+			body := `{"model":"runtime-version","text":"runtime-version","tool":{"model":"runtime-version"}}`
+			want := strings.Replace(body, `"model":"runtime-version"`, `"model":"`+model+`"`, 1)
+			require.Equal(t, want, string(svc.replaceModelInResponseBody([]byte(body), model, model)))
+			require.Equal(t, "data: "+want, svc.replaceModelInSSELine("data: "+body, model, model))
+			require.Equal(t, `data: {"response":{"model":"`+model+`"}}`, svc.replaceModelInSSELine(`data: {"response":{"model":"runtime-version"}}`, model, model))
+			unchanged := []byte(want)
+			require.Same(t, &unchanged[0], &svc.replaceModelInResponseBody(unchanged, model, model)[0], "型号一致时复用原响应")
+			require.Equal(t, "data:\t"+want, svc.replaceModelInSSELine("data:\t"+want, model, model))
+		})
+	}
+}
+
+// 覆盖普通与透传路径，未映射请求同样回写，同时保留上游原始型号。
 func TestMappedResponseModelForwarding(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	for _, passthrough := range []bool{false, true} {
 		for _, returned := range []string{"zhipu/glm-5.3", "glm-5.3-alias"} {
 			for _, mapped := range []string{"ZHIPU/GLM-5.3", "public"} {
-				for _, kind := range []string{"json", "chat", "responses"} {
+				for _, kind := range []string{"json", "chat", "responses", "aggregated"} {
 					name := kind + "/" + returned + "/" + mapped
 					if passthrough {
 						name += "/passthrough"
 					}
 					t.Run(name, func(t *testing.T) {
-						model := returned
-						if mapped != "public" {
-							model = "public"
-						}
+						model := "public"
 						payload := `{"model":"` + returned + `","choices":[{"delta":{"content":"keep alias","tool_calls":[{"function":{"arguments":"{\"model\":\"alias\"}"}}]}}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`
 						want := strings.Replace(payload, `"model":"`+returned+`"`, `"model":"`+model+`"`, 1)
 						contentType := "application/json"
 						body := payload
-						if kind == "responses" {
+						if kind == "responses" || kind == "aggregated" {
 							payload = `{"type":"response.completed","response":{"id":"resp_1","created_at":1700000000,"model":"` + returned + `","output":[],"usage":{"input_tokens":1,"output_tokens":1}}}`
 							want = strings.Replace(payload, `"model":"`+returned+`"`, `"model":"`+model+`"`, 1)
 						}
@@ -70,7 +83,7 @@ func TestMappedResponseModelForwarding(t *testing.T) {
 						svc := &OpenAIGatewayService{}
 						account := &Account{ID: 1}
 						var err error
-						if kind == "json" {
+						if kind == "json" || kind == "aggregated" {
 							if passthrough {
 								_, err = svc.handleNonStreamingResponsePassthrough(context.Background(), resp, c, account, "public", mapped)
 							} else {
@@ -84,6 +97,9 @@ func TestMappedResponseModelForwarding(t *testing.T) {
 							}
 						}
 						require.NoError(t, err)
+						if kind == "aggregated" {
+							want = `"model":"public"`
+						}
 						require.Contains(t, rec.Body.String(), want)
 						require.Equal(t, returned, observedUpstreamResponseModel(c))
 					})
