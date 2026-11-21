@@ -175,7 +175,7 @@ func TestHandleStreamingResponse_GrokStampsMissingCreatedAt(t *testing.T) {
 	require.Equal(t, "hi", gjson.Get(payloads[3], "response.output.0.content.0.text").String())
 }
 
-// 官方上游自带 created_at：网关输出必须与上游逐字节一致（不引入任何改写）。
+// 官方上游自带 created_at：除型号回写为测试请求的 gpt-5 外，其余字节保持一致。
 func TestHandleStreamingResponse_GrokKeepsUpstreamCreatedAtBytes(t *testing.T) {
 	body := "event: response.created\n" +
 		`data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_grok","object":"response","created_at":1774274151,"model":"grok-4.5","status":"in_progress","output":[]}}` + "\n\n" +
@@ -188,7 +188,7 @@ func TestHandleStreamingResponse_GrokKeepsUpstreamCreatedAtBytes(t *testing.T) {
 
 	require.NoError(t, err)
 	gotBody, _ := recorder.snapshot()
-	require.Equal(t, body, gotBody)
+	require.Equal(t, strings.ReplaceAll(body, `"model":"grok-4.5"`, `"model":"gpt-5"`), gotBody)
 }
 
 // OpenAI OAuth 流以裸 error 结束：合成的 response.failed 必须带 created_at

@@ -1001,11 +1001,14 @@ func appendOpenAIResponsesRequestPathSuffix(baseURL, suffix string) string {
 }
 
 func (s *OpenAIGatewayService) replaceModelInResponseBody(body []byte, fromModel, toModel string) []byte {
-	// A mapped request must retain its public name even when upstream uses an alias.
-	if fromModel == "" || toModel == "" || fromModel == toModel || !gjson.ValidBytes(body) {
+	if fromModel == "" || toModel == "" {
 		return body
 	}
-	if m := gjson.GetBytes(body, "model"); m.Type == gjson.String {
+	// 未映射请求也可能返回上游版本名；只有需要回写时才校验和复制响应。
+	if m := gjson.GetBytes(body, "model"); m.Type == gjson.String && m.Str != toModel {
+		if !gjson.ValidBytes(body) {
+			return body
+		}
 		newBody, err := sjson.SetBytes(body, "model", toModel)
 		if err != nil {
 			return body

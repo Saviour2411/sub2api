@@ -365,7 +365,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoningOnAccepted(
 		MarkResponseCommitted(c)
 	}
 
-	needModelReplace := originalModel != mappedModel
+	needModelReplace := originalModel != "" && mappedModel != ""
 	var createdAtStamper responsesCreatedAtStamper
 	streamOutputAccumulator := apicompat.NewBufferedResponseAccumulator()
 	streamOutputAccumulator.XAIServerSideSearch = account != nil && account.IsGrok()
@@ -1252,17 +1252,24 @@ func effectiveOpenAISSEEventType(payload []byte, eventType string) string {
 }
 
 func (s *OpenAIGatewayService) replaceModelInSSELine(line, fromModel, toModel string) string {
-	if fromModel == "" || toModel == "" || fromModel == toModel {
+	if fromModel == "" || toModel == "" {
 		return line
 	}
 	data, ok := extractOpenAISSEDataLine(line)
-	if !ok || !gjson.Valid(data) {
+	if !ok {
 		return line
 	}
 	updated := data
-	// Only protocol model fields are rewritten; text and tool payloads are untouched.
+	validated := false
+	// 型号一致或缺失时复用原行；仅修改协议型号，不触碰正文和工具参数。
 	for _, path := range []string{"model", "response.model"} {
-		if m := gjson.Get(updated, path); m.Type == gjson.String {
+		if m := gjson.Get(updated, path); m.Type == gjson.String && m.Str != toModel {
+			if !validated {
+				if !gjson.Valid(data) {
+					return line
+				}
+				validated = true
+			}
 			var err error
 			updated, err = sjson.Set(updated, path, toModel)
 			if err != nil {
@@ -1837,10 +1844,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	usage := &usageValue
 	logOpenAISuccessMissingUsage(ctx, c, account, resp, usage, "json", false)
 
-	// Replace model in response if needed
-	if originalModel != mappedModel {
-		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
-	}
+	body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
 	body, err = restoreGrokResponsesClientToolPayload(c, body)
 	if err != nil {
 		return nil, fmt.Errorf("restore Grok Responses client tool response: %w", err)
@@ -1945,9 +1949,7 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 		}
 		finalResponse = supplementCompactionItemFromSSE(c, finalResponse, bodyText)
 		body = finalResponse
-		if originalModel != mappedModel {
-			body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
-		}
+		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
 		// Correct tool calls in final response
 		body = s.correctToolCallsInResponseBody(body)
 		restoredBody, restoreErr := restoreGrokResponsesClientToolPayload(c, body)
@@ -1966,9 +1968,7 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 		restoredBody = restoreOpenAIResponsesInstructionsEchoInResponse(c, restoredBody)
 		body = ensureOpenAIResponseObjectCreatedAt(restoredBody)
 	} else {
-		if originalModel != mappedModel {
-			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, originalModel)
-		}
+		bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, originalModel)
 		bodyText = restoreOpenAIResponsesInstructionsEchoInSSEBody(c, bodyText)
 		body = []byte(bodyText)
 	}
@@ -2614,6 +2614,9 @@ func (s *OpenAIGatewayService) parseSSEUsageFromBody(body string) *OpenAIUsage {
 }
 
 func (s *OpenAIGatewayService) replaceModelInSSEBody(body, fromModel, toModel string) string {
+	if fromModel == "" || toModel == "" {
+		return body
+	}
 	lines := strings.Split(body, "\n")
 	for i, line := range lines {
 		if _, ok := extractOpenAISSEDataLine(line); !ok {
