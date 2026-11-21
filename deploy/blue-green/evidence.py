@@ -16,6 +16,14 @@ REQUIRED = {
 }
 MIGRATION_PATHS = ["backend/migrations", "backend/ent/schema"]
 APPROVALS_PATH = "deploy/blue-green/expand-approvals.json"
+ULTRAFAST252_BASE = "335710cc79789e337f3bd8f0c8511afdd08fd004"
+ULTRAFAST252_PROFILE = "channel-ultrafast-guarded-252-v1"
+ULTRAFAST252_FILE = "252_channel_pricing_ultrafast_multiplier.sql"
+ULTRAFAST252_LEGACY_PATHS = {
+    "backend/internal/repository/channel_repo.go", "backend/internal/repository/channel_repo_pricing.go",
+    "backend/internal/repository/channel_repo_account_stats_pricing.go",
+    "backend/internal/service/channel_service.go", "backend/internal/handler/admin/channel_handler.go",
+}
 ROLLUP251_BASE = "9f2de1742f034c0f1019feb0792cf43a3595d05c"
 ROLLUP251_PROFILE = "group-rollup-251-252-v1"
 ROLLUP251_FILES = {
@@ -69,6 +77,7 @@ RELEASE260_FILES = {
     "247_scoped_admin_api_keys.sql": "03445774e2dfad32da9e23279193d1bca02953896bc3d3b8a87ba0b36b6ed577",
 }
 SPECIAL_MIGRATIONS = {
+    ULTRAFAST252_FILE: (ULTRAFAST252_PROFILE, "458752b3523254ee60ab4a821261ab64df9216a6f208c1960e7b816f8c7cfd1d"),
     MCP249_FILE: (MCP249_PROFILE, "751a1dcee6108afcecbd580b6e3140cca3480853fecd2174861b02f3a71e54a1"),
     IMAGE248_FILE: (IMAGE248_PROFILE, "a872dde339b19f311feb5fa6fd85c8ff7b11d69794c35a18e2086d9846b3499c"),
     "246_model_quality.sql": (MODEL_QUALITY_PROFILE, "1bb3d0dd89a9e48f4c524f306b3c248873581b6a33aa1f37f1e24fc3caab545e"),
@@ -247,6 +256,10 @@ def migration_evidence(base, sha, git):
         if special:
             require(checksum(content) == special[1], "专项迁移固定 SQL 摘要不符")
             contract = {"profile": special[0]}
+            if special[0] == ULTRAFAST252_PROFILE:
+                require(base == ULTRAFAST252_BASE and all(item == "A\t"+path
+                    or re.fullmatch(r"[AM]\tbackend/migrations/[a-zA-Z0-9_]+_test\.go", item)
+                    for item in changed.splitlines()), "252专项仅覆盖v0.1.269及原始渠道Ultrafast迁移")
             if special[0] == ROLLUP251_PROFILE:
                 reviewed_rollup251_schema(base, sha, changed, git)
             if special[0] == CACHE250_PROFILE:
@@ -295,6 +308,10 @@ def migration_evidence(base, sha, git):
             require(approval.get("column") == contract and "profile" not in approval, "新增字段与兼容审批不符")
         contracts = approval.get("legacy_contracts", [])
         require(isinstance(contracts, list) and contracts, "缺少旧版读写契约审查")
+        if special and special[0] == ULTRAFAST252_PROFILE:
+            require(len(contracts) == len(ULTRAFAST252_LEGACY_PATHS) and
+                    {item.get("path") for item in contracts} == ULTRAFAST252_LEGACY_PATHS,
+                    "252旧渠道定价、批量替换及管理接口契约不完整")
         if special and special[0] == ROLLUP251_PROFILE:
             require(approval.get("schema_change") == ROLLUP251_SCHEMA, "251/252审批缺少固定分组Ent差异")
             require(len(contracts) == len(ROLLUP251_LEGACY_PATHS) and

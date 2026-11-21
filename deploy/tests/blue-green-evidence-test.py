@@ -15,6 +15,39 @@ spec.loader.exec_module(e)
 
 
 class EvidenceTests(unittest.TestCase):
+    def test_ultrafast252_exact_baseline_contracts_and_migration(self):
+        approval = next(item for item in json.loads((ROOT/e.APPROVALS_PATH).read_text())["approvals"]
+                        if item.get("profile") == e.ULTRAFAST252_PROFILE)
+        base, sha = e.ULTRAFAST252_BASE, "b"*40
+        path = "backend/migrations/"+e.ULTRAFAST252_FILE
+        for contract in approval["legacy_contracts"]:
+            contract["checksum"] = e.checksum("旧版契约")
+        approvals = {"version":1, "approvals":[approval]}
+        values = {"diff":"A\t"+path, sha+":"+path:(ROOT/path).read_text()}
+        def git(*args):
+            if args[0] == "diff": return values["diff"]
+            if args[0] == "show" and args[1] == sha+":"+e.APPROVALS_PATH: return json.dumps(approvals)
+            if args[0] == "show": return values.get(args[1], "旧版契约")
+            return ""
+        self.assertEqual("expand", e.migration_evidence(base,sha,git)["migration_class"])
+        with self.assertRaisesRegex(RuntimeError, "v0.1.269"):
+            e.migration_evidence("c"*40,sha,git)
+        for extra in ("A\tbackend/migrations/999_other.sql", "M\tbackend/ent/schema/group.go",
+                      "M\tbackend/migrations/250_openai_cache_write_ttl.sql"):
+            values["diff"] = "A\t"+path+"\n"+extra
+            with self.assertRaises(RuntimeError): e.migration_evidence(base,sha,git)
+        values["diff"] = "A\t"+path
+        original = copy.deepcopy(approval)
+        for field, value in (("checksum","0"*64), ("legacy_contracts",approval["legacy_contracts"][:-1]),
+                             ("profile","other"), ("compatible_from","c"*40)):
+            approvals["approvals"] = [dict(original, **{field:value})]
+            with self.assertRaises(RuntimeError): e.migration_evidence(base,sha,git)
+        approvals["approvals"] = [original, original]
+        with self.assertRaises(RuntimeError): e.migration_evidence(base,sha,git)
+        approvals["approvals"] = [original]
+        values[base+":"+original["legacy_contracts"][0]["path"]] = "契约变化"
+        with self.assertRaises(RuntimeError): e.migration_evidence(base,sha,git)
+
     def run_record(self, **changes):
         return dict({"id": 1, "head_sha": "a"*40, "event": "push", "status": "completed", "conclusion": "success", "html_url": "test", "run_attempt": 2}, **changes)
 

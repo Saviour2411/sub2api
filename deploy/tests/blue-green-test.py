@@ -926,6 +926,59 @@ class BlueGreenTests(unittest.TestCase):
             self.assertTrue(all(call.args == ("check",) for call in database.call_args_list))
         self.assertEqual("blue",self.deployment.routed)
 
+    def test_ultrafast252_guard_blocks_switch(self):
+        release = self.special_release()
+        release["migration_policy"]["migrations"] = [{"profile":"channel-ultrafast-guarded-252-v1"}]
+        for missing in ("valid", "migrations", "schema"):
+            report = {"valid":True,"migrations":True,"schema":True,missing:False}
+            with patch.object(self.deployment,"ultrafast252_guard_database",return_value=report):
+                with self.assertRaisesRegex(bg.Refused,"252"):
+                    self.deployment.deploy(release,window=0)
+            self.assertEqual("blue",self.deployment.routed)
+
+    def test_ultrafast252_guard_release_only_after_retirement(self):
+        release = self.special_release()
+        release["migration_policy"]["migrations"] = [{"profile":"channel-ultrafast-guarded-252-v1"}]
+        self.deployment.busy.add("blue")
+        events = []
+        def database(mode):
+            events.append((mode,self.deployment.state["phase"],self.deployment.state.get("pending")))
+            if mode == "check": return {"valid":True,"migrations":True,"schema":True}
+        with patch.object(self.deployment,"ultrafast252_guard_database",side_effect=database):
+            self.deployment.deploy(release,window=0)
+            self.assertEqual(["check"],[event[0] for event in events])
+            self.deployment.busy.clear()
+            self.deployment.deploy(release,window=0)
+            self.deployment.deploy(release,window=0)
+        self.assertTrue(all(phase == "stable" and pending is None for mode,phase,pending in events if mode == "release"))
+        self.assertEqual("released",self.deployment.state["ultrafast252_guard_result"]["status"])
+
+    def test_ultrafast252_rollback_retains_guard(self):
+        release = self.special_release()
+        release["migration_policy"]["migrations"] = [{"profile":"channel-ultrafast-guarded-252-v1"}]
+        self.deployment.busy.add("blue")
+        with patch.object(self.deployment,"ultrafast252_guard_database",return_value={"valid":True,"migrations":True,"schema":True}) as database:
+            self.deployment.deploy(release,window=0)
+            self.deployment.rollback(window=0)
+            self.assertTrue(all(call.args == ("check",) for call in database.call_args_list))
+        self.assertEqual("blue",self.deployment.routed)
+
+    def test_ultrafast252_release_failure_can_resume(self):
+        release = self.special_release()
+        release["migration_policy"]["migrations"] = [{"profile":"channel-ultrafast-guarded-252-v1"}]
+        def database(mode):
+            if mode == "check": return {"valid":True,"migrations":True,"schema":True}
+            raise bg.Refused("252保护解除失败")
+        with patch.object(self.deployment,"ultrafast252_guard_database",side_effect=database):
+            with self.assertRaisesRegex(bg.Refused,"252保护解除失败"):
+                self.deployment.deploy(release,window=0)
+        self.assertEqual("stable",self.deployment.state["phase"])
+        self.assertNotIn("ultrafast252_guard_result",self.deployment.state)
+        with patch.object(self.deployment,"ultrafast252_guard_database") as database:
+            self.deployment.deploy(release,window=0)
+            database.assert_called_once_with("release")
+        self.assertEqual("released",self.deployment.state["ultrafast252_guard_result"]["status"])
+
     def test_pricing_guard_release_follows_retirement_and_recovers(self):
         release = self.special_release()
         events = []

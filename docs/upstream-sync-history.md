@@ -12120,3 +12120,7 @@ A	frontend/src/views/admin/__tests__/ChannelsView.ultrafastPricing.spec.ts
 ```
 
 最终记录提交前本地main仍保持LOCAL_PRE_SYNC_SHA；用户追加授权的远端交付将在此记录提交后进行，必须等待对应PR提交的CI与安全扫描通过再合入远端main，随后仅以git merge --ff-only同步本地main。远端检查结果、PR编号、最终分支SHA及临时环境清理结果在交付总结和本轮本地证据中核对；若分支意外移动或不能快进，不强制覆盖。
+
+## 2026-11-21 v0.1.270 发布兼容补充
+
+用户在PR #60完成主线同步后要求更新tag自动蓝绿部署。新增252渠道Ultrafast倍率SQL继续保持上游原文，仅为生产v0.1.269补齐固定兼容策略channel-ultrafast-guarded-252-v1，绑定旧提交、SQL和五处旧版读写摘要；共存期间以NULL约束保护新倍率，旧槽退役并完成安全复核后自动解除。关联CUST-OPS-007与CUST-OPS-008，产品版本推进0.1.270，上游同步范围和来源0.2.24/328db26f450edbdf9f8d4344a3ea903ac6396842不变；无新增上游跳过、延期或历史SQL修改。细节和实际发布验收见docs/operations/2026-11-21-v0.1.270-release.md。
