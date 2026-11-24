@@ -240,6 +240,8 @@ func TestSettingService_GetGatewaySettings_UsesDefaultsAndStoredValues(t *testin
 	serviceWithDefaults := NewSettingService(&customFeatureSettingsRepoStub{}, &config.Config{})
 	defaults, err := serviceWithDefaults.GetGatewaySettings(context.Background())
 	require.NoError(t, err)
+	require.False(t, defaults.ResponseModelRewriteEnabled)
+	require.Equal(t, ResponseModelModeRequest, defaults.ResponseModelRewriteMode)
 	require.Equal(t, 1, defaults.DefaultPoolModeRetryCount)
 	require.Equal(t, []int{401, 403, 429, 502, 503, 504}, defaults.DefaultPoolModeRetryStatusCodes)
 	require.False(t, defaults.AdditionalFailoverStatusCodesEnabled)
@@ -301,6 +303,8 @@ func TestSettingService_UpdateGatewaySettings_NormalizesCachesAndReschedules(t *
 	svc.SetScheduledTestPlanRepository(planRepo)
 
 	updated, err := svc.UpdateGatewaySettings(context.Background(), GatewaySettings{
+		ResponseModelRewriteEnabled:              true,
+		ResponseModelRewriteMode:                 ResponseModelModeEmpty,
 		AnthropicStreamSafeRetryTotalWaitSeconds: 300,
 		DefaultPoolModeRetryCount:                2,
 		DefaultPoolModeRetryStatusCodes:          []int{503, 429, 503},
@@ -339,6 +343,12 @@ func TestSettingService_UpdateGatewaySettings_NormalizesCachesAndReschedules(t *
 	require.False(t, planRepo.rescheduledAt.IsZero())
 
 	runtime := svc.GetGatewayRuntime(context.Background())
+	require.True(t, runtime.ResponseModelRewriteEnabled)
+	require.Equal(t, ResponseModelModeEmpty, runtime.ResponseModelRewriteMode)
+	reloaded, err := NewSettingService(repo, nil).GetCustomFeatureSettings(context.Background())
+	require.NoError(t, err)
+	require.True(t, reloaded.Gateway.ResponseModelRewriteEnabled)
+	require.Equal(t, ResponseModelModeEmpty, reloaded.Gateway.ResponseModelRewriteMode)
 	require.Equal(t, 25, runtime.FirstTokenTimeoutSeconds)
 	require.True(t, runtime.AdditionalFailoverStatusCodesEnabled)
 	require.Equal(t, []int{409, 451}, runtime.AdditionalFailoverStatusCodes)
@@ -438,6 +448,7 @@ func TestSettingService_UpdateGatewaySettings_RejectsInvalidValues(t *testing.T)
 		mutate func(*GatewaySettings)
 	}{
 		{name: "retry count", mutate: func(v *GatewaySettings) { v.DefaultPoolModeRetryCount = 11 }},
+		{name: "无效响应型号模式", mutate: func(v *GatewaySettings) { v.ResponseModelRewriteMode = "unsupported" }},
 		{name: "status code", mutate: func(v *GatewaySettings) { v.DefaultPoolModeRetryStatusCodes = []int{99} }},
 		{name: "附加换号状态码越界", mutate: func(v *GatewaySettings) { v.AdditionalFailoverStatusCodes = []int{600} }},
 		{name: "附加换号状态码开启但为空", mutate: func(v *GatewaySettings) { v.AdditionalFailoverStatusCodes = []int{} }},

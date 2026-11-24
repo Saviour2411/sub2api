@@ -219,7 +219,7 @@ func TestImageTaskServiceCompleteOffloadsToStorage(t *testing.T) {
 	require.True(t, svc.Enabled())
 
 	owner := ImageTaskOwner{UserID: 1, APIKeyID: 2}
-	created, err := svc.Create(context.Background(), owner)
+	created, err := svc.Create(context.Background(), owner, "image-alias")
 	require.NoError(t, err)
 
 	b64 := base64.StdEncoding.EncodeToString(pngBytes)
@@ -241,7 +241,7 @@ func TestImageTaskServiceCompleteOffloadFailureMarksFailed(t *testing.T) {
 	svc := NewImageTaskServiceWithUploader(store, uploader, time.Hour, time.Minute)
 
 	owner := ImageTaskOwner{UserID: 1, APIKeyID: 2}
-	created, err := svc.Create(context.Background(), owner)
+	created, err := svc.Create(context.Background(), owner, "image-alias")
 	require.NoError(t, err)
 
 	b64 := base64.StdEncoding.EncodeToString(pngBytes)
@@ -286,7 +286,7 @@ func TestImageTaskServiceCompletePrivateURLMarksFailed(t *testing.T) {
 	storage := &fakeImageStorage{}
 	svc := NewImageTaskServiceWithUploader(store, NewImageResultUploader(storage, "images/", 0, nil), time.Hour, time.Minute)
 	owner := ImageTaskOwner{UserID: 1, APIKeyID: 2}
-	created, err := svc.Create(context.Background(), owner)
+	created, err := svc.Create(context.Background(), owner, "image-alias")
 	require.NoError(t, err)
 
 	result := json.RawMessage(`{"data":[{"url":"` + internal.URL + `/a.gif"}]}`)

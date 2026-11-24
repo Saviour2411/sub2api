@@ -55,13 +55,17 @@ func (r *safeHandlerUsageRepo) Create(_ context.Context, log *service.UsageLog) 
 
 type safeHandlerUpstream struct {
 	service.HTTPUpstream
-	earlyKeepalive bool
-	statuses       []int
-	bodies         []string
-	accounts       []int64
-	requests       [][]byte
-	responseBody   func(*http.Request, int) io.ReadCloser
-	runRequest     func(func())
+	earlyKeepalive  bool
+	clientModelMode string
+	plainStream     bool
+	nonStreaming    bool
+	requestedModel  string
+	statuses        []int
+	bodies          []string
+	accounts        []int64
+	requests        [][]byte
+	responseBody    func(*http.Request, int) io.ReadCloser
+	runRequest      func(func())
 }
 
 func (u *safeHandlerUpstream) DoWithTLS(req *http.Request, _ string, accountID int64, _ int, _ *tlsfingerprint.Profile) (*http.Response, error) {
@@ -84,7 +88,11 @@ func (u *safeHandlerUpstream) DoWithTLS(req *http.Request, _ string, accountID i
 	if i < len(u.statuses) {
 		status = u.statuses[i]
 	}
-	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": {"text/event-stream"}, "X-Request-Id": {fmt.Sprintf("upstream-%d", i)}}, Body: responseBody}, nil
+	contentType := "text/event-stream"
+	if u.nonStreaming {
+		contentType = "application/json"
+	}
+	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": {contentType}, "X-Request-Id": {fmt.Sprintf("upstream-%d", i)}}, Body: responseBody}, nil
 }
 
 func runSafeHandlerFixture(t *testing.T, upstream *safeHandlerUpstream, oneAccount bool, inspect ...func(*gin.Context)) (*httptest.ResponseRecorder, *safeHandlerUsageRepo) {
@@ -107,7 +115,7 @@ func runSafeHandlerFixture(t *testing.T, upstream *safeHandlerUpstream, oneAccou
 	cfg.Gateway.StreamDataIntervalTimeout = 180
 	settings := service.NewSettingService(&safeHandlerSettingsRepo{values: map[string]string{
 		service.SettingKeyGatewayAnthropicStreamSafeRetryEarlyKeepaliveEnabled: fmt.Sprint(upstream.earlyKeepalive),
-		service.SettingKeyGatewayAnthropicStreamSafeRetryEnabled:               "true", service.SettingKeyGatewayAnthropicStreamSafeRetryMaxRetries: "2", service.SettingKeyGatewayAnthropicStreamSafeRetryTotalWaitSeconds: "300", service.SettingKeyGatewayFirstTokenTimeoutSeconds: "0",
+		service.SettingKeyGatewayAnthropicStreamSafeRetryEnabled:               fmt.Sprint(!upstream.plainStream), service.SettingKeyGatewayAnthropicStreamSafeRetryMaxRetries: "2", service.SettingKeyGatewayAnthropicStreamSafeRetryTotalWaitSeconds: "300", service.SettingKeyGatewayFirstTokenTimeoutSeconds: "0",
 	}}, cfg)
 	rate := service.NewRateLimitService(nil, nil, cfg, nil, nil)
 	rate.SetSettingService(settings)
@@ -119,7 +127,11 @@ func runSafeHandlerFixture(t *testing.T, upstream *safeHandlerUpstream, oneAccou
 	h := &GatewayHandler{gatewayService: gateway, billingCacheService: billingCache, concurrencyHelper: NewConcurrencyHelper(service.NewConcurrencyService(&fakeConcurrencyCache{}), SSEPingFormatClaude, 0), cfg: cfg, maxAccountSwitches: 2}
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	reqBody := []byte(`{"model":"claude-sonnet-4-5","stream":true,"max_tokens":50,"messages":[{"role":"user","content":"测试请求"}]}`)
+	model := upstream.requestedModel
+	if model == "" {
+		model = "claude-sonnet-4-5"
+	}
+	reqBody := []byte(`{"model":"` + model + `","stream":` + fmt.Sprint(!upstream.nonStreaming) + `,"max_tokens":50,"messages":[{"role":"user","content":"测试请求"}]}`)
 	c.Request = httptest.NewRequest("POST", "/v1/messages", bytes.NewReader(reqBody))
 	c.Request.Header.Set("Content-Type", "application/json")
 	ctx := context.WithValue(c.Request.Context(), ctxkey.Group, group)
@@ -129,6 +141,9 @@ func runSafeHandlerFixture(t *testing.T, upstream *safeHandlerUpstream, oneAccou
 	c.Set(string(middleware.ContextKeyAPIKey), key)
 	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 2, Concurrency: 10})
 	run := func() {
+		if upstream.clientModelMode != "" {
+			c.Writer = newResponseModelWriter(c, upstream.clientModelMode, responseModelFields(c))
+		}
 		h.Messages(c)
 		for _, observe := range inspect {
 			observe(c)

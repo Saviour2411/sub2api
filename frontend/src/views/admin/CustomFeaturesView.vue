@@ -189,7 +189,23 @@
         </div>
 
         <div class="space-y-8 px-5 py-6 sm:px-6">
-          <section aria-labelledby="gateway-stream-safe-retry-title" data-test="gateway-stream-safe-retry">
+          <section aria-labelledby="gateway-response-model-title">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <h3 id="gateway-response-model-title" class="font-semibold text-gray-900 dark:text-white">{{ t('admin.customFeatures.gateway.responseModel.title') }}</h3>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.customFeatures.gateway.responseModel.description') }}</p>
+              </div>
+              <Toggle v-model="gateway.response_model_rewrite_enabled" aria-labelledby="gateway-response-model-title" data-test="gateway-response-model-enabled" />
+            </div>
+            <fieldset v-if="gateway.response_model_rewrite_enabled" class="mt-4 space-y-2">
+              <legend class="sr-only">{{ t('admin.customFeatures.gateway.responseModel.title') }}</legend>
+              <label v-for="mode in responseModelModes" :key="mode" class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                <input v-model="gateway.response_model_rewrite_mode" type="radio" name="response-model-mode" :value="mode" :data-test="`gateway-response-model-${mode}`" />
+                {{ t(`admin.customFeatures.gateway.responseModel.${mode}`) }}
+              </label>
+            </fieldset>
+          </section>
+          <section class="border-t border-gray-100 pt-8 dark:border-dark-700" aria-labelledby="gateway-stream-safe-retry-title" data-test="gateway-stream-safe-retry">
             <div class="flex items-start justify-between gap-4">
               <div>
                 <h3 id="gateway-stream-safe-retry-title" class="font-semibold text-gray-900 dark:text-white">{{ t('admin.customFeatures.gateway.streamSafeRetry.title') }}</h3>
@@ -1015,7 +1031,11 @@ const kimiCompatibilityOptions = [
   { field: 'kimi_thinking_type_retry_enabled', key: 'thinkingType' },
 ] as const
 
+const responseModelModes = ['request_model', 'empty'] as const
+
 const gateway = reactive<GatewaySettings>({
+  response_model_rewrite_enabled: false,
+  response_model_rewrite_mode: 'request_model',
   anthropic_stream_safe_retry_enabled: false,
   anthropic_stream_safe_retry_early_keepalive_enabled: false,
   anthropic_stream_safe_retry_max_retries: 2,
@@ -1108,6 +1128,8 @@ function cloneDailyCheckin(settings: DailyCheckinSettings): DailyCheckinSettings
 
 function cloneGateway(settings?: Partial<GatewaySettings>): GatewaySettings {
   return {
+    response_model_rewrite_enabled: settings?.response_model_rewrite_enabled ?? false,
+    response_model_rewrite_mode: settings?.response_model_rewrite_mode ?? 'request_model',
     default_pool_mode_retry_count: settings?.default_pool_mode_retry_count ?? 1,
     default_pool_mode_retry_status_codes: [
       ...(settings?.default_pool_mode_retry_status_codes ?? [401, 403, 429, 502, 503, 504])
@@ -1391,6 +1413,8 @@ async function saveGateway() {
   savingGateway.value = true
   try {
     const saved = await customFeaturesAPI.updateGateway({
+      response_model_rewrite_enabled: gateway.response_model_rewrite_enabled,
+      response_model_rewrite_mode: gateway.response_model_rewrite_mode,
       default_pool_mode_retry_count: Number(gateway.default_pool_mode_retry_count),
       default_pool_mode_retry_status_codes: validation.retryStatusCodes,
       additional_failover_status_codes_enabled:

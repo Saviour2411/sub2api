@@ -49,6 +49,7 @@ func RegisterGatewayRoutes(
 	clientRequestID := middleware.ClientRequestID()
 	opsErrorLogger := handler.OpsErrorLoggerMiddleware(opsService)
 	endpointNorm := handler.InboundEndpointMiddleware()
+	responseModel := handler.ResponseModelMiddleware(settingService, cfg)
 	trackImageGroupResult := func(c *gin.Context) { c.Next() }
 	if h != nil && h.ChannelMonitor != nil {
 		trackImageGroupResult = h.ChannelMonitor.TrackImageGroupRequestResult()
@@ -211,6 +212,7 @@ func RegisterGatewayRoutes(
 	gateway.Use(rejectConflictingFields)
 	gateway.Use(compositeTarget)
 	gateway.Use(requireGroupAnthropic)
+	gateway.Use(responseModel)
 	gateway.Use(trackImageGroupResult)
 	{
 		// /v1/messages: auto-route based on group platform
@@ -370,6 +372,7 @@ func RegisterGatewayRoutes(
 	gemini.Use(rejectConflictingFields)
 	gemini.Use(compositeGeminiTarget)
 	gemini.Use(requireGroupGoogle)
+	gemini.Use(responseModel)
 	gemini.Use(trackImageGroupResult)
 	{
 		gemini.GET("/models", h.Gateway.GeminiV1BetaListModels)
@@ -396,6 +399,7 @@ func RegisterGatewayRoutes(
 	// 之前，避免逐条路由手工维护链导致漏挂。
 	rootRoute := func(method, path string, limit gin.HandlerFunc, handler gin.HandlerFunc, extra ...gin.HandlerFunc) {
 		handlers := []gin.HandlerFunc{limit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), groupModelAllowlist, rejectConflictingFields, compositeTarget, requireGroupAnthropic}
+		handlers = append(handlers, responseModel)
 		handlers = append(handlers, extra...)
 		handlers = append(handlers, handler)
 		r.Handle(method, path, handlers...)
@@ -416,6 +420,7 @@ func RegisterGatewayRoutes(
 	rootRoute(http.MethodPost, "/messages/count_tokens", bodyLimit, countTokensHandler)
 	codexDirect := r.Group("/backend-api/codex")
 	codexDirect.Use(groupBodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), groupModelAllowlist, rejectConflictingFields, compositeTarget, requireGroupAnthropic, trackImageGroupResult)
+	codexDirect.Use(responseModel)
 	{
 		codexDirect.POST("/realtime/calls", h.OpenAIGateway.Live)
 		codexDirect.GET("/:call_id", h.OpenAIGateway.LiveSideband)
@@ -531,6 +536,7 @@ func RegisterGatewayRoutes(
 	antigravityV1.Use(groupModelAllowlist)
 	antigravityV1.Use(rejectConflictingFields)
 	antigravityV1.Use(requireGroupAnthropic)
+	antigravityV1.Use(responseModel)
 	antigravityV1.Use(trackImageGroupResult)
 	{
 		antigravityV1.POST("/messages", h.Gateway.Messages)
@@ -549,6 +555,7 @@ func RegisterGatewayRoutes(
 	antigravityV1Beta.Use(groupModelAllowlist)
 	antigravityV1Beta.Use(rejectConflictingFields)
 	antigravityV1Beta.Use(requireGroupGoogle)
+	antigravityV1Beta.Use(responseModel)
 	antigravityV1Beta.Use(trackImageGroupResult)
 	{
 		antigravityV1Beta.GET("/models", h.Gateway.GeminiV1BetaListModels)

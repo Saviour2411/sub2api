@@ -16,6 +16,8 @@ import {
 } from '@/api/admin/customFeatures'
 
 const gatewaySettings: GatewaySettings = {
+  response_model_rewrite_enabled: false,
+  response_model_rewrite_mode: 'request_model',
   anthropic_stream_safe_retry_enabled: false,
   anthropic_stream_safe_retry_early_keepalive_enabled: false,
   anthropic_stream_safe_retry_max_retries: 2,

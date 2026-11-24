@@ -126,6 +126,8 @@ function settingsFixture(): CustomFeatureSettings {
       linuxdo_exempt_enabled: true,
     },
     gateway: {
+      response_model_rewrite_enabled: false,
+      response_model_rewrite_mode: 'request_model',
       anthropic_stream_safe_retry_enabled: false,
       anthropic_stream_safe_retry_early_keepalive_enabled: false,
       anthropic_stream_safe_retry_max_retries: 2,
@@ -298,6 +300,8 @@ describe('admin CustomFeaturesView', () => {
     await flushPromises()
 
     expect(updateGateway).toHaveBeenCalledWith({
+      response_model_rewrite_enabled: false,
+      response_model_rewrite_mode: 'request_model',
       anthropic_stream_safe_retry_enabled: false,
       anthropic_stream_safe_retry_early_keepalive_enabled: false,
       anthropic_stream_safe_retry_max_retries: 2,
@@ -460,9 +464,33 @@ describe('admin CustomFeaturesView', () => {
     }
   })
 
+  it('开启后可选请求型号或空字符串，关闭时保留选择', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="custom-feature-tab-gateway"]').trigger('click')
+    const enabled = wrapper.get('[data-test="gateway-response-model-enabled"]')
+    expect(wrapper.find('[data-test="gateway-response-model-empty"]').exists()).toBe(false)
+    await enabled.trigger('click')
+    expect(wrapper.get<HTMLInputElement>('[data-test="gateway-response-model-request_model"]').element.checked).toBe(true)
+    await wrapper.get('[data-test="gateway-response-model-empty"]').setValue()
+    await wrapper.get('[data-test="gateway-form"]').trigger('submit')
+    await flushPromises()
+    expect(updateGateway).toHaveBeenLastCalledWith(expect.objectContaining({
+      response_model_rewrite_enabled: true, response_model_rewrite_mode: 'empty',
+    }))
+    await enabled.trigger('click')
+    await wrapper.get('[data-test="gateway-form"]').trigger('submit')
+    await flushPromises()
+    expect(updateGateway).toHaveBeenLastCalledWith(expect.objectContaining({
+      response_model_rewrite_enabled: false, response_model_rewrite_mode: 'empty',
+    }))
+  })
+
   it('旧版响应缺失新字段时使用安全默认值', async () => {
     const legacySettings = settingsFixture()
     const legacyGateway: Partial<GatewaySettings> = { ...legacySettings.gateway }
+    delete legacyGateway.response_model_rewrite_enabled
+    delete legacyGateway.response_model_rewrite_mode
     delete legacyGateway.anthropic_stream_safe_retry_enabled
     delete legacyGateway.anthropic_stream_safe_retry_early_keepalive_enabled
     delete legacyGateway.anthropic_stream_safe_retry_max_retries

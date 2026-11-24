@@ -44,10 +44,12 @@ func TestImageTaskServiceLifecycleAndOwnership(t *testing.T) {
 	svc := NewImageTaskServiceWithOptions(store, time.Hour, 10*time.Minute)
 	owner := ImageTaskOwner{UserID: 7, APIKeyID: 9}
 
-	created, err := svc.Create(context.Background(), owner)
+	created, err := svc.Create(context.Background(), owner, "image-alias")
 	require.NoError(t, err)
 	require.Equal(t, ImageTaskStatusProcessing, created.Status)
 	require.Equal(t, created.ID, created.TaskID)
+	require.Equal(t, "image-alias", created.RequestedModel)
+	require.Equal(t, "image-alias", store.task.RequestedModel)
 	require.Equal(t, "image.generation.task", created.Object)
 	require.Equal(t, time.Hour, store.ttl)
 	require.Equal(t, owner.UserID, store.task.UserID)
@@ -71,7 +73,7 @@ func TestImageTaskServiceLifecycleAndOwnership(t *testing.T) {
 func TestImageTaskServiceInvalidResultBecomesFailed(t *testing.T) {
 	store := &imageTaskMemoryStore{}
 	svc := NewImageTaskServiceWithOptions(store, time.Hour, time.Minute)
-	created, err := svc.Create(context.Background(), ImageTaskOwner{UserID: 1, APIKeyID: 2})
+	created, err := svc.Create(context.Background(), ImageTaskOwner{UserID: 1, APIKeyID: 2}, "image-alias")
 	require.NoError(t, err)
 
 	require.NoError(t, svc.Complete(context.Background(), created.ID, http.StatusOK, json.RawMessage(`not-json`)))
@@ -86,6 +88,6 @@ func TestImageTaskServiceMapsStoreFailures(t *testing.T) {
 	store := &imageTaskMemoryStore{saveErr: errors.New("redis down")}
 	svc := NewImageTaskService(store)
 
-	_, err := svc.Create(context.Background(), ImageTaskOwner{UserID: 1, APIKeyID: 2})
+	_, err := svc.Create(context.Background(), ImageTaskOwner{UserID: 1, APIKeyID: 2}, "image-alias")
 	require.ErrorIs(t, err, ErrImageTaskUnavailable)
 }

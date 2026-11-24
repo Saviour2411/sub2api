@@ -212,6 +212,7 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 		if model == "" {
 			model = "gpt-live"
 		}
+		publicModel, _ := RequestedPublicModelFromContext(ctx)
 		record := &LiveCallRecord{
 			CallID:                created.CallID,
 			CallHash:              hashLiveCallID(created.CallID),
@@ -222,6 +223,7 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 			SubscriptionID:        liveGroupID(identity.SubscriptionID),
 			LeaseID:               leaseID,
 			Model:                 model,
+			ClientModel:           publicModel,
 			CreatedAt:             now,
 			ExpiresAt:             now.Add(s.liveMaxSessionDuration()),
 			Controller:            LiveControllerPending,
@@ -524,6 +526,7 @@ func (s *OpenAIGatewayService) ProxyLiveSideband(
 	defer func() { _ = upstream.Close() }()
 	downstream.SetReadLimit(openAIWSMessageReadLimitBytes)
 
+	clientModel := NewClientResponseModel(s.settingService.ClientResponseModelMode(), firstNonEmpty(record.ClientModel, record.Model))
 	proxyCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	errCh := make(chan error, 2)
@@ -547,7 +550,11 @@ func (s *OpenAIGatewayService) ProxyLiveSideband(
 				errCh <- liveSidebandReadError(readErr)
 				return
 			}
-			if writeErr := downstream.Write(proxyCtx, messageType, payload); writeErr != nil {
+			wire := payload
+			if messageType == coderws.MessageText {
+				wire, _ = clientModel.Rewrite(payload, "model", "session.model", "response.model")
+			}
+			if writeErr := downstream.Write(proxyCtx, messageType, wire); writeErr != nil {
 				errCh <- writeErr
 				return
 			}

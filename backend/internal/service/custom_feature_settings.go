@@ -39,6 +39,8 @@ const (
 	MaxGatewayPoolModeRetryCount                        = 10
 	MaxGatewayFirstTokenTimeoutSeconds                  = 600
 	MaxGatewayFailureConsecutiveThreshold               = 100
+	ResponseModelModeRequest                            = "request_model"
+	ResponseModelModeEmpty                              = "empty"
 	gatewaySettingsCacheTTL                             = 60 * time.Second
 	gatewaySettingsErrorCacheTTL                        = 5 * time.Second
 	gatewaySettingsDBTimeout                            = 5 * time.Second
@@ -79,6 +81,8 @@ type DailyCheckinSettings struct {
 
 // GatewaySettings 是二开功能中的网关运行配置。
 type GatewaySettings struct {
+	ResponseModelRewriteEnabled                              bool     `json:"response_model_rewrite_enabled"`
+	ResponseModelRewriteMode                                 string   `json:"response_model_rewrite_mode"`
 	AnthropicStreamSafeRetryEnabled                          bool     `json:"anthropic_stream_safe_retry_enabled"`
 	AnthropicStreamSafeRetryEarlyKeepaliveEnabled            bool     `json:"anthropic_stream_safe_retry_early_keepalive_enabled"`
 	AnthropicStreamSafeRetryMaxRetries                       int      `json:"anthropic_stream_safe_retry_max_retries"`
@@ -138,6 +142,8 @@ type CustomFeatureSettings struct {
 }
 
 var gatewaySettingKeys = []string{
+	SettingKeyGatewayResponseModelRewriteEnabled,
+	SettingKeyGatewayResponseModelRewriteMode,
 	SettingKeyGatewayAnthropicStreamSafeRetryEarlyKeepaliveEnabled,
 	SettingKeyGatewayAnthropicStreamSafeRetryFirstContentTimeoutSeconds,
 	SettingKeyGatewayFirstTokenTimeoutScope,
@@ -172,6 +178,8 @@ var gatewaySettingKeys = []string{
 }
 
 var customFeatureSettingKeys = []string{
+	SettingKeyGatewayResponseModelRewriteEnabled,
+	SettingKeyGatewayResponseModelRewriteMode,
 	SettingKeyGatewayAnthropicStreamSafeRetryEarlyKeepaliveEnabled,
 	SettingKeyGatewayAnthropicStreamSafeRetryFirstContentTimeoutSeconds,
 	SettingKeyGatewayFirstTokenTimeoutScope,
@@ -220,6 +228,7 @@ var customFeatureSettingKeys = []string{
 
 // GetCustomFeatureSettings 读取模型广场和每日签到配置。
 func (s *SettingService) GetCustomFeatureSettings(ctx context.Context) (*CustomFeatureSettings, error) {
+	cacheBeforeRead := s.gatewaySettingsCache.Load()
 	values, err := s.settingRepo.GetMultiple(ctx, customFeatureSettingKeys)
 	if err != nil {
 		return nil, fmt.Errorf("get custom feature settings: %w", err)
@@ -252,7 +261,7 @@ func (s *SettingService) GetCustomFeatureSettings(ctx context.Context) (*CustomF
 		LegacyMax:            maxAmount,
 	}
 	gateway := parseGatewaySettings(values)
-	s.storeGatewaySettingsCache(gateway, gatewaySettingsCacheTTL)
+	s.gatewaySettingsCache.CompareAndSwap(cacheBeforeRead, newCachedGatewaySettings(gateway, gatewaySettingsCacheTTL))
 
 	return &CustomFeatureSettings{
 		ModelMarketplace: marketplace,
@@ -278,6 +287,8 @@ func (s *SettingService) UpdateCanvasSettings(ctx context.Context, input CanvasS
 // DefaultGatewaySettings 返回未持久化配置时使用的默认值。
 func DefaultGatewaySettings() GatewaySettings {
 	return GatewaySettings{
+		ResponseModelRewriteEnabled:                        false,
+		ResponseModelRewriteMode:                           ResponseModelModeRequest,
 		AnthropicStreamSafeRetryEnabled:                    false,
 		AnthropicStreamSafeRetryMaxRetries:                 2,
 		AnthropicStreamSafeRetryTotalWaitSeconds:           300,
@@ -314,12 +325,14 @@ func (s *SettingService) GetGatewaySettings(ctx context.Context) (*GatewaySettin
 		settings := DefaultGatewaySettings()
 		return &settings, nil
 	}
+	cacheBeforeRead := s.gatewaySettingsCache.Load()
 	values, err := s.settingRepo.GetMultiple(ctx, gatewaySettingKeys)
 	if err != nil {
 		return nil, fmt.Errorf("读取网关配置: %w", err)
 	}
 	settings := parseGatewaySettings(values)
-	s.storeGatewaySettingsCache(settings, gatewaySettingsCacheTTL)
+	// 读库期间管理员可能已保存新设置。不能用先前的查询结果覆盖新快照。
+	s.gatewaySettingsCache.CompareAndSwap(cacheBeforeRead, newCachedGatewaySettings(settings, gatewaySettingsCacheTTL))
 	return &settings, nil
 }
 
@@ -341,6 +354,7 @@ func (s *SettingService) GetGatewayRuntime(ctx context.Context) GatewaySettings 
 		}
 		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), gatewaySettingsDBTimeout)
 		defer cancel()
+		cacheBeforeRead := s.gatewaySettingsCache.Load()
 		settings, err := s.GetGatewaySettings(dbCtx)
 		if err != nil {
 			slog.Warn("读取网关运行配置失败，使用缓存或默认值", "error", err)
@@ -348,7 +362,7 @@ func (s *SettingService) GetGatewayRuntime(ctx context.Context) GatewaySettings 
 			if cached, ok := s.gatewaySettingsCache.Load().(*cachedGatewaySettings); ok && cached != nil {
 				fallback = cloneGatewaySettings(cached.settings)
 			}
-			s.storeGatewaySettingsCache(fallback, gatewaySettingsErrorCacheTTL)
+			s.gatewaySettingsCache.CompareAndSwap(cacheBeforeRead, newCachedGatewaySettings(fallback, gatewaySettingsErrorCacheTTL))
 			return fallback, nil
 		}
 		return cloneGatewaySettings(*settings), nil
@@ -369,6 +383,9 @@ func (s *SettingService) UpdateGatewaySettings(ctx context.Context, input Gatewa
 	if input.FirstTokenTimeoutScope == "" {
 		input.FirstTokenTimeoutScope = current.FirstTokenTimeoutScope
 		input.FirstTokenTimeoutGroupIDs = append([]int64{}, current.FirstTokenTimeoutGroupIDs...)
+	}
+	if input.ResponseModelRewriteMode == "" {
+		input.ResponseModelRewriteMode = current.ResponseModelRewriteMode
 	}
 	input.AnthropicSamplingParameterFilterModels = normalizeAnthropicSamplingParameterFilterModels(input.AnthropicSamplingParameterFilterModels)
 	input.AnthropicSamplingParameterFilterExcludedGroupIDs = normalizeCustomFeatureGroupIDs(input.AnthropicSamplingParameterFilterExcludedGroupIDs)
@@ -416,6 +433,8 @@ func (s *SettingService) UpdateGatewaySettings(ctx context.Context, input Gatewa
 		return nil, fmt.Errorf("序列化 Anthropic 采样参数过滤模型: %w", err)
 	}
 	updates := map[string]string{
+		SettingKeyGatewayResponseModelRewriteEnabled:                              strconv.FormatBool(input.ResponseModelRewriteEnabled),
+		SettingKeyGatewayResponseModelRewriteMode:                                 input.ResponseModelRewriteMode,
 		SettingKeyGatewayAnthropicStreamSafeRetryEnabled:                          strconv.FormatBool(input.AnthropicStreamSafeRetryEnabled),
 		SettingKeyGatewayAnthropicStreamSafeRetryEarlyKeepaliveEnabled:            strconv.FormatBool(input.AnthropicStreamSafeRetryEarlyKeepaliveEnabled),
 		SettingKeyGatewayAnthropicStreamSafeRetryFirstContentTimeoutSeconds:       strconv.Itoa(input.AnthropicStreamSafeRetryFirstContentTimeoutSeconds),
@@ -537,6 +556,10 @@ func ApplyGatewayPoolModeDefaults(accountType string, credentials map[string]any
 
 func parseGatewaySettings(values map[string]string) GatewaySettings {
 	settings := DefaultGatewaySettings()
+	settings.ResponseModelRewriteEnabled = strings.EqualFold(strings.TrimSpace(values[SettingKeyGatewayResponseModelRewriteEnabled]), "true")
+	if mode := strings.TrimSpace(values[SettingKeyGatewayResponseModelRewriteMode]); mode == ResponseModelModeRequest || mode == ResponseModelModeEmpty {
+		settings.ResponseModelRewriteMode = mode
+	}
 	settings.AnthropicStreamSafeRetryEnabled = strings.EqualFold(strings.TrimSpace(values[SettingKeyGatewayAnthropicStreamSafeRetryEnabled]), "true")
 	settings.AnthropicStreamSafeRetryEarlyKeepaliveEnabled = strings.EqualFold(strings.TrimSpace(values[SettingKeyGatewayAnthropicStreamSafeRetryEarlyKeepaliveEnabled]), "true")
 	if n, err := strconv.Atoi(values[SettingKeyGatewayAnthropicStreamSafeRetryMaxRetries]); err == nil && n >= 0 && n <= 5 {
@@ -629,6 +652,12 @@ func parseGatewaySettings(values map[string]string) GatewaySettings {
 }
 
 func validateGatewaySettings(settings *GatewaySettings) error {
+	if settings.ResponseModelRewriteMode == "" {
+		settings.ResponseModelRewriteMode = ResponseModelModeRequest
+	}
+	if settings.ResponseModelRewriteMode != ResponseModelModeRequest && settings.ResponseModelRewriteMode != ResponseModelModeEmpty {
+		return ErrGatewaySettingsInvalid.WithMetadata(map[string]string{"field": "response_model_rewrite_mode"})
+	}
 	if settings.AnthropicStreamSafeRetryMaxRetries < 0 || settings.AnthropicStreamSafeRetryMaxRetries > 5 {
 		return ErrGatewaySettingsInvalid.WithMetadata(map[string]string{"field": "anthropic_stream_safe_retry_max_retries"})
 	}
@@ -775,10 +804,14 @@ func (s *SettingService) storeGatewaySettingsCache(settings GatewaySettings, ttl
 	if s == nil {
 		return
 	}
-	s.gatewaySettingsCache.Store(&cachedGatewaySettings{
+	s.gatewaySettingsCache.Store(newCachedGatewaySettings(settings, ttl))
+}
+
+func newCachedGatewaySettings(settings GatewaySettings, ttl time.Duration) *cachedGatewaySettings {
+	return &cachedGatewaySettings{
 		settings:  cloneGatewaySettings(settings),
 		expiresAt: time.Now().Add(ttl).UnixNano(),
-	})
+	}
 }
 
 // GetDailyCheckinSettings 读取签到运行时配置，确保与管理接口使用同一解析逻辑。

@@ -43,6 +43,8 @@ export interface DailyCheckinSettings {
 }
 
 export interface GatewaySettings {
+  response_model_rewrite_enabled: boolean
+  response_model_rewrite_mode: 'request_model' | 'empty'
   anthropic_stream_safe_retry_enabled: boolean
   anthropic_stream_safe_retry_early_keepalive_enabled: boolean
   anthropic_stream_safe_retry_max_retries: number

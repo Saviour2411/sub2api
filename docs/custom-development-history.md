@@ -1,5 +1,13 @@
 # 二次开发功能台账
 
+## 2026-11-24 客户端响应型号配置
+
+新增 `CUST-GW-017`。管理员可在「二开功能 → 网关配置 → 客户端响应型号」开启全局回写，选择返回客户端原始请求型号，或将响应声明的型号写为空字符串。开关默认关闭。协议没有声明型号的增量、工具参数和正文原样交付。用量审计继续记录上游声明的型号。
+
+HTTP 在账号映射、协议转换和审计后处理实际交付的 JSON 与 SSE，覆盖 Anthropic Messages、OpenAI Chat 和 Responses、Gemini 原生接口及网关别名。Responses WebSocket 在每轮请求确认后冻结型号。异步结果使用任务创建时保存的型号，历史任务缺少这个值时，匹配模式沿用已有结果。
+
+本地用 `claude-sonnet-5-5` 请求和 `claude-sonnet-5.5` 上游响应验证两种模式，覆盖非流式、普通透传流和安全重试流。回归同时校验客户端字段、原始审计和用量。首帧与首段文本分别在测试上游等待客户端确认期间成功送达。Apple M4、Go 1.27.4 的 HTTP 写入基准各重复三次，开启两种模式时，Claude 首帧中位数为 0.41 微秒，4 KiB Chat 工具分块为 3.38 至 3.55 微秒。生产首字耗时需部署后观测。
+
 ## 2026-11-22 v0.1.271 自动蓝绿发布
 
 用户在 PR #62 合入后要求更新 tag 自动蓝绿部署。关联 CUST-BILL-001、CUST-OPS-001 和 CUST-OPS-008，v0.1.271 绑定主线 CI 与安全扫描已通过的 c8c14a20c，现有发布流程自动回写版本文件。相较生产 v0.1.270 没有数据库迁移，不改变资源、超时、计费和发布策略。
@@ -191,7 +199,7 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 - 本次同步范围：`a60a29549..b8dece9000`，62个上游提交（43个非合并、19个合并）；63项既有能力族编号全部保留，无跳过或延期提交；本地覆盖、实际验证和未覆盖范围见本轮同步记录
 - 历史识别统计（2026-09-02，`5097b3145..35c28e324`）：919 个差异文件，新增130491行、删除5976行、本地独有512个提交；此为历史快照，不代表本次同步后的统计
 - 2026-09-05 历史代码基线差异（`ab99d56e9..289a00a46`）：926个文件，新增130999行、删除6037行；本地独有517个提交（不含最后记录补记）
-- 当前能力族：69 项，分布在 9 个功能域；2026-11-19恢复同一归档编号`CUST-OBS-004`并扩展并发诊断；2026-11-05新增`CUST-PROTO-009`；2026-11-01新增`CUST-BILL-008`；2026-09-20核对59项已有清单（含`CUST-GW-014`）并新增`CUST-OPS-006`，2026-09-21新增`CUST-OPS-007`，2026-09-22新增`CUST-GW-015`，2026-09-23新增`CUST-OPS-008`，2026-10-09新增`CUST-GW-016`，2026-10-15新增`CUST-OBS-003`，2026-10-18新增`CUST-UI-006`；全部编号保留，不复用或删除
+- 当前共有 70 项能力，分布在 9 个功能域。2026-11-24 新增 `CUST-GW-017`。2026-11-19恢复同一归档编号`CUST-OBS-004`并扩展并发诊断；2026-11-05新增`CUST-PROTO-009`；2026-11-01新增`CUST-BILL-008`；2026-09-20核对59项已有清单（含`CUST-GW-014`）并新增`CUST-OPS-006`，2026-09-21新增`CUST-OPS-007`，2026-09-22新增`CUST-GW-015`，2026-09-23新增`CUST-OPS-008`，2026-10-09新增`CUST-GW-016`，2026-10-15新增`CUST-OBS-003`，2026-10-18新增`CUST-UI-006`；全部编号保留，不复用或删除
 
 这组数字只用于确认分析边界，不能直接等同于功能数量。生成代码、测试、文案、上游提交的本地适配和同一能力的连续修复均会放大差异规模。
 
@@ -256,6 +264,7 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 | `CUST-GW-014` | Claude 安全重试提前 JSON 保活 | 在安全重试开启时，可选于首次成功流响应后立即发送标准 JSON `ping`，流读取期间按保活间隔继续发送（间隔未配置时使用10秒）。只发送无尝试身份的保活，暂存 `message_start` 与空前导；交付有效内容或未知不可撤销事件后禁止重放。保活不延长有效内容、空闲、首 Token 或总等待预算，不改变原有上游首事件统计。提前响应后的最终失败以 SSE 错误结束，非重试 HTTP 错误不得混写 JSON；失败尝试的响应头、消息身份与用量不得混入成功输出。 2026-10-13 上游适配：重试耗尽错误新增模型参数，仍区分提前 JSON 保活与实际语义输出提交。 | `backend/internal/service/anthropic_stream_guard.go`、`backend/internal/service/anthropic_stream_safe_retry.go`、`backend/internal/service/custom_feature_settings.go`、`frontend/src/views/admin/CustomFeaturesView.vue` | 已发布v0.1.241（默认关闭） |
 | `CUST-GW-015` | Kimi 思考模式类型兼容重试 | 在既有 Kimi 参数兼容重试中新增默认关闭的独立开关，仅对 Kimi 类型分组的 Chat Completions 出站、明确400枚举报错及实际非法 `thinking.type` 生效。剥离整个 `thinking`，保留独立思考强度与输出上限，每请求最多一次；嵌套预算/keep 随之移除，已提交响应或取消不重放。五项规则累计最多额外五次，修正沿用至外层重试与换号，不影响其他分组及原生其他协议。 2026-10-13 上游适配：共享错误体读取新增完整性判断，同时保留读取错误返回值和 Kimi 参数重试调用契约。 | `backend/internal/service/kimi_parameter_compat.go`、`backend/internal/service/custom_feature_settings.go`、`frontend/src/views/admin/CustomFeaturesView.vue` | 待发布，默认关闭 |
 | `CUST-GW-016` | Kimi 动态工具契约与渠道兼容 | 新增默认关闭的独立网关开关，仅 Kimi 类型分组的 Chat Completions 入站生效。在并发排队和协议转换前拒绝错误角色、非空正文、非法定义及重名；接纳 KVV 空正文声明并合并到顶层工具，保留普通消息、工具历史与上游 usage。支持既有 CC/Responses/Anthropic 出站路由，开关请求级冻结，重试不重复合并；不修正 Token 基准，不宣称原生动态工具缓存语义等价。 2026-10-13 上游适配：Responses 转换回退仍传播插件已发送的不可重放错误，保留动态工具与首输出生命周期。 | `backend/internal/service/kimi_dynamic_tools.go`、`backend/internal/handler/openai_chat_completions.go`、`frontend/src/views/admin/CustomFeaturesView.vue`、`docs/kimi-dynamic-tools.md` | 待发布，默认关闭 |
+| `CUST-GW-017` | 客户端响应型号 | 全局开关默认关闭。开启后可按客户端请求型号或空字符串写回已有的协议型号字段。原始上游审计与计费用量独立保留。 | `backend/internal/handler/client_response_model.go`、`backend/internal/service/client_response_model.go`、`frontend/src/views/admin/CustomFeaturesView.vue` | 本地待发布 |
 
 ### 协议与上游兼容
 

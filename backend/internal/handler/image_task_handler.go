@@ -93,7 +93,8 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 		imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", "streaming image requests cannot be submitted as asynchronous tasks")
 		return
 	}
-	if err := h.validateRequest(c, platform, body); err != nil {
+	requestModel, err := h.validateRequest(c, platform, body)
+	if err != nil {
 		imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return
 	}
@@ -108,7 +109,7 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 		}
 		return
 	}
-	task, err := h.tasks.Create(c.Request.Context(), service.ImageTaskOwner{UserID: apiKey.UserID, APIKeyID: apiKey.ID})
+	task, err := h.tasks.Create(c.Request.Context(), service.ImageTaskOwner{UserID: apiKey.UserID, APIKeyID: apiKey.ID}, clientRequestedModel(c, requestModel))
 	if err != nil {
 		cancel()
 		imageTaskError(c, err)
@@ -191,28 +192,29 @@ func (h *AsyncImageHandler) Get(c *gin.Context) {
 	if task.Status == service.ImageTaskStatusProcessing {
 		c.Header("Retry-After", "3")
 	}
+	setOpsRequestContext(c, task.RequestedModel, false)
 	c.JSON(http.StatusOK, task)
 }
 
-func (h *AsyncImageHandler) validateRequest(c *gin.Context, platform string, body []byte) error {
+func (h *AsyncImageHandler) validateRequest(c *gin.Context, platform string, body []byte) (string, error) {
 	if h.openAI == nil || h.openAI.gatewayService == nil {
-		return nil
+		return "", nil
 	}
 	if platform == service.PlatformGrok {
 		parsed := service.ParseGrokMediaRequest(c.GetHeader("Content-Type"), body)
 		if strings.TrimSpace(parsed.Model) == "" {
-			return errors.New("model is required")
+			return "", errors.New("model is required")
 		}
-		return nil
+		return parsed.Model, nil
 	}
 	parsed, err := h.openAI.gatewayService.ParseOpenAIImagesRequest(c, body)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if parsed.Stream {
-		return errors.New("streaming image requests cannot be submitted as asynchronous tasks")
+		return "", errors.New("streaming image requests cannot be submitted as asynchronous tasks")
 	}
-	return nil
+	return parsed.Model, nil
 }
 
 func (h *AsyncImageHandler) executeWithGateway(platform string, c *gin.Context) {
