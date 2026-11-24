@@ -469,7 +469,7 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 		clientBeta = beta
 	}
 	if sanitized, changed := sanitizeAnthropicBodyForBetaTokensWithOptions(body, clientBeta, anthropicBodySanitizeOptions{
-		preserveThinkingBlockBinding: true,
+		apiKeyPassthrough: true,
 	}); changed {
 		body = sanitized
 	}

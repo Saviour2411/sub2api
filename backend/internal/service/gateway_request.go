@@ -1162,8 +1162,8 @@ const anthropicBetaContextManagementToken = "context-management-2025-06-27"
 // 问题场景：
 //   - context_management 是 Claude Code CLI 2.1.87+ 默认携带的 beta 字段
 //     （含 clear_thinking_20251015 等清理策略）
-//   - 其被 Anthropic 上游接受的前提是 anthropic-beta header 含
-//     `context-management-2025-06-27`
+//   - clear_thinking_20251015 等清理策略需要 `context-management-2025-06-27`，
+//     服务端压缩 compact_20260112 使用独立的 `compact-2026-01-12`
 //   - 若两侧不一致上游 Pydantic schema 拒收：
 //     "context_management: Extra inputs are not permitted"
 //
@@ -1211,7 +1211,7 @@ func sanitizeAnthropicBodyForBetaTokens(body []byte, anthropicBetaHeader string)
 }
 
 type anthropicBodySanitizeOptions struct {
-	preserveThinkingBlockBinding bool
+	apiKeyPassthrough bool
 }
 
 func sanitizeAnthropicBodyForBetaTokensWithOptions(body []byte, anthropicBetaHeader string, opts anthropicBodySanitizeOptions) ([]byte, bool) {
@@ -1221,15 +1221,13 @@ func sanitizeAnthropicBodyForBetaTokensWithOptions(body []byte, anthropicBetaHea
 
 	changed := false
 
-	// context_management：需要 context-management beta。
-	if b, deleted := stripAnthropicBodyFieldUnlessBeta(
-		body, "context_management", anthropicBetaHeader, anthropicBetaContextManagementToken,
-	); deleted {
-		body, changed = b, true
-	}
-
-	// 透传必须保留客户端的绑定要求，由上游决定是否接受并校验签名。
-	if !opts.preserveThinkingBlockBinding {
+	// API Key 透传将上下文编辑策略和思考块绑定要求交由上游校验。
+	if !opts.apiKeyPassthrough {
+		if b, deleted := stripAnthropicBodyFieldUnlessBeta(
+			body, "context_management", anthropicBetaHeader, anthropicBetaContextManagementToken,
+		); deleted {
+			body, changed = b, true
+		}
 		if b, deleted := stripAnthropicBodyFieldUnlessBeta(
 			body, "thinking.block_binding", anthropicBetaHeader, claude.BetaThinkingBindingControls,
 		); deleted {
