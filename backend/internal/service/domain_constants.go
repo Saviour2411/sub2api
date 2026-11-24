@@ -407,6 +407,8 @@ const (
 	SettingKeyDailyCheckinLinuxDoExemptEnabled = "daily_checkin_linuxdo_exempt_enabled"
 
 	// 二开功能 - 网关配置。
+	SettingKeyGatewayResponseModelRewriteEnabled                              = "gateway_response_model_rewrite_enabled"
+	SettingKeyGatewayResponseModelRewriteMode                                 = "gateway_response_model_rewrite_mode"
 	SettingKeyGatewayAnthropicStreamSafeRetryEnabled                          = "gateway_anthropic_stream_safe_retry_enabled"
 	SettingKeyGatewayAnthropicStreamSafeRetryEarlyKeepaliveEnabled            = "gateway_anthropic_stream_safe_retry_early_keepalive_enabled"
 	SettingKeyGatewayAnthropicStreamSafeRetryMaxRetries                       = "gateway_anthropic_stream_safe_retry_max_retries"

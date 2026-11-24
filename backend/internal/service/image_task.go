@@ -42,6 +42,9 @@ type ImageTaskRecord struct {
 	CreatedAt   int64           `json:"created_at"`
 	CompletedAt *int64          `json:"completed_at,omitempty"`
 	ExpiresAt   int64           `json:"expires_at"`
+
+	// 提交时的原始型号，用于轮询结果时的客户端回写。
+	RequestedModel string `json:"requested_model,omitempty"`
 }
 
 // ImageTask is the API-safe task representation returned to callers.
@@ -57,6 +60,9 @@ type ImageTask struct {
 	CreatedAt   int64           `json:"created_at"`
 	CompletedAt *int64          `json:"completed_at,omitempty"`
 	ExpiresAt   int64           `json:"expires_at"`
+
+	// 提交时的原始型号，用于轮询结果时的客户端回写。
+	RequestedModel string `json:"-"`
 }
 
 type ImageTaskOwner struct {
@@ -150,18 +156,19 @@ func (s *ImageTaskService) ExecutionTimeout() time.Duration {
 	return s.executionTimeout
 }
 
-func (s *ImageTaskService) Create(ctx context.Context, owner ImageTaskOwner) (*ImageTask, error) {
+func (s *ImageTaskService) Create(ctx context.Context, owner ImageTaskOwner, requestedModel string) (*ImageTask, error) {
 	if s == nil || s.store == nil {
 		return nil, ErrImageTaskUnavailable
 	}
 	now := time.Now().UTC()
 	task := &ImageTaskRecord{
-		ID:        "imgtask_" + strings.ReplaceAll(uuid.NewString(), "-", ""),
-		UserID:    owner.UserID,
-		APIKeyID:  owner.APIKeyID,
-		Status:    ImageTaskStatusProcessing,
-		CreatedAt: now.Unix(),
-		ExpiresAt: now.Add(s.ttl).Unix(),
+		RequestedModel: requestedModel,
+		ID:             "imgtask_" + strings.ReplaceAll(uuid.NewString(), "-", ""),
+		UserID:         owner.UserID,
+		APIKeyID:       owner.APIKeyID,
+		Status:         ImageTaskStatusProcessing,
+		CreatedAt:      now.Unix(),
+		ExpiresAt:      now.Add(s.ttl).Unix(),
 	}
 	if err := s.store.Save(ctx, task, s.ttl); err != nil {
 		return nil, ErrImageTaskUnavailable.WithCause(err)
@@ -240,17 +247,18 @@ func imageTaskToPublic(task *ImageTaskRecord) *ImageTask {
 		return nil
 	}
 	return &ImageTask{
-		ID:          task.ID,
-		TaskID:      task.ID,
-		Object:      "image.generation.task",
-		Status:      task.Status,
-		HTTPStatus:  task.HTTPStatus,
-		ImageURL:    firstImageTaskURL(task.Result),
-		Result:      task.Result,
-		Error:       task.Error,
-		CreatedAt:   task.CreatedAt,
-		CompletedAt: task.CompletedAt,
-		ExpiresAt:   task.ExpiresAt,
+		RequestedModel: task.RequestedModel,
+		ID:             task.ID,
+		TaskID:         task.ID,
+		Object:         "image.generation.task",
+		Status:         task.Status,
+		HTTPStatus:     task.HTTPStatus,
+		ImageURL:       firstImageTaskURL(task.Result),
+		Result:         task.Result,
+		Error:          task.Error,
+		CreatedAt:      task.CreatedAt,
+		CompletedAt:    task.CompletedAt,
+		ExpiresAt:      task.ExpiresAt,
 	}
 }
 

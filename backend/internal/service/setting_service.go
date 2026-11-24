@@ -163,8 +163,9 @@ type SettingService struct {
 	openAIQuotaAutoPauseSettingsSF    singleflight.Group
 	openAIAPIKeyHealthBreakerCache    atomic.Value // *cachedOpenAIAPIKeyHealthBreakerSettings
 
-	gatewaySettingsCache atomic.Value // *cachedGatewaySettings
-	gatewaySettingsSF    singleflight.Group
+	gatewaySettingsCache    atomic.Value // *cachedGatewaySettings
+	responseModelRefreshing atomic.Bool
+	gatewaySettingsSF       singleflight.Group
 
 	// 由管理服务注入，用于网关退避配置保存后重排自动测活计划。
 	scheduledTestPlanRepo            ScheduledTestPlanRepository

@@ -404,6 +404,12 @@ export default {
         description: '配置账号池默认值、附加换号状态码、自动测活退避、流式首 Token 超时和 Image 分组成功率。',
         minutes: '分钟',
         saved: '网关配置已保存',
+        responseModel: {
+          title: '客户端响应型号',
+          description: '设置模型接口返回给客户端的型号。用量审计记录上游原始响应型号。',
+          request_model: '返回客户端请求的型号',
+          empty: '将型号字段置为空字符串',
+        },
         streamSafeRetry: {
           earlyKeepalive: '提前发送 JSON 保活',
           title: 'Claude 透传流安全重试',

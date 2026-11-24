@@ -30,6 +30,7 @@ type openAIWSClientFrameConn struct {
 	// The relay observes upstream payloads, while clients must keep seeing the
 	// model identifier they supplied for the current turn.
 	restoreResponseModel func([]byte) []byte
+	clientResponseModel  atomic.Pointer[ClientResponseModel]
 	restoreToolNames     func([]byte) []byte
 }
 
@@ -701,12 +702,14 @@ func (c *openAIWSClientFrameConn) WriteFrame(ctx context.Context, msgType coderw
 		if normalized, changed := normalizeCompletedImageGenerationStatus(payload); changed {
 			payload = normalized
 		}
-		if c.restoreResponseModel != nil {
-			payload = c.restoreResponseModel(payload)
-		}
-		if c.restoreToolNames != nil {
-			payload = c.restoreToolNames(payload)
-		}
+	}
+	if override := c.clientResponseModel.Load(); override != nil && (msgType == coderws.MessageText || msgType == coderws.MessageBinary) {
+		payload, _ = override.Rewrite(payload, "model", "response.model", "session.model")
+	} else if msgType == coderws.MessageText && c.restoreResponseModel != nil {
+		payload = c.restoreResponseModel(payload)
+	}
+	if msgType == coderws.MessageText && c.restoreToolNames != nil {
+		payload = c.restoreToolNames(payload)
 	}
 	return c.conn.Write(ctx, msgType, payload)
 }
@@ -1057,6 +1060,15 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			return restoreCodexToolNamesFromContext(c, payload)
 		},
 	}
+	setClientResponseModel := func(requested string) {
+		override := NewClientResponseModel(s.settingService.ClientResponseModelMode(), requested)
+		if override.quoted == nil {
+			clientFrameConn.clientResponseModel.Store(nil)
+		} else {
+			clientFrameConn.clientResponseModel.Store(&override)
+		}
+	}
+	setClientResponseModel(initialRequestModel)
 	policyClientConn := &openAIWSPolicyEnforcingFrameConn{
 		inner: clientFrameConn,
 		// 注意线程安全：filter 仅在 runClientToUpstream 这一条
@@ -1223,6 +1235,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			if policyErr == nil && blocked == nil && isResponseCreate {
 				enqueueTurnMedia(imageBilling)
 				usageMeta.updateFromResponseCreate(out, model, requestModelForThisFrame)
+				setClientResponseModel(requestModelForThisFrame)
 				_, actualModel := usageMeta.turnModels(requestModelForThisFrame)
 				SetOpsUpstreamModel(c, actualModel)
 				responseCreateAtCopy := responseCreateAt

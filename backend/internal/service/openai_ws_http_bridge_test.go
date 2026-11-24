@@ -1881,6 +1881,13 @@ func TestProxyOpenAIWSHTTPBridgeTurnPromotesCodexAdditionalToolsForMixedCache(t 
 }
 
 func TestProxyResponsesWebSocketFromClientForGrokUsesXAIHTTPBridgeAndPreservesMappedModels(t *testing.T) {
+	for _, mode := range []string{"", ResponseModelModeRequest, ResponseModelModeEmpty} {
+		t.Run("mode="+mode, func(t *testing.T) { checkGrokWSResponseModels(t, mode) })
+	}
+}
+
+func checkGrokWSResponseModels(t *testing.T, mode string) {
+	t.Helper()
 	gin.SetMode(gin.TestMode)
 
 	bridgeResponse := func(responseID, requestID string, cachedTokens int) *http.Response {
@@ -1914,6 +1921,11 @@ func TestProxyResponsesWebSocketFromClientForGrokUsesXAIHTTPBridgeAndPreservesMa
 		},
 		httpUpstream: upstream,
 	}
+	settings := DefaultGatewaySettings()
+	settings.ResponseModelRewriteEnabled = mode != ""
+	settings.ResponseModelRewriteMode = mode
+	svc.settingService = NewSettingService(&openAIFastPolicyRepoStub{}, svc.cfg)
+	svc.settingService.storeGatewaySettingsCache(settings, time.Hour)
 	account := &Account{
 		ID:          71,
 		Name:        "grok",
@@ -2004,7 +2016,15 @@ func TestProxyResponsesWebSocketFromClientForGrokUsesXAIHTTPBridgeAndPreservesMa
 	require.Equal(t, "response.output_text.delta", gjson.GetBytes(delta, "type").String())
 	require.Equal(t, "response.completed", gjson.GetBytes(completed, "type").String())
 	require.Equal(t, "resp_grok_ws_2", gjson.GetBytes(completed, "response.id").String())
-	require.Equal(t, "channel-alias", gjson.GetBytes(completed, "response.model").String())
+	want := "channel-alias"
+	if mode == ResponseModelModeEmpty {
+		want = ""
+	}
+	for _, frame := range [][]byte{created, completed} {
+		actual := gjson.GetBytes(frame, "response.model")
+		require.Equal(t, gjson.String, actual.Type)
+		require.Equal(t, want, actual.Str)
+	}
 
 	writeCtx, cancelWrite = context.WithTimeout(context.Background(), 3*time.Second)
 	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","generate":true,"model":"grok-4.3","stream":true,"previous_response_id":"resp_grok_ws_2","input":"third turn with a different model"}`))
@@ -2018,6 +2038,13 @@ func TestProxyResponsesWebSocketFromClientForGrokUsesXAIHTTPBridgeAndPreservesMa
 	require.Equal(t, "response.output_text.delta", gjson.GetBytes(delta, "type").String())
 	require.Equal(t, "response.completed", gjson.GetBytes(completed, "type").String())
 	require.Equal(t, "resp_grok_ws_3", gjson.GetBytes(completed, "response.id").String())
+	if mode != "" {
+		want = "grok-4.3"
+		if mode == ResponseModelModeEmpty {
+			want = ""
+		}
+		require.Equal(t, want, gjson.GetBytes(completed, "response.model").Str)
+	}
 
 	_ = clientConn.Close(coderws.StatusNormalClosure, "done")
 	select {

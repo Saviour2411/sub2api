@@ -27,6 +27,7 @@ func TestGatewayCacheLiveCallIdentityAndController(t *testing.T) {
 		GroupID:               44,
 		LeaseID:               "lease",
 		Model:                 "gpt-live-test",
+		ClientModel:           "public-live",
 		AttestationCiphertext: "encrypted-attestation",
 		CreatedAt:             time.Now(),
 		ExpiresAt:             time.Now().Add(time.Hour),
@@ -37,6 +38,7 @@ func TestGatewayCacheLiveCallIdentityAndController(t *testing.T) {
 	loaded, err := otherInstance.GetLiveCall(context.Background(), record.CallHash)
 	require.NoError(t, err)
 	require.Equal(t, record.CallID, loaded.CallID)
+	require.Equal(t, record.ClientModel, loaded.ClientModel)
 	require.Equal(t, record.AccountID, loaded.AccountID)
 	require.Equal(t, record.AttestationCiphertext, loaded.AttestationCiphertext)
 
@@ -59,4 +61,21 @@ func TestGatewayCacheLiveCallIdentityAndController(t *testing.T) {
 	closed, err = cache.MarkLiveCallClosed(context.Background(), record.CallHash, time.Hour)
 	require.NoError(t, err)
 	require.False(t, closed)
+}
+
+func TestVideoBindingReturnsOriginalModelWithoutExtraRoundTrip(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	defer client.Close()
+	cache := &gatewayCache{rdb: client}
+	ctx := context.Background()
+	require.NoError(t, cache.SetSessionAccountID(ctx, 4, "session", 15, time.Hour))
+	require.NoError(t, cache.SetGrokVideoPendingBilling(ctx, "owner-task", []byte(`{"original_model":"public","model":"mapped"}`), time.Hour))
+	id, model, err := cache.GetVideoAccountAndRequestModel(ctx, 4, "session", "owner-task")
+	require.NoError(t, err)
+	require.EqualValues(t, 15, id)
+	require.Equal(t, "public", model)
+	_, model, err = cache.GetVideoAccountAndRequestModel(ctx, 5, "session", "owner-task")
+	require.ErrorIs(t, err, service.ErrStickySessionNotFound)
+	require.Empty(t, model)
 }

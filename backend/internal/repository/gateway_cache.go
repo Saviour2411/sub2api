@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -46,6 +47,30 @@ func (c *gatewayCache) GetSessionAccountID(ctx context.Context, groupID int64, s
 		return 0, err
 	}
 	return accountID, nil
+}
+
+// GetVideoAccountAndRequestModel 在原有归属键和创建快照上执行一次 MGET。
+func (c *gatewayCache) GetVideoAccountAndRequestModel(ctx context.Context, groupID int64, sessionHash, pendingKey string) (int64, string, error) {
+	values, err := c.rdb.MGet(ctx, buildSessionKey(groupID, sessionHash), grokVideoPendingBillingPrefix+pendingKey).Result()
+	if err != nil {
+		return 0, "", err
+	}
+	rawID, ok := values[0].(string)
+	if !ok {
+		return 0, "", service.ErrStickySessionNotFound
+	}
+	id, err := strconv.ParseInt(rawID, 10, 64)
+	if err != nil {
+		return 0, "", err
+	}
+	var pending service.GrokVideoPendingBilling
+	if raw, ok := values[1].(string); ok && json.Unmarshal([]byte(raw), &pending) == nil {
+		if pending.OriginalModel != "" {
+			return id, pending.OriginalModel, nil
+		}
+		return id, pending.Model, nil
+	}
+	return id, "", nil
 }
 
 func (c *gatewayCache) SetSessionAccountID(ctx context.Context, groupID int64, sessionHash string, accountID int64, ttl time.Duration) error {
@@ -454,6 +479,7 @@ func (c *gatewayCache) SaveLiveCall(ctx context.Context, record *service.LiveCal
 		"subscription_id":  record.SubscriptionID,
 		"lease_id":         record.LeaseID,
 		"model":            record.Model,
+		"client_model":     record.ClientModel,
 		"created_at":       record.CreatedAt.UnixMilli(),
 		"expires_at":       record.ExpiresAt.UnixMilli(),
 		"controller":       record.Controller,
@@ -495,6 +521,7 @@ func (c *gatewayCache) GetLiveCall(ctx context.Context, callHash string) (*servi
 		SubscriptionID:        parseInt("subscription_id"),
 		LeaseID:               values["lease_id"],
 		Model:                 values["model"],
+		ClientModel:           values["client_model"],
 		CreatedAt:             createdAt,
 		ExpiresAt:             expiresAt,
 		Controller:            values["controller"],

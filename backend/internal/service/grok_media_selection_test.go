@@ -67,7 +67,7 @@ func TestSelectGrokMediaVideoRequestAccountPreservesOwner(t *testing.T) {
 					require.ErrorIs(t, err, ErrNoAvailableAccounts)
 					require.Nil(t, selection)
 				}
-				bound, err := svc.ResolveGrokMediaVideoRequestAccount(ctx, &groupID, "task", 10, 20)
+				bound, _, err := svc.ResolveGrokMediaVideoRequestAccount(ctx, &groupID, "task", 10, 20, false)
 				require.NoError(t, err)
 				require.Equal(t, int64(1), bound)
 			}

@@ -202,6 +202,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		requestedReasoningEffort *string
 	}
 	ingressSessionOriginalModel := ""
+	var clientResponseModel ClientResponseModel
 
 	applyPayloadMutation := func(current []byte, path string, value any) ([]byte, error) {
 		next, err := sjson.SetBytes(current, path, value)
@@ -475,6 +476,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}
 		normalized = policyApplied
 		ingressSessionOriginalModel = originalModel
+		clientResponseModel = NewClientResponseModel(s.settingService.ClientResponseModelMode(), originalModel)
 
 		return openAIWSClientPayload{
 			payloadRaw:               normalized,
@@ -495,6 +497,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		writeCtx, cancel := newOpenAIWSDownstreamWriteContext(ctx, hooks, s.openAIWSWriteTimeout())
 		defer cancel()
 		message = restoreCodexToolNamesFromContext(c, message)
+		message, _ = clientResponseModel.Rewrite(message, "model", "response.model", "session.model")
 		return clientConn.Write(writeCtx, coderws.MessageText, message)
 	}
 

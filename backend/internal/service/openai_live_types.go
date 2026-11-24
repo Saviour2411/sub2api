@@ -59,6 +59,7 @@ type LiveCallRecord struct {
 	SubscriptionID  int64
 	LeaseID         string
 	Model           string
+	ClientModel     string
 	CreatedAt       time.Time
 	ExpiresAt       time.Time
 	Controller      string

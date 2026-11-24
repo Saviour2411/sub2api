@@ -373,15 +373,25 @@ func (s *OpenAIGatewayService) ResolveGrokMediaVideoRequestAccount(
 	groupID *int64,
 	requestID string,
 	userID, apiKeyID int64,
-) (int64, error) {
+	includeRequestModel bool,
+) (int64, string, error) {
 	if s == nil || s.cache == nil {
-		return 0, fmt.Errorf("grok video request binding cache is unavailable")
+		return 0, "", fmt.Errorf("grok video request binding cache is unavailable")
 	}
 	cacheKey := s.openAISessionCacheKey(GrokMediaVideoRequestSessionHash(requestID, userID, apiKeyID))
 	if cacheKey == "" {
-		return 0, fmt.Errorf("grok video request binding is invalid")
+		return 0, "", fmt.Errorf("grok video request binding is invalid")
 	}
-	return s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), cacheKey)
+	// 复用已有账号归属查询的网络往返，从同一任务的创建快照取公开型号。
+	if includeRequestModel {
+		if reader, ok := s.cache.(interface {
+			GetVideoAccountAndRequestModel(context.Context, int64, string, string) (int64, string, error)
+		}); ok {
+			return reader.GetVideoAccountAndRequestModel(ctx, derefGroupID(groupID), cacheKey, grokVideoPendingBillingKey(requestID, userID, apiKeyID))
+		}
+	}
+	id, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), cacheKey)
+	return id, "", err
 }
 
 // SelectGrokMediaVideoRequestAccount only admits the already authenticated

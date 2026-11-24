@@ -404,6 +404,12 @@ export default {
         description: 'Configure account pool defaults, additional failover statuses, managed probe backoff, streaming first-token timeout and Image group success rates.',
         minutes: 'minutes',
         saved: 'Gateway settings saved',
+        responseModel: {
+          title: 'Client response model',
+          description: 'Choose the model name sent to the client. Usage logs record the original upstream response model.',
+          request_model: 'Use the model from the client request',
+          empty: 'Set the model field to an empty string',
+        },
         streamSafeRetry: {
           earlyKeepalive: '提前发送 JSON 保活',
           title: 'Claude passthrough stream safe retry',
