@@ -173,14 +173,8 @@ func TestBuildAnthropicMimicRequests_FinalBetaHonorsBlockPolicy(t *testing.T) {
 // 背景
 // ============================================================================
 //
-// Anthropic 上游对 body.context_management 字段实施 Pydantic schema 校验：
-// 当且仅当 anthropic-beta header 含 context-management-2025-06-27 时接受。
-// 否则报：
-//   "context_management: Extra inputs are not permitted"
-//
-// 本仓采用能力维度对称约束（与 Bedrock 路径的 sanitizeBedrockFieldsForBetaTokens
-// 对称）：在所有 Anthropic 直连出口，按最终 anthropic-beta header 是否含上述 token
-// 决定 body 是否保留同名字段。
+// 常规转发按最终 beta 过滤 context_management 中的上下文编辑策略。
+// API Key 透传将完整的 context_management 交由上游校验，包括服务端压缩策略。
 //
 // 本文件覆盖：
 //   1) sanitizeAnthropicBodyForBetaTokens 纯函数
@@ -580,7 +574,7 @@ func TestApplyClaudeCodeOAuthMimicryToBody_FableOmitsRefusedExpansion(t *testing
 // ============================================================================
 // passthrough 集成测试：buildUpstreamRequest-
 // AnthropicAPIKeyPassthrough 与 buildCountTokensRequestAnthropicAPIKeyPassthrough
-// 路径上 sanitize 是否生效。
+// 两个入口都应保留客户端发送的 context_management。
 // ============================================================================
 
 // passthrough 集成测试不设 base_url，避开 validateUpstreamBaseURL 对 cfg.Security 的依赖。
@@ -608,56 +602,40 @@ func readUpstreamBodyForTest(t *testing.T, req *http.Request) []byte {
 	return b
 }
 
-func TestBuildUpstreamRequestAnthropicAPIKeyPassthrough_StripsContextManagementWhenClientHeaderMissingBeta(t *testing.T) {
+func TestAnthropicAPIKeyPassthrough_PreservesContextManagement(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
-	// 客户端仅带 oauth beta，不带 context-management-2025-06-27
-	c.Request.Header.Set("Anthropic-Beta", "oauth-2025-04-20")
-
-	body := []byte(`{"model":"claude-haiku-4-5","context_management":{"edits":[{"type":"clear_thinking_20251015"}]},"messages":[]}`)
 	svc := &GatewayService{cfg: &config.Config{}}
-	req, _, err := svc.buildUpstreamRequestAnthropicAPIKeyPassthrough(
-		context.Background(), c, newAnthropicAPIKeyPassthroughAccountForBetaTest(), body, "token",
-	)
-	require.NoError(t, err)
-	require.False(t, gjson.GetBytes(readUpstreamBodyForTest(t, req), "context_management").Exists(),
-		"API-key passthrough + 客户端未带 context-management beta → strip body 字段")
-}
-
-func TestBuildUpstreamRequestAnthropicAPIKeyPassthrough_PreservesContextManagementWhenClientHeaderHasBeta(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
-	c.Request.Header.Set("Anthropic-Beta", "oauth-2025-04-20,context-management-2025-06-27")
-
-	body := []byte(`{"model":"claude-haiku-4-5","context_management":{"edits":[{"type":"clear_thinking_20251015"}]},"messages":[]}`)
-	svc := &GatewayService{cfg: &config.Config{}}
-	req, _, err := svc.buildUpstreamRequestAnthropicAPIKeyPassthrough(
-		context.Background(), c, newAnthropicAPIKeyPassthroughAccountForBetaTest(), body, "token",
-	)
-	require.NoError(t, err)
-	require.True(t, gjson.GetBytes(readUpstreamBodyForTest(t, req), "context_management").Exists(),
-		"API-key passthrough + 客户端带 context-management beta → 字段保留（不过度删除）")
-}
-
-func TestBuildCountTokensRequestAnthropicAPIKeyPassthrough_StripsContextManagementWhenClientHeaderMissingBeta(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", nil)
-	c.Request.Header.Set("Anthropic-Beta", "oauth-2025-04-20,token-counting-2024-11-01")
-
-	body := []byte(`{"model":"claude-haiku-4-5","context_management":{"edits":[]},"messages":[]}`)
-	svc := &GatewayService{cfg: &config.Config{}}
-	req, err := svc.buildCountTokensRequestAnthropicAPIKeyPassthrough(
-		context.Background(), c, newAnthropicAPIKeyPassthroughAccountForBetaTest(), body, "token",
-	)
-	require.NoError(t, err)
-	require.False(t, gjson.GetBytes(readUpstreamBodyForTest(t, req), "context_management").Exists(),
-		"count_tokens passthrough + 客户端未带 context-management beta → strip")
+	account := newAnthropicAPIKeyPassthroughAccountForBetaTest()
+	const clearThinking = `{"edits":[{"type":"clear_thinking_20251015","keep":"all"}]}`
+	tests := []struct {
+		name, beta, contextManagement string
+	}{
+		{"compaction", "compact-2026-01-12", `{"edits":[{"type":"compact_20260112","trigger":{"type":"input_tokens","value":50000}}]}`},
+		{"no beta", "", clearThinking},
+		{"context management beta", claude.BetaContextManagement, clearThinking},
+	}
+	for _, path := range []string{"/v1/messages", "/v1/messages/count_tokens"} {
+		for _, tt := range tests {
+			t.Run(path+"/"+tt.name, func(t *testing.T) {
+				c, _ := gin.CreateTestContext(httptest.NewRecorder())
+				c.Request = httptest.NewRequest(http.MethodPost, path, nil)
+				if tt.beta != "" {
+					c.Request.Header.Set("Anthropic-Beta", tt.beta)
+				}
+				body := []byte(`{"model":"claude-opus-5-5","context_management":` + tt.contextManagement + `,"messages":[{"role":"user","content":"hello"}]}`)
+				var req *http.Request
+				var err error
+				if path == "/v1/messages" {
+					req, _, err = svc.buildUpstreamRequestAnthropicAPIKeyPassthrough(context.Background(), c, account, body, "token")
+				} else {
+					req, err = svc.buildCountTokensRequestAnthropicAPIKeyPassthrough(context.Background(), c, account, body, "token")
+				}
+				require.NoError(t, err)
+				require.Equal(t, tt.beta, getHeaderRaw(req.Header, "anthropic-beta"))
+				require.JSONEq(t, tt.contextManagement, gjson.GetBytes(readUpstreamBodyForTest(t, req), "context_management").Raw)
+			})
+		}
+	}
 }
 
 // ============================================================================
@@ -913,24 +891,6 @@ func TestBuildCountTokensRequest_StripsCacheControlOnlyFromLiteralDeferredTools(
 			require.JSONEq(t, string(wireBody), string(readUpstreamBodyForTest(t, req)))
 		})
 	}
-}
-
-// count_tokens passthrough preserve 测试
-func TestBuildCountTokensRequestAnthropicAPIKeyPassthrough_PreservesContextManagementWhenClientHeaderHasBeta(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", nil)
-	c.Request.Header.Set("Anthropic-Beta", "oauth-2025-04-20,context-management-2025-06-27,token-counting-2024-11-01")
-
-	body := []byte(`{"model":"claude-haiku-4-5","context_management":{"edits":[{"type":"clear_thinking_20251015"}]},"messages":[]}`)
-	svc := &GatewayService{cfg: &config.Config{}}
-	req, err := svc.buildCountTokensRequestAnthropicAPIKeyPassthrough(
-		context.Background(), c, newAnthropicAPIKeyPassthroughAccountForBetaTest(), body, "token",
-	)
-	require.NoError(t, err)
-	require.True(t, gjson.GetBytes(readUpstreamBodyForTest(t, req), "context_management").Exists(),
-		"count_tokens passthrough + 客户端带 context-management beta → 字段保留")
 }
 
 func TestBuildUpstreamRequest_APIKeyHaikuWithContextManagement_StripsField(t *testing.T) {

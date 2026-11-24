@@ -386,9 +386,6 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 		targetURL = buildAnthropicMessagesURL(validatedURL)
 	}
 
-	// 能力维度 body sanitize：透传路径上 anthropic-beta header 原样透传客户端值，
-	// 依此决定是否保留 body 中的 context_management。避免“客户端 body 带字段但
-	// header 忘记带 beta token”的客户端 bug 在透传场景下让上游 400。
 	clientBeta := ""
 	if c != nil && c.Request != nil {
 		clientBeta = getHeaderRaw(c.Request.Header, "anthropic-beta")
@@ -398,7 +395,7 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 		clientBeta = beta
 	}
 	if sanitized, changed := sanitizeAnthropicBodyForBetaTokensWithOptions(body, clientBeta, anthropicBodySanitizeOptions{
-		preserveThinkingBlockBinding: true,
+		apiKeyPassthrough: true,
 	}); changed {
 		body = sanitized
 	}
