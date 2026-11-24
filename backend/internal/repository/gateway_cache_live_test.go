@@ -66,7 +66,7 @@ func TestGatewayCacheLiveCallIdentityAndController(t *testing.T) {
 func TestVideoBindingReturnsOriginalModelWithoutExtraRoundTrip(t *testing.T) {
 	server := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
-	defer client.Close()
+	t.Cleanup(func() { require.NoError(t, client.Close()) })
 	cache := &gatewayCache{rdb: client}
 	ctx := context.Background()
 	require.NoError(t, cache.SetSessionAccountID(ctx, 4, "session", 15, time.Hour))
