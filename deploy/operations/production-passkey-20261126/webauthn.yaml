@@ -1,0 +1,8 @@
+# 服务器1配置片段：合并到 deploy/data/config.yaml 的顶层，保留其余配置。
+webauthn:
+  enabled: true
+  rp_display_name: "ZeroAPI"
+  rp_id: "saviour.cc.cd"
+  rp_origins:
+    - "https://direct.saviour.cc.cd"
+    - "https://api.saviour.cc.cd"
