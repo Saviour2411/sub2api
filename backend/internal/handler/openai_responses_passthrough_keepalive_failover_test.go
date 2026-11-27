@@ -5,7 +5,7 @@ package handler
 // /v1/responses 透传账号的下游心跳换号回归。
 //
 // 透传流式路径（handleStreamingResponsePassthrough）在每次尝试进入流式循环时
-// 都会新建一个 SSE 心跳器。第一次尝试真实写出心跳后遇到可换号的 event: error，
+// 都会新建一个本地保活循环。第一次尝试真实写出心跳后遇到可换号的 event: error，
 // 第二个账号立即以同样的错误失败，第三个账号成功：前一次尝试写出的心跳字节
 // 不能被当成语义输出，否则第二次尝试会放弃换号，把错误直接写给客户端。
 
@@ -69,7 +69,7 @@ type openAIPassthroughKeepaliveWriter struct {
 
 func (w *openAIPassthroughKeepaliveWriter) Write(p []byte) (int, error) {
 	n, err := w.ResponseWriter.Write(p)
-	if bytes.Contains(p, []byte(": keepalive\n\n")) {
+	if bytes.Contains(p, []byte(":\n\n")) {
 		w.once.Do(func() { close(w.notify) })
 	}
 	return n, err
@@ -89,9 +89,16 @@ func newOpenAIPassthroughKeepaliveHandler(t *testing.T, upstream service.HTTPUps
 	accounts := []service.Account{newAccount(1, 0), newAccount(2, 1), newAccount(3, 2)}
 	cfg := &config.Config{RunMode: config.RunModeSimple}
 	cfg.Gateway.StreamKeepaliveInterval = 1
+	// 本用例验证真实心跳后的换号；显式关闭首 Token 暂存，默认守卫由独立回归覆盖。
+	repo := openAIImagesFailoverAccountRepo{accounts: accounts}
+	settings := service.NewSettingService(&safeHandlerSettingsRepo{values: map[string]string{
+		service.SettingKeyGatewayFirstTokenTimeoutSeconds: "0",
+	}}, cfg)
+	rateLimit := service.NewRateLimitService(repo, nil, cfg, nil, nil)
+	rateLimit.SetSettingService(settings)
 	gatewayService := service.NewOpenAIGatewayService(
-		openAIImagesFailoverAccountRepo{accounts: accounts}, nil, nil, nil, nil, nil, nil, cfg,
-		nil, nil, nil, nil, nil, upstream, nil, nil, nil, nil, nil, nil, nil, nil,
+		repo, nil, nil, nil, nil, nil, nil, cfg,
+		nil, nil, nil, rateLimit, nil, upstream, nil, nil, nil, nil, nil, nil, nil, nil,
 	)
 	billing := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
 	t.Cleanup(billing.Stop)
@@ -128,6 +135,7 @@ func newOpenAIPassthroughKeepaliveContext(t *testing.T) (*gin.Context, *httptest
 
 func TestOpenAIGatewayHandlerResponsesPassthroughKeepaliveFailoverAcrossAttempts(t *testing.T) {
 	firstBody, firstWriter := io.Pipe()
+	t.Cleanup(func() { _ = firstWriter.Close(); _ = firstBody.Close() })
 	sseHeader := func() http.Header { return http.Header{"Content-Type": []string{"text/event-stream"}} }
 	upstream := &openAIPassthroughKeepaliveUpstream{responses: []*http.Response{
 		{StatusCode: http.StatusOK, Header: sseHeader(), Body: firstBody},
@@ -158,7 +166,7 @@ func TestOpenAIGatewayHandlerResponsesPassthroughKeepaliveFailoverAcrossAttempts
 	body := rec.Body.String()
 	require.Equal(t, []int64{1, 2, 3}, upstream.callIDs(), "前一次尝试的心跳字节不得阻止第二次尝试换号: body=%q", body)
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Contains(t, body, ": keepalive\n\n", "第一次尝试必须真实写出心跳")
+	require.Contains(t, body, ":\n\n", "第一次尝试必须真实写出心跳")
 	require.Equal(t, 1, strings.Count(body, "event: response.completed"), "成功流只允许一个 completed")
 	require.NotContains(t, body, "response.failed", "可换号的首输出前错误不得写给客户端")
 	require.NotContains(t, body, "Overloaded", "可换号的首输出前错误不得写给客户端")

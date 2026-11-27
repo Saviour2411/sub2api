@@ -24,6 +24,9 @@ const contentModerationQueueChildProcessEnv = "SUB2API_CONTENT_MODERATION_QUEUE_
 // maxContentModerationQueueSize 深度的 channel。
 func TestContentModerationIdleServiceDoesNotReserveQueue(t *testing.T) {
 	svc := NewContentModerationService(nil, nil, nil, nil, nil, nil, nil, nil)
+	if cap(svc.localAuditQueue) != defaultContentModerationLocalAuditQueueSize {
+		t.Fatal("本地人工留证队列必须保留既有容量")
+	}
 	if reserved := cap(svc.asyncQueue); reserved != 0 {
 		t.Fatalf("new ContentModerationService reserved a %d-slot task queue (%d bytes) before any enqueue, want none",
 			reserved, reserved*int(unsafe.Sizeof(contentModerationTask{})))
@@ -42,8 +45,9 @@ func TestContentModerationIdleServiceMemoryIsBounded(t *testing.T) {
 	}
 
 	const instances = 64
-	// 旧实现约 28.8 MB/实例；64 KiB 给分配器噪声留足余量，同时仍能识别任何预分配。
-	const maxIdleBytesPerInstance = 64 * 1024
+	// 人工留证队列按本地既有策略预留；其余空闲开销仍严格限制为 64 KiB。
+	const localAuditBytes = defaultContentModerationLocalAuditQueueSize * int(unsafe.Sizeof(contentModerationLocalAuditTask{}))
+	const maxIdleBytesPerInstance = localAuditBytes + 64*1024
 
 	var before, after runtime.MemStats
 	runtime.GC()

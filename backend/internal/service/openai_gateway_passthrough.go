@@ -2288,6 +2288,11 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthroughOnAccepted(
 	failedMessage := ""
 	var failedPayload []byte
 	clientOutputStarted := false
+	streamOutputStarted := func() bool {
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		return openAIStreamClientOutputStarted(c, clientOutputStarted)
+	}
 	codexFailureTerminal := account != nil && account.Platform == PlatformOpenAI
 	failureDelivered := false
 	suppressCurrentEvent := false
@@ -2302,9 +2307,14 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthroughOnAccepted(
 	keepaliveDone := make(chan struct{})
 	if keepaliveInterval > 0 {
 		keepaliveTicker := time.NewTicker(keepaliveInterval)
-		defer keepaliveTicker.Stop()
-		defer close(keepaliveDone)
+		keepaliveExited := make(chan struct{})
+		defer func() {
+			keepaliveTicker.Stop()
+			close(keepaliveDone)
+			<-keepaliveExited
+		}()
 		go func() {
+			defer close(keepaliveExited)
 			for {
 				select {
 				case <-keepaliveDone:
@@ -2315,7 +2325,13 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthroughOnAccepted(
 						writeMu.Unlock()
 						continue
 					}
-					if _, err := fmt.Fprint(w, ":\n\n"); err != nil {
+					previousSize := max(0, w.Size())
+					n, err := fmt.Fprint(w, ":\n\n")
+					// 只累计真实发送的注释；首 Token 守卫暂存或丢弃的心跳不计入。
+					if sent := min(n, w.Size()-previousSize); sent > 0 {
+						recordOpenAIStreamKeepaliveBytes(c, sent)
+					}
+					if err != nil {
 						clientDisconnected = true
 						writeMu.Unlock()
 						logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during keepalive ping, continue draining upstream for usage: account=%d", account.ID)
@@ -2496,7 +2512,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthroughOnAccepted(
 			}
 			if !capacityFailoverSuppressedLogged && account != nil && account.Platform == PlatformOpenAI &&
 				(eventType == "error" || eventType == "response.failed") &&
-				openAIStreamClientOutputStarted(c, clientOutputStarted) &&
+				streamOutputStarted() &&
 				isOpenAIUpstreamCapacityShedEvent(dataBytes) {
 				logOpenAICapacityFailoverSuppressed(ctx, account, "passthrough_sse", upstreamRequestID, eventType)
 				capacityFailoverSuppressedLogged = true
@@ -2539,7 +2555,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthroughOnAccepted(
 						})
 					}
 				}
-				outputStarted := openAIStreamClientOutputStarted(c, clientOutputStarted)
+				outputStarted := streamOutputStarted()
 				if !outputStarted && !cyberHit {
 					if compactErr := newOpenAICompactFallbackSignal(c, dataBytes, failedMessage); compactErr != nil {
 						return resultWithUsage(), compactErr
@@ -2616,7 +2632,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthroughOnAccepted(
 			if sanitizedData, sanitized := sanitizeOpenAIResponseFailedEventForClient(
 				dataBytes,
 				eventType,
-				openAIStreamClientOutputStarted(c, clientOutputStarted),
+				streamOutputStarted(),
 			); sanitized {
 				dataBytes = sanitizedData
 				trimmedData = strings.TrimSpace(string(sanitizedData))
@@ -2702,7 +2718,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthroughOnAccepted(
 			logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] SSE line too long: account=%d max_size=%d error=%v", account.ID, maxLineSize, err)
 			return resultWithUsage(), err
 		}
-		if !openAIStreamClientOutputStarted(c, clientOutputStarted) {
+		if !streamOutputStarted() {
 			msg := "OpenAI stream disconnected before completion"
 			if errText := strings.TrimSpace(err.Error()); errText != "" {
 				msg += ": " + errText
@@ -2735,7 +2751,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthroughOnAccepted(
 			zap.Int64("account_id", account.ID),
 			zap.String("upstream_request_id", upstreamRequestID),
 		).Info("OpenAI passthrough 上游流在未收到 [DONE] 时结束，疑似断流")
-		if !openAIStreamClientOutputStarted(c, clientOutputStarted) {
+		if !streamOutputStarted() {
 			return resultWithUsage(),
 				s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, nil, "OpenAI stream ended before a terminal event")
 		}

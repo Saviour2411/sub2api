@@ -242,7 +242,7 @@ func TestRememberOpenCodeInboundBodyPreservesSessionFallback(t *testing.T) {
 
 	headers := make(http.Header)
 	applyOpenCodeSessionHeader(c, account, "https://opencode.ai/zen/go/v1/messages", headers, []byte(`{"metadata":{"user_id":"converted-session"}}`))
-	require.Equal(t, "converted-session", headers.Get(openCodeSessionHeader))
+	require.Equal(t, "previous-session", headers.Get(openCodeSessionHeader), "保留首次有效会话标识，不被协议转换后的提示覆盖")
 }
 
 func TestOpenCodeSessionIDFromPayloadIgnoresEmptyBody(t *testing.T) {

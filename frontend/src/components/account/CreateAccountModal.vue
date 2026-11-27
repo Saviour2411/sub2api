@@ -4716,22 +4716,6 @@ const upstreamGroupSource = computed(() => {
     : null
 })
 
-const syncPreviewCredentials = computed(() => {
-  if (!apiKeyValue.value) return undefined
-  const modelMapping = buildModelMappingObject(
-    modelRestrictionMode.value,
-    allowedModels.value,
-    modelMappings.value
-  )
-  return {
-    platform: form.platform,
-    type: form.type,
-    base_url: previewBaseUrl.value || undefined,
-    api_key: apiKeyValue.value,
-    ...(modelMapping ? { model_mapping: modelMapping } : {})
-  }
-})
-
 const editQuotaLimit = ref<number | null>(null)
 const editQuotaDailyLimit = ref<number | null>(null)
 const editQuotaWeeklyLimit = ref<number | null>(null)

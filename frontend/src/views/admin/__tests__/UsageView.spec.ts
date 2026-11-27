@@ -650,12 +650,16 @@ describe('admin UsageView request ID column visibility', () => {
     )
 
     await wrapper.get('button[title="admin.users.columnSettings"]').trigger('click')
-    const usernameToggle = wrapper.get('[data-testid="usage-column-toggle-username"]')
-    await usernameToggle.trigger('click')
+    await flushPromises()
+    const usernameToggle = document.body.querySelector<HTMLButtonElement>('[data-testid="usage-column-toggle-username"]')
+    expect(usernameToggle).not.toBeNull()
+    usernameToggle!.click()
+    await wrapper.vm.$nextTick()
 
     expect(usageTable.props('columns')).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ key: 'username' })]),
     )
+    wrapper.unmount()
   })
 })
 

@@ -12130,3 +12130,7 @@ A	frontend/src/views/admin/__tests__/ChannelsView.ultrafastPricing.spec.ts
 用户已批准本地完整合并及所列冲突方案。LOCAL_PRE_SYNC_SHA 为3b2c789c4c256d4fddc22526eef7fb6f63ae75d9；UPSTREAM_OLD_SHA 与实际 merge-base 均为328db26f450edbdf9f8d4344a3ea903ac6396842，固定目标为4233cc3d8018bf2f399c4c366d94067c42eb697e。备份分支 backup/pre-upstream-sync-20261127-204208-3b2c789c4，同步分支 sync/upstream-20261127-4233cc3d8。
 
 本次合入140个上游提交，并按批准方案保留本地版本、计费来源、默认价、人工审核、游标导出、Claude模拟头优先级、首Token守卫及禁止自更新。同步前独立源码快照和合并后快照采用同一工具链及隔离数据验证；未运行真实外部业务或生产操作。此节不宣称完成，完整逐提交状态、命令退出码、代码提交SHA及最终验收记录在验证结束后追加。
+
+2026-11-27 候选验证补充：6c99e2a9f5b1bea80f39c86145ac20a532185309 的前端类型检查发现 CreateAccountModal.vue 存在未使用的 syncPreviewCredentials。原因是本地模板继续使用 upstreamModelSyncPreviewRequest。按获批的机械兼容修复范围移除无调用计算器，保留本地预览流程；修复后重新运行前端检查。
+
+2026-11-27 候选验证补充：新增透传跨尝试心跳回归与本地旧保活循环不匹配，需将实际发送字节接入既有请求级累计，并等待停拍后才允许下一尝试接管；保留首 Token 守卫和输出后空闲保活。测试场景显式关闭首 Token 暂存，以验证真实心跳后的三账号换号，默认守卫另由既有用例覆盖。另将上游审核空闲内存契约计入本地人工队列既有预算，OpenCode测试按首次会话标识规则断言，用户名列测试使用body中的浮层。全部修复另建候选快照复验，初次失败日志保留。
