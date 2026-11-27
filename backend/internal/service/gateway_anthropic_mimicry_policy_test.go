@@ -383,8 +383,15 @@ func TestAnthropicAPIKeyMimicry_AllRequestEntrypointsSharePolicyAndMappedModel(t
 				Type:        AccountTypeAPIKey,
 				Concurrency: 1,
 				Credentials: map[string]any{
-					"api_key":  "sk-test",
-					"base_url": "https://api.anthropic.com",
+					"api_key":                    "sk-test",
+					"base_url":                   "https://api.anthropic.com",
+					credKeyHeaderOverrideEnabled: true,
+					credKeyHeaderOverrides: map[string]any{
+						"x-audit-user":        "{{user_id}}",
+						"user-agent":          "client-{{user_id}}",
+						"anthropic-beta":      "identity-{{user_id}}",
+						"x-client-request-id": "{{request_id}}",
+					},
 					"model_mapping": map[string]any{
 						"claude-sonnet-4-5": "vendor-sonnet",
 						"*":                 "second-hop-model",
@@ -392,12 +399,15 @@ func TestAnthropicAPIKeyMimicry_AllRequestEntrypointsSharePolicyAndMappedModel(t
 				},
 			}
 			c := newAPIKeyMimicTestContext("third-party-client/1.0", "")
+			c.Request = c.Request.WithContext(headerOverrideUserContext())
 			c.Request.URL.Path = tt.path
 			c.Request.Header.Set("Anthropic-Beta", claude.BetaExtendedCacheTTL)
 
 			tt.run(t, svc, c, account, tt.body)
 
 			require.NotEmpty(t, upstream.body)
+			require.Equal(t, "7", anthropicAccountTestHeaderValue(upstream.header, "x-audit-user"))
+			require.Equal(t, map[string]string{"x-audit-user": "7"}, headerOverrideReportedHeaders(c.Request.Context(), account.ID), "被模拟头覆盖的变量值不得作为已发送身份记录")
 			require.Equal(t, "vendor-sonnet", gjson.GetBytes(upstream.body, "model").String())
 			require.True(t, strings.HasPrefix(gjson.GetBytes(upstream.body, "system.0.text").String(), claudeCodeBillingHeaderPrefix))
 			require.Equal(t, "cli", anthropicAccountTestHeaderValue(upstream.header, "X-App"))

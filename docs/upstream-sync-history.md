@@ -12124,3 +12124,9 @@ A	frontend/src/views/admin/__tests__/ChannelsView.ultrafastPricing.spec.ts
 ## 2026-11-21 v0.1.270 发布兼容补充
 
 用户在PR #60完成主线同步后要求更新tag自动蓝绿部署。新增252渠道Ultrafast倍率SQL继续保持上游原文，仅为生产v0.1.269补齐固定兼容策略channel-ultrafast-guarded-252-v1，绑定旧提交、SQL和五处旧版读写摘要；共存期间以NULL约束保护新倍率，旧槽退役并完成安全复核后自动解除。关联CUST-OPS-007与CUST-OPS-008，产品版本推进0.1.270，上游同步范围和来源0.2.24/328db26f450edbdf9f8d4344a3ea903ac6396842不变；无新增上游跳过、延期或历史SQL修改。细节和实际发布验收见docs/operations/2026-11-21-v0.1.270-release.md。
+
+## 2026-11-27 上游0.2.25执行记录（验证中）
+
+用户已批准本地完整合并及所列冲突方案。LOCAL_PRE_SYNC_SHA 为3b2c789c4c256d4fddc22526eef7fb6f63ae75d9；UPSTREAM_OLD_SHA 与实际 merge-base 均为328db26f450edbdf9f8d4344a3ea903ac6396842，固定目标为4233cc3d8018bf2f399c4c366d94067c42eb697e。备份分支 backup/pre-upstream-sync-20261127-204208-3b2c789c4，同步分支 sync/upstream-20261127-4233cc3d8。
+
+本次合入140个上游提交，并按批准方案保留本地版本、计费来源、默认价、人工审核、游标导出、Claude模拟头优先级、首Token守卫及禁止自更新。同步前独立源码快照和合并后快照采用同一工具链及隔离数据验证；未运行真实外部业务或生产操作。此节不宣称完成，完整逐提交状态、命令退出码、代码提交SHA及最终验收记录在验证结束后追加。
