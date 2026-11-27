@@ -12124,3 +12124,865 @@ A	frontend/src/views/admin/__tests__/ChannelsView.ultrafastPricing.spec.ts
 ## 2026-11-21 v0.1.270 发布兼容补充
 
 用户在PR #60完成主线同步后要求更新tag自动蓝绿部署。新增252渠道Ultrafast倍率SQL继续保持上游原文，仅为生产v0.1.269补齐固定兼容策略channel-ultrafast-guarded-252-v1，绑定旧提交、SQL和五处旧版读写摘要；共存期间以NULL约束保护新倍率，旧槽退役并完成安全复核后自动解除。关联CUST-OPS-007与CUST-OPS-008，产品版本推进0.1.270，上游同步范围和来源0.2.24/328db26f450edbdf9f8d4344a3ea903ac6396842不变；无新增上游跳过、延期或历史SQL修改。细节和实际发布验收见docs/operations/2026-11-21-v0.1.270-release.md。
+
+## 2026-11-27 上游0.2.25执行记录（验证中）
+
+用户已批准本地完整合并及所列冲突方案。LOCAL_PRE_SYNC_SHA 为3b2c789c4c256d4fddc22526eef7fb6f63ae75d9；UPSTREAM_OLD_SHA 与实际 merge-base 均为328db26f450edbdf9f8d4344a3ea903ac6396842，固定目标为4233cc3d8018bf2f399c4c366d94067c42eb697e。备份分支 backup/pre-upstream-sync-20261127-204208-3b2c789c4，同步分支 sync/upstream-20261127-4233cc3d8。
+
+本次合入140个上游提交，并按批准方案保留本地版本、计费来源、默认价、人工审核、游标导出、Claude模拟头优先级、首Token守卫及禁止自更新。同步前独立源码快照和合并后快照采用同一工具链及隔离数据验证；未运行真实外部业务或生产操作。此节不宣称完成，完整逐提交状态、命令退出码、代码提交SHA及最终验收记录在验证结束后追加。
+
+2026-11-27 候选验证补充：6c99e2a9f5b1bea80f39c86145ac20a532185309 的前端类型检查发现 CreateAccountModal.vue 存在未使用的 syncPreviewCredentials。原因是本地模板继续使用 upstreamModelSyncPreviewRequest。按获批的机械兼容修复范围移除无调用计算器，保留本地预览流程；修复后重新运行前端检查。
+
+2026-11-27 候选验证补充：新增透传跨尝试心跳回归与本地旧保活循环不匹配，需将实际发送字节接入既有请求级累计，并等待停拍后才允许下一尝试接管；保留首 Token 守卫和输出后空闲保活。测试场景显式关闭首 Token 暂存，以验证真实心跳后的三账号换号，默认守卫另由既有用例覆盖。另将上游审核空闲内存契约计入本地人工队列既有预算，OpenCode测试按首次会话标识规则断言，用户名列测试使用body中的浮层。全部修复另建候选快照复验，初次失败日志保留。
+
+2026-11-27 复验补充：首轮兼容修复中的审核内存断言出现int/int64类型错误，已修正；启用测试限流服务后，原测试仓库未实现SetOverloaded导致恢复路径返回通用错误，现补齐隔离存储桩并断言冷却账号恰为1、2。服务层定向竞态回归退出0（12.505秒）；真实心跳后依次调用1、2、3号账号、成功终态唯一、心跳计数和冷却记录的独立回归退出0（2.131秒）。各轮失败日志保留，最终验收尚待同一最终代码快照的完整后端套件。
+
+## 2026-11-27 上游0.2.25最终验收记录
+
+记录时间：2026-11-27T23:31:25.301+08:00。状态：本地完整集成及验收成功；以下结论限定于本轮代码审查、隔离测试和明确列出的未验证边界。同步前后主检查均为41项、39项通过、2项既有竞态失败；最终候选没有发现新增失败。该状态不表示所有测试通过，也不表示71项定制功能都完成了动态验证。
+
+本记录为最后一个本地提交的内容。记录提交前，main仍严格保持同步前位置；提交后仅在再次确认该位置未变时，以git merge --ff-only快进。记录提交自身SHA及快进后的main SHA在交付总结中报告，避免文档自引用。
+
+### 固定范围与授权
+
+- 目标分支：main；仓库：D:/project/sub2api。
+- 执行开始：2026-11-27T20:42:08+08:00；最终主检查结束：2026-11-27T23:26:25+08:00。
+- LOCAL_PRE_SYNC_SHA：`3b2c789c4c256d4fddc22526eef7fb6f63ae75d9`。
+- 上游仓库：`https://github.com/Wei-Shaw/sub2api`；经远端HEAD确认的默认分支：main。
+- UPSTREAM_OLD_SHA：`328db26f450edbdf9f8d4344a3ea903ac6396842`（不含）。
+- UPSTREAM_NEW_SHA：`4233cc3d8018bf2f399c4c366d94067c42eb697e`（包含）；本轮没有随上游后续变化扩大范围。
+- ACTUAL_MERGE_BASE：`328db26f450edbdf9f8d4344a3ea903ac6396842`；旧基线是本地及新上游的祖先，实际merge范围与已审批范围一致。
+- LAST_FULLY_INTEGRATED_UPSTREAM_SHA：`4233cc3d8018bf2f399c4c366d94067c42eb697e`。完整merge包含固定范围的全部祖先，允许推进至本次目标。
+- 备份分支：`backup/pre-upstream-sync-20261127-204208-3b2c789c4`；指向LOCAL_PRE_SYNC_SHA。
+- 同步分支：`sync/upstream-20261127-4233cc3d8`。
+- 授权为集中审批后的本地备份、完整merge、获批冲突处理、必要兼容修复、验证、中文提交及最终快进。没有执行push、PR、tag、部署、远程服务器访问或生产数据库操作。
+
+上游范围共140个提交，其中76个普通提交、64个merge。处置为Applied 123、Applied + Overridden 14、Already Applied 3、Skipped 0、Deferred 0、未解决Conflict 0。Already Applied表示行为已在同步前等价存在，这3个上游祖先仍随完整merge纳入历史。最终相对同步前修改255个文件：34新增、221修改、0删除；没有新增迁移或修改历史迁移。
+
+### 本地提交与处理结果
+
+| 本地提交 | 用途 |
+| --- | --- |
+| `6c99e2a9f5b1bea80f39c86145ac20a532185309` | 完整合并上游0.2.25并按批准方案适配二次开发；双亲为LOCAL_PRE_SYNC_SHA及UPSTREAM_NEW_SHA。 |
+| `f811fe6d6bfd184eb8618eb058dd14b215ed1af6` | 修复普通Responses透传心跳的实际字节累计与停拍等待，适配本地人工审核、首次会话标识、预览和浮层回归契约。 |
+| `55582d18f0be41a7022694636c455404d6a75496` | 补全心跳三账号测试的冷却存储桩及断言，统一审核内存预算的整数类型；为最终代码验收SHA。 |
+
+最后的记录提交仅追加本文件和docs/custom-development-history.md，不改变产品代码。产品版本保留0.1.272，嵌入来源为上游0.2.25及固定目标SHA。
+
+### 冲突与语义适配
+
+实际冲突为19份文本文件加2份modify/delete文件，与预演一致。按批准方案逐块处理，未整文件批量采用任一侧版本；未产生新的业务取舍。
+
+| 文件 | 最终处置 |
+| --- | --- |
+| `backend/cmd/server/VERSION` | 保留产品版本0.1.272，上游0.2.25仅记入构建来源。 |
+| `backend/go.sum` | 保留已升级WebSocket依赖的校验，不恢复1.5.3旧条目。 |
+| `backend/internal/pkg/openai/instructions_gpt6_astra.txt` | 按批准方案采用固定上游的新提示词，保留本地构建来源及版本边界。 |
+| `backend/internal/service/account_test_service.go` | 请求头接口补充context，保留Claude模拟头最终覆盖。 |
+| `backend/internal/service/admin_account.go` | 同时保留auto_managed_probe_state清理与上游分组同步开关清理。 |
+| `backend/internal/service/content_moderation.go` | 合入远端队列锁、唤醒与按需分配，完整保留本地人工审核队列和统计字段。 |
+| `backend/internal/service/gateway_count_tokens.go` | 适配带context的请求头接口，保留Claude模拟优先级与最终发送审计。 |
+| `backend/internal/service/gateway_thinking_filter_precheck_test.go` | 采用上游限时子进程隔离分配测量，保留本地功能边界和断言目的。 |
+| `backend/internal/service/gateway_upstream_request.go` | 适配带context的请求头接口，模拟头仍在最后覆盖。 |
+| `backend/internal/service/openai_compact_sse_keepalive.go` | 采用跨实例累计字段，同时保留paused状态与首Token守卫恢复。 |
+| `backend/internal/service/openai_oauth_model_support_test.go` | 采用固定上游更新后的模型支持预期，运行时保留本地协议处理。 |
+| `backend/internal/service/openai_opencode_session.go` | 接入UA1.19.6与环境变量覆盖、正确JSON编码；仅保存首次有效提示，不保留完整请求体。 |
+| `backend/internal/service/openai_upstream_transport_error.go` | 合入分类枚举及网络30秒、代理认证10分钟冷却，保留瞬态Pool同账号重试与已发送禁止重试。 |
+| `deploy/config.example.yaml` | 合入Antigravity思考摘要示例开关，保留本地配置内容及默认值；没有修改任何生产实例配置。 |
+| `frontend/src/components/account/CreateAccountModal.vue` | 合入上游预览与分组同步变化，保留本地预览请求及账号默认策略，后续移除无调用计算器。 |
+| `frontend/src/components/common/HelpTooltip.vue` | 保留视口定位、翻转、限宽限高、滚动与浮层挂载策略。 |
+| `frontend/src/components/common/__tests__/HelpTooltip.spec.ts` | 保留本地定位契约，并适配滚动相关断言。 |
+| `frontend/src/views/admin/ChannelsView.vue` | 只增加默认关闭的实际响应型号展示开关；计费仍固定requested，多层默认价与缺价拒绝保持。 |
+| `frontend/src/views/admin/UsageView.vue` | 用户名列合入本地游标导出，保留分页、取消和权限边界。 |
+| `backend/internal/service/update_service.go` | modify/delete冲突：继续保持本地删除，不恢复网页更新、回滚、重启入口。 |
+| `backend/internal/service/update_service_test.go` | modify/delete冲突：继续保持本地删除；相关上游历史仍完整合入。 |
+
+另对自动合并后的语义边界补齐：最终Claude模拟头覆盖后，reconcileHeaderOverrideReportedHeaders清理已不再发送的变量头审计，保留脱敏且不记录固定模板秘密；用户游标导出复用userUsageLogs的可见性投影，新增默认关闭、跨渠道隔离及缓存失败隐藏等5种回归。普通Responses透传补齐实际写入字节跨尝试累计，首输出判定与写入共锁，返回前等待保活退出；首Token暂存或丢弃的数据不计入。未通过删除断言、关闭检查或退回定制行为规避失败。
+
+### 定制功能保留
+
+71个稳定CUST编号及状态全部保留，没有新增、复用、退役或移除编号。22项受影响功能已在相应代码提交中更新清单，变更如下：
+
+| 功能编号 | 本轮适配与保留边界 |
+| --- | --- |
+| `CUST-GW-001` | 合入跨重试心跳累计与工具名恢复，保留首语义输出守卫、已发送禁止重放和一次结算。 |
+| `CUST-GW-003` | 心跳注释按请求跨实例累计；保留 paused 状态及首 Token watchdog 恢复机制。 |
+| `CUST-GW-004` | OpenAI传输错误改用分类枚举；瞬态 Pool 同账号重试和插件已发送禁止重试继续保留，OpenAI网络可达性冷却30秒、代理认证冷却10分钟。 |
+| `CUST-GW-005` | 复制账号继续清理 auto_managed_probe_state，并额外清理上游分组同步开关。 |
+| `CUST-GW-010` | 合入上游大请求分配优化与会话提示 JSON 编码；只保留首次有效会话提示，不持有完整请求体。 |
+| `CUST-GW-017` | 渠道用量实际型号展示开关默认关闭，独立于客户端协议型号回写；原始上游审计和请求型号计费保持。 |
+| `CUST-PROTO-001` | 合入固定上游的 Codex 模型能力、终端上下文和内置提示词；本地版本和模拟策略边界保持。 |
+| `CUST-PROTO-003` | 适配带 context 的账号请求头覆写；Claude 模拟头仍最终覆盖，并清理被替换变量头的发送审计。 |
+| `CUST-PROTO-005` | 合入仅 API Key 管理员模板可用的身份变量、后台身份隔离与 WS 连接身份分桶；最终覆盖后只记录实际仍发送的变量头。 |
+| `CUST-PROTO-009` | 上游请求构造与工具恢复变化继续保留签名绑定透传和采样参数边界。 |
+| `CUST-ACC-001` | 合入上游分组名称备注同步及预览能力，保留本地账号策略默认值和模型白名单。 |
+| `CUST-ACC-005` | 账号测试适配新版请求头接口，继续使用本地 Claude 模拟头最终覆盖规则。 |
+| `CUST-ACC-007` | 复制账号保留本地测试计划行为；同时丢弃自动托管探测状态与上游分组同步开关。 |
+| `CUST-BILL-001` | 新增实际型号可见性只影响用户用量投影，渠道计费继续固定 requested，不恢复计费来源选择器。 |
+| `CUST-BILL-002` | 渠道表单新增默认关闭的实际型号展示选项，同时保留多层默认价与严格缺价拒绝。 |
+| `CUST-BILL-005` | 管理员游标导出补充用户名列；用户游标导出复用列表的渠道可见性投影，默认不泄露上游型号或账号信息。 |
+| `CUST-RISK-001` | 合入远端审核队列按需分配和图片安全拒绝留证，保留全部本地人工审核队列、留存及统计字段。 |
+| `CUST-RISK-003` | 合入请求者信息与脱敏后的变量头审计；用户错误详情可见性开关和人工审核边界保持。 |
+| `CUST-UI-004` | 滚动定位测试按本地 HelpTooltip 视口坐标、翻转、限宽限高和滚动规则适配。 |
+| `CUST-OPS-004` | 本轮使用 Go 1.27.4、golangci-lint 2.14.0、pnpm 9.15.9 对同步前后独立快照验证；已有失败与未验证项单独记录。 |
+| `CUST-OPS-006` | 上游更新器校验修复随完整历史合入，但服务和测试继续删除，不恢复网页更新、回滚或重启入口。 |
+| `CUST-OPS-008` | 产品版本保留0.1.272，嵌入来源更新为上游0.2.25和4233cc3d8018bf2f399c4c366d94067c42eb697e。 |
+
+请求型号计费、严格缺价、多层默认价、按用户串行扣费、在途预留、5秒usage任务、客户端型号回写、原始上游审计、Claude模拟、签名透传、人工审核、游标导出及禁止网页自更新继续保留。生产Compose两文件仍完全一致，实例配置不在本轮修改范围。
+
+### 验证环境与源码对应
+
+同步前后均使用Windows Node 24.15.0、pnpm 9.15.9及WSL Ubuntu-24.04中的Go 1.27.4、golangci-lint 2.14.0。Linux统一GOMAXPROCS=4、GOMEMLIMIT=3GiB、GOFLAGS=-p=1、GOTOOLCHAIN=local、GOENV=off，清除外部服务凭据与生产数据库环境变量。PostgreSQL和Redis只使用本轮隔离容器、回环端口及仓库内临时数据；测试资源设置不代表生产容量验证。
+
+证据根目录为`D:/project/sub2api/tmp/upstream-sync-20261127`。原始命令账本为各阶段results.tsv、frontend-results.tsv，原始日志及Git归档均保留本地，不纳入本次提交。源码由固定Git对象归档，不以运行中的工作树代替测试快照。Linux源码临时挂载位于`/mnt/d/project/sub2api/tmp/s1127`；Windows前端源码位于证据目录中的各`<阶段>-source`目录。
+
+| 阶段 | Git对象 | 用途 |
+| --- | --- | --- |
+| `baseline` | `3b2c789c4c256d4fddc22526eef7fb6f63ae75d9` | 同步前基线 |
+| `candidate` | `6c99e2a9f5b1bea80f39c86145ac20a532185309` | 首次合并候选，新增失败保留 |
+| `candidate-final` | `f811fe6d6bfd184eb8618eb058dd14b215ed1af6` | 首次兼容修复；前端与Canvas最终通过结果来自此快照 |
+| `candidate-r2` | `b47f46965072ab132b2a4e9d05340b9447ad47ab`（诊断tree） | 审核类型修正及心跳存储桩定位 |
+| `candidate-r3` | `04136e22e2a8c62dfa97ae2b4333075c983d147c`（诊断tree） | 补全心跳存储桩后的独立竞态回归 |
+| `candidate-r4` | `55582d18f0be41a7022694636c455404d6a75496` | 最终代码完整后端、静态、合约和启动验收 |
+
+candidate-r4的后端及静态检查直接使用最终代码SHA。前端和Canvas复用candidate-final的9项通过结果：两提交的frontend tree均为`8a2f7a50dca5b7fb9e2e6eedc9a4ad786bc78e96`，canvas tree均为`6e4cb53450c02674f6d1a69d0b3d352f1aefbaf9`；期间仅2份Go测试和2份历史记录变化，无前端构建输入变化。来源与比较证据见frontend-validation-reuse.json。最终记录仅修改两份文档，亦不改变已验收构建输入。
+
+### 主检查结论
+
+同步前41项主检查39项通过、2项既有竞态失败；最终候选使用32项最终代码结果加9项相同前端树结果，仍为41项39通过、2项既有竞态失败。基线另有2项专门复现竞态的诊断，均按预期复现，不能纳入主检查通过率；首次依赖下载失败亦单列保留。
+
+- 完整go test、unit、integration、golangci-lint、make build、构建版本合约通过；lint为0 issues，构建产品版本0.1.272。
+- 前端由基线424文件/3541测试增至429文件/3597测试，全部通过；lint、typecheck、build通过。Canvas前后均为8文件/34测试，typecheck与build通过。
+- 17项部署脚本语法、Compose、资源、蓝绿辅助、来源和工作流静态检查通过。仅本地模拟与静态验证，没有实际远程部署。
+- CI原样流式竞态、生命周期竞态、获批功能边界竞态、本轮定向竞态回归通过。
+- 真实Redis隔离回归的热点性能、截止时间与未知槽清理、写入后断连、旧模式与双实例切换4组通过；不能外推为生产峰值性能保证。
+- 基线fresh、existing-admin-legacy-env两种启动场景通过；候选增加upgrade-from-baseline，共3场景通过。均核验健康、原管理员登录、降智检测默认关闭；迁移账本SHA256均为`0c2fd2759d40e18db9d82a016df57ed551604fbf6289acaa95e57e622f7ea2a9`，没有新增迁移。
+- E2E只编译通过，没有执行需要真实Provider或外部业务的E2E。
+
+### 实际命令字典
+
+以下字典保留各次记录的实际命令参数；为便于阅读，将日志中未显示引号的-run正则恢复为等价单引号表示。命令编号供后续逐次结果表引用，不省略失败或重试。go、make和golangci-lint从各Linux快照的backend执行，静态脚本从快照根目录执行；pnpm从对应Windows快照根目录执行。完整环境和容器准备见本轮run-linux.sh、run-linux-recheck.sh、run-race-recheck.sh、run-inflight-recheck.sh及前端验证脚本。
+
+| 编号 | 实际命令 |
+| --- | --- |
+| V001 | `bash -n deploy/apple-container.sh` |
+| V002 | `bash -n deploy/docker-deploy.sh` |
+| V003 | `sh -n deploy/remote-deploy.sh` |
+| V004 | `sh deploy/tests/docker-compose-security-test.sh` |
+| V005 | `sh deploy/tests/docker-compose-gateway-env-test.sh` |
+| V006 | `sh deploy/tests/docker-compose-simple-mode-env-test.sh` |
+| V007 | `sh deploy/tests/docker-runtime-resources-test.sh` |
+| V008 | `sh deploy/test-caddyfile-cache.sh` |
+| V009 | `sh deploy/tests/remote-deploy-test.sh` |
+| V010 | `python3 deploy/tests/blue-green-test.py` |
+| V011 | `python3 deploy/tests/blue-green-evidence-test.py` |
+| V012 | `python3 deploy/tests/blue-green-preflight-test.py` |
+| V013 | `python3 -m unittest discover -s tools -p test_check_upstream_sync_metadata.py` |
+| V014 | `python3 -m unittest discover -s tools -p test_workflow_usage_policy.py` |
+| V015 | `python3 -m unittest discover -s .github/release-tools -p test_release_matrix.py` |
+| V016 | `python3 tools/check_upstream_sync_metadata.py` |
+| V017 | `cmp deploy/docker-compose.yml deploy/docker-compose.sub2api.yml` |
+| V018 | `timeout 1200 go test -race -tags=unit -count=1 ./internal/pkg/lifecycle ./internal/pkg/cleanupqueue ./internal/service ./internal/repository ./internal/handler -run 'TestPeer\|TestAffinity\|TestPublicPeer\|TestLongSSE\|TestHijacked\|TestDetachedProducer\|TestControl\|TestDrain\|TestNewInstance\|TestLegacyWaits\|TestRenewal\|TestUsageRecordWorkerPool_StopRace\|TestStoppedKeyed\|TestOpenAIResponsesWebSocket_Ingress\|TestUpstreamVersion\|TestChannelMonitorRunnerRejected\|TestInflight\|TestCleanupQueue\|TestConcurrencySlowWait\|TestConcurrencyRenewal\|TestSlotAcquire\|TestBalanceInflight\|TestSlotBackend'` |
+| V019 | `timeout 2400 go test -count=1 ./...` |
+| V020 | `timeout 1200 go test -race -tags=unit -count=1 ./internal/service ./internal/service/openai_ws_v2 ./internal/handler ./internal/repository ./internal/pkg/antigravity ./internal/pkg/apicompat ./internal/pkg/requestmodel ./internal/server/middleware ./internal/server/routes ./internal/config ./internal/securityaudit -run 'Test.*(CacheWrite\|CacheCreation\|Billing\|Pricing\|RequestedModel\|Session\|Sealed\|CodexPage\|UTF8\|Effort\|Fable\|Mythos\|RefreshToken\|OAuthRefresh\|SlotRelease\|WorkerWake\|NativeImage\|Keepalive\|RequestBodyMemory\|Passthrough\|FirstToken\|CurrentTurn\|WebSearch\|ToolSearch\|Cooldown\|Refund\|Recharge\|AccountErrorPolicy\|GPT62\|Conflict\|Duplicate\|Compaction\|Scheduler\|PlatformQuota)'` |
+| V021 | `timeout 1200 go test -race -tags=unit -count=1 ./internal/service ./internal/repository ./internal/handler ./internal/pkg/apicompat -run 'TestAPIKeyAuthSnapshot\|TestNativeAnthropicResponseObservation\|TestFillMissingEphemeralCacheControlTTL\|TestUsageBillingProductionProvider\|TestSchedulerFallback\|TestSchedulerSnapshotPointerReader\|TestSchedulerCacheSnapshot\|TestDetachedBillingContext\|TestUsageRecordWorkerPool_Detached\|TestGatewayService_RotatedClaudeToken\|Test.*(Ultrafast\|UltraFast\|Vertex\|DeepSeek\|RequestedModelPricing\|CacheStoragePrice\|EnforceCacheControl\|AnthropicSampling\|AnthropicPassthrough\|SignatureBinding)\|TestAntigravityCompatDefaultPreservesPreContentFailover\|TestAntigravityCompatHeaderWait'` |
+| V022 | `timeout 2400 go test -tags=unit -count=1 ./...` |
+| V023 | `timeout 2400 go test -tags=integration -count=1 ./...` |
+| V024 | `timeout 2400 golangci-lint run --timeout=30m ./...` |
+| V025 | `timeout 1200 make build` |
+| V026 | `timeout 2400 go test -race -tags=unit -count=1 -run 'TestKimi\|TestOpsErrorLoggerMiddleware_Kimi\|TestAnthropicStreamSafeRetry\|TestFirstToken\|TestDecompress\|TestUsageRecordWorkerPool\|TestStoppedKeyed\|TestOpenAIStreamTransportEvent\|TestOpsErrorLoggerMiddleware_StreamTransportCodesAreUpstream\|TestOpenAIFailoverExhaustedPreservesStreamTransportCode\|Test.*Grok\|Test.*Image\|Test.*Gemini\|TestComputeClaudeCodeFingerprint\|Test.*ClientDisconnect\|Test.*ClientAbort\|Test.*ResponseModel\|Test.*AccountTestModel' ./internal/service ./internal/handler ./internal/handler/admin ./internal/repository` |
+| V027 | `timeout 360 go test -tags=unit ./internal/repository -run '^TestInflightRedis' -count=1 -v -timeout=5m` |
+| V028 | `timeout 1200 go test -race -tags=unit -count=1 -run 'TestKimi\|TestOpsErrorLoggerMiddleware_Kimi\|TestAnthropicStreamSafeRetry\|TestFirstTokenCleanup\|TestGatewayService_AnthropicAPIKeyPassthrough_StreamingIdleTimeout\|TestDecompressResponseBodyStreamClose\|TestDecompressedBodyClose\|TestOpenAIStreamTransportEvent\|TestOpsErrorLoggerMiddleware_StreamTransportCodesAreUpstream\|TestOpenAIFailoverExhaustedPreservesStreamTransportCode\|TestMonitorStream_' ./internal/service ./internal/handler ./internal/repository` |
+| V029 | `timeout 1500 go test -race -tags=unit -count=1 ./internal/service ./internal/handler ./internal/handler/admin ./internal/repository ./internal/pkg/apicompat -run 'Test.*(HeaderOverride\|HeaderTemplate\|TransportError\|Compact.*Keepalive\|Compact.*Accounting\|OpenCode.*Session\|OpenCode.*UserAgent\|OriginalSession\|UsageExport\|UsageHandler\|ResponseModel\|ExposeResponse\|LocalAudit\|Moderation\|ThinkingFilter\|OAuthModel\|Kimi.*Alias\|CopyAccount\|GroupSync\|ToolName\|Safety)'` |
+| V030 | `timeout 600 go test -tags=unit,embed ./internal/handler -run 'TestBuildVersion' -count=1` |
+| V031 | `timeout 600 go test -c -tags=e2e -o /mnt/d/project/sub2api/tmp/upstream-sync-20261127/baseline/e2e-compile.test ./internal/integration` |
+| V032 | `timeout 600 python3 /mnt/d/project/sub2api/tmp/upstream-sync-20261127/run-smoke.py baseline` |
+| V033 | `timeout 900 go test -race -tags=unit -count=10 ./internal/service -run '^TestForwardAsAnthropic_(OAuthMetadataSessionSurvivesDigestPrefixRewrite\|APIKeyMetadataSessionSurvivesChangingCacheControlAnchorAfterContinuationDisabled\|OAuthMetadataSessionSurvivesChangingCacheControlAnchor)$'` |
+| V034 | `timeout 900 go test -race -tags=unit -count=10 ./internal/service ./internal/handler -run '^TestProcessGeminiStream_(ImageFlowSkipsSemanticDetection\|SemanticErrorFails\|EmitsImageEvent)$\|^TestPreResponseStreamKeepalive_(OpenAIComment\|ClaudePing)$'` |
+| V035 | `pnpm --dir D:\project\sub2api\tmp\upstream-sync-20261127\baseline-source\frontend install --offline --frozen-lockfile --ignore-scripts --store-dir D:\project\sub2api\tmp\upstream-sync-20261025\pnpm-store` |
+| V036 | `pnpm --dir D:\project\sub2api\tmp\upstream-sync-20261127\baseline-source\canvas install --offline --frozen-lockfile --ignore-scripts --store-dir D:\project\sub2api\tmp\upstream-sync-20261025\pnpm-store` |
+| V037 | `pnpm --dir frontend run lint:check` |
+| V038 | `pnpm --dir frontend run typecheck` |
+| V039 | `pnpm --dir frontend run test:run --maxWorkers=2 --minWorkers=1` |
+| V040 | `pnpm --dir frontend run build` |
+| V041 | `pnpm --dir canvas run typecheck` |
+| V042 | `pnpm --dir canvas run test` |
+| V043 | `pnpm --dir canvas run build` |
+| V044 | `pnpm --dir D:\project\sub2api\tmp\upstream-sync-20261127\candidate-source\frontend install --offline --frozen-lockfile --ignore-scripts --store-dir D:\project\sub2api\tmp\upstream-sync-20261025\pnpm-store` |
+| V045 | `pnpm --dir D:\project\sub2api\tmp\upstream-sync-20261127\candidate-source\canvas install --offline --frozen-lockfile --ignore-scripts --store-dir D:\project\sub2api\tmp\upstream-sync-20261025\pnpm-store` |
+| V046 | `timeout 900 go test -race -tags=unit -count=1 ./internal/service ./internal/handler -run 'TestContentModerationIdleService\|TestRememberOpenCodeInboundBody\|TestOpenAIInbound\|TestOpenCodeInboundSnapshot\|TestOpenAIGatewayHandlerResponsesPassthroughKeepaliveFailoverAcrossAttempts\|TestOpenAIStreamingPassthroughKeepaliveDuringIdle\|Test.*Compact.*Keepalive\|TestFirstToken'` |
+| V047 | `pnpm --dir D:\project\sub2api\tmp\upstream-sync-20261127\candidate-final-source\frontend install --offline --frozen-lockfile --ignore-scripts --store-dir D:\project\sub2api\tmp\upstream-sync-20261025\pnpm-store` |
+| V048 | `pnpm --dir D:\project\sub2api\tmp\upstream-sync-20261127\candidate-final-source\canvas install --offline --frozen-lockfile --ignore-scripts --store-dir D:\project\sub2api\tmp\upstream-sync-20261025\pnpm-store` |
+| V049 | `timeout 900 go test -race -tags=unit -count=1 ./internal/handler -run '^TestOpenAIGatewayHandlerResponsesPassthroughKeepaliveFailoverAcrossAttempts$'` |
+| V050 | `timeout 600 go test -c -tags=e2e -o /mnt/d/project/sub2api/tmp/upstream-sync-20261127/candidate-r4/e2e-compile.test ./internal/integration` |
+| V051 | `timeout 600 python3 /mnt/d/project/sub2api/tmp/upstream-sync-20261127/run-smoke.py candidate-r4` |
+
+### baseline逐次结果
+
+原始时间均带+08:00时区；日志路径相对于仓库根目录。含go-default首次下载失败、完整重跑及两项竞态诊断；主检查以完整重跑结果为准。
+
+| 检查 | 命令编号 | 开始 | 结束 | 退出码 | 原始日志 |
+| --- | --- | --- | --- | --- | --- |
+| `apple-syntax` | V001 | 2026-11-27T20:46:08+08:00 | 2026-11-27T20:46:08+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/apple-syntax.log` |
+| `docker-deploy-syntax` | V002 | 2026-11-27T20:46:08+08:00 | 2026-11-27T20:46:08+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/docker-deploy-syntax.log` |
+| `remote-deploy-syntax` | V003 | 2026-11-27T20:46:08+08:00 | 2026-11-27T20:46:08+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/remote-deploy-syntax.log` |
+| `compose-security` | V004 | 2026-11-27T20:46:08+08:00 | 2026-11-27T20:46:08+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/compose-security.log` |
+| `compose-gateway` | V005 | 2026-11-27T20:46:08+08:00 | 2026-11-27T20:46:09+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/compose-gateway.log` |
+| `compose-simple` | V006 | 2026-11-27T20:46:09+08:00 | 2026-11-27T20:46:11+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/compose-simple.log` |
+| `docker-resources` | V007 | 2026-11-27T20:46:11+08:00 | 2026-11-27T20:46:11+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/docker-resources.log` |
+| `caddy-cache` | V008 | 2026-11-27T20:46:11+08:00 | 2026-11-27T20:46:11+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/caddy-cache.log` |
+| `remote-deploy-mock` | V009 | 2026-11-27T20:46:11+08:00 | 2026-11-27T20:46:11+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/remote-deploy-mock.log` |
+| `bluegreen-unit` | V010 | 2026-11-27T20:46:11+08:00 | 2026-11-27T20:46:12+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/bluegreen-unit.log` |
+| `bluegreen-evidence` | V011 | 2026-11-27T20:46:12+08:00 | 2026-11-27T20:46:12+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/bluegreen-evidence.log` |
+| `bluegreen-preflight` | V012 | 2026-11-27T20:46:12+08:00 | 2026-11-27T20:46:12+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/bluegreen-preflight.log` |
+| `metadata-unit` | V013 | 2026-11-27T20:46:12+08:00 | 2026-11-27T20:46:12+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/metadata-unit.log` |
+| `workflow-unit` | V014 | 2026-11-27T20:46:12+08:00 | 2026-11-27T20:46:12+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/workflow-unit.log` |
+| `release-unit` | V015 | 2026-11-27T20:46:12+08:00 | 2026-11-27T20:46:13+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/release-unit.log` |
+| `metadata` | V016 | 2026-11-27T20:46:13+08:00 | 2026-11-27T20:46:13+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/metadata.log` |
+| `compose-equal` | V017 | 2026-11-27T20:46:13+08:00 | 2026-11-27T20:46:13+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/compose-equal.log` |
+| `lifecycle-race` | V018 | 2026-11-27T20:53:21+08:00 | 2026-11-27T21:03:19+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/lifecycle-race.log` |
+| `go-default` | V019 | 2026-11-27T20:46:10+08:00 | 2026-11-27T21:03:37+08:00 | 1 | `tmp/upstream-sync-20261127/baseline/go-default.log` |
+| `sync-regression` | V020 | 2026-11-27T21:03:39+08:00 | 2026-11-27T21:09:43+08:00 | 1 | `tmp/upstream-sync-20261127/baseline/sync-regression.log` |
+| `approved-boundaries` | V021 | 2026-11-27T21:10:25+08:00 | 2026-11-27T21:12:39+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/approved-boundaries.log` |
+| `go-default` | V019 | 2026-11-27T21:05:52+08:00 | 2026-11-27T21:23:22+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/go-default.retry2.log` |
+| `go-unit` | V022 | 2026-11-27T21:03:37+08:00 | 2026-11-27T21:25:49+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/go-unit.log` |
+| `go-integration` | V023 | 2026-11-27T21:25:49+08:00 | 2026-11-27T21:46:16+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/go-integration.log` |
+| `go-lint` | V024 | 2026-11-27T21:46:16+08:00 | 2026-11-27T21:50:02+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/go-lint.log` |
+| `go-build` | V025 | 2026-11-27T21:50:02+08:00 | 2026-11-27T21:54:50+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/go-build.log` |
+| `gateway-race` | V026 | 2026-11-27T21:54:50+08:00 | 2026-11-27T21:58:37+08:00 | 1 | `tmp/upstream-sync-20261127/baseline/gateway-race.log` |
+| `inflight-redis` | V027 | 2026-11-27T21:57:02+08:00 | 2026-11-27T21:59:04+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/inflight-redis.log` |
+| `ci-stream-race` | V028 | 2026-11-27T21:58:38+08:00 | 2026-11-27T22:00:51+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/ci-stream-race.log` |
+| `current-regression` | V029 | 2026-11-27T22:00:54+08:00 | 2026-11-27T22:03:15+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/current-regression.log` |
+| `build-version-contract` | V030 | 2026-11-27T22:03:21+08:00 | 2026-11-27T22:04:47+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/build-version-contract.log` |
+| `e2e-compile` | V031 | 2026-11-27T22:04:47+08:00 | 2026-11-27T22:04:55+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/e2e-compile.log` |
+| `local-smoke` | V032 | 2026-11-27T22:04:55+08:00 | 2026-11-27T22:05:27+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/local-smoke.log` |
+| `gin-global-race-repro` | V033 | 2026-11-27T23:11:02+08:00 | 2026-11-27T23:12:27+08:00 | 1 | `tmp/upstream-sync-20261127/baseline/gin-global-race-repro.log` |
+| `fixture-race-repro` | V034 | 2026-11-27T23:16:28+08:00 | 2026-11-27T23:18:56+08:00 | 1 | `tmp/upstream-sync-20261127/baseline/fixture-race-repro.log` |
+| `frontend-install` | V035 | 2026-11-27T20:44:01.4662309+08:00 | 2026-11-27T20:44:30.0690171+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/frontend-install.log` |
+| `canvas-install` | V036 | 2026-11-27T20:44:30.0797614+08:00 | 2026-11-27T20:44:51.2332286+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/canvas-install.log` |
+| `frontend-lint` | V037 | 2026-11-27T20:44:51.2412771+08:00 | 2026-11-27T20:45:26.4243379+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/frontend-lint.log` |
+| `frontend-typecheck` | V038 | 2026-11-27T20:45:26.4264393+08:00 | 2026-11-27T20:45:53.3648469+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/frontend-typecheck.log` |
+| `frontend-test` | V039 | 2026-11-27T20:45:53.3664849+08:00 | 2026-11-27T20:51:21.6425501+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/frontend-test.log` |
+| `frontend-build` | V040 | 2026-11-27T20:51:21.6437690+08:00 | 2026-11-27T20:52:40.5133442+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/frontend-build.log` |
+| `canvas-typecheck` | V041 | 2026-11-27T20:52:40.5149245+08:00 | 2026-11-27T20:52:51.2791634+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/canvas-typecheck.log` |
+| `canvas-test` | V042 | 2026-11-27T20:52:51.2825010+08:00 | 2026-11-27T20:52:55.9581884+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/canvas-test.log` |
+| `canvas-build` | V043 | 2026-11-27T20:52:55.9596617+08:00 | 2026-11-27T20:55:07.3964731+08:00 | 0 | `tmp/upstream-sync-20261127/baseline/canvas-build.log` |
+
+### candidate逐次结果
+
+原始时间均带+08:00时区；日志路径相对于仓库根目录。本阶段仅保留诊断与修复过程，不替代最终验收。
+
+| 检查 | 命令编号 | 开始 | 结束 | 退出码 | 原始日志 |
+| --- | --- | --- | --- | --- | --- |
+| `apple-syntax` | V001 | 2026-11-27T22:12:02+08:00 | 2026-11-27T22:12:02+08:00 | 0 | `tmp/upstream-sync-20261127/candidate/apple-syntax.log` |
+| `docker-deploy-syntax` | V002 | 2026-11-27T22:12:02+08:00 | 2026-11-27T22:12:02+08:00 | 0 | `tmp/upstream-sync-20261127/candidate/docker-deploy-syntax.log` |
+| `remote-deploy-syntax` | V003 | 2026-11-27T22:12:02+08:00 | 2026-11-27T22:12:02+08:00 | 0 | `tmp/upstream-sync-20261127/candidate/remote-deploy-syntax.log` |
+| `compose-security` | V004 | 2026-11-27T22:12:02+08:00 | 2026-11-27T22:12:02+08:00 | 0 | `tmp/upstream-sync-20261127/candidate/compose-security.log` |
+| `compose-gateway` | V005 | 2026-11-27T22:12:02+08:00 | 2026-11-27T22:12:04+08:00 | 0 | `tmp/upstream-sync-20261127/candidate/compose-gateway.log` |
+| `compose-simple` | V006 | 2026-11-27T22:12:04+08:00 | 2026-11-27T22:12:07+08:00 | 0 | `tmp/upstream-sync-20261127/candidate/compose-simple.log` |
+| `docker-resources` | V007 | 2026-11-27T22:12:07+08:00 | 2026-11-27T22:12:07+08:00 | 0 | `tmp/upstream-sync-20261127/candidate/docker-resources.log` |
+| `caddy-cache` | V008 | 2026-11-27T22:12:07+08:00 | 2026-11-27T22:12:07+08:00 | 0 | `tmp/upstream-sync-20261127/candidate/caddy-cache.log` |
+| `remote-deploy-mock` | V009 | 2026-11-27T22:12:07+08:00 | 2026-11-27T22:12:08+08:00 | 0 | `tmp/upstream-sync-20261127/candidate/remote-deploy-mock.log` |
+| `bluegreen-unit` | V010 | 2026-11-27T22:12:08+08:00 | 2026-11-27T22:12:09+08:00 | 0 | `tmp/upstream-sync-20261127/candidate/bluegreen-unit.log` |
+| `bluegreen-evidence` | V011 | 2026-11-27T22:12:09+08:00 | 2026-11-27T22:12:09+08:00 | 0 | `tmp/upstream-sync-20261127/candidate/bluegreen-evidence.log` |
+| `bluegreen-preflight` | V012 | 2026-11-27T22:12:09+08:00 | 2026-11-27T22:12:09+08:00 | 0 | `tmp/upstream-sync-20261127/candidate/bluegreen-preflight.log` |
+| `metadata-unit` | V013 | 2026-11-27T22:12:09+08:00 | 2026-11-27T22:12:09+08:00 | 0 | `tmp/upstream-sync-20261127/candidate/metadata-unit.log` |
+| `workflow-unit` | V014 | 2026-11-27T22:12:09+08:00 | 2026-11-27T22:12:10+08:00 | 0 | `tmp/upstream-sync-20261127/candidate/workflow-unit.log` |
+| `release-unit` | V015 | 2026-11-27T22:12:10+08:00 | 2026-11-27T22:12:11+08:00 | 0 | `tmp/upstream-sync-20261127/candidate/release-unit.log` |
+| `metadata` | V016 | 2026-11-27T22:12:11+08:00 | 2026-11-27T22:12:12+08:00 | 0 | `tmp/upstream-sync-20261127/candidate/metadata.log` |
+| `compose-equal` | V017 | 2026-11-27T22:12:12+08:00 | 2026-11-27T22:12:12+08:00 | 0 | `tmp/upstream-sync-20261127/candidate/compose-equal.log` |
+| `go-lint` | V024 | 2026-11-27T22:18:06+08:00 | 2026-11-27T22:23:45+08:00 | 0 | `tmp/upstream-sync-20261127/candidate/go-lint.log` |
+| `current-regression` | V029 | 2026-11-27T22:16:03+08:00 | 2026-11-27T22:24:07+08:00 | 1 | `tmp/upstream-sync-20261127/candidate/current-regression.log` |
+| `go-build` | V025 | 2026-11-27T22:23:45+08:00 | 2026-11-27T22:27:35+08:00 | 0 | `tmp/upstream-sync-20261127/candidate/go-build.log` |
+| `go-default` | V019 | 2026-11-27T22:12:04+08:00 | 2026-11-27T22:30:47+08:00 | 1 | `tmp/upstream-sync-20261127/candidate/go-default.log` |
+| `go-integration` | V023 | 2026-11-27T22:13:47+08:00 | 2026-11-27T22:33:58+08:00 | 1 | `tmp/upstream-sync-20261127/candidate/go-integration.log` |
+| `go-unit` | V022 | 2026-11-27T22:12:05+08:00 | 2026-11-27T22:35:47+08:00 | 1 | `tmp/upstream-sync-20261127/candidate/go-unit.log` |
+| `frontend-install` | V044 | 2026-11-27T22:12:03.5623176+08:00 | 2026-11-27T22:12:37.9543608+08:00 | 0 | `tmp/upstream-sync-20261127/candidate/frontend-install.log` |
+| `canvas-install` | V045 | 2026-11-27T22:12:37.9654406+08:00 | 2026-11-27T22:13:04.6350914+08:00 | 0 | `tmp/upstream-sync-20261127/candidate/canvas-install.log` |
+| `frontend-lint` | V037 | 2026-11-27T22:13:04.6424224+08:00 | 2026-11-27T22:13:46.9155922+08:00 | 0 | `tmp/upstream-sync-20261127/candidate/frontend-lint.log` |
+| `frontend-typecheck` | V038 | 2026-11-27T22:13:46.9185678+08:00 | 2026-11-27T22:14:24.4561934+08:00 | 2 | `tmp/upstream-sync-20261127/candidate/frontend-typecheck.log` |
+| `frontend-test` | V039 | 2026-11-27T22:14:24.4800015+08:00 | 2026-11-27T22:20:49.1139008+08:00 | 1 | `tmp/upstream-sync-20261127/candidate/frontend-test.log` |
+| `frontend-build` | V040 | 2026-11-27T22:20:49.1301917+08:00 | 2026-11-27T22:21:41.2094805+08:00 | 2 | `tmp/upstream-sync-20261127/candidate/frontend-build.log` |
+| `canvas-typecheck` | V041 | 2026-11-27T22:21:41.2289827+08:00 | 2026-11-27T22:21:51.7214056+08:00 | 0 | `tmp/upstream-sync-20261127/candidate/canvas-typecheck.log` |
+| `canvas-test` | V042 | 2026-11-27T22:21:51.7234113+08:00 | 2026-11-27T22:21:57.0560975+08:00 | 0 | `tmp/upstream-sync-20261127/candidate/canvas-test.log` |
+| `canvas-build` | V043 | 2026-11-27T22:21:57.0579070+08:00 | 2026-11-27T22:24:10.4331064+08:00 | 0 | `tmp/upstream-sync-20261127/candidate/canvas-build.log` |
+
+### candidate-final逐次结果
+
+原始时间均带+08:00时区；日志路径相对于仓库根目录。本阶段的9项前端及Canvas结果复用于最终验收；该阶段后端失败不被当作最终结果。
+
+| 检查 | 命令编号 | 开始 | 结束 | 退出码 | 原始日志 |
+| --- | --- | --- | --- | --- | --- |
+| `apple-syntax` | V001 | 2026-11-27T22:34:26+08:00 | 2026-11-27T22:34:26+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-final/apple-syntax.log` |
+| `docker-deploy-syntax` | V002 | 2026-11-27T22:34:26+08:00 | 2026-11-27T22:34:26+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-final/docker-deploy-syntax.log` |
+| `remote-deploy-syntax` | V003 | 2026-11-27T22:34:26+08:00 | 2026-11-27T22:34:26+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-final/remote-deploy-syntax.log` |
+| `compose-security` | V004 | 2026-11-27T22:34:26+08:00 | 2026-11-27T22:34:27+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-final/compose-security.log` |
+| `compose-gateway` | V005 | 2026-11-27T22:34:27+08:00 | 2026-11-27T22:34:28+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-final/compose-gateway.log` |
+| `compose-simple` | V006 | 2026-11-27T22:34:28+08:00 | 2026-11-27T22:34:30+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-final/compose-simple.log` |
+| `docker-resources` | V007 | 2026-11-27T22:34:30+08:00 | 2026-11-27T22:34:30+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-final/docker-resources.log` |
+| `caddy-cache` | V008 | 2026-11-27T22:34:30+08:00 | 2026-11-27T22:34:30+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-final/caddy-cache.log` |
+| `remote-deploy-mock` | V009 | 2026-11-27T22:34:30+08:00 | 2026-11-27T22:34:30+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-final/remote-deploy-mock.log` |
+| `bluegreen-unit` | V010 | 2026-11-27T22:34:30+08:00 | 2026-11-27T22:34:31+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-final/bluegreen-unit.log` |
+| `bluegreen-evidence` | V011 | 2026-11-27T22:34:31+08:00 | 2026-11-27T22:34:31+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-final/bluegreen-evidence.log` |
+| `bluegreen-preflight` | V012 | 2026-11-27T22:34:31+08:00 | 2026-11-27T22:34:31+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-final/bluegreen-preflight.log` |
+| `metadata-unit` | V013 | 2026-11-27T22:34:31+08:00 | 2026-11-27T22:34:31+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-final/metadata-unit.log` |
+| `workflow-unit` | V014 | 2026-11-27T22:34:31+08:00 | 2026-11-27T22:34:31+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-final/workflow-unit.log` |
+| `release-unit` | V015 | 2026-11-27T22:34:31+08:00 | 2026-11-27T22:34:32+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-final/release-unit.log` |
+| `metadata` | V016 | 2026-11-27T22:34:32+08:00 | 2026-11-27T22:34:32+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-final/metadata.log` |
+| `compose-equal` | V017 | 2026-11-27T22:34:32+08:00 | 2026-11-27T22:34:32+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-final/compose-equal.log` |
+| `repair-regression` | V046 | 2026-11-27T22:31:56+08:00 | 2026-11-27T22:37:07+08:00 | 1 | `tmp/upstream-sync-20261127/candidate-final/repair-regression.log` |
+| `sync-regression` | V020 | 2026-11-27T22:37:28+08:00 | 2026-11-27T22:42:32+08:00 | 1 | `tmp/upstream-sync-20261127/candidate-final/sync-regression.log` |
+| `gateway-race` | V026 | 2026-11-27T22:42:32+08:00 | 2026-11-27T22:45:24+08:00 | 1 | `tmp/upstream-sync-20261127/candidate-final/gateway-race.log` |
+| `ci-stream-race` | V028 | 2026-11-27T22:45:24+08:00 | 2026-11-27T22:47:24+08:00 | 1 | `tmp/upstream-sync-20261127/candidate-final/ci-stream-race.log` |
+| `lifecycle-race` | V018 | 2026-11-27T22:47:25+08:00 | 2026-11-27T22:49:43+08:00 | 1 | `tmp/upstream-sync-20261127/candidate-final/lifecycle-race.log` |
+| `go-default` | V019 | 2026-11-27T22:34:29+08:00 | 2026-11-27T22:51:21+08:00 | 1 | `tmp/upstream-sync-20261127/candidate-final/go-default.log` |
+| `approved-boundaries` | V021 | 2026-11-27T22:49:44+08:00 | 2026-11-27T22:51:47+08:00 | 1 | `tmp/upstream-sync-20261127/candidate-final/approved-boundaries.log` |
+| `go-unit` | V022 | 2026-11-27T22:34:28+08:00 | 2026-11-27T22:52:26+08:00 | 1 | `tmp/upstream-sync-20261127/candidate-final/go-unit.log` |
+| `current-regression` | V029 | 2026-11-27T22:51:47+08:00 | 2026-11-27T22:53:47+08:00 | 1 | `tmp/upstream-sync-20261127/candidate-final/current-regression.log` |
+| `inflight-redis` | V027 | 2026-11-27T22:53:47+08:00 | 2026-11-27T22:55:35+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-final/inflight-redis.log` |
+| `frontend-install` | V047 | 2026-11-27T22:31:59.5725138+08:00 | 2026-11-27T22:32:35.7238031+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-final/frontend-install.log` |
+| `canvas-install` | V048 | 2026-11-27T22:32:35.7414032+08:00 | 2026-11-27T22:33:09.2528801+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-final/canvas-install.log` |
+| `frontend-lint` | V037 | 2026-11-27T22:33:09.2602534+08:00 | 2026-11-27T22:33:54.9981254+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-final/frontend-lint.log` |
+| `frontend-typecheck` | V038 | 2026-11-27T22:33:55.0006411+08:00 | 2026-11-27T22:34:28.4581500+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-final/frontend-typecheck.log` |
+| `frontend-test` | V039 | 2026-11-27T22:34:28.4608730+08:00 | 2026-11-27T22:41:18.5543132+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-final/frontend-test.log` |
+| `frontend-build` | V040 | 2026-11-27T22:41:18.5557222+08:00 | 2026-11-27T22:42:41.1451313+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-final/frontend-build.log` |
+| `canvas-typecheck` | V041 | 2026-11-27T22:42:41.1467261+08:00 | 2026-11-27T22:42:47.6871102+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-final/canvas-typecheck.log` |
+| `canvas-test` | V042 | 2026-11-27T22:42:47.6894491+08:00 | 2026-11-27T22:42:51.1964769+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-final/canvas-test.log` |
+| `canvas-build` | V043 | 2026-11-27T22:42:51.1979910+08:00 | 2026-11-27T22:44:43.9653866+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-final/canvas-build.log` |
+
+### candidate-r2逐次结果
+
+原始时间均带+08:00时区；日志路径相对于仓库根目录。本阶段仅保留诊断与修复过程，不替代最终验收。
+
+| 检查 | 命令编号 | 开始 | 结束 | 退出码 | 原始日志 |
+| --- | --- | --- | --- | --- | --- |
+| `repair-regression` | V046 | 2026-11-27T22:43:00+08:00 | 2026-11-27T22:49:22+08:00 | 1 | `tmp/upstream-sync-20261127/candidate-r2/repair-regression.log` |
+| `passthrough-heartbeat-probe` | V049 | 2026-11-27T22:47:59+08:00 | 2026-11-27T22:49:30+08:00 | 1 | `tmp/upstream-sync-20261127/candidate-r2/passthrough-heartbeat-probe.log` |
+
+### candidate-r3逐次结果
+
+原始时间均带+08:00时区；日志路径相对于仓库根目录。本阶段仅保留诊断与修复过程，不替代最终验收。
+
+| 检查 | 命令编号 | 开始 | 结束 | 退出码 | 原始日志 |
+| --- | --- | --- | --- | --- | --- |
+| `passthrough-heartbeat-probe` | V049 | 2026-11-27T22:54:06+08:00 | 2026-11-27T22:57:28+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r3/passthrough-heartbeat-probe.log` |
+
+### candidate-r4逐次结果
+
+原始时间均带+08:00时区；日志路径相对于仓库根目录。最终代码32项检查：30通过、2项既有竞态失败。
+
+| 检查 | 命令编号 | 开始 | 结束 | 退出码 | 原始日志 |
+| --- | --- | --- | --- | --- | --- |
+| `apple-syntax` | V001 | 2026-11-27T23:02:14+08:00 | 2026-11-27T23:02:14+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/apple-syntax.log` |
+| `docker-deploy-syntax` | V002 | 2026-11-27T23:02:15+08:00 | 2026-11-27T23:02:15+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/docker-deploy-syntax.log` |
+| `remote-deploy-syntax` | V003 | 2026-11-27T23:02:15+08:00 | 2026-11-27T23:02:15+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/remote-deploy-syntax.log` |
+| `compose-security` | V004 | 2026-11-27T23:02:15+08:00 | 2026-11-27T23:02:15+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/compose-security.log` |
+| `compose-gateway` | V005 | 2026-11-27T23:02:15+08:00 | 2026-11-27T23:02:16+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/compose-gateway.log` |
+| `compose-simple` | V006 | 2026-11-27T23:02:16+08:00 | 2026-11-27T23:02:17+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/compose-simple.log` |
+| `docker-resources` | V007 | 2026-11-27T23:02:17+08:00 | 2026-11-27T23:02:17+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/docker-resources.log` |
+| `caddy-cache` | V008 | 2026-11-27T23:02:17+08:00 | 2026-11-27T23:02:18+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/caddy-cache.log` |
+| `remote-deploy-mock` | V009 | 2026-11-27T23:02:18+08:00 | 2026-11-27T23:02:18+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/remote-deploy-mock.log` |
+| `bluegreen-unit` | V010 | 2026-11-27T23:02:18+08:00 | 2026-11-27T23:02:19+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/bluegreen-unit.log` |
+| `bluegreen-evidence` | V011 | 2026-11-27T23:02:19+08:00 | 2026-11-27T23:02:19+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/bluegreen-evidence.log` |
+| `bluegreen-preflight` | V012 | 2026-11-27T23:02:19+08:00 | 2026-11-27T23:02:19+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/bluegreen-preflight.log` |
+| `metadata-unit` | V013 | 2026-11-27T23:02:19+08:00 | 2026-11-27T23:02:19+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/metadata-unit.log` |
+| `workflow-unit` | V014 | 2026-11-27T23:02:19+08:00 | 2026-11-27T23:02:19+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/workflow-unit.log` |
+| `release-unit` | V015 | 2026-11-27T23:02:19+08:00 | 2026-11-27T23:02:20+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/release-unit.log` |
+| `metadata` | V016 | 2026-11-27T23:02:20+08:00 | 2026-11-27T23:02:20+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/metadata.log` |
+| `compose-equal` | V017 | 2026-11-27T23:02:20+08:00 | 2026-11-27T23:02:20+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/compose-equal.log` |
+| `sync-regression` | V020 | 2026-11-27T23:02:14+08:00 | 2026-11-27T23:10:49+08:00 | 1 | `tmp/upstream-sync-20261127/candidate-r4/sync-regression.log` |
+| `gateway-race` | V026 | 2026-11-27T23:10:49+08:00 | 2026-11-27T23:14:34+08:00 | 1 | `tmp/upstream-sync-20261127/candidate-r4/gateway-race.log` |
+| `build-version-contract` | V030 | 2026-11-27T23:13:12+08:00 | 2026-11-27T23:14:57+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/build-version-contract.log` |
+| `e2e-compile` | V050 | 2026-11-27T23:14:57+08:00 | 2026-11-27T23:15:06+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/e2e-compile.log` |
+| `go-lint` | V024 | 2026-11-27T23:11:41+08:00 | 2026-11-27T23:16:34+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/go-lint.log` |
+| `ci-stream-race` | V028 | 2026-11-27T23:14:34+08:00 | 2026-11-27T23:17:13+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/ci-stream-race.log` |
+| `go-build` | V025 | 2026-11-27T23:16:34+08:00 | 2026-11-27T23:19:34+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/go-build.log` |
+| `go-default` | V019 | 2026-11-27T23:02:13+08:00 | 2026-11-27T23:19:45+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/go-default.log` |
+| `lifecycle-race` | V018 | 2026-11-27T23:17:14+08:00 | 2026-11-27T23:20:03+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/lifecycle-race.log` |
+| `local-smoke` | V051 | 2026-11-27T23:20:37+08:00 | 2026-11-27T23:21:25+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/local-smoke.log` |
+| `approved-boundaries` | V021 | 2026-11-27T23:20:03+08:00 | 2026-11-27T23:22:19+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/approved-boundaries.log` |
+| `go-unit` | V022 | 2026-11-27T23:02:16+08:00 | 2026-11-27T23:24:06+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/go-unit.log` |
+| `current-regression` | V029 | 2026-11-27T23:22:19+08:00 | 2026-11-27T23:24:48+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/current-regression.log` |
+| `go-integration` | V023 | 2026-11-27T23:05:27+08:00 | 2026-11-27T23:25:43+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/go-integration.log` |
+| `inflight-redis` | V027 | 2026-11-27T23:24:50+08:00 | 2026-11-27T23:26:25+08:00 | 0 | `tmp/upstream-sync-20261127/candidate-r4/inflight-redis.log` |
+
+### 新增失败的定位与修复
+
+所有中间失败均保留原始日志与固定源码快照；未用最终成功日志覆盖旧失败。resolved-candidate-failures.json记录失败用例及编译位置。
+
+1. 基线首次go-default因WebSocket依赖下载EOF退出1；补齐并校验依赖缓存后，从同一基线完整重跑退出0。未改源码规避网络失败。
+2. 首次候选前端typecheck及build退出2，原因是CreateAccountModal中syncPreviewCredentials未被调用。保留本地upstreamModelSyncPreviewRequest，删除无调用计算器。UsageView新增用户名列用例退出1，原因是浮层已Teleport到body；调整查询位置，保留列显示与隐藏断言。修复后的3597项测试全部通过。
+3. 上游审核空闲内存契约未包含本地人工留证队列，按本地既有准确容量计入预算，新增容量断言，其余预算仍64KiB。随后出现int/int64编译错误，已统一为int64；没有缩小人工审核队列或放宽其他预算。
+4. OpenCode上游测试期望后续转换标识覆盖首次标识，与获批本地规则不一致；按首次有效会话标识优先更新断言，同时保持正确JSON编码及不持有完整请求体。
+5. 普通Responses透传此前使用本地独立保活循环；将真正写出的字节接入跨尝试累计，首输出判定与写入共锁，返回前停拍并等待退出。默认首Token守卫和输出后空闲保活仍保留。三账号测试显式关闭首Token暂存以产生真实心跳，并使用本地注释帧格式。
+6. candidate-r2服务层定向竞态包通过（12.505秒），同批handler因测试仓库缺少SetOverloaded而失败；补齐隔离存储桩，并同时断言真实心跳计数、账号1→2→3、账号1/2的529冷却、成功终态唯一且不泄露错误。candidate-r3独立handler竞态通过（2.131秒）。这些包级结果不把candidate-r2整条失败命令改记为成功；最终candidate-r4完整unit、integration及定向检查重新通过。
+
+### 两组既有竞态及完整对照
+
+sync-regression与gateway-race在同步前、最终候选均退出1。基线原始执行有15份竞态报告，另在未改动的同步前源码中分别执行Gin全局模式与测试缓冲区定向复现10次，补充11份及23份，总计49份基线报告。候选共17份报告（sync-regression 8份、gateway-race 9份），17份均能匹配基线的完整读写函数调用栈，未匹配数0。并非仅因测试名相同而豁免；所有候选失败用例均对应race detector报告，未发现独立断言失败。
+
+竞态涉及Gin.SetMode/IsDebugging全局状态、Grok测试仓库map与账号状态并发访问、preResponse保活测试的httptest缓冲区读写、Grok导入测试的日志bytes.Buffer读写。并行测试中race detector可能使同包其他正在运行的用例一起失败，因此没有以失败名称数量代替竞态来源比对。
+
+完整调用栈及项目源码位置保存在race-comparison-candidate-r4.json，SHA256为`37c78fbe533115cb45460c22909b836b388a810d36fa6cb9b5c60027baf6cae0`；源码审查证据为race-review.json。下表列出每份候选报告与至少一个基线原始报告的对应行号，完整映射保留所有匹配。
+
+| 序号 | 候选日志及行号 | 基线日志及行号 | 完整读写函数栈 |
+| --- | --- | --- | --- |
+| 1 | `candidate-r4/gateway-race.log:372` | `baseline/gateway-race.log:424` | 相同 |
+| 2 | `candidate-r4/gateway-race.log:1409` | `baseline/fixture-race-repro.log:3`、`baseline/fixture-race-repro.log:485` | 相同 |
+| 3 | `candidate-r4/gateway-race.log:1459` | `baseline/fixture-race-repro.log:3`、`baseline/fixture-race-repro.log:485` | 相同 |
+| 4 | `candidate-r4/gateway-race.log:1512` | `baseline/fixture-race-repro.log:53`、`baseline/fixture-race-repro.log:535` | 相同 |
+| 5 | `candidate-r4/gateway-race.log:1564` | `baseline/fixture-race-repro.log:53`、`baseline/fixture-race-repro.log:535` | 相同 |
+| 6 | `candidate-r4/gateway-race.log:1780` | `baseline/gateway-race.log:1577`、`baseline/gateway-race.log:1629` | 相同 |
+| 7 | `candidate-r4/gateway-race.log:1832` | `baseline/gateway-race.log:1577`、`baseline/gateway-race.log:1629` | 相同 |
+| 8 | `candidate-r4/gateway-race.log:1884` | `baseline/gateway-race.log:1681`、`baseline/gateway-race.log:1735` | 相同 |
+| 9 | `candidate-r4/gateway-race.log:1938` | `baseline/gateway-race.log:1681`、`baseline/gateway-race.log:1735` | 相同 |
+| 10 | `candidate-r4/sync-regression.log:5604` | `baseline/gin-global-race-repro.log:431` | 相同 |
+| 11 | `candidate-r4/sync-regression.log:5673` | `baseline/gin-global-race-repro.log:267` | 相同 |
+| 12 | `candidate-r4/sync-regression.log:6069` | `baseline/fixture-race-repro.log:825`、`baseline/sync-regression.log:6131` | 相同 |
+| 13 | `candidate-r4/sync-regression.log:6119` | `baseline/fixture-race-repro.log:875`、`baseline/sync-regression.log:6181` | 相同 |
+| 14 | `candidate-r4/sync-regression.log:6173` | `baseline/fixture-race-repro.log:929`、`baseline/fixture-race-repro.log:1033`、`baseline/fixture-race-repro.log:1083`、`baseline/sync-regression.log:6235` | 相同 |
+| 15 | `candidate-r4/sync-regression.log:6223` | `baseline/fixture-race-repro.log:929`、`baseline/fixture-race-repro.log:1033`、`baseline/fixture-race-repro.log:1083`、`baseline/sync-regression.log:6235` | 相同 |
+| 16 | `candidate-r4/sync-regression.log:6273` | `baseline/fixture-race-repro.log:929`、`baseline/fixture-race-repro.log:1033`、`baseline/fixture-race-repro.log:1083`、`baseline/sync-regression.log:6235` | 相同 |
+| 17 | `candidate-r4/sync-regression.log:6323` | `baseline/fixture-race-repro.log:1187` | 相同 |
+
+候选竞态涉及14份项目源码，其中13份Git blob与基线完全相同；唯一变化的grok_observed_models.go只将ApplyHeaderOverrides(req.Header)适配为ApplyHeaderOverrides(req.Context(), req.Header)。相关竞态函数、map读写与同步关系均未改变。已审查该完整差异；没有把上游代码变化或不同竞态按名称归入基线。
+
+| 项目源码 | 同步前blob | 候选blob | 审查结果 |
+| --- | --- | --- | --- |
+| `backend/internal/service/grok_quota_service_test.go` | `7aa85588086579abde36f31e5b1e18c1329ac892` | `7aa85588086579abde36f31e5b1e18c1329ac892` | 完全相同 |
+| `backend/internal/service/grok_model_catalog_store.go` | `6d524812c88ade465bee26db484e5abc7216e700` | `6d524812c88ade465bee26db484e5abc7216e700` | 完全相同 |
+| `backend/internal/service/grok_observed_models.go` | `23700bdd1952e7a7c89d31da14433eaa27de0596` | `a77662df15ef425cdf5cde9cf2eb784552dd6b08` | 仅请求头接口补context；竞态位置及同步关系未变 |
+| `backend/internal/service/failure_scheduling_compat.go` | `47191929c5d8f0f7916320ebaf0b46b0afc000a9` | `47191929c5d8f0f7916320ebaf0b46b0afc000a9` | 完全相同 |
+| `backend/internal/service/account.go` | `d3bc44fd21ae4f1678183bbfb09cea9093c399ab` | `d3bc44fd21ae4f1678183bbfb09cea9093c399ab` | 完全相同 |
+| `backend/internal/service/grok_token_provider.go` | `984f56cc2cb419067170c7b79b378353da0c5710` | `984f56cc2cb419067170c7b79b378353da0c5710` | 完全相同 |
+| `backend/internal/service/grok_quota_cooldown_test.go` | `d43af796f991176b9f96158b75f565467d1727ec` | `d43af796f991176b9f96158b75f565467d1727ec` | 完全相同 |
+| `backend/internal/service/account_test_service_gemini_test.go` | `8e21902af93f4673afdc31e4d82f2d5c2c1b80cd` | `8e21902af93f4673afdc31e4d82f2d5c2c1b80cd` | 完全相同 |
+| `backend/internal/service/account_test_service_openai_test.go` | `71cb72a1454a85e726a7d82e04df9d06297032de` | `71cb72a1454a85e726a7d82e04df9d06297032de` | 完全相同 |
+| `backend/internal/handler/admin/grok_import_probe_test.go` | `f4d8567463fd7bff41d586c17c96639293ad3970` | `f4d8567463fd7bff41d586c17c96639293ad3970` | 完全相同 |
+| `backend/internal/handler/admin/grok_import_probe.go` | `8dad7160c221b90bb6db26c28b57cc4d3d64cecb` | `8dad7160c221b90bb6db26c28b57cc4d3d64cecb` | 完全相同 |
+| `backend/internal/service/openai_compat_model_test.go` | `57ac427173b85040eb6c7485c704af844be125f8` | `57ac427173b85040eb6c7485c704af844be125f8` | 完全相同 |
+| `backend/internal/handler/gateway_helper.go` | `836ed3cef5908b64205816a69c4649f328e0e5cc` | `836ed3cef5908b64205816a69c4649f328e0e5cc` | 完全相同 |
+| `backend/internal/handler/gateway_helper_hotpath_test.go` | `e3b06acfa73f3ac96042dda578cc238844579ac2` | `e3b06acfa73f3ac96042dda578cc238844579ac2` | 完全相同 |
+
+这两组竞态风险仍存在，本轮没有声称修复，也没有降低检查强度。后续处理应独立修复并行测试的共享全局状态、测试存储桩及缓冲区同步，不将本轮无新增失败理解为无竞态。
+
+### 保护检查、未验证项与清理
+
+保护检查脚本verify-protection.cjs通过6386/6386项，覆盖修改范围、冲突标记、71项定制编号及状态、已有文件与历史迁移保持、产品版本、上游来源、两份生产Compose一致性、自更新保持删除、渠道计费固定requested、游标导出及5秒usage默认值。另核验git diff --check、无未合并条目、无未完成Git操作、原main及备份SHA、固定范围祖先关系、暂存范围及工作树状态。新增差异的高置信凭据扫描未发现秘密；原有假私钥测试夹具保持原文，不将其误报为新增泄露，也不把模式扫描视为穷尽性保证。
+
+Git预检发现单独的历史REBASE_HEAD伪引用：指向1323c42ccc0d5e4320f817b50fcaf13cf1faa3dc，文件时间为2026-11-27T08:13:17+08:00。reflog确认该次rebase已于2026-11-27T08:15:09+08:00完成；rebase-merge、rebase-apply、sequencer及其他未完成操作标记均不存在，git status工作树干净。它不是进行中的rebase，本轮保留该历史伪引用，没有删除或修改。
+
+未验证真实外部Provider及模型可用性、真实OAuth授权/刷新、支付或消息发送、生产流量/数据库/迁移、跨生产实例行为、浏览器人工交互及生产峰值负载；E2E只编译。71项功能仅按已具备用例、静态保护和代码审查覆盖，不宣称全部动态验证。没有发现这些未验证边界构成的已知新增高风险回归；生产上线仍需独立授权与验收。
+
+本轮标签`sub2api.sync-test=20261127`的本地容器在测试结束后查询为空。环境保持进程已正常结束；WSL临时tmpfs随环境退出释放，mountpoint/findmnt复核已无该挂载，宿主挂载点目录为空，未执行无必要的卸载或递归删除。保留六份Git源码归档、所有原始日志、命令账本、比较结果和共享缓存；未清理其他任务容器或数据。
+
+### 上游逐提交处置
+
+下列标题为上游Git原始元数据，原因使用中文说明。全部140项均经祖先集合核验纳入合并提交`6c99e2a9f5b1bea80f39c86145ac20a532185309`；后两次本地兼容提交的具体覆盖见前文。Applied + Overridden表示合入历史后按批准方案保留本地行为，不记为Skipped。
+
+| 上游完整SHA | 类型 | 原始标题 | 状态 | 原因 |
+| --- | --- | --- | --- | --- |
+| `e8d71b932ea515f122fbd492ee429048b42231c1` | 普通 | fix(accounts): show local Antigravity usage statistics | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `3d23cc9958e7a0e440351beb4783adf625c95bdf` | 普通 | fix(antigravity): keep parallel tool results before media | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `0cceee50e07ba45c24c7e8f62503796df3ff76c2` | 普通 | fix(frontend): keep long quota labels clear of progress bars | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `1dfd0224cd513be90ef3e8f2537acdd57f5b7bda` | 普通 | fix(apicompat): preserve Anthropic URL image sources | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `28eb088cd663f8ba1e5726352ed46970aab96d02` | 普通 | fix(kimi): recognize K3.1 Pro models and enable Codex reasoning | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `8dc297ce94b99001832e20f67d92e8950f04fb97` | 普通 | fix(kimi): add bundled K3.1 Pro reference pricing | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `ccac47e187135392bb900010ab4b0720a878a819` | 普通 | fix(kimi): expose K3.1 options and preserve explicit disabled reasoning | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `a0c827e97bf2fec80727773200e9803a3a02db84` | 合并 | Merge upstream main and retain Kimi and Terra pricing | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `95efb93c7ae2708d5f58b1f197646dfe32c7f964` | 普通 | fix(openai): fail over Sol tool requests on Chat-only accounts | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `a4a9c3404ba9f32e203e025e1c75354bf7d2d046` | 普通 | test(openai): use input-item additional tools fixture | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `71fa80873d7c214065344c537992954d7a680695` | 普通 | test(openai): assert failover through selector calls and account state | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `c62ccd5ee038f9a1bf30558b71e8efdfac9e23a2` | 普通 | test(openai): cover Terra compatibility failover | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `38605c1fe89ac5b49b2deb159e9633a2262ef0fb` | 普通 | test(openai): keep invalid Terra effort out of capability failover | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `217925ca0b19c812c1dd69ed49da75cbecd60180` | 普通 | test(gateway): isolate signed-history allocation measurement | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `b74ed3cda478edba812ef9bfa2014b1d27a7857c` | 普通 | test(grok): synchronize free-quota refresh tests | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `e6698f1ee09b472540061ae516881d466c3f1a29` | 合并 | Merge upstream main and retain interleaved tool-result notice fix | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `5c69ca4c26a45f96d49e92fa50aec9d3476b75c6` | 普通 | build: use Go 1.27.4 to address standard library security finding | Already Applied | 本地已使用Go1.27.4；保留祖先历史，版本不回退。 |
+| `557954f1b6761cc6d68e379b214d448ae9e76a61` | 合并 | Merge remote-tracking branch 'upstream/main' into fix/grok-quota-test-races | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `5f12044f59d6cc317f9bf64861fc023c02620434` | 普通 | fix(accounts): refetch Claude and Gemini usage cells when auto-refresh updates a row | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `eb4d34c5e1a127752c9573b9b807643284ca3af7` | 普通 | test(antigravity): stabilize repeated pre-content keepalives | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `fb9ba3f7dd3c068ae9b114b892ca9b51310e90c6` | 普通 | test(openai): synchronize WebSocket TTFT fixtures | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `cd8fabd65a7e095f6cabb1602ac6dc75eb89c6a9` | 合并 | Merge remote-tracking branch 'origin/main' into codex/antigravity-parallel-tool-images | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `0a67cc4507df1c1d87829a1bc0efca7af4951ab6` | 合并 | Merge remote-tracking branch 'origin/main' into codex/antigravity-local-usage-stats | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `cda1eadbd62d932568a362b43f9f580aaacb4e58` | 合并 | Merge remote-tracking branch 'origin/main' into codex/fix-quota-label-overlap | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `e281ae3e88b560e57eec5d765a5838e16e22bb55` | 普通 | test(oauth): make late refresh deadline deterministic | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `27f044d45e775932c66887af84d8ca7bb84b817c` | 普通 | test(grok): skip setup resets for private quota caches | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `8ea6cd527ff8278b935020b5b13a5b12231c5997` | 普通 | fix(update): require checksum verification before installing update | Applied + Overridden | 保留禁止网页自更新，更新服务及测试继续删除。 |
+| `08970a804b1a64c6f90141c456ebecff385170cc` | 普通 | test: reproduce stale Antigravity cooldown after final retry | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `5f9c4d0135e03cea65661095dea795a61d0d748c` | 普通 | fix(antigravity): honor final retry reset when cooling models | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `88b1924bd9711a458c5e78deb45c0178725e0810` | 普通 | fix(openai): normalize standalone terminal context | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `bb110fda5307a6cefa2718b72627a3623ed23546` | 普通 | fix(ops): show requester in request error details | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `e7354a91a13032fec45846cc0e1268346b378da6` | 合并 | Merge remote-tracking branch 'origin/main' into codex/antigravity-local-usage-stats | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `2ca3d72c0401593a306880928accf5872806cfdb` | 合并 | Merge remote-tracking branch 'origin/main' into codex/antigravity-parallel-tool-images | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `09c8e612770ee132385435df1529b2e5328c68d4` | 合并 | Merge remote-tracking branch 'origin/main' into codex/fix-quota-label-overlap | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `53fa92d0a6722f699302d0bb3ac0a8ffb4a7b34f` | 合并 | Merge remote-tracking branch 'origin/main' into upstream/account-usage-auto-refresh | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `cc2a2616d84d2d685818a37e784a381474f2e5dc` | 普通 | fix(accounts): refetch Gemini usage when the account's quota tier changes | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `20a6b86a4a66ca3408dfd7fd0e4a8bbe9c01052c` | 普通 | test(gateway): measure signed-history allocations in a child process | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `c3219a14ed48c5a8cf2c53f3a346686f77110721` | 普通 | fix(gateway): do not overwrite a sticky rebind after a long forward | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `bff0f1554fb2d6f31f736bf8dc6e2bf4bfba2b95` | 普通 | fix(antigravity): skip SSE comment keepalives for js-genai < 1.32 (Gemini CLI) | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `a95c9e263193c17eef84fd5dc15ae5202773e9b4` | 普通 | feat(accounts): 支持从上游分组同步账号名称与备注 | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `03aa05fd9fa0d33757aa70833da170adbe9f1263` | 普通 | feat(accounts): 按账号自动同步上游分组名称与备注 | Applied + Overridden | 合入分组同步，复制账号同时保留本地探测状态清理。 |
+| `30fe563b1fc97fb73891abdc81f8403b8b339ebe` | 普通 | fix(gateway): restore tool names split across stream deltas | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `5dcf1801da3b3cc54a21b0eac7e95da39be4a225` | 合并 | Merge upstream main into fix/anthropic-url-image-sources | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `3b6095912cdf2391fa81c275dd872cc80832b694` | 普通 | fix(frontend): theme the MCP consent dropdowns with the common Select | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `33ce4ae91484946c1db425349c970a627d8534d2` | 普通 | fix(openai): recover sooner after transport reachability failures | Applied + Overridden | 采用分级冷却，保留瞬态Pool重试及插件已发送禁止重试。 |
+| `3313acad75f5de4cf9106596e1798939216cae3f` | 合并 | Merge upstream main and keep K3.1 Pro support | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `2b7437832182004a390d75177bf9a4bac367605c` | 普通 | fix(openai): preserve invalid_encrypted_content and apply error passthrough rules in passthrough mode | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `f3a0a652451d4ce395e98f5ad3cd7732ef80a29b` | 普通 | fix(ratelimit): 智谱平台过载 429 改用秒级冷却 | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `4339d50615ecbfab36f0cf35945507ba2a4e3681` | 普通 | fix(openai): 修复透传错误脱敏越界并收紧结构化错误字段 | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `38903b6d1d4565cdadc6faa8cefc9cbbad3c6f9e` | 普通 | fix(accounts): 上游分组文字入库前校验，include 支持多值 | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `ba9df6f1c31e87c5d476543fd0c02e3c6e3620d8` | 普通 | fix(deps): 升级 gorilla/websocket 修复 GO-2026-6278 | Already Applied | 本地已使用相同WebSocket安全版本；不恢复旧1.5.3校验条目。 |
+| `797fde4e95ca2cf61c94c850b44c911cc62f0756` | 普通 | fix(deps): 升级 gorilla/websocket 修复 GO-2026-6278 | Already Applied | 本地已使用相同WebSocket安全版本；不重复引入旧依赖。 |
+| `34423bf1e10f8464e3d22b9ae77c81e2624e54a5` | 普通 | fix(accounts): 上游分组文字先修剪再校验控制字符 | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `eabf37852a2fde06afe5cebcaefd19b307add1bc` | 普通 | fix(openai): compact response.failed 改写容量降载码，空白 code 回退内嵌提取 | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `4d4433df09d27e7122e58559f77098c8e077b312` | 合并 | Merge pull request #9008 from Brisbanehuang/codex/key-billing-group-details | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `00c51f07d2d2707d73808fee78c149735478006e` | 合并 | Merge pull request #9045 from itzhan/fix/openai-passthrough-400-error-forwarding | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `0f1e3c1f6ad5442c309818dff8da71dba46e7b2d` | 普通 | feat(accounts): 请求头覆写支持身份上报变量 | Applied + Overridden | 合入身份变量，同时保留Claude模拟头最终优先级。 |
+| `c5147eab167f07242c637c9de7b2f3e187fee693` | 普通 | fix(accounts): 身份上报变量审计修复 | Applied + Overridden | 采用变量审计并在本地最终覆写后清理未发送的记录。 |
+| `348997267d756eab5729bb6b78a275a15d18796a` | 合并 | Merge pull request #9052 from Wei-Shaw/feat/header-override-identity-variables | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `0f6671457132425d1b84f3d80536b53e02942424` | 普通 | chore: sync VERSION to 0.2.25 [skip ci] | Applied + Overridden | 来源记录0.2.25，产品VERSION继续为0.1.272。 |
+| `52b5d71d607327edff2a9d46566c9519182615e0` | 普通 | fix(gemini): preserve stream usage after empty metadata | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `0c7d3ff58c64075aed0cb2f819a4e47d80bca7be` | 普通 | fix(accounts): show proxy account counts in account dialogs | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `8decae97790c4875b07e940819233878262688a7` | 普通 | feat(accounts): show upstream error counts in today stats and usage trend | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `876f137d8fbfa1dd873fd31831d18f10241dc3eb` | 普通 | feat(antigravity): let upstream choose Gemini stream summaries | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `2b836b7b7c26c8f14ccd26d10c2a8404830bb640` | 普通 | fix(antigravity): handle versionless system identity openers | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `fe72ddf1ae7e027958ca0724f48fbcf64e037987` | 普通 | fix(moderation): allocate async moderation queue on demand | Applied + Overridden | 采用按需远端审核队列，完整保留人工审核队列和统计。 |
+| `1f5ca63440be22303352787c45e08fedf7982f98` | 普通 | fix(openai): account SSE keepalive bytes across failover attempts | Applied + Overridden | 采用跨实例心跳累计，保留暂停及首Token守卫语义。 |
+| `f90198a5ee971af481c0a68534158b938d56fc42` | 普通 | fix(codex): include Command Code image capabilities in model catalogs | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `b3fdd01f0bea95e2b9ce22dcffabec41dacb85be` | 普通 | fix(opencode): 上游 User-Agent 版本更新至 1.19.6 并支持环境变量覆盖 | Applied + Overridden | 采用UA1.19.6及环境覆盖，会话提示保留首次有效身份。 |
+| `1ba1ae8ef026f80a9282d9f2f7ea8098207f540a` | 普通 | feat(proxy): show exit IP and last check time in proxy list | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `afd87f38be65d5bbd37e6a94ed744952772cd31c` | 普通 | fix(frontend): keep help tooltips aligned after scrolling | Applied + Overridden | 保留本地视口定位、翻转和限高滚动，适配上游滚动用例。 |
+| `21a95dbaa870aaa7dce1e2a461af5996b6a78e99` | 普通 | feat(openai): let API-key accounts opt into reasoning_content on raw Chat Completions | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `5c95c63e15e2ace07baaa60867f72edf5abee49a` | 普通 | feat(codex): let accounts declare image-input models | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `2945ecf89b831f2f4dfcc458f36d7226abe601bc` | 普通 | fix(openai): default DeepSeek effort to high in the Anthropic bridge | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `a1c7be6e907f1c932cb6e966d4692395ea89ebc5` | 普通 | feat(channel): optionally show actual response model to users | Applied + Overridden | 采用默认关闭的响应型号展示，导出权限一致，计费固定requested。 |
+| `8c4336eb581a330cea2a03aaf825deb915aab365` | 普通 | fix(usage): chain Localized on user usage DTO mapping line | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `fc2471c2d52af464b3bb0ea4dd5eb1678a5b2029` | 普通 | feat(usage): add toggleable username column to admin usage table and export | Applied + Overridden | 用户名列合入本地游标导出，保留取消和分页边界。 |
+| `4ecec232d8bbc68489e297d32ec4f914e4328010` | 合并 | Merge pull request #8860 from Anankke/fix/account-usage-auto-refresh | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `e3eb96c0b5f5805572e370d1107988efec1c924a` | 合并 | Merge pull request #8994 from wucm667/fix/issue-8991-terminal-context | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `ddc855a51d19b1d978027cfbb4c6eece97d53023` | 合并 | Merge pull request #8995 from r266-tech/codex/show-requester-in-ops-error-detail | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `6f34149c15de58720157d2ad8b2228988a1bdb59` | 合并 | Merge pull request #9004 from Anankke/fix/sticky-session-rebind-cas | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `d081e563f74f9e1a17954231d8f1189038b61a00` | 合并 | Merge pull request #9012 from Anankke/fix/toolname-stream-restore | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `a55adce0aae87c4a29d3517735ce9ce3e9dec12b` | 合并 | Merge pull request #9034 from r266-tech/codex/shorten-proxy-network-cooldown | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `62b3fa1aacdc4dab611c6ee2cf47ea36fa8fda28` | 合并 | Merge pull request #9046 from alfadb/fix/zhipu-overload-429-short-cooldown | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `8ace90b8d0504d41f11a6f22fa12a1e2ffc9b4f6` | 合并 | Merge pull request #9060 from LagrangeQ/fix/gemini-empty-stream-usage | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `f3ea22ec91f29d9326ac68b5c5601fc154121a5e` | 合并 | Merge pull request #9064 from PMExtra/feat/account-upstream-error-stats | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `be8dfee8b2967ff0f0049aa6a4d859c30a8a6760` | 合并 | Merge pull request #9069 from wucm667/feat/issue-9066-proxy-account-count | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `2c5325ace8eb6e58d3ac808d9f62f041ab950691` | 合并 | Merge pull request #9076 from r266-tech/codex/optional-antigravity-stream-summaries | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `3dd9a2495776272fe9a935c2b52d009e6b7d2079` | 合并 | Merge pull request #9079 from wucm667/fix/issue-9077-versionless-identity | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `e55f9db056281676e3ad71170638561af7164a2f` | 合并 | Merge pull request #9080 from bin-bash-dev/fix/content-moderation-lazy-queue | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `bb7fb85cd56276a107015845fb5a95886f36d6af` | 合并 | Merge pull request #9081 from bin-bash-dev/fix/sse-keepalive-retry-accounting | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `ab00fef989db057875d3eeef9e34de8eb9d5f44b` | 合并 | Merge pull request #9084 from r266-tech/codex/command-code-image-modalities | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `821701e45bed105e8e98c26d5e3668f98ffee6cc` | 合并 | Merge pull request #9085 from adamcjm/fix/opencode-user-agent-version | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `7b2a5f5d484e3ba054e789c1e9abe13f1170894b` | 合并 | Merge pull request #9087 from wucm667/fix/issue-9086-tooltip-scroll | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `164d7056ed95833231491820f1ab0d4f464a56bb` | 合并 | Merge pull request #9088 from PMExtra/feat/proxy-ip-checked-at | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `3db5753641fb5462e27616f68e1e5e35f08377a3` | 合并 | Merge pull request #9093 from pood1e/feat/openai-chat-reasoning-content | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `76d8d976d546799972b581e7b191fa5102edde7f` | 合并 | Merge pull request #9095 from pood1e/fix/anthropic-bridge-deepseek-default-effort | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `eef63ee7cda5eef9dc0308bc9e1c1fdae61f41a3` | 合并 | Merge pull request #9099 from PMExtra/feat/channel-expose-response-model | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `06e7a2ed4bd045da457a349638f7e6801ac73ad5` | 合并 | Merge branch 'main' into feat/declare-image-input-models | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `81ce8356d9a289411987bdefeddc9710340d6d52` | 合并 | Merge pull request #9094 from pood1e/feat/declare-image-input-models | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `b5e9549c547817b3af4ace1acd64b660e0231a6c` | 普通 | fix(antigravity): honor group mcp_xml_inject in Claude transform options | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `c5622ce6cfa7e666a0400803de9a5105e8f32145` | 普通 | feat(openai): 同步 Codex v0.172.0 内置基础提示词并补齐 5.6/6.0 模板 | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `85cf1143326b8f6d4b9d3fd17b24b1b955e14de4` | 普通 | fix(gateway): reduce large request allocation and retention | Applied + Overridden | 合入大请求优化，会话提示只保存首次有效标识。 |
+| `6637b280aab04d97c7c6572f17d79d81d10e7d31` | 普通 | fix(gateway): report Anthropic thinking_tokens as reasoning_tokens | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `126d7743e2a34de764593d60560af9474ebfd1f6` | 普通 | fix(responses): include requested model in compact failure events | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `8ac5f4de71c9227751512092ad34c6a8cbd420e4` | 合并 | Merge pull request #8987 | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `ca236afc8c226e61659bd9c7993bee338126674a` | 合并 | Merge pull request #9001 | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `07c52fe25b12c34467b9886d7cbe0f69b0820522` | 合并 | Merge pull request #9005 | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `3273ae9913551f28c3194331e19de20342ee70fb` | 合并 | Merge pull request #9027 | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `8feae1b49cf9f19101d82aea051007cae14b25b6` | 合并 | Merge pull request #9042 | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `187d8e5bbf1bcaa11340f67531901d8f9972c291` | 合并 | Merge pull request #9049 | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `212f5e5dcf9f32699e64199db427651eded1a8ac` | 合并 | Merge pull request #9105 | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `dedeb65c1d4147c2a827b3b93d4f0e2f4241f12d` | 合并 | Merge pull request #9107 | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `650fab97d2c3340b32dc0fbf6818087db0cdaaed` | 普通 | fix: sample Claude usage on chat completions | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `75e6df8f4a6e0b931f6ac6c55d3e3de03abbd2f3` | 普通 | fix(risk-control): record image safety-system rejections in the risk center | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `fd2f9770a225811b1e0cfe1ab47de604a9c85695` | 普通 | fix(accounts): show proxy account counts on the right and keep them fresh | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `abe5903a1749c479a4b7eaa120f0719733ee7d26` | 合并 | Merge main and use the upstream allocation test isolation | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `2ad419706d4cd52bd34b6afd928722cc9feac32e` | 普通 | fix(accounts): keep older proxy counts when a newer refresh fails | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `397f66aebf80a0dd144cd12a3785f91378fd1b53` | 普通 | fix(risk-control): tighten image safety detection and display | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `96148ee93ba60537db90a3363ce03b2d5e9770d7` | 合并 | Merge pull request #9117 from Wei-Shaw/fix/issue-8992-image-safety-risk-control | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `e38f8ad784d08e5f8be9ee7bfb70274f83a4e4a5` | 合并 | Merge pull request #9118 from Wei-Shaw/fix/proxy-selector-account-count | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `cbe5bfd1cba44c6a775445a1a035401f3d8ad4fd` | 普通 | fix(gateway): sample Claude usage on the Responses bridge too | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `8950e12524b01955ae339cb64f52c34b1d06043e` | 普通 | fix(gateway): keep OpenCode session hints valid JSON | Applied + Overridden | 采用JSON正确转义并保留本地首次会话提示规则。 |
+| `fa375e60e1808157cecd6ae15703820330bfc85d` | 普通 | fix(kimi): keep stripping the Codex none placeholder for K3.1 | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `2b47d8a36cf00ad3aacb55cb4227e8d3ae5307f5` | 合并 | Merge pull request #7672 from william-drakemond/fix/updater-require-checksum | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `eaf4521e78dc55ab6a4315e9e22361078d35892e` | 合并 | Merge pull request #8217 from r266-tech/codex/compact-failure-model | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `18f8813da3af7562a4e934dfbab1078a27c893d2` | 合并 | Merge pull request #8245 from AndersonBY/codex/antigravity-local-usage-stats | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `6215b9fe5fe75725c0569dbb9fc90c181b8e9104` | 合并 | Merge pull request #8246 from AndersonBY/codex/antigravity-parallel-tool-images | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `6e537028d494503ceec9c1215fdab81df6e39d1a` | 合并 | Merge pull request #8254 from AndersonBY/codex/fix-quota-label-overlap | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `1d65de5cae99136e9cf1aa26bd4536ac65552a58` | 合并 | Merge pull request #8295 from r266-tech/codex/fix-responses-tool-failover | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `25a65452f268756a81ed50f76be91b0204cdcdd5` | 合并 | Merge pull request #8312 from zyh-y/fix/anthropic-url-image-sources | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `f7e0191ac2340f8d50d36715ec935e8f7be9f457` | 合并 | Merge pull request #8355 from Yukinoshita-Yukino/codex/kimi-k31-minimal-support | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `7c6cbda9749e627c38e6de97fefb3ea999125b13` | 合并 | Merge pull request #8596 from lkon2112/fix/grok-quota-test-races | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `affdc20c02b979a13e8b8667b9b2f4a5745ac802` | 合并 | Merge pull request #8705 from lzj960515/fix/request-memory-lifecycle | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `d3ae7a17a6ffa8bff3c374434f47726115798b46` | 合并 | Merge pull request #8756 from r266-tech/codex/synchronize-ws-ttft-fixture | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `a2df5a86e9422f7cc0a7b70fdb9ea10dd9252e89` | 合并 | Merge pull request #8839 from r266-tech/codex/precontent-keepalive-clock-fixture | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `aaec3887d027ec78555ed64c5ae2629c46fba29a` | 合并 | Merge pull request #8843 from r266-tech/codex/oauth-deadline-clock-fixture | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `8aa4d392885f5a02e763ad0bf12daebc85bbaedf` | 合并 | Merge pull request #9115 from NewtonCookie/fix/anthropic-chat-usage | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+| `959d365324b57cc9e1118588fb4bd0b9cbf795c0` | 普通 | fix(moderation): moderate Anthropic URL image sources | Applied | 完整合入固定范围中的功能、修复或测试；本地定制保护和同环境回归负责验收。 |
+| `4233cc3d8018bf2f399c4c366d94067c42eb697e` | 合并 | Merge pull request #9121 from Wei-Shaw/fix/moderation-anthropic-url-image | Applied | 完整合并保留上游合并拓扑，所含功能提交逐项处置。 |
+
+### 最终修改文件
+
+相对LOCAL_PRE_SYNC_SHA共255个文件；A为新增34个，M为修改221个，没有删除。最后的记录提交只追加其中两份历史文档，不改变文件数量。
+
+```text
+M	backend/cmd/server/wire_gen.go
+M	backend/internal/config/config.go
+M	backend/internal/config/config_test.go
+M	backend/internal/handler/admin/account_handler.go
+M	backend/internal/handler/admin/account_upstream_billing_probe.go
+M	backend/internal/handler/admin/account_upstream_billing_probe_test.go
+M	backend/internal/handler/dto/mappers.go
+M	backend/internal/handler/dto/mappers_usage_test.go
+M	backend/internal/handler/dto/types.go
+M	backend/internal/handler/gateway_handler.go
+M	backend/internal/handler/gateway_key_billing.go
+M	backend/internal/handler/gateway_sticky_writeback_test.go
+M	backend/internal/handler/openai_gateway_handler.go
+M	backend/internal/handler/openai_images.go
+A	backend/internal/handler/openai_images_safety.go
+A	backend/internal/handler/openai_images_safety_test.go
+M	backend/internal/handler/openai_page_context.go
+M	backend/internal/handler/openai_page_context_test.go
+A	backend/internal/handler/openai_responses_passthrough_keepalive_failover_test.go
+A	backend/internal/handler/openai_responses_tools_failover_test.go
+A	backend/internal/handler/usage_export_response_model_test.go
+M	backend/internal/handler/usage_export_test.go
+M	backend/internal/handler/usage_handler.go
+M	backend/internal/handler/usage_handler_daily_test.go
+M	backend/internal/handler/usage_handler_request_type_test.go
+M	backend/internal/pkg/antigravity/attribution_test.go
+M	backend/internal/pkg/antigravity/request_transformer.go
+M	backend/internal/pkg/antigravity/request_transformer_test.go
+A	backend/internal/pkg/apicompat/anthropic_image_sources_test.go
+A	backend/internal/pkg/apicompat/anthropic_thinking_tokens_usage_test.go
+M	backend/internal/pkg/apicompat/anthropic_to_responses.go
+M	backend/internal/pkg/apicompat/anthropic_to_responses_response.go
+M	backend/internal/pkg/apicompat/types.go
+M	backend/internal/pkg/buildmeta/upstream-sync.json
+M	backend/internal/pkg/openai/codex_gpt61_sol.json
+M	backend/internal/pkg/openai/codex_gpt61_terra.json
+M	backend/internal/pkg/openai/codex_gpt62_astra.json
+M	backend/internal/pkg/openai/codex_gpt62_sol.json
+M	backend/internal/pkg/openai/constants.go
+M	backend/internal/pkg/openai/instructions_gpt5_1.txt
+M	backend/internal/pkg/openai/instructions_gpt5_2.txt
+M	backend/internal/pkg/openai/instructions_gpt5_5.txt
+A	backend/internal/pkg/openai/instructions_gpt5_6.txt
+M	backend/internal/pkg/openai/instructions_gpt6_astra.txt
+A	backend/internal/pkg/openai/instructions_gpt6_luna.txt
+A	backend/internal/pkg/openai/instructions_gpt6_sol.txt
+M	backend/internal/pkg/openai/instructions_test.go
+M	backend/internal/pkg/requestmodel/requestmodel.go
+M	backend/internal/pkg/requestmodel/requestmodel_test.go
+M	backend/internal/pkg/usagestats/usage_log_types.go
+M	backend/internal/repository/account_repo.go
+M	backend/internal/repository/account_repo_grok_managed_extra_test.go
+M	backend/internal/repository/account_repo_ollama_cloud_usage_integration_test.go
+M	backend/internal/repository/account_repo_opencode_go_usage_test.go
+M	backend/internal/repository/account_repo_upstream_billing_probe_cas_test.go
+M	backend/internal/repository/account_repo_upstream_billing_probe_update_test.go
+M	backend/internal/repository/content_moderation_repo.go
+M	backend/internal/repository/content_moderation_repo_test.go
+M	backend/internal/repository/gateway_cache.go
+M	backend/internal/repository/gateway_cache_integration_test.go
+A	backend/internal/repository/gateway_cache_sticky_cas_test.go
+M	backend/internal/repository/upstream_billing_probe_persistence_integration_test.go
+M	backend/internal/repository/usage_log_repo_integration_test.go
+M	backend/internal/repository/usage_log_repo_stats.go
+M	backend/internal/server/api_contract_test.go
+M	backend/internal/server/middleware/api_key_auth.go
+M	backend/internal/server/middleware/api_key_auth_google.go
+M	backend/internal/server/middleware/api_key_auth_test.go
+M	backend/internal/server/routes/admin.go
+M	backend/internal/server/routes/gateway_key_billing_test.go
+M	backend/internal/service/account_header_override.go
+M	backend/internal/service/account_header_override_test.go
+A	backend/internal/service/account_header_override_vars.go
+A	backend/internal/service/account_header_override_vars_test.go
+M	backend/internal/service/account_service.go
+M	backend/internal/service/account_test_service.go
+M	backend/internal/service/account_test_service_cn_adaptive.go
+M	backend/internal/service/account_usage_service.go
+A	backend/internal/service/account_usage_upstream_errors_test.go
+M	backend/internal/service/admin_account.go
+M	backend/internal/service/admin_account_upstream_billing_probe_test.go
+M	backend/internal/service/admin_proxy.go
+M	backend/internal/service/admin_service.go
+M	backend/internal/service/antigravity_gateway_compat.go
+M	backend/internal/service/antigravity_gateway_compat_test.go
+A	backend/internal/service/antigravity_gateway_mcp_xml_test.go
+M	backend/internal/service/antigravity_gateway_retry.go
+M	backend/internal/service/antigravity_gateway_service.go
+A	backend/internal/service/antigravity_retry_reset_test.go
+M	backend/internal/service/api_key_service.go
+M	backend/internal/service/channel.go
+A	backend/internal/service/channel_expose_response_model_test.go
+M	backend/internal/service/channel_service.go
+M	backend/internal/service/cline_usage.go
+M	backend/internal/service/cn_provider_balance_service.go
+M	backend/internal/service/cn_provider_quota_service.go
+M	backend/internal/service/command_code_usage.go
+M	backend/internal/service/composite_platform.go
+M	backend/internal/service/composite_platform_test.go
+M	backend/internal/service/content_moderation.go
+A	backend/internal/service/content_moderation_image_safety.go
+A	backend/internal/service/content_moderation_image_safety_test.go
+M	backend/internal/service/content_moderation_input.go
+M	backend/internal/service/content_moderation_input_test.go
+A	backend/internal/service/content_moderation_queue_contract_test.go
+A	backend/internal/service/content_moderation_queue_lazy_test.go
+M	backend/internal/service/crs_sync_service.go
+M	backend/internal/service/error_passthrough_runtime.go
+M	backend/internal/service/gateway_anthropic_mimicry_policy_test.go
+M	backend/internal/service/gateway_anthropic_passthrough.go
+M	backend/internal/service/gateway_count_tokens.go
+M	backend/internal/service/gateway_forward_as_chat_completions.go
+M	backend/internal/service/gateway_forward_as_chat_completions_test.go
+M	backend/internal/service/gateway_forward_as_responses.go
+M	backend/internal/service/gateway_forward_as_responses_test.go
+M	backend/internal/service/gateway_service.go
+M	backend/internal/service/gateway_thinking_filter_precheck_test.go
+A	backend/internal/service/gateway_tool_rewrite_stream.go
+A	backend/internal/service/gateway_tool_rewrite_stream_test.go
+M	backend/internal/service/gateway_upstream_request.go
+M	backend/internal/service/gateway_upstream_response.go
+M	backend/internal/service/gateway_upstream_transport_error.go
+M	backend/internal/service/gemini_messages_compat_service.go
+M	backend/internal/service/gemini_messages_compat_service_test.go
+M	backend/internal/service/gemini_sse_comment_compat.go
+M	backend/internal/service/gemini_sse_comment_compat_test.go
+M	backend/internal/service/gemini_upstream_transport_error.go
+M	backend/internal/service/grok_audio.go
+M	backend/internal/service/grok_free_quota_gate_test.go
+M	backend/internal/service/grok_media.go
+M	backend/internal/service/grok_observed_models.go
+M	backend/internal/service/grok_quota_service.go
+M	backend/internal/service/hot_path_zero_copy_test.go
+M	backend/internal/service/model_protocol_catalog.go
+M	backend/internal/service/oauth_refresh_api_test.go
+M	backend/internal/service/openai_alpha_search.go
+M	backend/internal/service/openai_apikey_responses_probe.go
+M	backend/internal/service/openai_codex_models_service.go
+M	backend/internal/service/openai_codex_models_service_test.go
+M	backend/internal/service/openai_compact_body_signal.go
+A	backend/internal/service/openai_compact_memory_test.go
+M	backend/internal/service/openai_compact_sse_keepalive.go
+M	backend/internal/service/openai_compact_sse_keepalive_test.go
+M	backend/internal/service/openai_compact_stream_bridge.go
+M	backend/internal/service/openai_compact_stream_failure_created_at_test.go
+M	backend/internal/service/openai_compat_model.go
+M	backend/internal/service/openai_embeddings.go
+M	backend/internal/service/openai_gateway_cc_pipeline.go
+M	backend/internal/service/openai_gateway_chat_completions_raw.go
+M	backend/internal/service/openai_gateway_count_tokens.go
+M	backend/internal/service/openai_gateway_forward.go
+M	backend/internal/service/openai_gateway_grok.go
+M	backend/internal/service/openai_gateway_grok_search_billing_test.go
+M	backend/internal/service/openai_gateway_messages_anthropic_native.go
+M	backend/internal/service/openai_gateway_ollama_cloud_cc_reasoning.go
+M	backend/internal/service/openai_gateway_ollama_cloud_cc_reasoning_test.go
+M	backend/internal/service/openai_gateway_ollama_cloud_max_tokens_test.go
+M	backend/internal/service/openai_gateway_passthrough.go
+M	backend/internal/service/openai_gateway_request_body.go
+M	backend/internal/service/openai_gateway_responses_chat_fallback.go
+M	backend/internal/service/openai_gpt56_max_test.go
+M	backend/internal/service/openai_images.go
+A	backend/internal/service/openai_kimi_k31_compat_test.go
+M	backend/internal/service/openai_messages_effort_policy_test.go
+M	backend/internal/service/openai_model_mapping.go
+M	backend/internal/service/openai_oauth_model_support_test.go
+M	backend/internal/service/openai_opencode_session.go
+M	backend/internal/service/openai_opencode_session_test.go
+A	backend/internal/service/openai_passthrough_error_forwarding_test.go
+A	backend/internal/service/openai_responses_tools_failover_test.go
+M	backend/internal/service/openai_upstream_transport_error.go
+M	backend/internal/service/openai_upstream_transport_error_handle_test.go
+M	backend/internal/service/openai_upstream_transport_error_test.go
+M	backend/internal/service/openai_ws_forwarder_payload.go
+M	backend/internal/service/openai_ws_pool.go
+M	backend/internal/service/openai_ws_v2_passthrough_ttft_mode_test.go
+M	backend/internal/service/ops_upstream_context.go
+M	backend/internal/service/pricing_service_test.go
+M	backend/internal/service/proxy.go
+M	backend/internal/service/ratelimit_cn_frequency_429_test.go
+M	backend/internal/service/ratelimit_cn_providers.go
+M	backend/internal/service/seedance.go
+M	backend/internal/service/upstream_billing_probe.go
+M	backend/internal/service/upstream_billing_probe_multiplatform_test.go
+M	backend/internal/service/upstream_billing_probe_test.go
+M	backend/internal/service/upstream_models.go
+M	backend/internal/service/wire.go
+M	backend/resources/model-pricing/model_prices_and_context_window.json
+M	deploy/.env.example
+M	deploy/config.example.yaml
+A	docs/changes/2026-11-12-request-memory.md
+M	docs/custom-development-history.md
+M	docs/upstream-sync-history.md
+M	frontend/src/api/__tests__/admin.accounts.upstreamBillingProbe.spec.ts
+M	frontend/src/api/admin/accounts.ts
+M	frontend/src/api/admin/ops.ts
+M	frontend/src/components/account/AccountTodayStatsCell.vue
+M	frontend/src/components/account/AccountUsageCell.vue
+M	frontend/src/components/account/BulkEditAccountModal.vue
+M	frontend/src/components/account/CreateAccountModal.vue
+M	frontend/src/components/account/EditAccountModal.vue
+M	frontend/src/components/account/HeaderOverrideEditor.vue
+A	frontend/src/components/account/UpstreamGroupSyncButton.vue
+M	frontend/src/components/account/UsageProgressBar.vue
+A	frontend/src/components/account/__tests__/AccountTodayStatsCell.spec.ts
+M	frontend/src/components/account/__tests__/AccountUsageCell.spec.ts
+M	frontend/src/components/account/__tests__/CreateAccountModal.spec.ts
+M	frontend/src/components/account/__tests__/EditAccountModal.spec.ts
+A	frontend/src/components/account/__tests__/HeaderOverrideEditor.spec.ts
+M	frontend/src/components/account/__tests__/UsageProgressBar.spec.ts
+M	frontend/src/components/account/__tests__/credentialsBuilder.spec.ts
+M	frontend/src/components/account/credentialsBuilder.ts
+M	frontend/src/components/admin/account/AccountStatsModal.vue
+A	frontend/src/components/admin/account/__tests__/AccountStatsModal.spec.ts
+M	frontend/src/components/admin/usage/UsageTable.vue
+M	frontend/src/components/admin/usage/__tests__/UsageTable.spec.ts
+M	frontend/src/components/common/ProxySelector.vue
+M	frontend/src/components/common/__tests__/HelpTooltip.spec.ts
+A	frontend/src/components/common/__tests__/ProxySelector.accountCount.spec.ts
+M	frontend/src/composables/__tests__/useModelWhitelist.spec.ts
+M	frontend/src/composables/useModelWhitelist.ts
+M	frontend/src/i18n/locales/en/admin/accounts.ts
+M	frontend/src/i18n/locales/en/admin/channels.ts
+M	frontend/src/i18n/locales/en/admin/ops.ts
+M	frontend/src/i18n/locales/en/admin/resources.ts
+M	frontend/src/i18n/locales/en/dashboard.ts
+M	frontend/src/i18n/locales/zh/admin/accounts.ts
+M	frontend/src/i18n/locales/zh/admin/channels.ts
+M	frontend/src/i18n/locales/zh/admin/ops.ts
+M	frontend/src/i18n/locales/zh/admin/resources.ts
+M	frontend/src/i18n/locales/zh/dashboard.ts
+M	frontend/src/types/index.ts
+M	frontend/src/utils/__tests__/accountUsageRefresh.spec.ts
+M	frontend/src/utils/accountUsageRefresh.ts
+M	frontend/src/views/admin/AccountsView.vue
+M	frontend/src/views/admin/ChannelsView.vue
+M	frontend/src/views/admin/ProxiesView.vue
+M	frontend/src/views/admin/RiskControlView.vue
+M	frontend/src/views/admin/UsageView.vue
+M	frontend/src/views/admin/__tests__/AccountsView.bulkEdit.spec.ts
+M	frontend/src/views/admin/__tests__/AccountsView.lite.spec.ts
+M	frontend/src/views/admin/__tests__/AccountsView.priorityColumn.spec.ts
+M	frontend/src/views/admin/__tests__/AccountsView.schedulerScore.spec.ts
+M	frontend/src/views/admin/__tests__/AccountsView.selectAllResults.spec.ts
+M	frontend/src/views/admin/__tests__/AccountsView.sparkShadow.spec.ts
+M	frontend/src/views/admin/__tests__/AccountsView.usageWindowsHint.spec.ts
+A	frontend/src/views/admin/__tests__/ChannelsView.exposeResponseModel.spec.ts
+M	frontend/src/views/admin/__tests__/RiskControlView.spec.ts
+M	frontend/src/views/admin/__tests__/UsageView.spec.ts
+M	frontend/src/views/admin/ops/components/OpsErrorDetailModal.vue
+M	frontend/src/views/admin/ops/components/__tests__/OpsErrorDetailModal.spec.ts
+M	frontend/src/views/admin/ops/utils/__tests__/errorDetailResponse.spec.ts
+M	frontend/src/views/admin/ops/utils/errorDetailResponse.ts
+M	frontend/src/views/auth/MCPOAuthAuthorizeView.vue
+M	frontend/src/views/auth/__tests__/MCPOAuthAuthorizeView.spec.ts
+```
+
+本记录形成时原main仍为LOCAL_PRE_SYNC_SHA。下一步提交本记录并进行获批的本地--ff-only；最终分支SHA、工作树状态与本地交付结果在对话总结及本轮state.json核对。未经新增明确授权，不推送或发布本地结果。

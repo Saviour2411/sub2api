@@ -219,6 +219,22 @@
               </p>
             </div>
 
+            <!-- 向用户展示实际响应型号 -->
+            <div>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  v-model="form.expose_response_model"
+                  data-testid="channel-expose-response-model"
+                  class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                />
+                <span class="input-label mb-0">{{ t('admin.channels.form.exposeResponseModel', 'Show Actual Model to Users') }}</span>
+              </label>
+              <p class="mt-1 ml-6 text-xs text-gray-400">
+                {{ t('admin.channels.form.exposeResponseModelHint') }}
+              </p>
+            </div>
+
             <!-- Default Pricing -->
             <div class="border-t border-gray-200 pt-4 dark:border-dark-700">
               <div class="flex items-center justify-between gap-4">
@@ -805,6 +821,7 @@ const form = reactive({
     cache_write_price: null,
     cache_read_price: null,
   } as DefaultPricingFormEntry,
+  expose_response_model: false,
   platforms: [] as PlatformSection[],
   apply_pricing_to_account_stats: false,
 })
@@ -1261,6 +1278,8 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
   featuresConfig.bedrock_cc_compat = form.platforms.some(
     section => section.enabled && section.platform === 'anthropic' && section.bedrock_cc_compat
   )
+  // Channel-level boolean: lets users see the actual response model in usage records.
+  featuresConfig.expose_response_model = !!form.expose_response_model
 
   return { group_ids: uniqueGroupIds, model_pricing, model_mapping, features_config: featuresConfig }
 }
@@ -1433,6 +1452,7 @@ function resetForm() {
   form.restrict_models = false
   form.default_pricing_enabled = false
   form.default_pricing = defaultPricingToForm(null)
+  form.expose_response_model = false
   form.platforms = []
   form.apply_pricing_to_account_stats = false
   activeTab.value = 'basic'
@@ -1456,6 +1476,7 @@ async function openEditDialog(channel: Channel) {
   form.restrict_models = channel.restrict_models || false
   form.default_pricing_enabled = channel.default_pricing_enabled || false
   form.default_pricing = defaultPricingToForm(channel.default_pricing)
+  form.expose_response_model = channel.features_config?.expose_response_model === true
   form.apply_pricing_to_account_stats = channel.apply_pricing_to_account_stats || false
   // Must load groups first so apiToForm can map groupID → platform
   await Promise.all([loadGroups(), loadAllChannelsForConflict()])

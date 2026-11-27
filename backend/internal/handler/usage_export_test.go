@@ -33,7 +33,7 @@ func (r *usageExportCapture) ListExport(_ context.Context, options usagestats.Ex
 func TestUserUsageExportEnforcesOwnerAndProjection(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &usageExportCapture{}
-	h := NewUsageHandler(service.NewUsageService(repo, nil, nil, nil), nil, nil, nil)
+	h := NewUsageHandler(service.NewUsageService(repo, nil, nil, nil), nil, nil, nil, nil)
 	router := gin.New()
 	router.Use(func(c *gin.Context) { c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 42}) })
 	router.GET("/usage/export", h.Export)
@@ -71,7 +71,7 @@ func TestUserUsageExportEnforcesOwnerAndProjection(t *testing.T) {
 func TestUserUsageExportRejectsInvalidOrUnauthenticatedRequests(t *testing.T) {
 	for _, query := range []string{"?cursor=-1", "?page_size=1001", "?request_type=invalid", "?start_date=invalid"} {
 		repo := &usageExportCapture{}
-		h := NewUsageHandler(service.NewUsageService(repo, nil, nil, nil), nil, nil, nil)
+		h := NewUsageHandler(service.NewUsageService(repo, nil, nil, nil), nil, nil, nil, nil)
 		router := gin.New()
 		router.Use(func(c *gin.Context) { c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 42}) })
 		router.GET("/usage/export", h.Export)
@@ -81,7 +81,7 @@ func TestUserUsageExportRejectsInvalidOrUnauthenticatedRequests(t *testing.T) {
 		require.Zero(t, repo.calls)
 	}
 	router := gin.New()
-	router.GET("/usage/export", NewUsageHandler(nil, nil, nil, nil).Export)
+	router.GET("/usage/export", NewUsageHandler(nil, nil, nil, nil, nil).Export)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/usage/export", nil))
 	require.Equal(t, http.StatusUnauthorized, rec.Code)

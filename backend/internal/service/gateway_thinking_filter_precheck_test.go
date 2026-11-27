@@ -2,11 +2,14 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/stretchr/testify/require"
@@ -77,20 +80,17 @@ func signedThinkingHistoryBody() []byte {
 }
 
 func TestFilterThinkingBlocksSignedHistorySkipsDecode(t *testing.T) {
-	const isolatedEnv = "SUB2API_TEST_THINKING_PRECHECK_ALLOCATIONS"
-	if os.Getenv(isolatedEnv) != "1" {
-		// AllocsPerRun统计整个进程；隔离其他测试的后台分配，保留原分配阈值和原始切片断言。
-		binary, err := os.Executable()
+	// AllocsPerRun 会计入其他测试遗留的后台分配；使用限时子进程隔离测量。
+	const childEnv = "SUB2API_THINKING_FILTER_ALLOC_TEST_CHILD"
+	if os.Getenv(childEnv) != "1" {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		executable, err := os.Executable()
 		require.NoError(t, err)
-		command := exec.Command(binary, "-test.run=^TestFilterThinkingBlocksSignedHistorySkipsDecode$", "-test.count=1", "-test.timeout=30s")
-		for _, variable := range os.Environ() {
-			if !strings.HasPrefix(variable, isolatedEnv+"=") {
-				command.Env = append(command.Env, variable)
-			}
-		}
-		command.Env = append(command.Env, isolatedEnv+"=1")
-		output, err := command.CombinedOutput()
-		require.NoError(t, err, "隔离进程的分配检查失败：%s", output)
+		cmd := exec.CommandContext(ctx, executable, "-test.run=^"+regexp.QuoteMeta(t.Name())+"$", "-test.count=1")
+		cmd.Env = append(os.Environ(), childEnv+"=1")
+		output, err := cmd.CombinedOutput()
+		require.NoError(t, err, "隔离进程的分配检查失败：\n%s", output)
 		return
 	}
 
