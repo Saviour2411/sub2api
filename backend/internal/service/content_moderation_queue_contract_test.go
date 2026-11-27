@@ -47,7 +47,7 @@ func TestContentModerationIdleServiceMemoryIsBounded(t *testing.T) {
 	const instances = 64
 	// 人工留证队列按本地既有策略预留；其余空闲开销仍严格限制为 64 KiB。
 	const localAuditBytes = defaultContentModerationLocalAuditQueueSize * int(unsafe.Sizeof(contentModerationLocalAuditTask{}))
-	const maxIdleBytesPerInstance = localAuditBytes + 64*1024
+	const maxIdleBytesPerInstance = int64(localAuditBytes) + 64*1024
 
 	var before, after runtime.MemStats
 	runtime.GC()

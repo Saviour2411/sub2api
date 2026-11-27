@@ -11,6 +11,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -75,7 +76,26 @@ func (w *openAIPassthroughKeepaliveWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
-func newOpenAIPassthroughKeepaliveHandler(t *testing.T, upstream service.HTTPUpstream) *OpenAIGatewayHandler {
+type openAIPassthroughKeepaliveAccountRepo struct {
+	openAIImagesFailoverAccountRepo
+	mu         sync.Mutex
+	overloaded []int64
+}
+
+func (r *openAIPassthroughKeepaliveAccountRepo) SetOverloaded(_ context.Context, id int64, _ time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.overloaded = append(r.overloaded, id)
+	return nil
+}
+
+func (r *openAIPassthroughKeepaliveAccountRepo) overloadedIDs() []int64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]int64(nil), r.overloaded...)
+}
+
+func newOpenAIPassthroughKeepaliveHandler(t *testing.T, upstream service.HTTPUpstream) (*OpenAIGatewayHandler, *openAIPassthroughKeepaliveAccountRepo) {
 	t.Helper()
 	newAccount := func(id int64, priority int) service.Account {
 		return service.Account{
@@ -90,7 +110,9 @@ func newOpenAIPassthroughKeepaliveHandler(t *testing.T, upstream service.HTTPUps
 	cfg := &config.Config{RunMode: config.RunModeSimple}
 	cfg.Gateway.StreamKeepaliveInterval = 1
 	// 本用例验证真实心跳后的换号；显式关闭首 Token 暂存，默认守卫由独立回归覆盖。
-	repo := openAIImagesFailoverAccountRepo{accounts: accounts}
+	repo := &openAIPassthroughKeepaliveAccountRepo{
+		openAIImagesFailoverAccountRepo: openAIImagesFailoverAccountRepo{accounts: accounts},
+	}
 	settings := service.NewSettingService(&safeHandlerSettingsRepo{values: map[string]string{
 		service.SettingKeyGatewayFirstTokenTimeoutSeconds: "0",
 	}}, cfg)
@@ -110,7 +132,7 @@ func newOpenAIPassthroughKeepaliveHandler(t *testing.T, upstream service.HTTPUps
 		nil, nil, nil, nil, cfg,
 	)
 	h.maxAccountSwitches = 2
-	return h
+	return h, repo
 }
 
 func newOpenAIPassthroughKeepaliveContext(t *testing.T) (*gin.Context, *httptest.ResponseRecorder, *openAIPassthroughKeepaliveWriter) {
@@ -142,7 +164,7 @@ func TestOpenAIGatewayHandlerResponsesPassthroughKeepaliveFailoverAcrossAttempts
 		{StatusCode: http.StatusOK, Header: sseHeader(), Body: io.NopCloser(strings.NewReader(openAIPassthroughKeepaliveOverloadedSSE))},
 		{StatusCode: http.StatusOK, Header: sseHeader(), Body: io.NopCloser(strings.NewReader(openAIPassthroughKeepaliveSuccessSSE))},
 	}}
-	h := newOpenAIPassthroughKeepaliveHandler(t, upstream)
+	h, repo := newOpenAIPassthroughKeepaliveHandler(t, upstream)
 	c, rec, writer := newOpenAIPassthroughKeepaliveContext(t)
 
 	done := make(chan struct{})
@@ -164,7 +186,9 @@ func TestOpenAIGatewayHandlerResponsesPassthroughKeepaliveFailoverAcrossAttempts
 	}
 
 	body := rec.Body.String()
+	require.Equal(t, strings.Count(body, ":\n\n")*len(":\n\n"), c.GetInt("openai_stream_keepalive_bytes"), "只累计真实发送的心跳字节")
 	require.Equal(t, []int64{1, 2, 3}, upstream.callIDs(), "前一次尝试的心跳字节不得阻止第二次尝试换号: body=%q", body)
+	require.Equal(t, []int64{1, 2}, repo.overloadedIDs(), "过载账号的冷却记录不得被心跳换号绕过")
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Contains(t, body, ":\n\n", "第一次尝试必须真实写出心跳")
 	require.Equal(t, 1, strings.Count(body, "event: response.completed"), "成功流只允许一个 completed")
