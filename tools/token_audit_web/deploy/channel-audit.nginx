@@ -1,0 +1,41 @@
+limit_req_zone $binary_remote_addr zone=channel_audit_requests:1m rate=10r/s;
+limit_conn_zone $binary_remote_addr zone=channel_audit_connections:1m;
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name audit.87-76-198-249.sslip.io;
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/letsencrypt;
+        default_type text/plain;
+        try_files $uri =404;
+    }
+    location / { return 301 https://audit.87-76-198-249.sslip.io:8444$request_uri; }
+}
+
+server {
+    listen 8444 ssl;
+    listen [::]:8444 ssl;
+    server_name audit.87-76-198-249.sslip.io;
+    ssl_certificate /etc/letsencrypt/live/audit.87-76-198-249.sslip.io/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/audit.87-76-198-249.sslip.io/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    client_max_body_size 32k;
+    client_body_timeout 15s;
+    client_header_timeout 15s;
+    keepalive_timeout 30s;
+    access_log /var/log/nginx/channel-audit.access.log;
+    error_log /var/log/nginx/channel-audit.error.log;
+    limit_conn channel_audit_connections 20;
+    location / {
+        limit_req zone=channel_audit_requests burst=30 nodelay;
+        proxy_pass http://127.0.0.1:18766;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header Connection "";
+        proxy_read_timeout 240s;
+        proxy_send_timeout 30s;
+    }
+}

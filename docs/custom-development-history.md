@@ -199,7 +199,7 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 - 本次同步范围：`a60a29549..b8dece9000`，62个上游提交（43个非合并、19个合并）；63项既有能力族编号全部保留，无跳过或延期提交；本地覆盖、实际验证和未覆盖范围见本轮同步记录
 - 历史识别统计（2026-09-02，`5097b3145..35c28e324`）：919 个差异文件，新增130491行、删除5976行、本地独有512个提交；此为历史快照，不代表本次同步后的统计
 - 2026-09-05 历史代码基线差异（`ab99d56e9..289a00a46`）：926个文件，新增130999行、删除6037行；本地独有517个提交（不含最后记录补记）
-- 当前共有 70 项能力，分布在 9 个功能域。2026-11-24 新增 `CUST-GW-017`。2026-11-19恢复同一归档编号`CUST-OBS-004`并扩展并发诊断；2026-11-05新增`CUST-PROTO-009`；2026-11-01新增`CUST-BILL-008`；2026-09-20核对59项已有清单（含`CUST-GW-014`）并新增`CUST-OPS-006`，2026-09-21新增`CUST-OPS-007`，2026-09-22新增`CUST-GW-015`，2026-09-23新增`CUST-OPS-008`，2026-10-09新增`CUST-GW-016`，2026-10-15新增`CUST-OBS-003`，2026-10-18新增`CUST-UI-006`；全部编号保留，不复用或删除
+- 当前共有 71 项能力，分布在 9 个功能域。2026-11-26 新增 `CUST-OBS-005` 渠道检测网页工作台；2026-11-24 新增 `CUST-GW-017`。2026-11-19恢复同一归档编号`CUST-OBS-004`并扩展并发诊断；2026-11-05新增`CUST-PROTO-009`；2026-11-01新增`CUST-BILL-008`；2026-09-20核对59项已有清单（含`CUST-GW-014`）并新增`CUST-OPS-006`，2026-09-21新增`CUST-OPS-007`，2026-09-22新增`CUST-GW-015`，2026-09-23新增`CUST-OPS-008`，2026-10-09新增`CUST-GW-016`，2026-10-15新增`CUST-OBS-003`，2026-10-18新增`CUST-UI-006`；全部编号保留，不复用或删除
 
 这组数字只用于确认分析边界，不能直接等同于功能数量。生成代码、测试、文案、上游提交的本地适配和同一能力的连续修复均会放大差异规模。
 
@@ -317,7 +317,8 @@ CI 测试夹具修复：隔离 Nginx 初次 warmup 曾在 TLS 就绪前执行而
 | `CUST-OBS-001` | 流式渠道监控与随机抖动 | `probe`/`quota_probe` 渠道监控和模板可以选择流式检测，`quota` 模式独立读取额度；探针总超时与响应头超时统一为 600 秒，Gemini 流式与非流式响应均遍历首个候选的全部文本分段并跳过思考分段；检测间隔支持正负随机抖动，避免大量渠道同一时刻探测，并保留 provider/endpoint/请求体的本地扩展。渠道分组按用户访问范围过滤，OpenAI 可见 TTFT 的统计口径由管理员设置统一控制。2026-09-18 上游适配：吸收监控自动刷新间隔修复；Provider 测试继续按 PROVIDERS.length 验证并保留 MiniMax。2026-09-24 修复启动/待激活/退役及共享执行资格拒绝后未释放 in-flight 导致永久停探；无样本可用率为 null，真实失败仍为 0%；区分过期数据并隐藏过期延迟/额度，同步刷新多窗口缓存，过期阈值包含两倍最大抖动间隔及完整探测预算。2026-10-09 接入智谱端点路径修复与请求样本门槛。2026-10-26：V1 按平台顺序分区、区内保持原排序、未知平台追加，Image 独立；普通卡片约 146px，桌面四列、宽屏六列。列表隐藏最后检测/成功时间、检测次数和重复倒计时，刷新集中顶部；保留历史条、统计周期、分组、配额开关、过期/无样本/真实零值语义，详情仍保留时间和样本信息。2026-10-29：监控和模板的空合并请求体按默认请求处理；覆盖模式仍要求非空对象，提交前校验当前 JSON，清空操作显式移除旧请求体。渠道状态分区的厂商图标与名称复用统一平台配色，适配深浅主题，Image 和未知厂商保持原有中性色。 2026-11-18 上游适配：渠道监控在额度刷新失败时保留既有探测状态；本地增量SSE读取与终态校验继续保留。 | `backend/internal/service/channel_monitor_runner.go`、`backend/internal/service/channel_monitor_aggregator.go`、`backend/internal/service/channel_monitor_checker.go`、`backend/internal/service/channel_monitor_const.go`、`backend/internal/service/channel_monitor_template_service.go`、`backend/ent/schema/channel_monitor.go`、`backend/migrations/141_channel_monitor_stream_enabled.sql`、`backend/migrations/226_channel_monitor_quota_mode.sql`、`frontend/src/components/admin/monitor/MonitorAdvancedRequestConfig.vue`、`frontend/src/components/user/monitor/MonitorCardGrid.vue`、`frontend/src/components/user/monitor/MonitorCard.vue` | 生效中 |
 | `CUST-OBS-002` | 独立上游站点同步监控 | 在二开管理页统一维护 Sub2API/New API 上游站点，定时同步余额、分组倍率与实际消耗，保留用量及倍率历史；Sub2API 同步 Token 与费用，New API 仅通过标准统计接口同步站点及分组费用，不再分页扫描日志，Token 指标明确标记为不可用并隐藏，既有 Token 数据保留但不再更新；支持按分组类型筛选、按余额/有效今日 Token 排序、拖拽调整站点顺序，并按平台优先级和倍率整理账号下方分组；上游分组可绑定本地账号并按最后一次有效倍率自动维护全局优先级，不可用分组仍参与排序，从未取得有效倍率的账号保留原优先级；新增 Sub2API 时会探测 Turnstile，自动改用令牌认证并支持从完整登录响应导入 Access/Refresh Token；令牌模式可在加密凭证中保存登录会话 User-Agent，并在验证、刷新与同步请求中保持一致；目标站点返回 `SESSION_BINDING_MISMATCH` 时会以 Chrome TLS/HTTP2 指纹重试，成功后将该传输模式随凭证加密保存，以兼容绑定出口 IP、UA 与 TLS/JA4 指纹的浏览器会话；Sub2API JWT Access Token 会在到期前 15 分钟主动轮换，非 JWT 令牌保持原有按认证失败刷新行为；New API 同时兼容旧版 Cookie 会话和 rc.22 起的短期 Bearer Access Token/刷新 Cookie，认证失败时优先刷新已有会话，刷新接口明确拒绝或旧版不支持时才回退密码登录，冲突及临时错误不再创建新登录会话；New API 还可直接使用个人中心生成的个人访问令牌，令牌模式不创建登录会话、不使用 Cookie/刷新令牌且认证失败时不会回退密码登录，管理页无需导入会话 User-Agent，后端自动使用固定浏览器 User-Agent 与 Chrome TLS/HTTP2 指纹兼容 Cloudflare，首次验证会从 `/api/user/self` 自动取得远端用户 ID；同步时优先复用加密保存的 Token/Cookie，仅在进入主动刷新窗口、凭证被拒绝或需要重新登录时更新认证。 本次上游适配：上游新增分组行锁与本地账号差量分组绑定、倍率绑定清理兼容；未变关系优先级和剩余账号重排仍受回归保护。 2026-10-29：New API 个人访问令牌模式支持可选的上游用户 ID，首次认证及后续同步携带 New-Api-User；ID 与凭据一同加密保存，管理响应仅回填 ID，不返回令牌。创建和更新校验正整数，更新省略时保留、空字符串显式清除；更换令牌未提交 ID 时清除旧 ID，显式提交值在会话清理后应用。上游明确要求 ID 时返回专用错误并保留表单重试，其他平台和密码模式不接收该字段。 | `backend/internal/service/upstream_service.go`、`backend/internal/service/upstream_provider_http.go`、`backend/internal/service/upstream_provider_newapi.go`、`frontend/src/components/admin/upstream/UpstreamManagementPanel.vue`、`backend/migrations/178_upstream_management.sql`、`backend/migrations/181_upstream_management_order_and_platform.sql` | 生效中 |
 | `CUST-OBS-003` | 分组降智检测与作品画廊 | 默认关闭。管理员选择 OpenAI 分组、绑定自己的对应分组有效密钥，配置多模型、糖果/鹈鹕方式、推理程度与 5～1440 分钟间隔；端点只读系统公网 HTTPS 地址。任务先持久化，再通过满血AI创建与轮询；全局至多两个外部检测、同组不重叠，重启优先恢复查询，提交不明不盲目重试。两项结果独立存储，错误不直接判为降智；登录用户查看最近 24 小时结果。两层 sandbox 与独立 CSP 隔离作品，密钥和第三方任务 ID 不出现在用户接口。关闭后停止新提交并隐藏入口，继续回收已提交结果及清理过期作品；不改变网关路由、分组启停或生产配置。v0.1.256 采用固定 246 迁移适配，应用回退保留检测数据。2026-10-17 适配统一 Responses 协议，已知提交拒绝使用固定中文提示，不透出原始错误或替换所选模型。2026-10-26：紧凑画廊只显示两项判定结果，独立详情 `/model-quality/runs/:id` 展示作品、纯文本答案及执行信息；筛选、分页写入查询参数，返回恢复滚动。共享加载器合并请求，并发上限四；完成记录按 LRU 缓存最多 24 条/约 32MiB，有效期不超过五分钟及记录到期时间。400px 预加载，离屏/后台卸载实例，过期/退出/换号/关闭/权限失效清理内容并阻止旧响应回填。 | `backend/internal/service/model_quality.go`、`backend/internal/service/model_quality_runner.go`、`backend/internal/repository/model_quality_repo.go`、`backend/internal/pkg/manxue/client.go`、`frontend/src/views/user/ModelQualityView.vue`、`frontend/src/views/user/ModelQualityDetailView.vue`、`frontend/src/utils/modelQualityLoader.ts`、`frontend/src/stores/modelQuality.ts`、`frontend/src/components/admin/model-quality/ModelQualitySettings.vue`、`docs/model-quality.md` | 生效中，默认关闭；本次前端优化待发布 |
-| `CUST-OBS-004` | 独立渠道Token、缓存、签名与并发诊断 | 恢复此前归档的同一工具编号，保留三轮对话、固定Token指纹、签名变更与可扩展注册表；新增显式选择的concurrency测试，默认一轮200请求，统计接口正常结束/完整正文成功、首字和完整响应P50/P90/P95、实际发送峰值、错误阶段及预算截断。内置用户指定可信渠道2026-11-19服务器1实测参考，绑定请求参数与证据哈希，只作历史描述性对照；默认仍只跑6次原有检查。Key脱敏，输出仅在工作目录，不读取生产数据库或修改网关配置。 | `tools/probe_token_audit.py`、`tools/token_audit/`、`tools/README-token-audit.md` | 生效中（独立CLI，非生产服务变更） |
+| `CUST-OBS-004` | 独立渠道Token、缓存、签名与并发诊断 | 保留三轮对话、固定Token指纹、签名变更、并发参考和可扩展注册表；CLI默认仍为6次。2026-11-22更新尾随字符HTTP400参照，模型及原样对照有效时才比较。2026-11-26新增现签时间窗口、Base64/Protobuf结构检查、可选AWSB字段f2.f1.f2=1，以及工具续接、原题绑定和可选双向跨渠道回放。现签需至少两轮f21落在各自窗口且递增，缺失或失败不算通过；来源标记不证明实际AWS归属。目标与对端预算分开，Key脱敏，不读取生产数据库。 | `tools/probe_token_audit.py`、`tools/token_audit/`、`tools/README-token-audit.md` | 生效中（独立CLI） |
+| `CUST-OBS-005` | 渠道检测网页工作台 | 独立部署到服务器2，支持登录、填写URL/Key/模型、模型目录、选择全部诊断项、实时进度、取消、历史复用和报告下载。网页默认缓存/指纹/双模型现签，最多10次生成；并发显式选择、上限200。单任务串行、队列5个、历史200个、任务上限2小时；API Key只驻内存及子进程环境，报告脱敏；HTTPS、Origin检查、公网目标和实际对端检查；重启不自动重跑。 | `tools/token_audit_web/`、`docs/operations/2026-11-26-channel-audit-web.md` | 独立服务，部署验证见运维记录 |
 
 ### 产品、支付与增长
 
@@ -1087,3 +1088,19 @@ CUST-ACC-003的快照测试新增字段完成gofmt空白对齐；断言和运行
 ### 本轮原生聊天批量发送测试适配
 
 候选完整unit检查发现上游2c6784496新增的批量Flush测试只期望一次发送，未计入CUST-GW-001首Token守卫释放缓冲时的Flush。将测试拆为底层流处理与完整守卫入口两个场景，分别精确断言1次与2次Flush，完整输出及用量断言保持；相邻用例继续验证等待下一批上游数据前已及时发送。仅适配测试，保留既有守卫与上游批量发送实现；首次失败及最终验证结果均留存。
+
+## 2026-11-22 更新渠道诊断签名参照
+
+涉及`CUST-OBS-004`。用户要求将可信渠道本轮实测更新为测试包指纹：北京时间2026-11-22 00:13:11至00:17:03，`direct.saviour.cc.cd`的4份有效签名在末尾追加8字符后全部返回明确HTTP400，12次前中后原样对照全部成功。新增版本化签名参照文件，保留实测请求ID、来源请求哈希、证据哈希及11月初3接受1拒绝的历史说明。
+
+签名项自动前置校验并加载参照，在计划、JSON、CSV和Markdown报告中记录预期及差异。只有相同模型、忽略独立会话metadata后相同的来源请求、有效原样对照及可判定结果参与比较；末尾追加被接受或仅在HTTP200流内拒绝时单独提示差异，不改核心72次统计。原样对照失败、普通400、未知模型或变更输出预算不会误判为一致。
+
+保持原三轮Token指纹、并发历史参考、默认6次调用预算及生产配置。以本地模拟端覆盖4/4拒绝、旧编码宽容行为、流内拒绝、参数不匹配及参照损坏，不额外调用付费上游；同步提供包含新签名参照的可分享测试包。
+
+## 2026-11-26 现签判定、AWSB来源特征与网页工作台
+
+用户要求将提供的Bedrock签名测试材料纳入测试包，现签为通过标准，AWSB来源标记为可选附加条件；并要求在服务器2部署网页入口。扩展`CUST-OBS-004`，新增独立能力`CUST-OBS-005`，不修改服务器1业务或计费配置。
+
+现签按模型至少两次独立题号采样，记录实际发送和最后签名片段时间，严格比对f2.f1.f21秒级窗口和递增关系；同时保留f2.f1.f2/f3、顶层f3、消息前缀和签名哈希。缺失、解码失败、拒答、断流、非流式和时钟跳变均无法确认。可选AWSB要求有效样本f2.f1.f2为1，不把该特征等同于AWS账单证据。工具续接保留原历史，准确校验工具结果编号，前后对照失败使绑定和跨渠道结论失效。
+
+网页提供现有及新增测试项、报告和历史，认证口令哈希保存、渠道密钥仅驻内存；任务串行且有并发、时间、队列和历史上限，公网实际对端检查与HTTPS保护输入。CLI默认6次保持，网页默认10次且显示预计预算。新增本地模拟回归和桌面/手机浏览器验收，不调用付费上游。部署和验证证据见独立运维记录。

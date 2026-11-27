@@ -13,6 +13,8 @@ from .fixtures import conversation_body
 from .protocol import input_metrics, is_token_count, redact, utc_now
 from .signatures import run_signature, signature_request_limit, summarize_signatures, signature_report, signature_csv_rows
 from .concurrency import run_concurrency, report_lines as concurrency_report
+from .freshness import run_freshness, request_limit as freshness_limit, report_lines as freshness_report
+from .relay import run_relay, request_limit as relay_limit, report_lines as relay_report
 
 
 @dataclass(frozen=True)
@@ -112,6 +114,8 @@ class RunContext:
         self.started_at = utc_now()
         self.reference_attempts = 0
         self.concurrency_summary = None
+        self.freshness_summary = None
+        self.relay_summary = None
 
     def emit(self, kind, **data):
         event = redact({"kind": kind, **data}, self.secrets)
@@ -124,12 +128,12 @@ class RunContext:
     def note(self, code, message, level="incomplete", row=None):
         (row["observations"] if row is not None else self.notes).append(observation(code, message, level))
 
-    def call(self, test_name, number, body, session, *, capture_content=False, check_usage=True, details=None):
+    def call(self, test_name, number, body, session, *, capture_content=False, check_usage=True, details=None, client=None, endpoint_role="A"):
         if self.stop_reason:
             raise ValueError(self.stop_reason)
         self.say("[" + test_name + "] 第" + str(number) + "轮请求中")
         self.emit("request_start", test=test_name, round=number, started_at=utc_now(), request=body, **(details or {}))
-        result = self.client.generate(body, session, capture_content=capture_content)
+        result = (client or self.client).generate(body, session, capture_content=capture_content)
         if redact(result, self.secrets) != result:
             result["success"] = False
             result["protocol_success"] = False
@@ -137,6 +141,7 @@ class RunContext:
             result["error"] = "上游响应回显密钥，停止后续目标请求且不转发受污染的回复"
             self.stop_reason = result["error"]
         row = {"test": test_name, "round": number, "session_id": session,
+               "endpoint_role": endpoint_role,
                "request": copy.deepcopy(body), "result": result,
                "cache_check": None, "comparison": None,
                "observations": usage_observations(result, self.options.model) if check_usage else [],
@@ -146,7 +151,7 @@ class RunContext:
         self.auth_failed = self.auth_failed or result["http_status"] in (401, 403)
         if result["http_status"] in (401, 403, 429):
             self.stop_reason = "目标端认证失败或限流（HTTP " + str(result["http_status"]) + "），停止后续目标请求"
-        if test_name == "signature":
+        if test_name in ("signature", "signature_freshness", "signature_relay"):
             transient = (result["http_status"] is None or (result["http_status"] or 0) >= 500 or
                          (result["http_status"] == 200 and not result["protocol_success"] and not result.get("upstream_error")))
             self.transient_streak = self.transient_streak + 1 if transient else 0
@@ -224,6 +229,16 @@ def concurrency(context):
     run_concurrency(context)
 
 
+@register("signature_freshness", "现签时间窗口、签名结构和可选AWSB标记；缺少时间戳不算通过", max_requests=freshness_limit)
+def signature_freshness(context):
+    run_freshness(context)
+
+
+@register("signature_relay", "工具续接、修改原题与可选双向跨渠道续接", max_requests=relay_limit)
+def signature_relay(context):
+    run_relay(context)
+
+
 def run_live_reference(context):
     if not context.reference:
         return
@@ -269,12 +284,14 @@ def summarize(context, selected):
             "model": context.options.model, "url": context.client.url,
             "reference_url": context.reference.url if context.reference else None,
             "tests": selected, "status": status, "exit_code": 3 if incomplete else 1 if warnings else 0,
-            "target_requests": len(context.rows), "reference_requests": context.reference_attempts,
+            "target_requests": sum(r.get("endpoint_role", "A") == "A" for r in context.rows),
+            "peer_requests": sum(r.get("endpoint_role") == "B" for r in context.rows), "reference_requests": context.reference_attempts,
             "successful_requests": sum(r["result"]["success"] for r in context.rows),
             "compared_requests": len(comparisons), "input_quantity_evaluated": bool(comparisons),
             "tolerance_tokens": context.options.tolerance_tokens, "tolerance_ratio": context.options.tolerance_ratio,
             "skipped_tests": context.skips, "observations": notes, "rows": context.rows,
-            "signature": signature_summary, "concurrency": context.concurrency_summary}
+            "signature": signature_summary, "concurrency": context.concurrency_summary,
+            "signature_freshness": context.freshness_summary, "signature_relay": context.relay_summary}
 
 
 def request_id(result):
@@ -295,7 +312,7 @@ def report_text(summary):
                       "| 测试项 | 轮次 | 普通输入 | 缓存读取 | 缓存创建 | 总输入 | 参照总输入 | 倍数 | 命中率 | 衔接差 | 结果 |",
                       "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|"])
     for row in summary["rows"]:
-        if row["test"] in ("signature", "concurrency"):
+        if row["test"] not in ("conversation", "fingerprint"):
             continue
         r, comp, carry = row["result"], row.get("comparison") or {}, row.get("cache_check") or {}
         usage = r["usage"]
@@ -309,6 +326,8 @@ def report_text(summary):
         lines.extend(signature_report(summary))
     if summary.get("concurrency"):
         lines.extend(concurrency_report(summary["concurrency"]))
+    lines.extend(freshness_report(summary))
+    lines.extend(relay_report(summary))
     lines.extend(["", "## 观察", ""])
     if not summary["input_quantity_evaluated"] and any(name in ("conversation", "fingerprint") for name in summary["tests"]):
         lines.append("- 本次未取得有效的输入总量参照，只能查看缓存和响应状态。")
@@ -330,7 +349,7 @@ def write_reports(context, summary):
         writer = csv.writer(handle)
         writer.writerow(["测试项", "轮次", "开始时间UTC", "普通输入", "缓存读取", "缓存创建", "总输入", "参照总输入", "输入倍数", "缓存命中率", "衔接差", "HTTP", "结束原因", "请求ID", "观察"])
         for row in clean["rows"]:
-            if row["test"] in ("signature", "concurrency"):
+            if row["test"] not in ("conversation", "fingerprint"):
                 continue
             r, comp, carry = row["result"], row.get("comparison") or {}, row.get("cache_check") or {}
             values = [row["test"], row["round"], r["started_at"], *(r["usage"].get(k) for k in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")), r["total_input_tokens"], comp.get("expected_total"), comp.get("ratio"), r["cache_hit_rate"], carry.get("delta"), r["http_status"], r["stop_reason"], request_id(r), "；".join(n["message"] for n in row["observations"])]

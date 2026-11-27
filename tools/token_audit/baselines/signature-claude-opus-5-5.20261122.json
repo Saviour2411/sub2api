@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "test": "signature",
+  "id": "trusted-saviour-claude-opus-5-5-signature-20261122",
+  "model": "claude-opus-5-5",
+  "reference_url": "https://direct.saviour.cc.cd/v1/messages",
+  "trusted_by": "用户指定可信渠道；2026-11-22明确要求更新末尾追加字符参照",
+  "sampled_at": "2026-11-22T00:13:11.483846+08:00",
+  "finished_at": "2026-11-22T00:17:03.176406+08:00",
+  "origin": "服务器1",
+  "source_request_hash_rule": "移除独立会话metadata后，按请求规范化JSON计算SHA256；其他参数、提示词和工具定义保持原样",
+  "cases": {
+    "append": {
+      "category": "encoding_boundary",
+      "expected_outcome": "rejected_http_400",
+      "expected_http_status": 400,
+      "sample_count": 4,
+      "note": "4份有效来源的前中后原样对照全部成功；末尾追加8字符均返回明确签名错误。此项仍不计入72次核心变更。",
+      "samples": [
+        {
+          "scenario": "chat", "sample": 1,
+          "source_request_sha256": "21c09f56bf8a08f416499288458e95db2b01a650ee9493b1f69433a42ff99fdf",
+          "request_sha256": "9786382cdf3b81b912172ba649f8f84b9591949625dace0493be9be8665de0fc",
+          "started_at": "2026-11-22T00:13:54.844383+08:00",
+          "request_id": "9db13c37-6db7-45a9-b079-a61e80bad4d9",
+          "http_status": 400, "outcome": "rejected_http_400", "controls_valid": true
+        },
+        {
+          "scenario": "chat", "sample": 2,
+          "source_request_sha256": "a985f02041a9a261abf00bf73ecb303cc3a904c7a7e69dc7ef3867774c195937",
+          "request_sha256": "216881a893d4ffea64a0a809486e54fdcdd27c1bc1400853dd6c17a3185b8dc9",
+          "started_at": "2026-11-22T00:14:09.874178+08:00",
+          "request_id": "0866eebf-2607-4443-8c50-f53d12149bff",
+          "http_status": 400, "outcome": "rejected_http_400", "controls_valid": true
+        },
+        {
+          "scenario": "tool", "sample": 1,
+          "source_request_sha256": "3225d45f48a4424d9a12ebdbfb8b9acf1783fa3f98910e757b8de77e26a2c8e5",
+          "request_sha256": "4fa86bda8b775c8433fdcc5bf70eca52de205fb157393025fea4e397f5ec1de3",
+          "started_at": "2026-11-22T00:14:55.230163+08:00",
+          "request_id": "d271c757-4703-455c-98b7-832c6cd0c797",
+          "http_status": 400, "outcome": "rejected_http_400", "controls_valid": true
+        },
+        {
+          "scenario": "tool", "sample": 2,
+          "source_request_sha256": "c374259943962f3f0d578da9ecd20c0fdab894d43d15d47465761cf6bc3c02b9",
+          "request_sha256": "d8a0f5f69bc37d629b1deca58cf58eeaf6c79fa78674bd62e984bc338a811f8d",
+          "started_at": "2026-11-22T00:16:00.981729+08:00",
+          "request_id": "60e742ec-6a4d-4b34-94ee-a3524bb916d3",
+          "http_status": 400, "outcome": "rejected_http_400", "controls_valid": true
+        }
+      ]
+    }
+  },
+  "historical_note": "2026-11-06至11-07旧样本尾随追加为3接受1拒绝；本次4份均拒绝。宽松解码是否忽略填充符后的字符与接口是否接受应分开记录，不能以该差异判断模型身份。",
+  "provenance": {
+    "summary_sha256": "e47ce4565cda5cccfbff275888ab9480a473c425cfd70265350bd0aadd481e65",
+    "events_sha256": "98abbcf3e6f20d5f15ff148745dc075cb7bf4706aefd76d4a515ff68aaa92480",
+    "source_manifest_sha256": "132ce93a0884d475fa2bc5a7076cd2f1bc50ecaf2df5173d84118ed245532d47"
+  }
+}

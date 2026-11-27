@@ -6,6 +6,8 @@ import copy
 import hashlib
 import http.client
 import json
+import ipaddress
+import os
 import socket
 import threading
 import time
@@ -73,6 +75,14 @@ def merge_usage(target, source):
             merge_usage(target[key], value)
         else:
             target[key] = value
+
+
+def check_public_peer(conn):
+    """网页服务在发送密钥前检查实际对端，防止DNS重绑定。"""
+    if os.environ.get("TOKEN_AUDIT_PUBLIC_ONLY") == "1":
+        address = ipaddress.ip_address(conn.sock.getpeername()[0].split("%", 1)[0])
+        if not address.is_global or address.is_multicast:
+            raise ValueError("网页服务仅允许公网渠道地址")
 
 
 def is_token_count(value):
@@ -210,6 +220,7 @@ class ContentMessageParser(MessageParser):
         self.blocks = {}
         self.open_blocks = set()
         self.json_parts = {}
+        self.signature_received_at = {}
 
     def remember(self, index, block, streaming=False):
         if type(index) is not int or index != len(self.blocks) or not isinstance(block, dict):
@@ -226,6 +237,8 @@ class ContentMessageParser(MessageParser):
         self.blocks[index] = copy.deepcopy(block)
         if kind == "thinking":
             self.thinking_chars += len(block.get("thinking", ""))
+            if block.get("signature"):
+                self.signature_received_at[index] = time.time()
         if streaming:
             self.open_blocks.add(index)
 
@@ -253,6 +266,8 @@ class ContentMessageParser(MessageParser):
                 if block.get("type") != expected or not isinstance(delta.get(field), str):
                     raise ProtocolError("增量与内容块类型不一致或字段无效")
                 block[field] = block.get(field, "") + delta[field]
+                if field == "signature" and delta[field]:
+                    self.signature_received_at[index] = time.time()
             elif delta.get("type") == "input_json_delta":
                 if block.get("type") != "tool_use" or not isinstance(delta.get("partial_json"), str):
                     raise ProtocolError("工具JSON增量无效")
@@ -278,6 +293,7 @@ class ContentMessageParser(MessageParser):
         result = super().result()
         result["assistant_content"] = [copy.deepcopy(self.blocks[i]) for i in sorted(self.blocks)]
         result["content_complete"] = self.terminal_complete and not self.open_blocks
+        result["signature_received_at"] = {str(i): value for i, value in self.signature_received_at.items()}
         return result
 
 
@@ -356,6 +372,7 @@ class MessagesClient:
         expired = threading.Event()
         try:
             conn.connect()
+            check_public_peer(conn)
             result["connect_seconds"] = time.perf_counter() - started
             remaining = self.timeout - (time.perf_counter() - started)
             if remaining <= 0:
@@ -382,6 +399,8 @@ class MessagesClient:
             raw = json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
             result["request_bytes"] = len(raw)
             result["stage"] = "send"
+            result["request_sent_at"] = time.time()
+            send_clock = time.perf_counter()
             conn.request("POST", parsed.path, body=raw, headers=headers)
             result["request_sent_seconds"] = time.perf_counter() - started
             result["stage"] = "headers"
@@ -415,6 +434,7 @@ class MessagesClient:
                 else:
                     chunks.append(chunk)
             result["response_bytes"] = received
+            result["clock_drift_seconds"] = abs((time.time() - result["request_sent_at"]) - (time.perf_counter() - send_clock))
             if expired.is_set():
                 raise TimeoutError("请求超过总超时")
             if response.status != 200:

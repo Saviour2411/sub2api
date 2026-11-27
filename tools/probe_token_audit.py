@@ -17,6 +17,7 @@ from token_audit.fixtures import BUILTIN_PATH, DEFAULT_MODEL, fingerprint_from_c
 from token_audit.protocol import MessagesClient, endpoint_url, redact
 from token_audit.runner import RunContext, TESTS, observation, run_live_reference, summarize, write_reports
 from token_audit.signature_cases import CASES, CORE_CASES
+from token_audit.signatures import load_signature_baseline
 from token_audit.concurrency import load_baseline, make_profile
 
 
@@ -48,6 +49,14 @@ def parser():
     p.add_argument("--signature-samples", type=int, default=2, help="每种签名场景的独立样本数，2至5，默认2")
     p.add_argument("--signature-scenarios", default="chat,tool", help="签名场景：chat普通对话、tool工具续接，默认chat,tool")
     p.add_argument("--signature-max-tokens", type=int, default=4096, help="签名测试每请求输出上限，1024至16384，默认4096")
+    p.add_argument("--freshness-models", help="现签模型，逗号分隔；默认使用--model，可另加claude-sonnet-4-6")
+    p.add_argument("--freshness-samples", type=int, default=2, help="各模型现签样本数，2至5")
+    p.add_argument("--freshness-interval", type=finite_number, default=3, help="现签样本间隔，1至60秒")
+    p.add_argument("--freshness-max-tokens", type=int, default=2048, help="现签输出上限，1024至8192")
+    p.add_argument("--require-awsb", action="store_true", help="现签通过还须f2.f1.f2=1；缺失不通过")
+    p.add_argument("--peer-url", help="可选签名续接对端，启用A/B自续接和双向跨渠道回放")
+    p.add_argument("--peer-key", help="对端Key，也可设TOKEN_AUDIT_PEER_KEY")
+    p.add_argument("--peer-auth", choices=("x-api-key", "bearer"), default="x-api-key", help="续接对端认证方式")
     p.add_argument("--concurrency", type=int, default=200, help="concurrency测试的同步请求数，1至200，默认200")
     p.add_argument("--load-max-tokens", type=int, default=2048, help="并发测试每请求输出上限，默认2048；独立于三轮对话参数")
     p.add_argument("--load-origin", default="未标注", help="并发测试发起环境标签，仅供比较；不会自动登录服务器")
@@ -84,6 +93,7 @@ def validate(args):
         raise ValueError("签名样本数必须为2至5；输出上限1024至16384；场景只能为不重复的chat、tool")
     args.key = args.key or os.environ.get("TOKEN_AUDIT_API_KEY")
     args.reference_key = args.reference_key or os.environ.get("TOKEN_AUDIT_REFERENCE_KEY")
+    args.peer_key = args.peer_key or os.environ.get("TOKEN_AUDIT_PEER_KEY")
     if not args.key and not args.dry_run:
         raise ValueError("请通过--key或TOKEN_AUDIT_API_KEY提供目标密钥")
     if args.reference_url:
@@ -94,18 +104,35 @@ def validate(args):
             raise ValueError("实时参照需要--reference-key或TOKEN_AUDIT_REFERENCE_KEY")
     elif args.reference_key:
         raise ValueError("提供了参照密钥但缺少--reference-url")
-    for key in (args.key, args.reference_key):
+    if args.peer_url:
+        args.peer_url = endpoint_url(args.peer_url)
+        if "signature_relay" not in selected:
+            raise ValueError("续接对端需要选择signature_relay")
+        if not args.peer_key and not args.dry_run:
+            raise ValueError("续接对端需要peer-key或TOKEN_AUDIT_PEER_KEY")
+    elif args.peer_key:
+        raise ValueError("提供了续接对端Key但缺少peer-url")
+    for key in (args.key, args.reference_key, args.peer_key):
         if key and (not key.strip() or any(ord(char) < 33 or ord(char) > 126 for char in key)):
             raise ValueError("API Key必须是无空白的ASCII文本")
     fingerprint = load_fingerprint(args.fingerprint_file or BUILTIN_PATH)
     args.model = args.model or fingerprint["model"]
     if not args.model.strip():
         raise ValueError("模型名不能为空")
+    args.freshness_models = [v.strip() for v in (args.freshness_models or args.model).split(",")]
+    if (not 1 <= len(args.freshness_models) <= 4 or len(set(args.freshness_models)) != len(args.freshness_models)
+            or any(not v or len(v) > 150 for v in args.freshness_models)
+            or not 2 <= args.freshness_samples <= 5 or not 1 <= args.freshness_interval <= 60
+            or not 1024 <= args.freshness_max_tokens <= 8192):
+        raise ValueError("现签模型1至4个，样本2至5个，间隔1至60秒，输出上限1024至8192")
+    if args.require_awsb and "signature_freshness" not in selected:
+        raise ValueError("AWSB检查需要选择signature_freshness")
     if not 1 <= args.concurrency <= 200 or not 1 <= args.load_max_tokens <= 32768:
         raise ValueError("并发数必须为1至200，并发输出预算必须为1至32768")
     if not args.load_origin.strip() or len(args.load_origin) > 120:
         raise ValueError("并发测试来源标签必须为1至120个字符")
     args.load_baseline_data = load_baseline(args.load_baseline_file) if "concurrency" in selected else None
+    args.signature_baseline_data = load_signature_baseline() if "signature" in selected else None
     if args.save_fingerprint:
         if "conversation" not in selected:
             raise ValueError("保存指纹需要conversation测试")
@@ -133,7 +160,7 @@ def main(argv=None):
     if args.list_models:
         print(DEFAULT_MODEL + "：内置2026-11-04三轮实测指纹；其他模型可用--model或自定义指纹")
         return 0
-    secrets = [args.key or os.environ.get("TOKEN_AUDIT_API_KEY", ""), args.reference_key or os.environ.get("TOKEN_AUDIT_REFERENCE_KEY", "")]
+    secrets = [args.key or os.environ.get("TOKEN_AUDIT_API_KEY", ""), args.reference_key or os.environ.get("TOKEN_AUDIT_REFERENCE_KEY", ""), args.peer_key or os.environ.get("TOKEN_AUDIT_PEER_KEY", "")]
     try:
         selected, fingerprint = validate(args)
         plan = {"model": args.model, "url": args.url, "tests": selected,
@@ -142,16 +169,25 @@ def main(argv=None):
                 "fingerprint_id": fingerprint["id"] if "fingerprint" in selected and fingerprint["model"] == args.model else None,
                 "fingerprint_expected_totals": [sum(c["expected_usage"][k] for k in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")) for c in fingerprint["cases"]] if "fingerprint" in selected and fingerprint["model"] == args.model else None,
                 "reference_url": args.reference_url,
+                "peer_url": args.peer_url,
+                "peer_requests_max": 5 if args.peer_url and "signature_relay" in selected else 0,
+                "signature_freshness": {"models": args.freshness_models, "samples": args.freshness_samples,
+                                        "interval": args.freshness_interval, "require_awsb": args.require_awsb,
+                                        "catalog_requests_max": 10, "missing_timestamp": "unknown"} if "signature_freshness" in selected else None,
                 "execution_order": selected + (["live_reference"] if args.reference_url else []),
                 "signature": {"scenarios": args.signature_scenarios, "samples_per_scenario": args.signature_samples,
                               "cases_per_sample": len(CASES), "core_cases_per_sample": len(CORE_CASES),
                               "original_controls_per_sample": 3, "source_requests_per_sample": 1,
                               "max_tokens_per_request": args.signature_max_tokens,
+                              "reference_id": args.signature_baseline_data["id"],
+                              "reference_sampled_at": args.signature_baseline_data["sampled_at"],
+                              "append_expected_outcome": args.signature_baseline_data["cases"]["append"]["expected_outcome"],
                               "thinking": "adaptive/summarized；chat effort=high，tool effort=max"} if "signature" in selected else None,
                 "concurrency": {"profile": make_profile(args.model, args.concurrency, args.load_max_tokens, args.timeout, args.auth),
                                 "origin": args.load_origin, "reference_id": args.load_baseline_data["id"],
                                 "reference_mode": "离线历史参考，不发送参照请求；不同参数不计算性能倍数"} if "concurrency" in selected else None,
-                "note": "固定指纹重放不检查缓存衔接；真实对话不套用历史回复Token数。签名仅回传本渠道的新鲜来源；测试不重试，可能产生用量费用。"}
+                "note": "固定指纹重放不检查缓存衔接；真实对话不套用历史回复Token数。伪造签名仅回传本渠道来源；显式选择跨渠道续接时才向对端回放。所有测试不重试，可能产生用量费用。"}
+        plan["target_requests_max"] -= plan["peer_requests_max"]
         if args.dry_run:
             print(json.dumps(redact(plan, secrets), ensure_ascii=False, indent=2))
             return 0
@@ -163,7 +199,7 @@ def main(argv=None):
         print("配置错误：" + redact(str(exc), secrets), file=sys.stderr)
         return 2
     context = RunContext(client, reference, fingerprint, fingerprint, args, args.output, secrets)
-    context.say("模型：" + args.model + "；最多" + str(plan["target_requests_max"] + plan["reference_requests_max"]) + "次生成请求，可能产生上游费用。")
+    context.say("模型：" + args.model + "；最多" + str(plan["target_requests_max"] + plan["reference_requests_max"] + plan["peer_requests_max"]) + "次生成请求，可能产生上游费用。")
     interrupted = False
     try:
         for name in selected:

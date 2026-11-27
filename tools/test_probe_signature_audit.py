@@ -13,7 +13,7 @@ from test_probe_token_audit import FIXTURE, KEY, WorkspaceTest, event, mock_serv
 from token_audit.fixtures import DEFAULT_MODEL
 from token_audit.protocol import ContentMessageParser, MessagesClient, ProtocolError, SSEDecoder, canonical_hash
 from token_audit.signature_cases import CASES, CORE_CASES, decode, make_case
-from token_audit.signatures import classify
+from token_audit.signatures import classify, load_signature_baseline
 
 
 def source_blocks(number, tool=False):
@@ -107,10 +107,13 @@ class SignatureEndpoint:
                     continue
                 if signed.get("signature") == original.get("signature"):
                     valid = True
-                else:
+                elif self.mode == "padding":
                     try:
-                        # 模拟填充符之后的额外字符被解码器忽略的边界。
-                        valid = base64.b64decode(signed["signature"], validate=False) == decode(original["signature"])
+                        # 显式模拟忽略填充符后字符，避免Python版本改变夹具行为。
+                        if not isinstance(signed["signature"], str):
+                            raise ValueError("签名不是字符串")
+                        prefix = signed["signature"].split("=", 1)[0]
+                        valid = decode(prefix) == decode(original["signature"])
                     except (ValueError, KeyError, TypeError):
                         pass
                 if valid:
@@ -228,6 +231,8 @@ class SignatureWorkflowTests(WorkspaceTest):
                 self.assertEqual(plan["target_requests_max"], count)
                 if arguments and arguments[1] == "signature":
                     self.assertIsNone(plan["fingerprint_id"])
+                    self.assertEqual(plan["signature"]["reference_id"], "trusted-saviour-claude-opus-5-5-signature-20261122")
+                    self.assertEqual(plan["signature"]["append_expected_outcome"], "rejected_http_400")
         self.assertIn("signature：", self.cli("--list-tests")[1])
 
     def test_invalid_options_never_connect(self):
@@ -249,8 +254,15 @@ class SignatureWorkflowTests(WorkspaceTest):
         self.assertEqual(summary["signature"]["accepted_core_cases"], 0)
         self.assertEqual(summary["signature"]["valid_control_samples"], 4)
         self.assertEqual(summary["observations"], [])
+        reference = summary["signature"]["reference"]["cases"]["append"]
+        self.assertEqual((reference["matched_samples"], reference["different_samples"], reference["unassessed_samples"]), (4, 0, 0))
+        self.assertIn("可信实测4/4为HTTP400明确拒绝", (folder / "report.md").read_text(encoding="utf-8"))
         with (folder / "signature-cases.csv").open(encoding="utf-8-sig", newline="") as handle:
-            self.assertEqual(len(list(csv.reader(handle))), 101)
+            csv_rows = list(csv.DictReader(handle))
+            self.assertEqual(len(csv_rows), 100)
+            append_rows = [r for r in csv_rows if r["测试情况"] == "签名字符串末尾追加字符"]
+            self.assertEqual(len(append_rows), 4)
+            self.assertTrue(all(r["参照比较"] == "match" and r["核心变更"] == "False" for r in append_rows))
         with (folder / "rounds.csv").open(encoding="utf-8-sig", newline="") as handle:
             self.assertEqual(len(list(csv.reader(handle))), 1)
         for row in summary["rows"]:
@@ -269,17 +281,58 @@ class SignatureWorkflowTests(WorkspaceTest):
         self.assertEqual(summary["signature"]["outcomes"]["accepted"], 96)
         self.assertTrue(any(n["code"] == "signature_mutation_accepted" for n in summary["observations"]))
 
+    def test_padding_acceptance_differs_from_new_reference_without_changing_core_counts(self):
+        code, summary, _, _ = self.run_probe(SignatureEndpoint("padding"))
+        self.assertEqual(code, 1)
+        self.assertEqual(summary["signature"]["http_400_rejected_core_cases"], 72)
+        self.assertEqual(summary["signature"]["accepted_core_cases"], 0)
+        reference = summary["signature"]["reference"]["cases"]["append"]
+        self.assertEqual((reference["matched_samples"], reference["different_samples"]), (0, 4))
+        self.assertTrue(any(n["code"] == "signature_reference_mismatch" for n in summary["observations"]))
+
+    def test_changed_source_budget_does_not_apply_reference(self):
+        code, summary, _, _ = self.run_probe(SignatureEndpoint("padding"), "--signature-max-tokens", "3072", "--signature-scenarios", "chat")
+        self.assertEqual(code, 0)
+        reference = summary["signature"]["reference"]["cases"]["append"]
+        self.assertEqual((reference["evaluated_samples"], reference["unassessed_samples"]), (0, 2))
+        self.assertTrue(all(r["status"] == "unavailable_source_parameters" for r in reference["rows"]))
+
+    def test_extra_samples_without_historical_prompt_are_not_assumed_to_match(self):
+        code, summary, _, _ = self.run_probe(SignatureEndpoint(), "--signature-samples", "3", "--signature-scenarios", "chat")
+        self.assertEqual(code, 0)
+        reference = summary["signature"]["reference"]["cases"]["append"]
+        self.assertEqual((reference["matched_samples"], reference["unassessed_samples"]), (2, 1))
+        self.assertEqual(reference["rows"][-1]["status"], "unavailable_source_parameters")
+
+    def test_reference_is_validated_before_network_and_not_needed_by_default_tests(self):
+        data = load_signature_baseline()
+        path = self.folder / "invalid-reference.json"
+        for invalid in ([], {**data, "sampled_at": "2026-11-22"},
+                        {**data, "cases": {"append": {**data["cases"]["append"], "expected_http_status": 200}}},
+                        {**data, "cases": {"append": {**data["cases"]["append"], "samples": data["cases"]["append"]["samples"][:3]}}}):
+            path.write_text(json.dumps(invalid), encoding="utf-8")
+            with patch("token_audit.signatures.BUILTIN_SIGNATURE_BASELINE", path), patch.object(MessagesClient, "generate") as generate:
+                code, _ = self.cli("--url", "https://example.com", "--tests", "signature", "--key", KEY)
+                self.assertEqual(code, 2)
+                generate.assert_not_called()
+                self.assertEqual(self.cli("--url", "https://example.com", "--dry-run")[0], 0)
+
     def test_generic_400_is_not_successful_verification(self):
         code, summary, _, _ = self.run_probe(SignatureEndpoint("generic"), "--signature-scenarios", "chat")
         self.assertEqual(code, 3)
         self.assertEqual(summary["signature"]["http_400_rejected_core_cases"], 0)
         self.assertEqual(summary["signature"]["unassessed_core_cases"], 36)
+        reference = summary["signature"]["reference"]["cases"]["append"]
+        self.assertEqual((reference["evaluated_samples"], reference["unassessed_samples"]), (0, 2))
 
     def test_stream_signature_rejection_is_counted_separately(self):
         code, summary, _, _ = self.run_probe(SignatureEndpoint("stream"), "--signature-scenarios", "tool")
-        self.assertEqual(code, 0)
+        self.assertEqual(code, 1)
         self.assertEqual(summary["signature"]["stream_rejected_core_cases"], 36)
         self.assertEqual(summary["signature"]["http_400_rejected_core_cases"], 0)
+        reference = summary["signature"]["reference"]["cases"]["append"]
+        self.assertEqual(reference["different_samples"], 2)
+        self.assertTrue(all(r["outcome"] == "rejected_stream_error" for r in reference["rows"]))
 
     def test_failed_final_controls_invalidate_earlier_accepted_cases(self):
         code, summary, _, _ = self.run_probe(SignatureEndpoint("loose", post_failure=True), "--signature-scenarios", "chat")
@@ -288,6 +341,8 @@ class SignatureWorkflowTests(WorkspaceTest):
         self.assertEqual(summary["signature"]["evaluated_core_cases"], 0)
         self.assertEqual(summary["signature"]["accepted_core_cases"], 0)
         self.assertFalse(any(n["code"] == "signature_mutation_accepted" for n in summary["observations"]))
+        self.assertFalse(any(n["code"] == "signature_reference_mismatch" for n in summary["observations"]))
+        self.assertEqual(summary["signature"]["reference"]["cases"]["append"]["evaluated_samples"], 0)
 
     def test_first_and_middle_control_failure_stop_the_sample(self):
         for failure, attempts in ((1, 4), (2, 26)):
@@ -382,6 +437,7 @@ class SignatureWorkflowTests(WorkspaceTest):
         self.assertEqual(summary["target_requests"], 75)
         self.assertEqual(summary["signature"]["http_400_rejected_core_cases"], 54)
         self.assertTrue(all(b["model"] == "local-model" and b["max_tokens"] == 3072 for b in endpoint.calls))
+        self.assertEqual(summary["signature"]["reference"]["status"], "unavailable_model")
 
     def test_interruption_keeps_results_but_never_counts_unbracketed_cases(self):
         original = MessagesClient.generate

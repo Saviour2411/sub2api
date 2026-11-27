@@ -3,10 +3,13 @@ from __future__ import annotations
 
 from collections import Counter
 import copy
+from datetime import datetime
 import json
+from pathlib import Path
 import re
 import uuid
 
+from .protocol import canonical_hash
 from .signature_cases import CASES, CORE_CASES, digest, make_case
 
 CONTROLS = ("original_before", "original_mid", "original_after")
@@ -17,6 +20,92 @@ OUTCOME_LABELS = {"source_valid": "有效来源", "source_invalid": "来源不�
                   "accepted": "完整接受", "rejected_http_400": "HTTP400明确拒绝",
                   "rejected_stream_error": "流内明确拒绝", "inconclusive": "无法判断"}
 DEFINITIVE = {"accepted", "rejected_http_400", "rejected_stream_error"}
+BUILTIN_SIGNATURE_BASELINE = Path(__file__).parent / "baselines" / "signature-claude-opus-5-5.20261122.json"
+
+
+def load_signature_baseline(path=None):
+    path = Path(path or BUILTIN_SIGNATURE_BASELINE)
+    if path.stat().st_size > 256 * 1024:
+        raise ValueError("签名参照文件超过256KiB")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if (not isinstance(data, dict) or data.get("schema_version") != 1 or data.get("test") != "signature"
+            or not all(isinstance(data.get(key), str) and data[key].strip() for key in ("id", "model", "sampled_at"))):
+        raise ValueError("签名参照文件格式无效")
+    if datetime.fromisoformat(data["sampled_at"]).tzinfo is None:
+        raise ValueError("签名参照采样时间必须包含时区")
+    cases = data.get("cases")
+    if not isinstance(cases, dict) or set(cases) != {"append"}:
+        raise ValueError("当前签名参照必须包含末尾追加字符案例")
+    case = cases["append"]
+    if (not isinstance(case, dict) or case.get("expected_outcome") != "rejected_http_400"
+            or type(case.get("expected_http_status")) is not int or case["expected_http_status"] != 400):
+        raise ValueError("末尾追加字符参照必须为HTTP400明确拒绝")
+    samples = case.get("samples")
+    if not isinstance(samples, list) or len(samples) != 4:
+        raise ValueError("签名参照必须包含4份有效实测样本")
+    identities = set()
+    for sample in samples:
+        if (not isinstance(sample, dict) or sample.get("scenario") not in ("chat", "tool")
+                or type(sample.get("sample")) is not int or sample["sample"] not in (1, 2)
+                or sample.get("controls_valid") is not True or sample.get("outcome") != case["expected_outcome"]
+                or sample.get("http_status") != case["expected_http_status"]):
+            raise ValueError("签名参照样本或原样对照无效")
+        for key in ("source_request_sha256", "request_sha256"):
+            if not isinstance(sample.get(key), str) or not re.fullmatch(r"[0-9a-f]{64}", sample[key]):
+                raise ValueError("签名参照请求SHA256无效")
+        identities.add((sample["scenario"], sample["sample"]))
+    if identities != {(scenario, sample) for scenario in ("chat", "tool") for sample in (1, 2)}:
+        raise ValueError("签名参照缺少独立场景或样本")
+    return data
+
+
+def compare_signature_reference(context, rows):
+    baseline = getattr(context.options, "signature_baseline_data", None)
+    if baseline is None:
+        return None
+    matched_model = context.options.model == baseline["model"]
+    result = {"id": baseline["id"], "sampled_at": baseline["sampled_at"], "model": baseline["model"],
+              "status": "historical_reference" if matched_model else "unavailable_model", "cases": {},
+              "note": "历史行为对照；来源请求参数和原样对照有效时才比较，编码边界差异不证明模型身份或密码学强弱。"}
+    sources = {}
+    for row in rows:
+        detail = row["signature"]
+        if detail["case"] == "seed":
+            sources[(detail["scenario"], detail["sample"])] = canonical_hash(
+                {key: value for key, value in row["request"].items() if key != "metadata"})
+    for name, reference in baseline["cases"].items():
+        expected = reference["expected_outcome"]
+        reference_sources = {sample["source_request_sha256"] for sample in reference["samples"]}
+        compared = []
+        for row in rows:
+            detail = row["signature"]
+            if detail["case"] != name:
+                continue
+            if not matched_model:
+                status = "unavailable_model"
+            elif sources.get((detail["scenario"], detail["sample"])) not in reference_sources:
+                status = "unavailable_source_parameters"
+            elif not detail.get("controls_valid"):
+                status = "unavailable_controls"
+            elif detail.get("outcome") not in DEFINITIVE:
+                status = "inconclusive"
+            else:
+                status = "match" if (detail["outcome"] == expected and row["result"]["http_status"] == reference["expected_http_status"]) else "different"
+            detail["reference_comparison"] = {"reference_id": baseline["id"], "expected_outcome": expected,
+                                               "expected_http_status": reference["expected_http_status"], "status": status}
+            compared.append({"round": row["round"], "scenario": detail["scenario"], "sample": detail["sample"],
+                             "outcome": detail["outcome"], "status": status})
+        counts = Counter(row["status"] for row in compared)
+        expected_samples = len(context.options.signature_scenarios) * context.options.signature_samples
+        result["cases"][name] = {"expected_outcome": expected, "expected_http_status": reference["expected_http_status"],
+            "reference_samples": len(reference["samples"]), "expected_samples": expected_samples,
+            "evaluated_samples": counts["match"] + counts["different"], "matched_samples": counts["match"],
+            "different_samples": counts["different"], "unassessed_samples": expected_samples - counts["match"] - counts["different"],
+            "rows": compared}
+        if counts["different"]:
+            context.note("signature_reference_mismatch", LABELS[name] + "有" + str(counts["different"]) +
+                         "次与可信参照不同；参照为HTTP400明确拒绝，具体结果单列，不计入核心篡改统计。", "warning")
+    return result
 
 
 def signature_request_limit(options):
@@ -222,26 +311,29 @@ def summarize_signatures(context):
     category_counts = {}
     for category in ("signature", "format", "binding"):
         category_counts[category] = dict(Counter(r["signature"]["outcome"] for r in eligible if r["signature"]["category"] == category))
+    reference = compare_signature_reference(context, rows)
     return {"expected_samples": expected_samples, "valid_control_samples": sum(s["controls_valid"] for s in samples),
             "expected_core_cases": expected_core, "attempted_core_cases": len(core), "evaluated_core_cases": len(eligible),
             "accepted_core_cases": counts["accepted"], "http_400_rejected_core_cases": counts["rejected_http_400"],
             "stream_rejected_core_cases": counts["rejected_stream_error"], "unassessed_core_cases": expected_core - len(eligible),
             "categories": category_counts, "samples": samples,
-            "outcomes": dict(Counter(r["signature"].get("outcome", "inconclusive") for r in rows))}
+            "outcomes": dict(Counter(r["signature"].get("outcome", "inconclusive") for r in rows)), "reference": reference}
 
 
 def signature_csv_rows(summary):
-    yield ["序号", "场景", "样本", "测试情况", "类别", "核心变更", "HTTP", "判定", "原样对照有效", "计入核心统计", "开始时间UTC", "请求ID", "消息ID", "请求SHA256", "变更路径", "解码载荷改变", "错误"]
+    yield ["序号", "场景", "样本", "测试情况", "类别", "核心变更", "HTTP", "判定", "原样对照有效", "计入核心统计", "开始时间UTC", "请求ID", "消息ID", "请求SHA256", "变更路径", "解码载荷改变", "错误", "可信参照ID", "参照预期", "参照比较"]
     for row in summary["rows"]:
         if row["test"] != "signature":
             continue
         detail, result = row["signature"], row["result"]
         mutation = detail.get("mutation") or {}
+        reference = detail.get("reference_comparison") or {}
         yield [row["round"], detail["scenario"], detail["sample"], detail["label"], detail["category"], detail["core"],
                result["http_status"], OUTCOME_LABELS.get(detail.get("outcome"), "无法判断"), detail.get("controls_valid", False),
                detail.get("eligible_for_core_statistics", False), result["started_at"], json.dumps(result.get("ids", {}), ensure_ascii=False),
                result.get("message_id"), result["request_sha256"], ";".join(mutation.get("changed_paths", [])),
-               mutation.get("decoded_payload_changed"), detail.get("reason") or error_text(result)]
+               mutation.get("decoded_payload_changed"), detail.get("reason") or error_text(result),
+               reference.get("reference_id"), OUTCOME_LABELS.get(reference.get("expected_outcome")), reference.get("status")]
 
 
 def signature_report(summary):
@@ -254,8 +346,17 @@ def signature_report(summary):
              "核心统计包含签名内容、格式与绑定变更，分项见summary.json。格式拒绝本身不证明存在密码学验签。",
              "删除整个思考块、换用另一完整真实思考块及签名字符串末尾追加单独列为兼容性或编码边界，不计入核心统计；末尾追加字符可能被Base64解码器忽略。",
              "后置对照失败会使该样本此前的核心结果失效。接口接受篡改不等同于模型造假，也可能是网关删除、重签或转换了内容；响应模型名不证明模型身份。",
-             "工具结果为本地合成数据，不执行模型发出的工具调用。逐项请求、错误与变更位置见signature-cases.csv和summary.json。", "",
-             "| 序号 | 场景 | 样本 | 测试情况 | HTTP | 判定 | 原样对照有效 |", "|---:|---|---:|---|---:|---|---|"]
+             "工具结果为本地合成数据，不执行模型发出的工具调用。逐项请求、错误与变更位置见signature-cases.csv和summary.json。"]
+    reference = data.get("reference")
+    if reference:
+        lines.extend(["", "签名可信参照：" + reference["id"] + "；采样时间：" + reference["sampled_at"] + "。", reference["note"]])
+        if reference["status"] == "unavailable_model":
+            lines.append("本次模型与签名参照不同，不套用历史预期。")
+        for name, case in reference["cases"].items():
+            lines.append(LABELS[name] + "：可信实测" + str(case["reference_samples"]) + "/" + str(case["reference_samples"]) +
+                         "为HTTP400明确拒绝；本次一致" + str(case["matched_samples"]) + "次、不同" + str(case["different_samples"]) +
+                         "次、未评估" + str(case["unassessed_samples"]) + "次。模型或来源参数不匹配、原样对照无效及无法判断的请求不计为一致。")
+    lines.extend(["", "| 序号 | 场景 | 样本 | 测试情况 | HTTP | 判定 | 原样对照有效 |", "|---:|---|---:|---|---:|---|---|"])
     for values in signature_csv_rows(summary):
         if values[0] == "序号":
             continue

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>渠道检测台</title><link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/style.css">
+  <script defer src="/static/lucide.min.js"></script><script defer src="/static/app.js"></script>
+</head>
+<body>
+  <div id="login" class="login-layout" hidden>
+    <form id="login-form" class="login-form">
+      <span class="brand-mark"><i data-lucide="scan-line"></i></span>
+      <h1>渠道检测台</h1><p class="subtle">服务器2 · 私有工作台</p>
+      <label>访问口令<input id="password" type="password" autocomplete="current-password" required autofocus></label>
+      <button class="primary" type="submit"><i data-lucide="log-in"></i>登录</button>
+      <p id="login-error" class="error" role="alert"></p>
+    </form>
+  </div>
+  <div id="workspace" hidden>
+    <header class="topbar"><a class="brand" href="/"><span class="brand-mark"><i data-lucide="scan-line"></i></span>渠道检测台</a><div class="topbar-end"><span class="server-status"><span class="dot"></span>服务器2</span><button class="icon-button" id="logout" title="退出登录" aria-label="退出登录"><i data-lucide="log-out"></i></button></div></header>
+    <div class="workspace">
+      <aside class="configuration">
+        <div class="section-heading"><h2>新建检测</h2><span class="small-label">ANTHROPIC</span></div>
+        <form id="audit-form">
+          <label>渠道名称 <span class="optional">可选</span><input name="label" maxlength="80" placeholder="例如：渠道A"></label>
+          <label>渠道URL<input name="url" type="url" placeholder="https://api.example.com" required autocomplete="off"></label>
+          <label>API Key<div class="secret-field"><input name="key" id="api-key" type="password" required autocomplete="off" spellcheck="false"><button type="button" class="icon-button" id="toggle-key" aria-label="显示Key" title="显示Key"><i data-lucide="eye"></i></button></div></label>
+          <div class="label-action"><label for="model">测试模型</label><button type="button" class="text-button" id="load-models"><i data-lucide="list-restart"></i>读取模型</button></div>
+          <input name="model" id="model" list="models" value="claude-opus-5-5" required><datalist id="models"><option value="claude-opus-5-5"></option><option value="claude-sonnet-4-6"></option></datalist>
+          <p id="model-status" class="field-note" aria-live="polite"></p>
+          <fieldset class="test-options"><legend>测试项目</legend>
+            <label class="check-row"><input type="checkbox" name="test" value="conversation" checked><span><i data-lucide="messages-square"></i>三轮对话与缓存</span><small>3次</small></label>
+            <label class="check-row"><input type="checkbox" name="test" value="fingerprint" checked><span><i data-lucide="fingerprint"></i>Token可信指纹</span><small>3次</small></label>
+            <label class="check-row"><input type="checkbox" name="test" value="signature_freshness" checked><span><i data-lucide="clock-3"></i>实时签名</span><small>≥2次</small></label>
+            <div id="freshness-options" class="inline-options">
+              <label>现签模型<input name="freshness_models" value="claude-opus-5-5,claude-sonnet-4-6" required></label>
+              <div class="field-pair"><label>每模型样本<input name="freshness_samples" type="number" min="2" max="5" value="2"></label><label>间隔 / 秒<input name="freshness_interval" type="number" min="1" max="60" value="3"></label></div>
+              <label class="check-row source-check"><input name="require_awsb" type="checkbox"><span>要求AWSB标记</span></label>
+              <span class="field-note">通过条件：现签；选中AWSB时还须 f2.f1.f2 = 1</span>
+            </div>
+            <label class="check-row"><input type="checkbox" name="test" value="signature_relay"><span><i data-lucide="git-compare-arrows"></i>工具续接与原题绑定</span><small>4次起</small></label>
+            <div id="relay-options" class="inline-options" hidden>
+              <label>对端URL <span class="optional">可选</span><input name="peer_url" type="url" placeholder="https://peer.example.com" autocomplete="off"></label>
+              <label>对端Key<input name="peer_key" type="password" autocomplete="off"></label>
+              <label>对端认证<select name="peer_auth"><option value="x-api-key">x-api-key</option><option value="bearer">Bearer</option></select></label>
+            </div>
+            <label class="check-row"><input type="checkbox" name="test" value="signature"><span><i data-lucide="shield-check"></i>伪造签名矩阵</span><small>100次</small></label>
+            <label class="check-row"><input type="checkbox" name="test" value="concurrency"><span><i data-lucide="activity"></i>并发能力</span><small>≤200次</small></label>
+            <div id="load-options" class="inline-options field-pair" hidden><label>并发数<input name="concurrency" type="number" min="1" max="200" value="200"></label><label>输出上限<input name="load_max_tokens" type="number" min="128" max="8192" value="2048"></label></div>
+          </fieldset>
+          <details class="advanced"><summary>请求设置</summary><div class="field-pair"><label>超时 / 秒<input name="timeout" type="number" min="10" max="300" value="180"></label><label>认证方式<select name="auth"><option value="x-api-key">x-api-key</option><option value="bearer">Bearer</option></select></label></div><label>每种伪造签名样本<input name="signature_samples" type="number" min="2" max="5" value="2"></label></details>
+          <div class="run-footer"><p id="budget">最多10次生成请求 · 按渠道用量计费</p><button class="primary" id="start" type="submit"><i data-lucide="play"></i>开始检测</button></div>
+        </form>
+      </aside>
+      <main class="results">
+        <div class="page-heading"><div><span class="eyebrow">渠道质量 / 检测结果</span><h1 id="result-title">检测工作台</h1><p id="result-meta" class="subtle">尚未选择任务</p></div><div class="result-actions"><button id="cancel" class="danger" hidden><i data-lucide="square"></i>停止</button><button id="download" class="button" hidden><i data-lucide="download"></i>报告</button><button id="refresh" class="icon-button" title="刷新结果" aria-label="刷新结果"><i data-lucide="refresh-cw"></i></button></div></div>
+        <div id="global-error" class="notice error" role="alert" hidden></div>
+        <section class="overview-metrics" aria-label="检测概览">
+          <div><span>任务状态</span><strong id="metric-state">待开始</strong></div><div><span>已完成请求</span><strong id="metric-requests">0 <small>/ 0</small></strong></div><div><span>现签判定</span><strong id="metric-freshness">未检测</strong></div><div><span>并发成功率</span><strong id="metric-success">未检测</strong></div>
+        </section>
+        <progress id="progress" max="100" value="0" aria-label="任务进度"></progress>
+        <nav class="tabs" aria-label="结果视图"><button class="active" data-tab="overview">检测概览</button><button data-tab="signatures">签名样本</button><button data-tab="requests">请求记录</button><button data-tab="logs">运行日志</button></nav>
+        <section id="view-overview" class="view"><div class="empty-state"><i data-lucide="scan-search"></i><h2>暂无检测结果</h2></div></section>
+        <section id="view-signatures" class="view" hidden></section>
+        <section id="view-requests" class="view" hidden></section>
+        <section id="view-logs" class="view" hidden><pre id="log-output">暂无日志</pre></section>
+        <section class="history"><div class="section-heading"><h2>历史检测</h2><span id="history-count" class="subtle">0个任务</span></div><div class="table-scroll"><table><thead><tr><th>渠道</th><th>模型</th><th>北京时间</th><th>状态</th><th>操作</th></tr></thead><tbody id="history-body"><tr><td colspan="5" class="muted-cell">暂无历史任务</td></tr></tbody></table></div></section>
+        <footer class="page-footer"><span>CHANNEL AUDIT</span><span>可信指纹对照 · 结果保留原始请求证据</span></footer>
+      </main>
+    </div>
+  </div>
+</body>
+</html>
