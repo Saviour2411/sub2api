@@ -4,38 +4,31 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"math/rand/v2"
-	"net"
-	"net/url"
-	"regexp"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/manxue"
-	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/lifecycle"
+	"github.com/google/uuid"
 )
 
-type modelQualityClient interface {
-	Submit(context.Context, manxue.Request, string) (*manxue.Result, error)
-	Poll(context.Context, string) (*manxue.Result, error)
+type qualityModelClient interface {
+	Call(context.Context, string, string, ModelQualityCall, string, string) (ModelQualityPhase, error)
 }
 
 type ModelQualityRunner struct {
-	service               *ModelQualityService
-	client                modelQualityClient
-	ctx                   context.Context
-	cancel                context.CancelFunc
-	wg                    sync.WaitGroup
-	startOnce, stopOnce   sync.Once
-	lastScan, lastCleanup time.Time
-	lookup                func(context.Context, string) ([]net.IPAddr, error)
+	service             *ModelQualityService
+	client              qualityModelClient
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	wg                  sync.WaitGroup
+	startOnce, stopOnce sync.Once
+	lastScan            time.Time
 }
 
 func NewModelQualityRunner(s *ModelQualityService) *ModelQualityRunner {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &ModelQualityRunner{service: s, client: manxue.NewClient(), ctx: ctx, cancel: cancel, lookup: net.DefaultResolver.LookupIPAddr}
+	return &ModelQualityRunner{service: s, client: newQualityProtocolClient(), ctx: ctx, cancel: cancel}
 }
 func ProvideModelQualityRunner(s *ModelQualityService) *ModelQualityRunner {
 	r := NewModelQualityRunner(s)
@@ -65,316 +58,242 @@ func (r *ModelQualityRunner) Stop() { r.stopOnce.Do(func() { r.cancel(); r.wg.Wa
 func (r *ModelQualityRunner) tick() {
 	ctx, cancel := context.WithTimeout(r.ctx, 90*time.Second)
 	defer cancel()
-	release, accepted := trySharedBackgroundJob(ctx, "model-quality-dispatch")
+	release, accepted := trySharedBackgroundJob(ctx, "model-quality-v2-dispatch")
 	if !accepted {
 		return
 	}
 	defer release()
 	if err := r.step(ctx); err != nil && r.ctx.Err() == nil {
-		slog.Warn("降智检测：本轮调度未完成", "error", err)
+		slog.Warn("降智检测调度暂未完成", "error", err)
 	}
 }
 
 func (r *ModelQualityRunner) step(ctx context.Context) error {
-	repo := r.service.repo
-	if time.Since(r.lastCleanup) >= time.Minute {
-		if err := repo.Cleanup(ctx); err != nil {
-			return err
-		}
-		r.lastCleanup = time.Now()
-	}
-	if err := repo.FinishRounds(ctx); err != nil {
-		return err
-	}
-	c, err := r.service.Config(ctx)
+	repo, err := r.service.qualityV2Repo()
 	if err != nil {
 		return err
 	}
-	if c.Enabled && time.Since(r.lastScan) >= 30*time.Second {
-		for _, g := range c.Groups {
-			name, reason := r.service.readiness(ctx, c, g)
+	if err = repo.MaintainQualityV2(ctx); err != nil {
+		return err
+	}
+	config, err := r.service.ConfigV2(ctx)
+	if err != nil {
+		return err
+	}
+	if !config.Enabled || config.PauseReason != "" {
+		return nil
+	}
+	if time.Since(r.lastScan) >= 30*time.Second {
+		for _, group := range config.Groups {
+			name, reason := r.service.qualityV2Readiness(ctx, config, group)
 			if reason != "" {
 				continue
 			}
-			if err = repo.StartRound(ctx, c, g, name, c.Endpoint, false); err != nil && !errors.Is(err, ErrModelQualityConflict) {
+			if err = repo.StartQualityV2Round(ctx, config, group, name, false); err != nil && !errors.Is(err, ErrModelQualityConflict) {
 				return err
 			}
 		}
 		r.lastScan = time.Now()
 	}
-	tasks, err := repo.Tasks(ctx)
-	if err != nil {
-		return err
-	}
-	for i := range tasks {
-		t := &tasks[i]
-		if t.Status == "pending" {
-			if !c.Enabled {
-				finishQualityTask(t, "cancelled", "功能已关闭")
-				if err = repo.SaveTask(ctx, t); err != nil {
-					return err
-				}
-			} else if time.Since(t.StartedAt) > time.Hour {
-				finishQualityTask(t, "failed", "排队超过一小时，已结束本轮检测")
-				if err = repo.SaveTask(ctx, t); err != nil {
-					return err
-				}
-			}
-			continue
+	for range 2 {
+		// 每个外部调用独立登记；调度 tick 结束不会提前降低排空计数。
+		done, ok := lifecycle.Process.BeginBackground()
+		if !ok {
+			return nil
 		}
-		if time.Now().Before(t.NextPollAt) {
-			if t.DeadlineAt != nil && time.Now().After(*t.DeadlineAt) {
-				finishQualityTask(t, "failed", "检测超时或第三方持续限流，未判定为降智")
-				if err = repo.SaveTask(ctx, t); err != nil {
-					return err
-				}
-			}
-			continue
-		}
-		if t.Status == "submitting" || t.Status == "uncertain" {
-			// 提交后宕机而未保存 ID 时不重发，保留并发槽直到外部最长执行期结束。
-			t.Status = "uncertain"
-			t.Reason = "提交结果不明确，为避免重复扣费未自动重试"
-			if t.DeadlineAt == nil || time.Now().After(*t.DeadlineAt) {
-				finishQualityTask(t, "failed", t.Reason)
-			}
-		} else {
-			r.poll(ctx, t)
-		}
-		if err = repo.SaveTask(ctx, t); err != nil {
-			return err
-		}
-	}
-	for i := range tasks {
-		t := &tasks[i]
-		if t.Status != "pending" || time.Now().Before(t.NextPollAt) {
-			continue
-		}
-		if time.Since(t.StartedAt) > time.Hour {
-			finishQualityTask(t, "failed", "排队超过一小时，已结束本轮检测")
-			if err = repo.SaveTask(ctx, t); err != nil {
-				return err
-			}
-			continue
-		}
-		// 每次提交重新读取开关及绑定，已创建的外部任务仍会在关闭后继续回收。
-		current, e := r.service.Config(ctx)
+		task, e := repo.ClaimQualityV2Task(ctx, config.Version, lifecycle.Process.ID()+":"+uuid.NewString())
 		if e != nil {
+			done()
 			return e
 		}
-		if !qualityTaskStillEnabled(current, t) {
-			finishQualityTask(t, "cancelled", "功能已关闭或检测配置已变更")
-			if err = repo.SaveTask(ctx, t); err != nil {
-				return err
-			}
-			continue
-		}
-		_, reason := r.service.readiness(ctx, current, t.Group)
-		if reason != "" {
-			finishQualityTask(t, "failed", reason)
-			if err = repo.SaveTask(ctx, t); err != nil {
-				return err
-			}
-			continue
-		}
-		key, e := r.service.validKey(ctx, t.Group)
-		if e != nil {
-			return e
-		}
-		if e = r.validateDNS(ctx, t.Endpoint); e != nil {
-			finishQualityTask(t, "failed", "API 端点地址无法解析为公网地址，检测已暂停")
-			if err = repo.SaveTask(ctx, t); err != nil {
-				return err
-			}
-			continue
-		}
-		now := time.Now()
-		deadline := now.Add(11 * time.Minute)
-		t.SubmittedAt = &now
-		t.DeadlineAt = &deadline
-		t.Status = "submitting"
-		t.Attempts++
-		claimed, e := repo.PrepareTask(ctx, t, current.Version)
-		if e != nil {
-			return e
-		}
-		if !claimed {
+		if task == nil {
+			done()
 			break
 		}
-		result, e := r.client.Submit(ctx, manxue.Request{Benchmark: t.Benchmark, BaseURL: t.Endpoint, APIKey: key.Key, Model: t.Model, ReasoningEffort: t.Group.ReasoningEffort}, t.IdempotencyKey)
-		if e != nil {
-			var remote *manxue.Error
-			if errors.As(e, &remote) && (remote.Status == 429 || remote.Status == 503) {
-				t.Status = "pending"
-				t.SubmittedAt = nil
-				t.DeadlineAt = nil
-				t.NextPollAt = time.Now().Add(qualityBackoff(t.Attempts, remote.RetryAfter))
-				if t.Attempts >= 5 {
-					finishQualityTask(t, "failed", "第三方服务持续限流或繁忙")
-				}
-			} else if errors.As(e, &remote) && !remote.Ambiguous {
-				finishQualityTask(t, "failed", remote.RejectionReason())
-			} else {
-				t.Status = "uncertain"
-				t.Reason = "提交结果不明确，为避免重复扣费未自动重试"
-			}
-		} else {
-			t.RemoteID = result.ID
-			t.Status = "running"
-			t.NextPollAt = time.Now().Add(3 * time.Second)
-			applyQualityResult(t, result, key.Key)
-		}
-		if err = repo.SaveTask(ctx, t); err != nil {
-			return err
-		}
+		r.wg.Add(1)
+		go func() { defer r.wg.Done(); defer done(); r.execute(repo, task) }()
 	}
-	return repo.FinishRounds(ctx)
+	return nil
 }
 
-func qualityTaskStillEnabled(c *ModelQualityConfig, t *ModelQualityTask) bool {
-	if !c.Enabled || c.PauseReason != "" || c.Endpoint != t.Endpoint {
+func qualityTaskEnabled(c *ModelQualityV2Config, t *ModelQualityV2Task) bool {
+	if !c.Enabled {
 		return false
 	}
-	for _, g := range c.Groups {
-		if g.GroupID == t.Group.GroupID && g.OwnerID == t.Group.OwnerID && g.KeyID != nil && t.Group.KeyID != nil && *g.KeyID == *t.Group.KeyID && g.ReasoningEffort == t.Group.ReasoningEffort && slices.Contains(g.Models, t.Model) && slices.Contains(g.Methods, t.Benchmark) {
-			return true
+	for _, group := range c.Groups {
+		if group.GroupID != t.Specification.Target.GroupID {
+			continue
+		}
+		for _, target := range group.Targets {
+			old := t.Specification.Target
+			if target.ID == old.ID && target.Model == old.Model && target.Protocol == old.Protocol && target.KeyID != nil && old.KeyID != nil && *target.KeyID == *old.KeyID && slices.Contains(target.QuestionIDs, t.Specification.Question.ID) {
+				return true
+			}
 		}
 	}
 	return false
 }
-func (r *ModelQualityRunner) validateDNS(ctx context.Context, endpoint string) error {
-	u, err := url.Parse(endpoint)
-	if err != nil {
-		return err
+
+func finishQualityV2Task(t *ModelQualityV2Task, status, verdict, reason string) {
+	now := time.Now()
+	t.Status = status
+	t.Result.Status = status
+	t.Result.Verdict = verdict
+	t.Result.Reason = reason
+	t.Result.FinishedAt = &now
+	if t.Result.Generation.Status == "running" {
+		t.Result.Generation.Status = status
+		t.Result.Generation.Reason = reason
+		t.Result.Generation.FinishedAt = &now
 	}
-	ips, err := r.lookup(ctx, u.Hostname())
-	if err != nil {
-		return err
+	if t.Result.Judgment != nil && t.Result.Judgment.Status == "running" {
+		t.Result.Judgment.Status = status
+		t.Result.Judgment.Reason = reason
+		t.Result.Judgment.FinishedAt = &now
 	}
-	if len(ips) == 0 {
-		return errors.New("端点解析失败")
-	}
-	for _, ip := range ips {
-		if !modelQualityPublicIP(ip.IP) {
-			return errors.New("端点解析到非公网地址")
-		}
-	}
-	return nil
 }
-func (r *ModelQualityRunner) poll(ctx context.Context, t *ModelQualityTask) {
-	result, err := r.client.Poll(ctx, t.RemoteID)
-	if err == nil {
-		secret := ""
-		if t.Group.KeyID != nil {
-			if k, e := r.service.keys.GetByID(ctx, *t.Group.KeyID); e == nil && k != nil {
-				secret = k.Key
-			}
+
+func qualityTokenSum(values ...*int64) *int64 {
+	var result *int64
+	for _, value := range values {
+		if value == nil {
+			continue
 		}
-		applyQualityResult(t, result, secret)
-		t.NextPollAt = time.Now().Add(3 * time.Second)
-	} else {
-		var remote *manxue.Error
-		retry := time.Duration(0)
-		if errors.As(err, &remote) {
-			retry = remote.RetryAfter
-			if remote.Status == 404 {
-				finishQualityTask(t, "failed", "第三方任务已过期或丢失，未重新提交")
+		if result == nil {
+			result = new(int64)
+		}
+		*result += *value
+	}
+	return result
+}
+
+func refreshQualityV2Totals(t *ModelQualityV2Task) {
+	phases := []ModelQualityPhase{t.Result.Generation}
+	phases = append(phases, t.Result.PreviousJudgments...)
+	if t.Result.Judgment != nil {
+		phases = append(phases, *t.Result.Judgment)
+	}
+	t.Result.DurationMS = 0
+	t.Result.InputTokens = nil
+	t.Result.OutputTokens = nil
+	t.Result.ReasoningTokens = nil
+	for _, phase := range phases {
+		t.Result.DurationMS += phase.DurationMS
+		t.Result.InputTokens = qualityTokenSum(t.Result.InputTokens, phase.InputTokens)
+		t.Result.OutputTokens = qualityTokenSum(t.Result.OutputTokens, phase.OutputTokens)
+		t.Result.ReasoningTokens = qualityTokenSum(t.Result.ReasoningTokens, phase.ReasoningTokens)
+	}
+}
+
+func (r *ModelQualityRunner) execute(repo ModelQualityV2Repository, t *ModelQualityV2Task) {
+	previous := t.Status
+	defer func() {
+		refreshQualityV2Totals(t)
+		for range 3 {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_, err := repo.SaveQualityV2Task(ctx, t, previous)
+			cancel()
+			if err == nil {
 				return
 			}
 		}
-		t.Attempts++
-		t.NextPollAt = time.Now().Add(qualityBackoff(t.Attempts, retry))
-	}
-	if t.Status == "running" && t.DeadlineAt != nil && time.Now().After(*t.DeadlineAt) {
-		finishQualityTask(t, "failed", "检测超时或结果暂不可用，未判定为降智")
-	}
-}
-func qualityBackoff(attempt int, retry time.Duration) time.Duration {
-	d := time.Duration(5*(1<<min(attempt, 6)))*time.Second + time.Duration(rand.IntN(1000))*time.Millisecond
-	if d < retry {
-		d = retry
-	}
-	return d
-}
-func finishQualityTask(t *ModelQualityTask, status, reason string) {
-	now := time.Now()
-	t.Status = status
-	t.Reason = reason
-	t.FinishedAt = &now
-	if t.SubmittedAt != nil {
-		t.DurationMS = now.Sub(*t.SubmittedAt).Milliseconds()
-	}
-}
-
-var qualityURLPattern = regexp.MustCompile(`https?://[^\s<>"']+`)
-
-func qualitySafeText(text, secret, endpoint string) string {
-	for _, value := range []string{secret, endpoint} {
-		if value != "" {
-			text = strings.ReplaceAll(text, value, "[已脱敏]")
-		}
-	}
-	return qualityURLPattern.ReplaceAllString(logredact.RedactText(text), "[地址已隐藏]")
-}
-func applyQualityResult(t *ModelQualityTask, result *manxue.Result, secret string) {
-	switch result.Status {
-	case "failed", "cancelled":
-		finishQualityTask(t, "failed", "第三方检测失败或被取消，未判定为降智")
-		return
-	case "succeeded":
-	default:
+		slog.Warn("降智检测结果暂未存档；保留调用占位，恢复时不自动重发", "task_id", t.ID)
+	}()
+	configCtx, configCancel := context.WithTimeout(r.ctx, 10*time.Second)
+	config, err := r.service.ConfigV2(configCtx)
+	configCancel()
+	if err != nil {
+		finishQualityV2Task(t, "failed", "unknown", "读取检测配置失败，未发送请求")
 		return
 	}
-	finishQualityTask(t, "completed", "")
-	usage := result.Usage
-	if t.Benchmark == "candy" {
-		t.Answer = qualitySafeText(result.Candy.Answer, secret, t.Endpoint)
-		t.DurationMS = result.Candy.DurationMS
-		usage = result.Candy.Usage
-		switch result.Candy.Status {
-		case "passed":
-			t.Verdict = "normal"
-			t.Reason = "糖果题通过"
-		case "incorrect":
-			t.Verdict = "degraded"
-			t.Reason = "糖果题答案未通过"
-		default:
-			t.Status = "failed"
-			t.Reason = "糖果检测失败或无法判定"
+	if !qualityTaskEnabled(config, t) {
+		finishQualityV2Task(t, "cancelled", "unknown", "检测已关闭或模型配置已移除，未发送后续请求")
+		return
+	}
+	call := t.Specification.Target.ModelQualityCall
+	system, prompt := t.Specification.Question.SystemPrompt, t.Specification.Question.Prompt
+	attempts := t.Result.Generation.Attempts
+	if previous == "judging" {
+		judge := t.Specification.Question.Rule.Judge
+		if judge == nil {
+			finishQualityV2Task(t, "failed", "unknown", "判题配置缺失")
+			return
 		}
-	} else {
-		t.HTML = logredact.RedactText(result.Result.HTML)
-		for _, value := range []string{secret, t.Endpoint} {
-			if value != "" {
-				t.HTML = strings.ReplaceAll(t.HTML, value, "[已脱敏]")
+		call = *judge
+		system, prompt = qualityJudgeInput(t.Specification.Question, t.Result.Generation.Answer)
+		attempts = t.Result.Judgment.Attempts
+	}
+	ctx, cancel := context.WithTimeout(r.ctx, time.Duration(call.TimeoutSeconds)*time.Second)
+	defer cancel()
+	key, err := r.service.validQualityCall(ctx, call)
+	if err != nil {
+		finishQualityV2Task(t, "failed", "unknown", err.Error())
+		return
+	}
+	lease := *t
+	heartbeatDone := make(chan struct{})
+	heartbeatStopped := make(chan struct{})
+	go func() {
+		defer close(heartbeatStopped)
+		ticker := time.NewTicker(20 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-heartbeatDone:
+				return
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				check, end := context.WithTimeout(ctx, 5*time.Second)
+				ok, e := repo.RefreshQualityV2Lease(check, &lease)
+				end()
+				if e != nil || !ok {
+					cancel()
+					return
+				}
 			}
 		}
-		t.HasHTML = t.HTML != ""
-		t.Reason = qualitySafeText(result.Assessment.Reason, secret, t.Endpoint)
-		switch result.Assessment.Quality {
-		case "normal":
-			t.Verdict = "normal"
-		case "degraded", "suspicious":
-			t.Verdict = "degraded"
-		default:
-			t.Verdict = "unknown"
-		}
-		if t.HTML == "" {
-			t.Status = "failed"
-			t.Verdict = "unknown"
-			t.Reason = "检测未返回作品"
-		}
-		if result.Result.DurationMS > 0 {
-			t.DurationMS = result.Result.DurationMS
-		}
-		if result.Result.Usage.InputTokens != nil {
-			usage = result.Result.Usage
-		}
+	}()
+	phase, err := r.client.Call(ctx, t.Specification.Endpoint, key.Key, call, system, prompt)
+	close(heartbeatDone)
+	<-heartbeatStopped
+	phase.Attempts = attempts
+	if previous == "generating" {
+		t.Result.Generation = phase
+	} else {
+		t.Result.Judgment = &phase
 	}
-	t.InputTokens = usage.InputTokens
-	t.OutputTokens = usage.OutputTokens
-	t.ReasoningTokens = usage.ReasoningTokens
-	if t.ReasoningTokens == nil {
-		t.ReasoningTokens = usage.OutputTokensDetails.ReasoningTokens
+	if err != nil {
+		var remote *qualityCallError
+		if errors.As(err, &remote) && remote.rejected && attempts < 5 && r.ctx.Err() == nil {
+			t.Status = "pending"
+			if previous == "judging" {
+				t.Status = "ready_judge"
+			}
+			t.Result.Status = t.Status
+			t.Result.Reason = "接口明确限流，等待重试"
+			t.NextAttemptAt = time.Now().Add(remote.retryAfter)
+			return
+		}
+		finishQualityV2Task(t, "failed", "unknown", err.Error())
+		return
 	}
+	if previous == "generating" {
+		t.Result.Answer = phase.Answer
+		t.Result.HTML = qualityArtwork(phase.Answer, t.Specification.Question.OutputType)
+		t.Result.HasHTML = t.Result.HTML != ""
+		if t.Specification.Question.Rule.Kind == "model" {
+			t.Status = "ready_judge"
+			t.Result.Status = t.Status
+			t.Result.Reason = "生成已完成，等待判题"
+			t.Result.Judgment = &ModelQualityPhase{Status: "pending"}
+			t.NextAttemptAt = time.Now()
+			return
+		}
+		verdict, reason := evaluateQualityAnswer(t.Specification.Question.Rule, phase.Answer)
+		finishQualityV2Task(t, "completed", verdict, reason)
+		return
+	}
+	verdict, reason := evaluateQualityJudgment(phase.Answer)
+	finishQualityV2Task(t, "completed", verdict, reason)
 }

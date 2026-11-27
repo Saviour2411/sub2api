@@ -16,7 +16,7 @@ func TestModelQualityAdminAuthentication(t *testing.T) {
 	group := r.Group("/api/v1/admin")
 	group.Use(gin.HandlerFunc(middleware.NewAdminAuthMiddleware(nil, nil, nil, nil)))
 	registerCustomFeatureRoutes(group, &handler.Handlers{ModelQuality: handler.NewModelQualityHandler(nil), Admin: &handler.AdminHandlers{CustomFeature: adminhandler.NewCustomFeatureHandler(nil, nil)}})
-	for _, tc := range []struct{ method, path string }{{"GET", "/custom-features/model-quality"}, {"PUT", "/custom-features/model-quality"}, {"GET", "/custom-features/model-quality/keys?group_id=7"}, {"POST", "/model-quality/groups/7/run"}} {
+	for _, tc := range []struct{ method, path string }{{"GET", "/custom-features/model-quality/v2"}, {"PUT", "/custom-features/model-quality/v2"}, {"GET", "/custom-features/model-quality/v2/keys?group_id=7"}, {"POST", "/model-quality/v2/groups/7/run"}, {"POST", "/model-quality/v2/tasks/test/rejudge"}, {"GET", "/custom-features/model-quality"}, {"PUT", "/custom-features/model-quality"}, {"GET", "/custom-features/model-quality/keys?group_id=7"}, {"POST", "/model-quality/groups/7/run"}} {
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, httptest.NewRequest(tc.method, "/api/v1/admin"+tc.path, nil))
 		require.Equal(t, 401, w.Code)

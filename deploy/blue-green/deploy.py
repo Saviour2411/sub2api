@@ -428,8 +428,7 @@ return cjson.encode({mode=redis.call('HGET',key,'mode'),owner=redis.call('HGET',
 
     def preflight(self, release, needs_capacity=True):
         require(re.fullmatch(r"[a-f0-9]{40}", release["sha"]), "发布 SHA 无效")
-        require(re.fullmatch(r"[a-zA-Z0-9._/:-]+@sha256:[a-f0-9]{64}", release["image"]), "必须使用固定镜像摘要")
-        require(release.get("ci_sha") == release["sha"] and release.get("ci") == "success" and release.get("security") == "success", "固定提交的 CI/Security Scan 未通过")
+        validate_release_checks(release)
         active = self.state["slots"][self.state["active"]]
         require(release.get("compatible_from") == active["sha"], "未提供针对当前活动提交的迁移兼容审查")
         require(release.get("migration_class") in ("none", "expand"), "破坏性或未知迁移禁止普通蓝绿发布")
@@ -646,11 +645,14 @@ return cjson.encode({mode=redis.call('HGET',key,'mode'),owner=redis.call('HGET',
             sample = self.legacy_gate_sample()
 
     def pull_release_image(self, release):
-        self.run("docker","pull",release["image"])
+        if release.get("validation_mode", "ci") != "local":
+            self.run("docker","pull",release["image"])
         self.verify_release_image(release)
 
     def verify_release_image(self, release):
         image = json.loads(self.run("docker","image","inspect",release["image"]).stdout)[0]
+        if release.get("validation_mode") == "local":
+            require(image.get("Id") == release["image"], "本地镜像ID与验收镜像不一致")
         require(image["Config"].get("Labels",{}).get("org.opencontainers.image.revision") == release["sha"], "镜像 revision 与已验收提交不一致")
 
     def retire_legacy_for_release(self, release):
@@ -1077,6 +1079,23 @@ class HealthObserver:
         self.stop.set()
         self.thread.join()
         return self.results
+
+
+def validate_release_checks(release):
+    mode = release.get("validation_mode", "ci")
+    require(mode in ("ci", "local"), "未知发布验收模式")
+    if mode == "ci":
+        require(re.fullmatch(r"[a-zA-Z0-9._/:-]+@sha256:[a-f0-9]{64}", release["image"]), "必须使用固定镜像摘要")
+        require(release.get("ci_sha") == release["sha"] and release.get("ci") == "success" and release.get("security") == "success", "固定提交的 CI/Security Scan 未通过")
+        return
+    require(re.fullmatch(r"sha256:[a-f0-9]{64}", release["image"]), "本地发布需要不可变镜像ID")
+    require(release.get("ci") == "not_run" and release.get("security") == "not_run", "本地验收不得声称CI成功")
+    report = release.get("local_validation", {})
+    require(report.get("version") == 1 and report.get("sha") == release["sha"], "本地验收提交不符")
+    checks = report.get("checks", {})
+    require(set(checks) == {"backend", "database", "race", "frontend", "bluegreen"}, "本地验收项目不完整")
+    for name, item in checks.items():
+        require(item.get("exit_code") == 0 and item.get("command") and re.fullmatch(r"[a-f0-9]{64}", item.get("log_sha256", "")), "本地验收未通过："+name)
 
 
 def main():

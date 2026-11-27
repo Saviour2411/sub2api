@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { markRaw, ref, watch } from 'vue'
-import type { QualityGroup, QualityPage } from '@/api/modelQuality'
+import type { QualityGroup, QualityPage, QualityRunID } from '@/api/modelQuality'
 import { useAuthStore } from './auth'
 import { useAppStore } from './app'
 import { createModelQualityLoader } from '@/utils/modelQualityLoader'
@@ -9,7 +9,7 @@ export interface QualityGallerySnapshot {
   key: string
   groups: QualityGroup[]
   result: QualityPage
-  anchorId?: number
+  anchorId?: QualityRunID
   anchorTop?: number
   scrollY: number
 }
@@ -24,11 +24,7 @@ export const useModelQualityStore = defineStore('modelQuality', () => {
     gallery.value = null
     generation.value++
   })
-  watch(
-    [() => auth.user?.id, () => auth.isAuthenticated],
-    () => loader.clear(),
-    { flush: 'sync' }
-  )
+  watch([() => auth.user?.id, () => auth.isAuthenticated], () => loader.clear(), { flush: 'sync' })
   watch(
     () => app.cachedPublicSettings?.model_quality_enabled,
     (enabled) => {

@@ -3,225 +3,320 @@
     <div v-if="loading" class="quality-empty" role="status">正在加载检测配置</div>
     <form v-else-if="config" @submit.prevent="save">
       <div class="quality-heading">
-        <div>
-          <h2>降智检测</h2>
-          <p>满血AI · 糖果与鹈鹕</p>
-        </div>
+        <h2>降智检测</h2>
         <label class="quality-switch"
           ><span>全局启用</span><Toggle v-model="config.enabled" aria-label="全局启用降智检测"
         /></label>
       </div>
       <div class="quality-endpoint">
-        <span>API 端点地址</span><code>{{ config.endpoint || '未配置' }}</code
-        ><span class="quality-muted">系统设置</span>
+        <span>本站 API</span><code>{{ config.endpoint || '未配置' }}</code>
       </div>
-      <p v-if="config.pause_reason" class="quality-alert">{{ config.pause_reason }}</p>
-      <div class="quality-settings-toolbar">
-        <h3>
-          检测分组 <span class="quality-muted">{{ config.groups.length }}</span>
-        </h3>
-        <select v-model="addGroupID" aria-label="添加 OpenAI 分组" class="input" @change="addGroup">
-          <option :value="0">添加 OpenAI 分组</option>
-          <option v-for="group in availableGroups" :key="group.id" :value="group.id">
-            {{ group.name }}
-          </option>
-        </select>
-      </div>
-      <div v-if="!config.groups.length" class="quality-empty">尚未选择检测分组</div>
-      <article v-for="group in config.groups" :key="group.group_id" class="quality-config-group">
-        <header>
-          <strong>{{ groupName(group.group_id) }}</strong
-          ><span class="quality-badge" :data-state="group.key_id ? 'normal' : 'paused'">{{
-            group.key_id ? '已绑定密钥' : '待绑定密钥'
-          }}</span>
+      <p v-if="config.pause_reason" class="quality-alert">
+        {{ config.pause_reason }}
+      </p>
+      <nav class="quality-result-tabs quality-settings-tabs" aria-label="检测配置">
+        <button
+          type="button"
+          :class="{ active: tab === 'questions' }"
+          :aria-pressed="tab === 'questions'"
+          @click="tab = 'questions'"
+        >
+          题库 · {{ config.questions.length }}</button
+        ><button
+          type="button"
+          :class="{ active: tab === 'groups' }"
+          :aria-pressed="tab === 'groups'"
+          @click="tab = 'groups'"
+        >
+          检测分组 · {{ config.groups.length }}
+        </button>
+      </nav>
+      <div v-show="tab === 'questions'">
+        <div class="quality-settings-toolbar">
+          <h3>测试题目</h3>
           <button
             type="button"
-            class="quality-icon-button"
-            title="移除分组"
-            aria-label="移除分组"
-            @click="removeGroup(group.group_id)"
+            class="btn btn-secondary"
+            :disabled="config.questions.length >= 50"
+            @click="addQuestion"
           >
-            <Icon name="trash" size="sm" />
+            <Icon name="plus" size="sm" />新增题目
           </button>
-        </header>
-        <div class="quality-config-fields">
-          <label class="quality-field quality-field-key"
-            >测试密钥
-            <select v-model="group.key_id" class="input">
-              <option :value="null">暂不绑定</option>
-              <option
-                v-for="key in options[group.group_id]?.keys || []"
-                :key="key.id"
-                :value="key.id"
-              >
-                {{ key.name }} · {{ key.masked_key }}
-              </option>
-              <option
-                v-if="
-                  group.key_id &&
-                  !options[group.group_id]?.keys.some((key) => key.id === group.key_id)
-                "
-                :value="group.key_id"
-                disabled
-              >
-                原绑定密钥不可用，请重新选择
-              </option>
-            </select>
-            <span v-if="options[group.group_id]?.error" class="quality-error">{{
-              options[group.group_id]?.error
-            }}</span>
+        </div>
+        <article v-for="q in config.questions" :key="q.id" class="quality-question">
+          <header>
+            <strong>{{ q.name || '未命名题目' }}</strong
+            ><button
+              type="button"
+              class="quality-icon-button"
+              title="删除题目"
+              aria-label="删除题目"
+              @click="removeQuestion(q.id)"
+            >
+              <Icon name="trash" size="sm" />
+            </button>
+          </header>
+          <div class="quality-question-fields">
+            <label class="quality-field"
+              >名称<input v-model="q.name" class="input" maxlength="200" required /></label
+            ><label class="quality-field"
+              >输出类型<select v-model="q.output_type" class="input">
+                <option value="text">文本</option>
+                <option value="svg">SVG</option>
+                <option value="html">HTML</option>
+              </select></label
+            ><label class="quality-field"
+              >判定方式<select v-model="q.rule.kind" class="input" @change="prepareJudge(q)">
+                <option value="number">数字相等</option>
+                <option value="string">字符串相等</option>
+                <option value="model">模型判题</option>
+              </select></label
+            >
+          </div>
+          <label class="quality-field"
+            >测试提示词<textarea v-model="q.prompt" class="input" rows="4" maxlength="65536" />
           </label>
-          <label class="quality-field"
-            >检测间隔（分钟）<input
-              v-model.number="group.interval_minutes"
-              type="number"
+          <details>
+            <summary>系统提示词</summary>
+            <textarea
+              v-model="q.system_prompt"
               class="input"
-              min="5"
-              max="1440"
-              required
-          /></label>
-          <label class="quality-field"
-            >推理程度<select v-model="group.reasoning_effort" class="input">
-              <option value="low">low</option>
-              <option value="medium">medium</option>
-              <option value="high">high</option>
-            </select></label
-          >
-          <fieldset class="quality-field">
-            <legend>检测方式</legend>
-            <div class="quality-checks">
-              <label><input v-model="group.methods" type="checkbox" value="candy" />糖果</label
-              ><label><input v-model="group.methods" type="checkbox" value="pelican" />鹈鹕</label>
-            </div>
-          </fieldset>
-          <div class="quality-field quality-field-models">
-            <span>检测模型 <span class="quality-muted">至少一个</span></span>
-            <div class="quality-model-options">
-              <label v-for="model in allModels(group)" :key="model"
-                ><input v-model="group.models" type="checkbox" :value="model" /><span>{{
-                  model
-                }}</span></label
-              >
-            </div>
-            <div class="quality-model-add">
-              <input
-                v-model="customModels[group.group_id]"
+              rows="3"
+              maxlength="16384"
+              aria-label="系统提示词"
+            />
+          </details>
+          <label v-if="q.rule.kind !== 'model'" class="quality-field"
+            >预期答案<textarea v-model="q.rule.expected" class="input" rows="2" maxlength="65536" />
+          </label>
+          <template v-else
+            ><label class="quality-field"
+              >判题提示词<textarea
+                v-model="q.rule.judge_prompt"
                 class="input"
-                placeholder="补充模型 ID"
-                aria-label="补充模型 ID"
-                maxlength="200"
-                @keydown.enter.prevent="addModel(group)"
-              /><button
+                rows="4"
+                maxlength="65536"
+              />
+            </label>
+            <h4>判题模型</h4>
+            <QualityCallFields
+              v-if="q.rule.judge"
+              :key="config.version + q.id"
+              v-model:call="q.rule.judge"
+              :groups="groups"
+              :field-id="q.id"
+              @valid="setValid"
+          /></template>
+        </article>
+        <div v-if="!config.questions.length" class="quality-empty">暂无题目</div>
+      </div>
+      <div v-show="tab === 'groups'">
+        <div class="quality-settings-toolbar">
+          <h3>检测分组</h3>
+          <select
+            v-model.number="addGroupID"
+            class="input"
+            aria-label="添加检测分组"
+            @change="addGroup"
+          >
+            <option :value="0">添加检测分组</option>
+            <option v-for="group in availableGroups" :key="group.id" :value="group.id">
+              {{ group.name }} · {{ group.platform }}
+            </option>
+          </select>
+        </div>
+        <section v-for="group in config.groups" :key="group.group_id" class="quality-config-group">
+          <header>
+            <strong>{{ groupName(group.group_id) }}</strong
+            ><span class="quality-muted">{{ groupStatus(group.group_id) }}</span
+            ><button
+              type="button"
+              class="quality-icon-button"
+              title="移除分组"
+              aria-label="移除分组"
+              @click="removeGroup(group.group_id)"
+            >
+              <Icon name="trash" size="sm" />
+            </button>
+          </header>
+          <div class="quality-settings-toolbar">
+            <label class="quality-field"
+              >检测间隔（分钟）<input
+                v-model.number="group.interval_minutes"
+                type="number"
+                min="5"
+                max="1440"
+                class="input"
+                required /></label
+            ><button
+              type="button"
+              class="btn btn-secondary"
+              :disabled="group.targets.length >= 20"
+              @click="addTarget(group)"
+            >
+              <Icon name="plus" size="sm" />添加模型</button
+            ><button
+              type="button"
+              class="btn btn-secondary"
+              :disabled="
+                dirty ||
+                !config.enabled ||
+                !!states[group.group_id]?.running ||
+                running.includes(group.group_id)
+              "
+              @click="runNow(group.group_id)"
+            >
+              <Icon name="play" size="sm" />立即检测
+            </button>
+          </div>
+          <div v-for="target in group.targets" :key="target.id" class="quality-target">
+            <header>
+              <h4>{{ target.model || '待配置模型' }}</h4>
+              <button
                 type="button"
                 class="quality-icon-button"
-                aria-label="添加模型"
-                title="添加模型"
-                @click="addModel(group)"
+                title="移除模型"
+                aria-label="移除模型"
+                @click="removeTarget(group, target.id)"
               >
-                <Icon name="plus" size="sm" />
+                <Icon name="trash" size="sm" />
               </button>
-            </div>
+            </header>
+            <QualityCallFields
+              :key="config.version + target.id"
+              :call="target"
+              @update:call="Object.assign(target, $event)"
+              :groups="groups"
+              :field-id="target.id"
+              fixed-group
+              @valid="setValid"
+            />
+            <fieldset class="quality-field">
+              <legend>检测题目</legend>
+              <div class="quality-checks">
+                <label v-for="q in config.questions" :key="q.id"
+                  ><input v-model="target.question_ids" type="checkbox" :value="q.id" />{{
+                    q.name
+                  }}</label
+                >
+              </div>
+            </fieldset>
           </div>
-        </div>
-        <footer>
-          <span class="quality-muted">{{ groupStatus(group.group_id) }}</span
-          ><button
-            type="button"
-            class="btn btn-secondary"
-            :disabled="
-              dirty ||
-              !config.enabled ||
-              !group.key_id ||
-              !!config.pause_reason ||
-              running.includes(group.group_id) ||
-              states[group.group_id]?.running
-            "
-            @click="runNow(group.group_id)"
-          >
-            <Icon name="play" size="sm" />立即检测
-          </button>
-        </footer>
-      </article>
-      <p class="quality-settings-note">
-        启用后，所选分组结果对所有登录用户可见。检测会将绑定密钥交给满血AI，并消耗该密钥额度。结果保留
-        24 小时。
-      </p>
-      <p v-if="error" class="quality-error" role="alert">{{ error }}</p>
-      <div class="quality-save-row">
-        <span class="quality-muted">{{ dirty ? '有未保存的更改' : '配置已保存' }}</span
-        ><button type="submit" class="btn btn-primary" :disabled="saving">
-          {{ saving ? '保存中' : '保存配置' }}
-        </button>
+        </section>
+        <div v-if="!config.groups.length" class="quality-empty">尚未选择检测分组</div>
       </div>
+      <p v-if="error" class="quality-error" role="alert">{{ error }}</p>
+      <footer class="quality-settings-footer">
+        <span class="quality-muted">{{ dirty ? '有未保存的修改' : '配置已保存' }}</span
+        ><button class="btn btn-primary" :disabled="saving || invalid.size > 0" type="submit">
+          <Icon name="check" size="sm" />{{ saving ? '保存中' : '保存配置' }}
+        </button>
+      </footer>
     </form>
-    <div v-else class="quality-empty">
-      <p>{{ error || '配置加载失败' }}</p>
-      <button class="btn btn-secondary" @click="load">重试</button>
-    </div>
+    <p v-else class="quality-error" role="alert">
+      {{ error }}<button class="quality-inline-button" @click="load">重试</button>
+    </p>
   </section>
 </template>
-
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import Toggle from '@/components/common/Toggle.vue'
+import Icon from '@/components/icons/Icon.vue'
+import QualityCallFields from './QualityCallFields.vue'
+import { groupsAPI } from '@/api/admin/groups'
 import {
   modelQualityAPI,
+  newQualityCall,
   qualityLabels,
   qualityTime,
   type QualityConfig,
-  type QualityGroupConfig,
   type QualityGroup,
-  type QualityKey
+  type QualityGroupConfig,
+  type QualityQuestion
 } from '@/api/modelQuality'
-import groupsAPI from '@/api/admin/groups'
-import type { AdminGroup } from '@/types'
-import Icon from '@/components/icons/Icon.vue'
-import Toggle from '@/components/common/Toggle.vue'
+import type { Group } from '@/types'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import '@/styles/model-quality.css'
-
 const app = useAppStore()
-const config = ref<QualityConfig>()
-const groups = ref<AdminGroup[]>([])
-const options = ref<Record<number, { keys: QualityKey[]; models: string[]; error?: string }>>({})
-const states = ref<Record<number, QualityGroup>>({})
-const customModels = ref<Record<number, string>>({})
+const config = ref<QualityConfig>(),
+  groups = ref<Group[]>([]),
+  states = ref<Record<number, QualityGroup>>({})
 const loading = ref(true),
   saving = ref(false),
   error = ref(''),
   baseline = ref(''),
-  addGroupID = ref(0)
-const running = ref<number[]>([])
+  addGroupID = ref(0),
+  tab = ref('questions')
+const invalid = ref(new Set<string>()),
+  running = ref<number[]>([])
 const dirty = computed(() => JSON.stringify(config.value) !== baseline.value)
 const availableGroups = computed(() =>
   groups.value.filter((g) => !config.value?.groups.some((item) => item.group_id === g.id))
 )
-let timer: ReturnType<typeof setInterval> | undefined
-let disposed = false
-function groupName(id: number) {
-  return groups.value.find((group) => group.id === id)?.name || `分组 ${id}`
-}
+let timer: ReturnType<typeof setInterval> | undefined,
+  disposed = false
+const groupName = (id: number) => groups.value.find((g) => g.id === id)?.name || '分组 ' + id
 function groupStatus(id: number) {
-  if (dirty.value) return '保存配置后可立即检测'
   const state = states.value[id]
-  if (!config.value?.enabled) return '全局已关闭'
-  if (state?.pause_reason) return state.pause_reason
-  if (state?.running) return '检测中'
-  return state?.next_run_at
-    ? `下次检测 ${qualityTime(state.next_run_at)}`
-    : qualityLabels[state?.status || 'pending']
+  return !config.value?.enabled
+    ? '已暂停'
+    : state?.pause_reason ||
+        (state?.running
+          ? '检测中'
+          : state?.next_run_at
+            ? '下次检测 ' + qualityTime(state.next_run_at)
+            : qualityLabels[state?.status || 'pending'])
 }
-async function loadOptions(id: number) {
-  const result = await Promise.allSettled([
-    modelQualityAPI.keys(id),
-    groupsAPI.getModelAllowlistCandidates(id)
-  ])
-  if (disposed) return
-  options.value[id] = {
-    keys: result[0].status === 'fulfilled' ? result[0].value : [],
-    models: result[1].status === 'fulfilled' ? result[1].value : [],
-    error: result[0].status === 'rejected' ? '密钥列表加载失败，请重新打开此页' : undefined
-  }
+function setValid(id: string, valid: boolean) {
+  if (valid) invalid.value.delete(id)
+  else invalid.value.add(id)
+}
+function addQuestion() {
+  config.value?.questions.push({
+    id: crypto.randomUUID(),
+    name: '',
+    prompt: '',
+    output_type: 'text',
+    rule: { kind: 'number', expected: '' }
+  })
+}
+function removeQuestion(id: string) {
+  if (!config.value) return
+  config.value.questions = config.value.questions.filter((q) => q.id !== id)
+  for (const g of config.value.groups)
+    for (const t of g.targets) t.question_ids = t.question_ids.filter((q) => q !== id)
+  invalid.value.delete(id)
+}
+function prepareJudge(q: QualityQuestion) {
+  if (q.rule.kind === 'model') q.rule.judge ||= newQualityCall()
+  else invalid.value.delete(q.id)
+}
+function addGroup() {
+  if (!addGroupID.value || !config.value) return
+  config.value.groups.push({
+    group_id: addGroupID.value,
+    interval_minutes: 60,
+    targets: []
+  })
+  addGroupID.value = 0
+}
+function addTarget(g: QualityGroupConfig) {
+  g.targets.push({
+    ...newQualityCall(g.group_id),
+    id: crypto.randomUUID(),
+    question_ids: []
+  })
+}
+function removeTarget(g: QualityGroupConfig, id: string) {
+  g.targets = g.targets.filter((t) => t.id !== id)
+  invalid.value.delete(id)
+}
+function removeGroup(id: number) {
+  if (!config.value) return
+  const group = config.value.groups.find((g) => g.group_id === id)
+  group?.targets.forEach((t) => invalid.value.delete(t.id))
+  config.value.groups = config.value.groups.filter((g) => g.group_id !== id)
 }
 async function refreshStates() {
   if (!config.value?.enabled || document.hidden) return
@@ -236,15 +331,11 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [settings, all] = await Promise.all([
-      modelQualityAPI.config(),
-      groupsAPI.getAll('openai')
-    ])
+    const [settings, all] = await Promise.all([modelQualityAPI.config(), groupsAPI.getAll()])
     if (disposed) return
     config.value = settings
+    groups.value = all.filter((g) => g.status === 'active')
     baseline.value = JSON.stringify(settings)
-    groups.value = all.filter((group) => group.status === 'active')
-    await Promise.all(settings.groups.map((group) => loadOptions(group.group_id)))
     await refreshStates()
   } catch (e) {
     error.value = extractApiErrorMessage(e, '检测配置加载失败')
@@ -252,47 +343,10 @@ async function load() {
     loading.value = false
   }
 }
-function addGroup() {
-  if (!addGroupID.value || !config.value) return
-  const id = addGroupID.value
-  config.value.groups.push({
-    group_id: id,
-    key_id: null,
-    interval_minutes: 60,
-    methods: ['candy', 'pelican'],
-    models: [],
-    reasoning_effort: 'low'
-  })
-  addGroupID.value = 0
-  void loadOptions(id)
-}
-function removeGroup(id: number) {
-  if (config.value)
-    config.value.groups = config.value.groups.filter((group) => group.group_id !== id)
-}
-function allModels(group: QualityGroupConfig) {
-  return [...new Set([...group.models, ...(options.value[group.group_id]?.models || [])])]
-}
-function addModel(group: QualityGroupConfig) {
-  const model = customModels.value[group.group_id]?.trim()
-  if (model && !group.models.includes(model)) group.models.push(model)
-  customModels.value[group.group_id] = ''
-}
 async function save() {
-  if (!config.value) return
-  error.value = ''
-  for (const group of config.value.groups) {
-    group.models = [...new Set(group.models.map((model) => model.trim()).filter(Boolean))]
-    if (!group.models.length) {
-      error.value = `${groupName(group.group_id)}：至少选择一个检测模型`
-      return
-    }
-    if (!group.methods.length) {
-      error.value = `${groupName(group.group_id)}：至少选择一种检测方式`
-      return
-    }
-  }
+  if (!config.value || invalid.value.size) return
   saving.value = true
+  error.value = ''
   try {
     config.value = await modelQualityAPI.save(config.value)
     baseline.value = JSON.stringify(config.value)
@@ -314,7 +368,7 @@ async function runNow(id: number) {
   } catch (e) {
     error.value = extractApiErrorMessage(e, '无法启动检测')
   } finally {
-    running.value = running.value.filter((value) => value !== id)
+    running.value = running.value.filter((v) => v !== id)
   }
 }
 onMounted(() => {
@@ -326,3 +380,63 @@ onBeforeUnmount(() => {
   clearInterval(timer)
 })
 </script>
+<style scoped>
+.quality-settings-tabs {
+  margin: 20px 0;
+}
+.quality-question,
+.quality-config-group {
+  padding: 20px 0;
+  border: 0;
+  border-bottom: 1px solid var(--quality-border, #d4d4d8);
+  border-radius: 0;
+  background: transparent;
+}
+.quality-question > header,
+.quality-target > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.quality-question-fields {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 14px;
+}
+.quality-question .quality-field,
+.quality-target fieldset {
+  margin: 12px 0;
+}
+.quality-question .input {
+  width: 100%;
+  min-width: 0;
+}
+.quality-question summary {
+  cursor: pointer;
+  padding: 8px 0;
+}
+.quality-target {
+  border-top: 1px solid var(--quality-border, #d4d4d8);
+  padding: 20px 0;
+}
+.quality-checks {
+  flex-wrap: wrap;
+}
+.quality-settings-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+}
+@media (max-width: 650px) {
+  .quality-question-fields {
+    grid-template-columns: 1fr;
+  }
+  .quality-settings-toolbar {
+    flex-wrap: wrap;
+  }
+}
+</style>

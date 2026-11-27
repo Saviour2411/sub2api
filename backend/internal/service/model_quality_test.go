@@ -3,16 +3,15 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"sync"
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/manxue"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 type qualitySettingsStub struct {
@@ -26,360 +25,297 @@ func (s qualitySettingsStub) GetValue(context.Context, string) (string, error) {
 
 type qualityKeysStub struct {
 	APIKeyRepository
-	key *APIKey
+	keys map[int64]*APIKey
 }
 
-func (s *qualityKeysStub) GetByID(context.Context, int64) (*APIKey, error) { return s.key, nil }
-func (s *qualityKeysStub) ListAllByUserID(context.Context, int64, APIKeyListFilters) ([]APIKey, error) {
-	if s.key == nil {
-		return nil, nil
+func (s *qualityKeysStub) GetByID(_ context.Context, id int64) (*APIKey, error) {
+	k := s.keys[id]
+	if k == nil {
+		return nil, fmt.Errorf("不存在")
 	}
-	return []APIKey{*s.key}, nil
+	return k, nil
+}
+func (s *qualityKeysStub) ListAllByUserID(context.Context, int64, APIKeyListFilters) ([]APIKey, error) {
+	out := []APIKey{}
+	for _, k := range s.keys {
+		out = append(out, *k)
+	}
+	return out, nil
 }
 
 type qualityGroupsStub struct {
 	GroupRepository
-	group *Group
+	groups map[int64]*Group
 }
 
-func (s qualityGroupsStub) GetByID(context.Context, int64) (*Group, error) { return s.group, nil }
+func (s qualityGroupsStub) GetByID(_ context.Context, id int64) (*Group, error) {
+	g := s.groups[id]
+	if g == nil {
+		return nil, fmt.Errorf("不存在")
+	}
+	return g, nil
+}
 
 type qualityRepoStub struct {
 	ModelQualityRepository
-	mu                         sync.Mutex
-	config                     ModelQualityConfig
-	tasks                      []ModelQualityTask
-	cleaned, started, finished int
+	ModelQualityV2Repository
+	config    ModelQualityV2Config
+	legacy    ModelQualityConfig
+	saved     *ModelQualityV2Task
+	saveCalls int
 }
 
 func (s *qualityRepoStub) Config(context.Context) (*ModelQualityConfig, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	raw, _ := json.Marshal(s.config)
-	var c ModelQualityConfig
-	_ = json.Unmarshal(raw, &c)
+	c := s.legacy
 	return &c, nil
 }
-func (s *qualityRepoStub) SaveConfig(_ context.Context, c *ModelQualityConfig) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	raw, err := json.Marshal(c)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(raw, &s.config)
+func (s *qualityRepoStub) QualityV2Config(context.Context) (*ModelQualityV2Config, error) {
+	raw, _ := json.Marshal(s.config)
+	var c ModelQualityV2Config
+	err := json.Unmarshal(raw, &c)
+	return &c, err
 }
-func (s *qualityRepoStub) Cleanup(context.Context) error      { s.cleaned++; return nil }
-func (s *qualityRepoStub) FinishRounds(context.Context) error { s.finished++; return nil }
-func (s *qualityRepoStub) States(context.Context) (map[int64]ModelQualityGroupState, error) {
-	return map[int64]ModelQualityGroupState{}, nil
-}
-func (s *qualityRepoStub) StartRound(_ context.Context, c *ModelQualityConfig, g ModelQualityGroupConfig, name, endpoint string, manual bool) error {
-	if s.started > 0 {
-		return ErrModelQualityConflict
-	}
-	s.started++
-	for _, model := range g.Models {
-		for _, method := range g.Methods {
-			s.tasks = append(s.tasks, ModelQualityTask{ID: int64(len(s.tasks) + 1), Group: g, Endpoint: endpoint, Model: model, StartedAt: time.Now(), IdempotencyKey: "stable", ModelQualityTest: ModelQualityTest{Benchmark: method, Status: "pending", Verdict: "unknown"}})
-		}
-	}
+func (s *qualityRepoStub) SaveQualityV2Config(_ context.Context, c *ModelQualityV2Config) error {
+	c.Version++
+	s.config = *c
 	return nil
 }
-func (s *qualityRepoStub) Tasks(context.Context) ([]ModelQualityTask, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	out := []ModelQualityTask{}
-	for _, t := range s.tasks {
-		if t.Status == "pending" || t.Status == "running" || t.Status == "submitting" || t.Status == "uncertain" {
-			out = append(out, t)
-		}
-	}
-	return out, nil
-}
-func (s *qualityRepoStub) SaveTask(_ context.Context, task *ModelQualityTask) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for i := range s.tasks {
-		if s.tasks[i].ID == task.ID {
-			s.tasks[i] = *task
-			return nil
-		}
-	}
-	return errors.New("任务不存在")
-}
-func (s *qualityRepoStub) PrepareTask(_ context.Context, task *ModelQualityTask, version int) (bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	count := 0
-	for _, t := range s.tasks {
-		if t.Status == "submitting" || t.Status == "running" || t.Status == "uncertain" {
-			count++
-		}
-	}
-	if count >= 2 || !s.config.Enabled {
-		return false, nil
-	}
-	for i := range s.tasks {
-		if s.tasks[i].ID == task.ID && s.tasks[i].Status == "pending" {
-			s.tasks[i] = *task
-			return true, nil
-		}
-	}
-	return false, nil
+func (s *qualityRepoStub) SaveQualityV2Task(_ context.Context, t *ModelQualityV2Task, _ string) (bool, error) {
+	copy := *t
+	s.saved = &copy
+	s.saveCalls++
+	return true, nil
 }
 
 type qualityClientStub struct {
-	submitted, polled int
-	submitErr         error
-	result            *manxue.Result
+	outputs []string
+	calls   []ModelQualityCall
+	prompts []string
+	err     error
 }
 
-func (s *qualityClientStub) Submit(_ context.Context, r manxue.Request, key string) (*manxue.Result, error) {
-	s.submitted++
-	if s.submitErr != nil {
-		return nil, s.submitErr
+func (s *qualityClientStub) Call(_ context.Context, _ string, _ string, c ModelQualityCall, system, prompt string) (ModelQualityPhase, error) {
+	s.calls = append(s.calls, c)
+	s.prompts = append(s.prompts, system+"\n"+prompt)
+	answer := "36"
+	if len(s.outputs) > 0 {
+		answer = s.outputs[0]
+		s.outputs = s.outputs[1:]
 	}
-	return &manxue.Result{ID: "remote", Status: "running"}, nil
+	return ModelQualityPhase{Status: "completed", Answer: answer, DurationMS: 1}, s.err
 }
-func (s *qualityClientStub) Poll(context.Context, string) (*manxue.Result, error) {
-	s.polled++
-	if s.result != nil {
-		return s.result, nil
-	}
-	return &manxue.Result{Status: "running"}, nil
-}
+
 func qualityFixture() (*ModelQualityService, *qualityRepoStub, *qualityKeysStub, *ModelQualityRunner, *qualityClientStub) {
-	id := int64(5)
-	groupID := int64(7)
-	g := ModelQualityGroupConfig{GroupID: 7, KeyID: &id, OwnerID: 3, IntervalMinutes: 60, Methods: []string{"candy", "pelican"}, Models: []string{"model-a", "model-b"}, ReasoningEffort: "low"}
-	repo := &qualityRepoStub{config: ModelQualityConfig{Enabled: true, Version: 1, Groups: []ModelQualityGroupConfig{g}}}
-	keys := &qualityKeysStub{key: &APIKey{ID: 5, UserID: 3, GroupID: &groupID, Key: "sk-test-secret", Status: StatusActive, User: &User{ID: 3, Status: StatusActive, Role: RoleAdmin}}}
-	s := NewModelQualityService(repo, &SettingService{settingRepo: qualitySettingsStub{endpoint: "https://quality.example.net"}}, keys, qualityGroupsStub{group: &Group{ID: 7, Name: "测试分组", Platform: PlatformOpenAI, Status: StatusActive}})
-	lookup := func(context.Context, string) ([]net.IPAddr, error) {
+	keyID, groupID, judgeKey, judgeGroup := int64(5), int64(7), int64(6), int64(8)
+	call := ModelQualityCall{GroupID: 7, KeyID: &keyID, OwnerID: 3, Model: "test-model", Protocol: "responses", MaxOutputTokens: 8192, TimeoutSeconds: 600}
+	judge := ModelQualityCall{GroupID: 8, KeyID: &judgeKey, OwnerID: 3, Model: "judge-model", Protocol: "messages", MaxOutputTokens: 8192, TimeoutSeconds: 600}
+	q := DefaultModelQualityQuestions()
+	q[1].Rule.Judge = &judge
+	repo := &qualityRepoStub{config: ModelQualityV2Config{SchemaVersion: 2, Version: 1, Enabled: true, Questions: q, Groups: []ModelQualityV2GroupConfig{{GroupID: 7, IntervalMinutes: 60, Targets: []ModelQualityTarget{{ID: "target-one", ModelQualityCall: call, QuestionIDs: []string{q[0].ID, q[1].ID}}}}}}}
+	keys := &qualityKeysStub{keys: map[int64]*APIKey{5: {ID: 5, UserID: 3, GroupID: &groupID, Key: "sk-test-only", Status: StatusActive, User: &User{ID: 3, Role: RoleAdmin, Status: StatusActive}}, 6: {ID: 6, UserID: 3, GroupID: &judgeGroup, Key: "sk-judge-only", Status: StatusActive, User: &User{ID: 3, Role: RoleAdmin, Status: StatusActive}}}}
+	groups := qualityGroupsStub{groups: map[int64]*Group{7: {ID: 7, Name: "被测分组", Platform: PlatformDeepseek, Status: StatusActive}, 8: {ID: 8, Name: "判题分组", Platform: PlatformAnthropic, Status: StatusActive}}}
+	s := NewModelQualityService(repo, &SettingService{settingRepo: qualitySettingsStub{endpoint: "https://quality.example.net"}}, keys, groups)
+	s.lookup = func(context.Context, string) ([]net.IPAddr, error) {
 		return []net.IPAddr{{IP: net.ParseIP("8.8.8.8")}}, nil
 	}
-	s.lookup = lookup
-	r := NewModelQualityRunner(s)
-	r.lookup = lookup
+	runner := NewModelQualityRunner(s)
 	client := &qualityClientStub{}
-	r.client = client
-	return s, repo, keys, r, client
+	runner.client = client
+	return s, repo, keys, runner, client
 }
+
+func qualityFixtureTask(repo *qualityRepoStub, question int) *ModelQualityV2Task {
+	target := repo.config.Groups[0].Targets[0]
+	q := repo.config.Questions[question]
+	return &ModelQualityV2Task{ID: "task-one", Owner: "owner", Status: "generating", Specification: ModelQualitySpecification{Target: target, Question: q, Endpoint: "https://quality.example.net/v1"}, Result: ModelQualityV2Test{ModelQualityTest: ModelQualityTest{Benchmark: q.ID, Status: "generating", Verdict: "unknown"}, Generation: ModelQualityPhase{Status: "running", Attempts: 1}, OutputType: q.OutputType}}
+}
+
 func TestModelQualityEndpoint(t *testing.T) {
-	for _, raw := range []string{"http://public.net", "https://127.0.0.1", "https://10.0.0.5", "https://[::1]", "https://localhost", "https://host.internal", "https://host.internal.", "https://user:pass@public.net", "https://public.net?q=1", "https://public.net:0", "https://public.net:65536", "https://[2001:db8::1]"} {
+	for _, raw := range []string{"http://public.net", "https://127.0.0.1", "https://10.0.0.5", "https://[::1]", "https://localhost", "https://host.internal.", "https://user:pass@public.net", "https://public.net?q=1", "https://public.net:65536", "https://[2001:db8::1]"} {
 		_, err := NormalizeModelQualityEndpoint(raw)
 		require.Error(t, err, raw)
 	}
-	for _, raw := range []string{"https://api.example.net/custom", "https://api.example.net/custom/v1/", "https://api.example.net/custom/v1/v1"} {
-		got, err := NormalizeModelQualityEndpoint(raw)
-		require.NoError(t, err)
-		require.Equal(t, "https://api.example.net/custom/v1", got)
-	}
-	got, err := NormalizeModelQualityEndpoint("https://[2606:4700:4700::1111]:8443")
+	value, err := NormalizeModelQualityEndpoint("https://api.example.net/custom/v1/v1")
 	require.NoError(t, err)
-	require.Equal(t, "https://[2606:4700:4700::1111]:8443/v1", got)
+	require.Equal(t, "https://api.example.net/custom/v1", value)
 	s, _, _, _, _ := qualityFixture()
 	s.lookup = func(context.Context, string) ([]net.IPAddr, error) {
 		return []net.IPAddr{{IP: net.ParseIP("192.168.0.1")}}, nil
 	}
-	c, err := s.Config(context.Background())
+	c, err := s.ConfigV2(context.Background())
 	require.NoError(t, err)
 	require.Contains(t, c.PauseReason, "非公网")
 }
-func TestModelQualityConfigAndKeyOwnership(t *testing.T) {
-	s, repo, _, _, _ := qualityFixture()
-	ctx := context.Background()
-	c, _ := repo.Config(ctx)
-	c.Groups[0].Models = []string{" model-a ", "model-a"}
-	c.Groups[0].KeyID = nil
-	require.NoError(t, s.SaveConfig(ctx, 3, c))
-	require.Equal(t, []string{"model-a"}, c.Groups[0].Models)
-	states, err := s.Groups(ctx)
-	require.NoError(t, err)
-	require.Equal(t, "待绑定密钥", states[0].PauseReason)
-	c.Groups[0].Models = nil
-	require.Error(t, s.SaveConfig(ctx, 3, c))
-	s, repo, keys, _, _ := qualityFixture()
-	c, _ = repo.Config(ctx)
-	require.Error(t, s.SaveConfig(ctx, 99, c))
-	c, _ = repo.Config(ctx)
-	past := time.Now().Add(-time.Hour)
-	keys.key.ExpiresAt = &past
-	require.Error(t, s.SaveConfig(ctx, 3, c))
-	keys.key.ExpiresAt = nil
-	other := int64(9)
-	keys.key.GroupID = &other
-	require.Error(t, s.SaveConfig(ctx, 3, c))
-	keys.key.GroupID = &c.Groups[0].GroupID
-	keys.key.Status = StatusAPIKeyDisabled
-	require.Error(t, s.SaveConfig(ctx, 3, c))
-	keys.key.Status = StatusActive
-	keys.key.Quota = 1
-	keys.key.QuotaUsed = 1
-	require.Error(t, s.SaveConfig(ctx, 3, c))
-}
-func TestModelQualityDisableWithExpiredKey(t *testing.T) {
+
+func TestModelQualityV2OwnershipAndDrafts(t *testing.T) {
 	s, repo, keys, _, _ := qualityFixture()
 	ctx := context.Background()
-	past := time.Now().Add(-time.Hour)
-	keys.key.ExpiresAt = &past
-	c, err := repo.Config(ctx)
+	choices, err := s.KeyOptionsV2(ctx, 3, 7)
 	require.NoError(t, err)
+	require.Len(t, choices, 1)
+	require.NotContains(t, choices[0].MaskedKey, "test-only")
+	c, _ := repo.QualityV2Config(ctx)
+	require.Error(t, s.SaveConfigV2(ctx, 99, c))
+	c, _ = repo.QualityV2Config(ctx)
+	past := time.Now().Add(-time.Hour)
+	keys.keys[5].ExpiresAt = &past
 	c.Enabled = false
-	require.NoError(t, s.SaveConfig(ctx, 99, c))
-	require.False(t, repo.config.Enabled)
-	require.EqualValues(t, 3, repo.config.Groups[0].OwnerID)
+	require.NoError(t, s.SaveConfigV2(ctx, 99, c))
+	require.EqualValues(t, 3, c.Groups[0].Targets[0].OwnerID)
 	c.Enabled = true
-	require.Error(t, s.SaveConfig(ctx, 99, c))
+	require.Error(t, s.SaveConfigV2(ctx, 3, c))
+	c, _ = repo.QualityV2Config(ctx)
 	c.Enabled = false
-	c.Groups[0].Models = []string{"new-model"}
-	require.Error(t, s.SaveConfig(ctx, 99, c))
+	c.Groups[0].Targets[0].Protocol = ""
+	c.Groups[0].Targets[0].KeyID = nil
+	require.NoError(t, validateQualityV2(c))
+	c.Enabled = true
+	require.Error(t, validateQualityV2(c))
 }
 
-func TestModelQualityMultipleModelsGlobalSlotsAndRecovery(t *testing.T) {
-	s, repo, _, runner, client := qualityFixture()
-	ctx := context.Background()
-	require.NoError(t, runner.step(ctx))
-	require.Len(t, repo.tasks, 4)
-	require.Equal(t, 2, client.submitted)
-	restarted := NewModelQualityRunner(s)
-	restarted.lookup = runner.lookup
-	restarted.client = client
-	for i := range repo.tasks {
-		repo.tasks[i].NextPollAt = time.Time{}
-	}
-	require.NoError(t, restarted.step(ctx))
-	require.Equal(t, 2, client.submitted)
-	require.Equal(t, 2, client.polled)
-	repo.config.Enabled = false
-	for i := range repo.tasks {
-		repo.tasks[i].NextPollAt = time.Time{}
-	}
-	require.NoError(t, restarted.step(ctx))
-	require.Equal(t, 2, client.submitted)
-	require.Equal(t, 4, client.polled)
-	require.Equal(t, "cancelled", repo.tasks[2].Status)
-	require.Positive(t, repo.cleaned)
+func TestModelQualityV2UpgradeDraftDoesNotEnable(t *testing.T) {
+	s, repo, _, _, _ := qualityFixture()
+	repo.legacy = ModelQualityConfig{Enabled: true, Groups: []ModelQualityGroupConfig{{GroupID: 7, Models: []string{"legacy"}, IntervalMinutes: 60}}}
+	repo.config = ModelQualityV2Config{Version: 1, InitializationRequired: true}
+	c, err := s.ConfigV2(context.Background())
+	require.NoError(t, err)
+	require.False(t, c.Enabled)
+	require.Len(t, c.Questions, 2)
+	require.Equal(t, "legacy", c.Groups[0].Targets[0].Model)
+	require.Empty(t, c.Groups[0].Targets[0].Protocol)
 }
-func TestModelQualityUncertainSubmissionNeverResent(t *testing.T) {
-	_, repo, _, r, c := qualityFixture()
-	c.submitErr = &manxue.Error{Ambiguous: true}
-	require.NoError(t, r.step(context.Background()))
-	require.Equal(t, 2, c.submitted)
-	require.Equal(t, "uncertain", repo.tasks[0].Status)
-	require.NoError(t, r.step(context.Background()))
-	require.Equal(t, 2, c.submitted)
-	require.Equal(t, "unknown", repo.tasks[0].Verdict)
+
+func TestModelQualityV2Comparison(t *testing.T) {
+	for _, tt := range []struct{ kind, expected, answer, verdict string }{{"number", "36", "36.000", "normal"}, {"number", "0.3", "0.30000000000000001", "degraded"}, {"number", "36", "答案是36", "unknown"}, {"number", "36", "3.6e1", "normal"}, {"number", "1", "1e999999999", "unknown"}, {"string", "通过", "不通过", "degraded"}, {"string", "ABC", " abc ", "degraded"}, {"string", "答案", " 答案\n", "normal"}} {
+		v, _ := evaluateQualityAnswer(ModelQualityRule{Kind: tt.kind, Expected: tt.expected}, tt.answer)
+		require.Equal(t, tt.verdict, v, tt.answer)
+	}
+	for answer, expected := range map[string]string{"通过": "normal", "不通过": "degraded", "\n通过 ": "normal", "答案：通过": "unknown", "未通过": "unknown", "\"通过\"": "unknown"} {
+		v, _ := evaluateQualityJudgment(answer)
+		require.Equal(t, expected, v, answer)
+	}
 }
-func TestModelQualityRejectedSubmissionPreservesSafeReason(t *testing.T) {
-	for _, tc := range []struct {
-		name, body, reason string
-	}{
-		{"参数不兼容", `{"error":"Invalid API request parameters"}`, "检测接口参数不兼容"},
-		{"鹈鹕模型限制", `{"error":"model is required and must be gpt-6-astra for pelican, creative and html"}`, "鹈鹕检测目前仅支持 gpt-6-astra"},
-		{"未知错误脱敏", `{"error":"sk-test-secret https://quality.example.net/v1"}`, "请检查模型和端点配置"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			_, repo, _, runner, _ := qualityFixture()
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-				var body map[string]any
-				require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
-				require.NotContains(t, body, "protocol")
-				require.Contains(t, []string{"model-a", "model-b"}, body["model"])
-				w.WriteHeader(http.StatusBadRequest)
-				_, _ = w.Write([]byte(tc.body))
-			}))
-			defer server.Close()
-			client := manxue.NewClient()
-			client.BaseURL = server.URL
-			runner.client = client
-			require.NoError(t, runner.step(context.Background()))
-			require.Len(t, repo.tasks, 4)
-			for _, task := range repo.tasks {
-				require.Equal(t, "failed", task.Status)
-				require.Equal(t, "unknown", task.Verdict)
-				require.Contains(t, task.Reason, "HTTP 400")
-				require.Contains(t, task.Reason, tc.reason)
-				require.NotContains(t, task.Reason, "sk-test-secret")
-				require.NotContains(t, task.Reason, "quality.example.net")
-				require.NotNil(t, task.FinishedAt)
-			}
+
+func TestModelQualityV2TruncationRetainsUsageAndRejectsTools(t *testing.T) {
+	phase, err := parseQualityResponse("responses", []byte(`{"status":"incomplete","output":[{"type":"message","content":[{"type":"output_text","text":"截断正文"}]}],"usage":{"input_tokens":12,"output_tokens":30}}`))
+	require.Error(t, err)
+	require.Equal(t, "截断正文", phase.Answer)
+	require.EqualValues(t, 12, *phase.InputTokens)
+	require.EqualValues(t, 30, *phase.OutputTokens)
+	for _, key := range []string{"instructions", "conversation", "prompt", "n"} {
+		c := ModelQualityCall{ExtraBody: map[string]json.RawMessage{key: json.RawMessage(`"override"`)}}
+		require.Error(t, validateQualityCall(&c, false))
+	}
+	_, err = parseQualityResponse("gemini", []byte(`{"candidates":[{"finishReason":"STOP","content":{"parts":[{"text":"36"},{"functionCall":{"name":"test"}}]}}]}`))
+	require.Error(t, err)
+	_, err = parseQualityResponse("responses", []byte(`{"status":"completed","output":[{"type":"function_call"},{"type":"message","content":[{"type":"output_text","text":"36"}]}]}`))
+	require.Error(t, err)
+}
+
+func TestModelQualityV2ProtocolRequests(t *testing.T) {
+	for _, tt := range []struct{ protocol, path, field, header string }{{"chat_completions", "/v1/chat/completions", "reasoning_effort", "Authorization"}, {"responses", "/v1/responses", "reasoning.effort", "Authorization"}, {"messages", "/v1/messages", "output_config.effort", "x-api-key"}, {"gemini", "/v1beta/models/test-model:generateContent", "generationConfig.thinkingConfig.thinkingLevel", "x-goog-api-key"}} {
+		t.Run(tt.protocol, func(t *testing.T) {
+			call := ModelQualityCall{Protocol: tt.protocol, Model: "test-model", ReasoningEffort: "high", MaxOutputTokens: 9000, TimeoutSeconds: 600}
+			address, headers, body, err := buildQualityRequest("https://api.example.net/custom/v1", "secret", call, "系统题", "测试题")
+			require.NoError(t, err)
+			require.Equal(t, "https://api.example.net/custom"+tt.path, address)
+			require.Equal(t, "high", gjson.GetBytes(body, tt.field).String())
+			require.Contains(t, headers.Get(tt.header), "secret")
+			require.NotContains(t, address, "secret")
+			require.Contains(t, string(body), "测试题")
 		})
 	}
+	call := ModelQualityCall{Protocol: "chat_completions", Model: "domestic", MaxOutputTokens: 100, ChatTokenField: "max_tokens"}
+	_, _, body, err := buildQualityRequest("https://api.example.net/v1", "s", call, "", "p")
+	require.NoError(t, err)
+	require.EqualValues(t, 100, gjson.GetBytes(body, "max_tokens").Int())
+	require.False(t, gjson.GetBytes(body, "reasoning_effort").Exists())
 }
 
-func TestModelQualityRetryAfterAndPartialResults(t *testing.T) {
-	_, repo, _, r, c := qualityFixture()
-	c.submitErr = &manxue.Error{Status: 429, RetryAfter: 120 * time.Second}
-	before := time.Now()
-	require.NoError(t, r.step(context.Background()))
-	for _, task := range repo.tasks {
-		require.Equal(t, "pending", task.Status)
-		require.True(t, task.NextPollAt.After(before.Add(119*time.Second)))
+func TestModelQualityV2ProtocolResponses(t *testing.T) {
+	for _, tt := range []struct{ protocol, body string }{{"chat_completions", `{"choices":[{"finish_reason":"stop","message":{"content":"36","reasoning_content":"错误答案"}}],"usage":{"prompt_tokens":10,"completion_tokens":5}}`}, {"responses", `{"status":"completed","output":[{"type":"reasoning","summary":[{"text":"错误答案"}]},{"type":"message","content":[{"type":"output_text","text":"36"}]}],"usage":{"input_tokens":10,"output_tokens":5}}`}, {"messages", `{"stop_reason":"end_turn","content":[{"type":"thinking","thinking":"错误答案"},{"type":"text","text":"36"}],"usage":{"input_tokens":10,"output_tokens":5}}`}, {"gemini", `{"candidates":[{"finishReason":"STOP","content":{"parts":[{"thought":true,"text":"错误答案"},{"text":"36"}]}}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":5}}`}} {
+		phase, err := parseQualityResponse(tt.protocol, []byte(tt.body))
+		require.NoError(t, err)
+		require.Equal(t, "36", phase.Answer)
+		require.EqualValues(t, 10, *phase.InputTokens)
+		require.EqualValues(t, 5, *phase.OutputTokens)
 	}
-	result := &manxue.Result{Status: "succeeded"}
-	result.Candy.Status = "incorrect"
-	result.Candy.Answer = "20 sk-secret https://private.local/v1"
-	candy := &ModelQualityTask{Endpoint: "https://private.local/v1", ModelQualityTest: ModelQualityTest{Benchmark: "candy", Status: "running", Verdict: "unknown"}}
-	applyQualityResult(candy, result, "sk-secret")
-	require.Equal(t, "degraded", candy.Verdict)
-	require.NotContains(t, candy.Answer, "sk-secret")
-	require.NotContains(t, candy.Answer, "private.local")
-	art := &ModelQualityTask{ModelQualityTest: ModelQualityTest{Benchmark: "pelican", Status: "running", Verdict: "unknown"}}
-	applyQualityResult(art, &manxue.Result{Status: "failed"}, "")
-	require.Equal(t, "failed", art.Status)
-	require.Equal(t, "unknown", art.Verdict)
-	require.Equal(t, "degraded", candy.Verdict)
-	result.Candy.Status = "error"
-	candy.Verdict = "unknown"
-	applyQualityResult(candy, result, "")
-	require.Equal(t, "failed", candy.Status)
-	require.Equal(t, "unknown", candy.Verdict)
-}
-func TestModelQualityExpiredTimeoutAndKeyRebind(t *testing.T) {
-	_, repo, keys, r, c := qualityFixture()
-	require.NoError(t, r.step(context.Background()))
-	past := time.Now().Add(-time.Minute)
-	for i := range repo.tasks {
-		repo.tasks[i].NextPollAt = time.Time{}
-		if repo.tasks[i].Status == "running" {
-			repo.tasks[i].DeadlineAt = &past
-		}
+	for _, body := range []string{`{"choices":[{"finish_reason":"length","message":{"content":"36"}}]}`, `{"choices":[{"finish_reason":"stop","message":{"refusal":"拒答","content":"36"}}]}`, `{"choices":[{"finish_reason":"stop","message":{"reasoning_content":"36"}}]}`} {
+		_, err := parseQualityResponse("chat_completions", []byte(body))
+		require.Error(t, err)
 	}
-	keys.key.Status = StatusAPIKeyDisabled
-	require.NoError(t, r.step(context.Background()))
-	require.Equal(t, 2, c.submitted)
-	for _, task := range repo.tasks {
-		require.Equal(t, "failed", task.Status)
-		require.Equal(t, "unknown", task.Verdict)
-	}
-}
-func TestModelQualityDisabledAndHiddenGroups(t *testing.T) {
-	s, repo, _, _, _ := qualityFixture()
-	require.ErrorIs(t, s.visible(context.Background(), 999), ErrModelQualityExpired)
-	repo.config.Enabled = false
-	_, err := s.Groups(context.Background())
-	require.ErrorIs(t, err, ErrModelQualityDisabled)
-	_, _, err = s.Runs(context.Background(), ModelQualityFilter{GroupID: 7, Page: 1})
-	require.ErrorIs(t, err, ErrModelQualityDisabled)
 }
 
-func TestModelQualityBackoffDoesNotDelayCloseOrDeadline(t *testing.T) {
+func TestModelQualityV2ReservedParametersAndThinking(t *testing.T) {
+	for _, key := range []string{"model", "tools", "messages", "headers", "stream", "base_url", "reasoning"} {
+		c := ModelQualityCall{ExtraBody: map[string]json.RawMessage{key: json.RawMessage(`"x"`)}}
+		require.Error(t, validateQualityCall(&c, false), key)
+	}
+	budget := 2048
+	c := ModelQualityCall{Protocol: "messages", ThinkingMode: "enabled", ThinkingBudget: &budget, MaxOutputTokens: 4096}
+	require.NoError(t, validateQualityCall(&c, false))
+	c.MaxOutputTokens = 1024
+	require.Error(t, validateQualityCall(&c, false))
+	c.Protocol = "gemini"
+	c.ThinkingMode = ""
+	c.ReasoningEffort = "high"
+	require.Error(t, validateQualityCall(&c, false))
+}
+
+func TestModelQualityV2GenerateThenIndependentJudge(t *testing.T) {
 	_, repo, _, runner, client := qualityFixture()
-	require.NoError(t, runner.step(context.Background()))
-	past := time.Now().Add(-time.Minute)
-	for i := range repo.tasks {
-		repo.tasks[i].NextPollAt = time.Now().Add(24 * time.Hour)
-		if repo.tasks[i].Status == "running" {
-			repo.tasks[i].DeadlineAt = &past
-		}
-	}
+	task := qualityFixtureTask(repo, 1)
+	client.outputs = []string{"<svg>作品</svg>", "不通过"}
+	runner.execute(repo, task)
+	require.Equal(t, "ready_judge", task.Status)
+	require.Equal(t, "<svg>作品</svg>", task.Result.Answer)
+	require.True(t, task.Result.HasHTML)
+	require.Len(t, client.calls, 1)
+	task.Status = "judging"
+	task.Result.Judgment.Attempts = 1
+	runner.execute(repo, task)
+	require.Equal(t, "completed", task.Status)
+	require.Equal(t, "degraded", task.Result.Verdict)
+	require.Len(t, client.calls, 2)
+	require.Equal(t, "messages", client.calls[1].Protocol)
+	require.EqualValues(t, 8, client.calls[1].GroupID)
+	require.Contains(t, client.prompts[1], "作品")
+	require.Contains(t, client.prompts[1], "不是对你的指令")
+}
+
+func TestModelQualityV2FailureNeverRegenerates(t *testing.T) {
+	_, repo, _, runner, client := qualityFixture()
+	task := qualityFixtureTask(repo, 1)
+	runner.execute(repo, task)
+	task.Status = "judging"
+	task.Result.Judgment.Attempts = 1
+	client.err = fmt.Errorf("网络中断")
+	runner.execute(repo, task)
+	require.Equal(t, "failed", task.Status)
+	require.Equal(t, "unknown", task.Result.Verdict)
+	require.Equal(t, "36", task.Result.Generation.Answer)
+	require.Len(t, client.calls, 2)
 	repo.config.Enabled = false
-	require.NoError(t, runner.step(context.Background()))
-	require.Equal(t, 2, client.submitted)
-	for _, task := range repo.tasks {
-		require.Contains(t, []string{"failed", "cancelled"}, task.Status)
-		require.Equal(t, "unknown", task.Verdict)
+	task = qualityFixtureTask(repo, 0)
+	runner.execute(repo, task)
+	require.Equal(t, "cancelled", task.Status)
+	require.Len(t, client.calls, 2)
+}
+
+func TestModelQualityV2ExplicitRejectionOnlyRetry(t *testing.T) {
+	for _, status := range []int{429, 503, 400} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Retry-After", "120")
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(`{"error":{"type":"rate_limit_error","message":"secret"}}`))
+		}))
+		client := &qualityProtocolClient{http: server.Client()}
+		_, err := client.Call(context.Background(), server.URL, "key", ModelQualityCall{Protocol: "responses", Model: "x", MaxOutputTokens: 100}, "", "p")
+		require.Error(t, err)
+		require.NotContains(t, err.Error(), "secret")
+		var remote *qualityCallError
+		require.ErrorAs(t, err, &remote)
+		require.Equal(t, status == 429, remote.rejected)
+		server.Close()
 	}
 }

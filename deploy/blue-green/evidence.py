@@ -76,7 +76,11 @@ RELEASE260_FILES = {
     "246_enable_gemini_image_generation_groups.sql": "87267be7ab657173768989e2b0b105c5569c5930a7f1ed124f4cf81e5198297c",
     "247_scoped_admin_api_keys.sql": "03445774e2dfad32da9e23279193d1bca02953896bc3d3b8a87ba0b36b6ed577",
 }
+QUALITY_V2_BASE = "3d5d7724c42bbfd712220b901205f7ce175fdc3d"
+QUALITY_V2_PROFILE = "model-quality-v2-guarded-253-v1"
+QUALITY_V2_FILE = "253_model_quality_v2.sql"
 SPECIAL_MIGRATIONS = {
+    QUALITY_V2_FILE: (QUALITY_V2_PROFILE, "6c21f152ee5f10f0a846f5957f749df19d8af64fe0760a831640a317604bb200"),
     ULTRAFAST252_FILE: (ULTRAFAST252_PROFILE, "458752b3523254ee60ab4a821261ab64df9216a6f208c1960e7b816f8c7cfd1d"),
     MCP249_FILE: (MCP249_PROFILE, "751a1dcee6108afcecbd580b6e3140cca3480853fecd2174861b02f3a71e54a1"),
     IMAGE248_FILE: (IMAGE248_PROFILE, "a872dde339b19f311feb5fa6fd85c8ff7b11d69794c35a18e2086d9846b3499c"),
@@ -256,6 +260,8 @@ def migration_evidence(base, sha, git):
         if special:
             require(checksum(content) == special[1], "专项迁移固定 SQL 摘要不符")
             contract = {"profile": special[0]}
+            if special[0] == QUALITY_V2_PROFILE:
+                require(base == QUALITY_V2_BASE and changed.splitlines() == ["A\t"+path], "253专项仅覆盖固定生产基线和新版检测迁移")
             if special[0] == ULTRAFAST252_PROFILE:
                 require(base == ULTRAFAST252_BASE and all(item == "A\t"+path
                     or re.fullmatch(r"[AM]\tbackend/migrations/[a-zA-Z0-9_]+_test\.go", item)
@@ -331,15 +337,55 @@ def migration_evidence(base, sha, git):
     return result
 
 
+LOCAL_CHECKS = {"backend", "database", "race", "frontend", "bluegreen"}
+
+def checked_local_report(report, sha):
+    require(report.get("sha") == sha and report.get("version") == 1, "本地验收提交不一致")
+    checks = report.get("checks", {})
+    require(set(checks) == LOCAL_CHECKS, "本地验收项目不完整")
+    for name, item in checks.items():
+        require(item.get("exit_code") == 0 and item.get("command") and
+                re.fullmatch(r"[a-f0-9]{64}", item.get("log_sha256", "")), "本地验收未通过："+name)
+    return checks
+
+def local_evidence(args):
+    require(re.fullmatch(r"[a-f0-9]{40}", args.sha), "提交无效")
+    require(re.fullmatch(r"sha256:[a-f0-9]{64}", args.image), "本地发布需要不可变镜像ID")
+    require(args.local_report, "缺少本地验收报告")
+    def git(*arguments):
+        return subprocess.check_output(["git", *arguments], text=True, encoding="utf-8").strip()
+    require(git("rev-parse", "HEAD") == args.sha and not git("status", "--porcelain"), "本地发布必须使用干净的固定提交")
+    path = Path(args.local_report).resolve()
+    report = json.loads(path.read_text(encoding="utf-8"))
+    checks = checked_local_report(report, args.sha)
+    for name, item in checks.items():
+        log = (path.parent/item.get("log", "")).resolve()
+        require(log.parent == path.parent and log.is_file(), "验收日志路径无效")
+        require(hashlib.sha256(log.read_bytes()).hexdigest() == item["log_sha256"], "验收日志摘要不一致："+name)
+    state = json.loads(Path(args.state).read_text(encoding="utf-8"))
+    require(state.get("schema") == 1 and state.get("active") in ("blue", "green"), "活动实例基线无效")
+    base = state["slots"][state["active"]]["sha"]
+    release = {"validation_mode":"local", "sha":args.sha, "image":args.image,
+               "local_validation":{"version":1,"sha":args.sha,"checks":checks},
+               "ci":"not_run", "security":"not_run", **migration_evidence(base,args.sha,git)}
+    Path(args.output).write_text(json.dumps(release,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+    print("已绑定本地验收、固定提交、不可变镜像ID和迁移证据；CI未运行")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--repository", required=True)
+    parser.add_argument("--mode", choices=("ci", "local"), default="ci")
+    parser.add_argument("--local-report")
+    parser.add_argument("--repository")
     parser.add_argument("--sha", required=True)
     parser.add_argument("--image", required=True)
     parser.add_argument("--state", required=True)
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
-    require(re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", args.repository), "仓库名无效")
+    if args.mode == "local":
+        local_evidence(args)
+        return
+    require(args.repository and re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", args.repository), "仓库名无效")
     require(re.fullmatch(r"[a-f0-9]{40}", args.sha), "提交无效")
     require(re.fullmatch(r"[A-Za-z0-9._/:-]+@sha256:[a-f0-9]{64}", args.image), "需要固定镜像摘要")
     token = os.environ.get("GITHUB_TOKEN", "")

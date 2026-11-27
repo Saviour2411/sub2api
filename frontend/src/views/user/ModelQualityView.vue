@@ -7,11 +7,7 @@
       </div>
       <template v-else>
         <div class="quality-topbar">
-          <nav
-            v-if="groups.length"
-            class="quality-group-tabs"
-            aria-label="检测分组"
-          >
+          <nav v-if="groups.length" class="quality-group-tabs" aria-label="检测分组">
             <button
               v-for="group in groups"
               :key="group.group_id"
@@ -19,8 +15,7 @@
               :class="{ active: selectedGroup === group.group_id }"
               @click="selectGroup(group.group_id)"
             >
-              <span class="quality-dot" :data-state="group.status"></span
-              >{{ group.name }}
+              <span class="quality-dot" :data-state="group.status"></span>{{ group.name }}
             </button>
           </nav>
           <select
@@ -28,22 +23,14 @@
             class="input quality-mobile-groups"
             aria-label="选择检测分组"
             :value="selectedGroup"
-            @change="
-              selectGroup(Number(($event.target as HTMLSelectElement).value))
-            "
+            @change="selectGroup(Number(($event.target as HTMLSelectElement).value))"
           >
-            <option
-              v-for="group in groups"
-              :key="group.group_id"
-              :value="group.group_id"
-            >
+            <option v-for="group in groups" :key="group.group_id" :value="group.group_id">
               {{ group.name }}
             </option>
           </select>
           <div class="quality-heading-actions">
-            <span class="quality-muted">{{
-              refreshing ? '更新中' : '每 15 秒更新'
-            }}</span>
+            <span class="quality-muted">{{ refreshing ? '更新中' : '每 15 秒更新' }}</span>
             <button
               class="quality-icon-button"
               title="刷新"
@@ -56,17 +43,17 @@
           </div>
         </div>
         <div v-if="currentGroup" class="quality-group-context">
-          <span>最近 24 小时</span
-          ><span>{{ currentGroup.models.length }} 个模型</span>
+          <span>最近 24 小时</span><span>{{ currentGroup.models.length }} 个模型</span>
           <span>{{
-            currentGroup.methods.map(qualityMethodName).join(' / ')
+            (
+              currentGroup.questions?.map((q) => q.name) ||
+              currentGroup.methods.map(qualityMethodName)
+            ).join(' / ')
           }}</span>
           <span
             >下次检测
             {{
-              currentGroup.running
-                ? '本轮完成后安排'
-                : qualityTime(currentGroup.next_run_at)
+              currentGroup.running ? '本轮完成后安排' : qualityTime(currentGroup.next_run_at)
             }}</span
           >
           <span class="quality-record-count">共 {{ total }} 条记录</span>
@@ -77,14 +64,7 @@
         <div v-if="groups.length" class="quality-filterbar">
           <div class="quality-result-tabs" aria-label="筛选检测结果">
             <button
-              v-for="value in [
-                '',
-                'normal',
-                'degraded',
-                'failed',
-                'running',
-                'unknown'
-              ]"
+              v-for="value in ['', 'normal', 'degraded', 'failed', 'running', 'unknown']"
               :key="value"
               :aria-pressed="filters.outcome === value"
               :class="{ active: filters.outcome === value }"
@@ -105,11 +85,7 @@
               "
             >
               <option value="">全部模型</option>
-              <option
-                v-for="id in currentGroup?.models || []"
-                :key="id"
-                :value="id"
-              >
+              <option v-for="id in currentGroup?.models || []" :key="id" :value="id">
                 {{ id }}
               </option>
             </select>
@@ -124,18 +100,16 @@
               "
             >
               <option value="">全部方式</option>
-              <option value="pelican">鹈鹕</option>
-              <option value="candy">糖果</option>
+              <option v-for="q in currentGroup?.questions || []" :key="q.id" :value="q.id">
+                {{ q.name }}
+              </option>
             </select>
           </div>
         </div>
         <p v-if="error" class="quality-error" role="alert">
-          {{ error
-          }}<button class="quality-inline-button" @click="refresh">重试</button>
+          {{ error }}<button class="quality-inline-button" @click="refresh">重试</button>
         </p>
-        <div v-if="loading" class="quality-empty" role="status">
-          正在加载检测记录
-        </div>
+        <div v-if="loading" class="quality-empty" role="status">正在加载检测记录</div>
         <div v-else-if="!runs.length" class="quality-empty">
           <Icon name="beaker" size="lg" />
           <h2>
@@ -146,12 +120,7 @@
           </p>
         </div>
         <div v-else class="quality-gallery">
-          <article
-            v-for="run in runs"
-            :key="run.id"
-            :data-quality-id="run.id"
-            class="quality-card"
-          >
+          <article v-for="run in runs" :key="run.id" :data-quality-id="run.id" class="quality-card">
             <button
               class="quality-card-open"
               :aria-label="`查看 ${run.model} ${qualityTime(run.started_at)} 的检测详情`"
@@ -159,36 +128,26 @@
             >
               <div class="quality-card-art">
                 <QualityPreview
-                  v-if="pelican(run)?.has_html"
+                  v-if="art(run)?.has_html"
                   :run-id="run.id"
+                  :test-id="art(run)?.id || art(run)?.benchmark"
                   :expires-at="run.expires_at"
                   :version="qualityRunVersion(run)"
                 />
-                <div v-else-if="!pelican(run)" class="quality-candy-art">
+                <div v-else-if="!art(run)" class="quality-candy-art">
                   <Icon name="beaker" size="lg" />
-                  <strong
-                    >糖果{{
-                      candy(run) ? qualityTestLabel(candy(run)!) : '等待检测'
-                    }}</strong
-                  ><span>单项检测</span>
+                  <strong>{{ answer(run) ? qualityTestLabel(answer(run)!) : '等待检测' }}</strong
+                  ><span>{{ run.tests.length }} 道题目</span>
                 </div>
                 <div v-else class="quality-art-empty">
                   <Icon
-                    :name="
-                      run.outcome === 'running'
-                        ? 'refresh'
-                        : 'exclamationCircle'
-                    "
+                    :name="run.outcome === 'running' ? 'refresh' : 'exclamationCircle'"
                     size="lg"
-                  /><span>{{
-                    run.outcome === 'running' ? '作品生成中' : '未生成作品'
-                  }}</span>
+                  /><span>{{ run.outcome === 'running' ? '作品生成中' : '未生成作品' }}</span>
                 </div>
-                <span
-                  class="quality-art-badge quality-badge"
-                  :data-state="run.outcome"
-                  >{{ qualityLabels[run.outcome] }}</span
-                >
+                <span class="quality-art-badge quality-badge" :data-state="run.outcome">{{
+                  qualityLabels[run.outcome]
+                }}</span>
               </div>
               <div class="quality-card-body">
                 <div class="quality-model-line">
@@ -201,16 +160,14 @@
                     :key="test.benchmark"
                     class="quality-badge"
                     :data-state="qualityTestState(test)"
-                    >{{ qualityMethodName(test.benchmark) }} ·
+                    >{{ test.name || qualityMethodName(test.benchmark) }} ·
                     {{ qualityTestLabel(test) }}</span
                   >
                 </div>
               </div>
               <footer>
                 <span>{{ qualityTime(run.started_at) }}</span
-                ><span
-                  >{{ qualityDuration(run) }}<Icon name="arrowRight" size="xs"
-                /></span>
+                ><span>{{ qualityDuration(run) }}<Icon name="arrowRight" size="xs" /></span>
               </footer>
             </button>
           </article>
@@ -239,9 +196,7 @@
             </button>
           </div>
         </footer>
-        <p class="quality-footnote">
-          单次测试仅反映本次输出，不代表模型身份或整体能力。
-        </p>
+        <p class="quality-footnote">单次测试仅反映本次输出，不代表模型身份或整体能力。</p>
       </template>
     </div>
   </AppLayout>
@@ -299,18 +254,21 @@ const total = ref(0),
 const currentGroup = computed(() =>
   groups.value.find((group) => group.group_id === selectedGroup.value)
 )
-const candy = (run: QualityRun) =>
-  run.tests.find((test) => test.benchmark === 'candy')
-const pelican = (run: QualityRun) =>
-  run.tests.find((test) => test.benchmark === 'pelican')
+const answer = (run: QualityRun) => run.tests[0]
+const art = (run: QualityRun) =>
+  run.tests.find(
+    (test) =>
+      test.has_html ||
+      test.output_type === 'svg' ||
+      test.output_type === 'html' ||
+      test.benchmark === 'pelican'
+  )
 let disposed = false,
   ready = false,
   listGeneration = 0,
   restored = false
-let listController: AbortController | undefined,
-  refreshController: AbortController | undefined
-let timer: ReturnType<typeof setInterval> | undefined,
-  cancelExpiry: (() => void) | undefined
+let listController: AbortController | undefined, refreshController: AbortController | undefined
+let timer: ReturnType<typeof setInterval> | undefined, cancelExpiry: (() => void) | undefined
 let result: QualityPage | undefined
 
 function updateFilters(change: Partial<QualityFilters>, resetPage = true) {
@@ -327,34 +285,31 @@ function selectGroup(group_id: number) {
   void updateFilters({ group_id, model: '', method: '', outcome: '' })
 }
 function anchor() {
-  const element = [
-    ...document.querySelectorAll<HTMLElement>('[data-quality-id]')
-  ].find((el) => el.getBoundingClientRect().top >= 64)
+  const element = [...document.querySelectorAll<HTMLElement>('[data-quality-id]')].find(
+    (el) => el.getBoundingClientRect().top >= 64
+  )
   return {
-    anchorId: element ? Number(element.dataset.qualityId) : undefined,
+    anchorId: element ? element.dataset.qualityId : undefined,
     anchorTop: element?.getBoundingClientRect().top,
     scrollY: window.scrollY
   }
 }
 async function restorePosition(position: {
-  anchorId?: number
+  anchorId?: number | string
   anchorTop?: number
   scrollY: number
 }) {
   await nextTick()
   if (disposed) return
   const element = position.anchorId
-    ? document.querySelector<HTMLElement>(
-        `[data-quality-id="${position.anchorId}"]`
-      )
+    ? document.querySelector<HTMLElement>(`[data-quality-id="${position.anchorId}"]`)
     : null
   window.scrollTo({
     left: 0,
-    top: element && position.anchorTop !== undefined
-      ? window.scrollY +
-          element.getBoundingClientRect().top -
-          position.anchorTop
-      : position.scrollY,
+    top:
+      element && position.anchorTop !== undefined
+        ? window.scrollY + element.getBoundingClientRect().top - position.anchorTop
+        : position.scrollY,
     // 避免全站平滑滚动让后续刷新捕获恢复过程中的中间位置。
     behavior: 'instant'
   })
@@ -362,24 +317,17 @@ async function restorePosition(position: {
 function applyResult(value: QualityPage) {
   result = value
   session.loader.sync(value.items)
-  runs.value = value.items.filter(
-    (run) => Date.parse(run.expires_at) > Date.now()
-  )
+  runs.value = value.items.filter((run) => Date.parse(run.expires_at) > Date.now())
   total.value = value.total
   pages.value = Math.max(1, value.pages)
   cancelExpiry?.()
   if (runs.value.length)
     cancelExpiry = scheduleQualityExpiry(
-      new Date(
-        Math.min(...runs.value.map((run) => Date.parse(run.expires_at)))
-      ).toISOString(),
+      new Date(Math.min(...runs.value.map((run) => Date.parse(run.expires_at)))).toISOString(),
       () => {
         for (const run of runs.value)
-          if (Date.parse(run.expires_at) <= Date.now())
-            session.loader.invalidate(run.id, 'expired')
-        runs.value = runs.value.filter(
-          (run) => Date.parse(run.expires_at) > Date.now()
-        )
+          if (Date.parse(run.expires_at) <= Date.now()) session.loader.invalidate(run.id, 'expired')
+        runs.value = runs.value.filter((run) => Date.parse(run.expires_at) > Date.now())
         if (!document.hidden) void loadRuns(true)
       }
     )
@@ -395,12 +343,7 @@ async function loadRuns(quiet = false) {
   const position = quiet ? anchor() : undefined
   try {
     const value = await modelQualityAPI.runs(filters.value, controller.signal)
-    if (
-      disposed ||
-      generation !== listGeneration ||
-      scope !== session.generation
-    )
-      return
+    if (disposed || generation !== listGeneration || scope !== session.generation) return
     if (filters.value.page > Math.max(1, value.pages)) {
       await updateFilters({ page: Math.max(1, value.pages) }, false)
       return
@@ -417,8 +360,7 @@ async function loadRuns(quiet = false) {
       isQualityAbort(e)
     )
       return
-    if ([401, 403, 404].includes(qualityRequestStatus(e) || 0))
-      session.loader.clear('denied')
+    if ([401, 403, 404].includes(qualityRequestStatus(e) || 0)) session.loader.clear('denied')
     else error.value = extractApiErrorMessage(e, '检测记录加载失败')
   } finally {
     if (generation === listGeneration) loading.value = false

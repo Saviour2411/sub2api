@@ -100,6 +100,9 @@ func RegisterUserRoutes(
 		}
 
 		quality := authenticated.Group("/model-quality")
+		quality.GET("/v2/groups", h.ModelQuality.GroupsV2)
+		quality.GET("/v2/runs", h.ModelQuality.RunsV2)
+		quality.GET("/v2/runs/:id", h.ModelQuality.RunV2)
 		quality.GET("/groups", h.ModelQuality.Groups)
 		quality.GET("/runs", h.ModelQuality.Runs)
 		quality.GET("/runs/:id", h.ModelQuality.Run)

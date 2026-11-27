@@ -2,6 +2,27 @@
   "version": 1,
   "approvals": [
     {
+      "compatible_from": "3d5d7724c42bbfd712220b901205f7ce175fdc3d",
+      "path": "backend/migrations/253_model_quality_v2.sql",
+      "checksum": "6c21f152ee5f10f0a846f5957f749df19d8af64fe0760a831640a317604bb200",
+      "profile": "model-quality-v2-guarded-253-v1",
+      "legacy_contracts": [
+        {
+          "path": "backend/internal/repository/model_quality_repo.go",
+          "checksum": "6ad58a5d6c0d2e28ddf7de6c0e401cb99bbbdddcab35e3cc4eef11faac69d9eb"
+        },
+        {
+          "path": "backend/internal/service/model_quality_runner.go",
+          "checksum": "cbe3b768ed75c92aacfe29a48c937bc96e2107e4e93a74267ca16629f78f98f6"
+        },
+        {
+          "path": "backend/internal/service/model_quality.go",
+          "checksum": "eaba318b9ac84f4eb6b8c66cda5d7b012a41129b506be5d2e812572976f41768"
+        }
+      ],
+      "review": "2026-11-28用户授权本地验收和蓝绿发布。仅新增独立v2检测表，旧表读写列保持不变；先暂停旧调度并等待任务结束。固定PostgreSQL18、旧配置NOWAIT锁、1/5/10秒预算及结构摘要。持久化约束阻止旧实例重新启用，升级暂停新版并保留旧分组。失败事务回滚，旧应用继续服务；应用回滚时旧检测仍暂停，不删除新表或检测数据。"
+    },
+    {
       "compatible_from": "335710cc79789e337f3bd8f0c8511afdd08fd004",
       "path": "backend/migrations/252_channel_pricing_ultrafast_multiplier.sql",
       "checksum": "458752b3523254ee60ab4a821261ab64df9216a6f208c1960e7b816f8c7cfd1d",

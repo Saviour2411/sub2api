@@ -1,14 +1,9 @@
 import type { LocationQuery } from 'vue-router'
-import type {
-  QualityFilters,
-  QualityRun,
-  QualityTest
-} from '@/api/modelQuality'
+import type { QualityFilters, QualityRun, QualityTest } from '@/api/modelQuality'
 import { qualityLabels, qualityTestState } from '@/api/modelQuality'
 
 export function qualityFilters(query: LocationQuery): QualityFilters {
-  const text = (key: string) =>
-    typeof query[key] === 'string' ? (query[key] as string) : ''
+  const text = (key: string) => (typeof query[key] === 'string' ? (query[key] as string) : '')
   const positive = (key: string, fallback: number) => {
     const value = Number(text(key))
     return Number.isSafeInteger(value) && value > 0 ? value : fallback
@@ -19,17 +14,11 @@ export function qualityFilters(query: LocationQuery): QualityFilters {
     group_id: positive('group_id', 0),
     page: positive('page', 1),
     model: text('model'),
-    method: ['candy', 'pelican'].includes(method) ? method : '',
-    outcome: ['normal', 'degraded', 'failed', 'running', 'unknown'].includes(
-      outcome
-    )
-      ? outcome
-      : ''
+    method: /^[a-zA-Z0-9_-]{1,100}$/.test(method) ? method : '',
+    outcome: ['normal', 'degraded', 'failed', 'running', 'unknown'].includes(outcome) ? outcome : ''
   }
 }
-export function qualityFilterQuery(
-  filters: QualityFilters
-): Record<string, string> {
+export function qualityFilterQuery(filters: QualityFilters): Record<string, string> {
   const query: Record<string, string> = {}
   if (filters.group_id) query.group_id = String(filters.group_id)
   if (filters.page > 1) query.page = String(filters.page)
@@ -38,7 +27,7 @@ export function qualityFilterQuery(
   return query
 }
 export const qualityMethodName = (method: string) =>
-  method === 'pelican' ? '鹈鹕' : '糖果'
+  method === 'pelican' ? '鹈鹕' : method === 'candy' ? '糖果' : method
 export function qualityTestLabel(test: QualityTest) {
   const state = qualityTestState(test)
   return state === 'normal'

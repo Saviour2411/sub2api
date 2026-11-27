@@ -1,21 +1,21 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ModelQualitySettings from '../ModelQualitySettings.vue'
-
 const mocks = vi.hoisted(() => ({
   config: vi.fn(),
   save: vi.fn(),
   keys: vi.fn(),
   groups: vi.fn(),
-  runNow: vi.fn()
+  runNow: vi.fn(),
+  all: vi.fn()
 }))
 vi.mock('@/api/modelQuality', async (original) => ({
   ...(await original<typeof import('@/api/modelQuality')>()),
   modelQualityAPI: mocks
 }))
 vi.mock('@/api/admin/groups', () => ({
-  default: {
-    getAll: vi.fn().mockResolvedValue([{ id: 7, name: 'OpenAI 分组', status: 'active' }]),
+  groupsAPI: {
+    getAll: mocks.all,
     getModelAllowlistCandidates: vi.fn().mockResolvedValue(['model-a'])
   }
 }))
@@ -23,61 +23,109 @@ vi.mock('@/stores/app', () => ({
   useAppStore: () => ({ fetchPublicSettings: vi.fn(), showSuccess: vi.fn() })
 }))
 let wrapper: ReturnType<typeof mount> | undefined
+const call = (group_id: number) => ({
+  group_id,
+  key_id: 1,
+  protocol: 'responses',
+  model: 'model-a',
+  max_output_tokens: 8192,
+  timeout_seconds: 600
+})
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.all.mockResolvedValue([
+    { id: 7, name: '国产模型组', platform: 'openai', status: 'active' },
+    { id: 8, name: 'Claude 组', platform: 'anthropic', status: 'active' }
+  ])
   mocks.config.mockResolvedValue({
+    schema_version: 2,
     enabled: false,
     version: 1,
+    initialization_required: true,
     endpoint: 'https://api.example.net/v1',
+    questions: [
+      {
+        id: 'art',
+        name: '动画题',
+        prompt: '生成动画',
+        output_type: 'svg',
+        rule: {
+          kind: 'model',
+          judge_prompt: '判断',
+          judge: { ...call(8), protocol: 'messages', model: 'judge-model' }
+        }
+      }
+    ],
     groups: [
       {
         group_id: 7,
-        key_id: null,
         interval_minutes: 60,
-        models: [],
-        methods: ['candy', 'pelican'],
-        reasoning_effort: 'low'
+        targets: [{ ...call(7), id: 'target-a', question_ids: ['art'] }]
       }
     ]
   })
-  mocks.keys.mockResolvedValue([{ id: 1, name: '测试密钥', masked_key: 'sk-••••abcd' }])
+  mocks.keys.mockResolvedValue([{ id: 1, name: '测试密钥', masked_key: 'sk-****abcd' }])
   mocks.groups.mockResolvedValue([])
   mocks.save.mockImplementation((config) => Promise.resolve(config))
 })
 afterEach(() => wrapper?.unmount())
-describe('降智检测设置', () => {
-  it('至少选择一个模型，允许未绑定密钥保存', async () => {
+describe('多平台自定义降智检测设置', () => {
+  it('读取全部平台并分别保存被测模型和判题模型', async () => {
     wrapper = mount(ModelQualitySettings)
     await flushPromises()
-    await wrapper.get('form').trigger('submit')
-    expect(wrapper.text()).toContain('至少选择一个检测模型')
-    expect(mocks.save).not.toHaveBeenCalled()
-    await wrapper.get('[aria-label="补充模型 ID"]').setValue('custom-model')
-    await wrapper.get('[aria-label="添加模型"]').trigger('click')
+    expect(mocks.all).toHaveBeenCalledWith()
+    expect(mocks.keys).toHaveBeenCalledWith(7)
+    expect(mocks.keys).toHaveBeenCalledWith(8)
+    expect(wrapper.text()).toContain('sk-****abcd')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
     expect(mocks.save).toHaveBeenCalledWith(
       expect.objectContaining({
-        enabled: false,
+        questions: [
+          expect.objectContaining({
+            rule: expect.objectContaining({
+              judge: expect.objectContaining({
+                group_id: 8,
+                protocol: 'messages'
+              })
+            })
+          })
+        ],
         groups: [
           expect.objectContaining({
-            key_id: null,
-            models: ['custom-model'],
-            methods: ['candy', 'pelican'],
-            interval_minutes: 60,
-            reasoning_effort: 'low'
+            targets: [expect.objectContaining({ group_id: 7, protocol: 'responses' })]
           })
         ]
       })
     )
-    expect(wrapper.text()).toContain('待绑定密钥')
   })
-  it('只展示脱敏密钥并说明第三方检测消耗', async () => {
+  it('无效扩展JSON阻止保存，修正后可以保存', async () => {
     wrapper = mount(ModelQualitySettings)
     await flushPromises()
-    expect(mocks.keys).toHaveBeenCalledWith(7)
-    expect(wrapper.text()).toContain('sk-••••abcd')
-    expect(wrapper.text()).toContain('交给满血AI')
-    expect(wrapper.text()).toContain('消耗该密钥额度')
+    const extra = wrapper.findAll('.quality-extra textarea')[0]
+    await extra.setValue('{bad')
+    await wrapper.get('form').trigger('submit')
+    expect(mocks.save).not.toHaveBeenCalled()
+    await extra.setValue('{"temperature":0}')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(mocks.save).toHaveBeenCalledTimes(1)
+  })
+  it('删除题目同步清除模型绑定，草稿允许保存', async () => {
+    wrapper = mount(ModelQualitySettings)
+    await flushPromises()
+    await wrapper.get('[aria-label="删除题目"]').trigger('click')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(mocks.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        questions: [],
+        groups: [
+          expect.objectContaining({
+            targets: [expect.objectContaining({ question_ids: [] })]
+          })
+        ]
+      })
+    )
   })
 })

@@ -42,15 +42,16 @@ type ModelQualityConfig struct {
 }
 
 type ModelQualityGroupState struct {
-	GroupID       int64      `json:"group_id"`
-	Name          string     `json:"name"`
-	Models        []string   `json:"models"`
-	Methods       []string   `json:"methods"`
-	Status        string     `json:"status"`
-	PauseReason   string     `json:"pause_reason,omitempty"`
-	Running       bool       `json:"running"`
-	LastStartedAt *time.Time `json:"last_started_at"`
-	NextRunAt     *time.Time `json:"next_run_at"`
+	Questions     []ModelQualityQuestionSummary `json:"questions,omitempty"`
+	GroupID       int64                         `json:"group_id"`
+	Name          string                        `json:"name"`
+	Models        []string                      `json:"models"`
+	Methods       []string                      `json:"methods"`
+	Status        string                        `json:"status"`
+	PauseReason   string                        `json:"pause_reason,omitempty"`
+	Running       bool                          `json:"running"`
+	LastStartedAt *time.Time                    `json:"last_started_at"`
+	NextRunAt     *time.Time                    `json:"next_run_at"`
 }
 
 type ModelQualityTest struct {

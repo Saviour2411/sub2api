@@ -1,4 +1,4 @@
-import { modelQualityAPI, type QualityRun } from '@/api/modelQuality'
+import { modelQualityAPI, type QualityRun, type QualityRunID } from '@/api/modelQuality'
 
 type Priority = 'detail' | 'visible' | 'prefetch'
 type Invalidation = 'changed' | 'expired' | 'reset' | 'denied'
@@ -8,7 +8,7 @@ interface CacheEntry {
   bytes: number
 }
 interface Job {
-  id: number
+  id: QualityRunID
   priority: number
   started: boolean
   consumers: number
@@ -36,7 +36,11 @@ export function qualityRunVersion(run: QualityRun): string {
       t.status,
       t.verdict,
       t.finished_at,
-      t.has_html
+      t.has_html,
+      t.generation?.status,
+      t.judgment?.status,
+      t.judgment?.attempts,
+      t.previous_judgments?.length
     ])
   ])
 }
@@ -46,11 +50,7 @@ export function qualityRequestStatus(error: unknown): number | undefined {
 }
 export function isQualityAbort(error: unknown): boolean {
   const e = error as { name?: string; code?: string }
-  return (
-    e?.name === 'AbortError' ||
-    e?.name === 'CanceledError' ||
-    e?.code === 'ERR_CANCELED'
-  )
+  return e?.name === 'AbortError' || e?.name === 'CanceledError' || e?.code === 'ERR_CANCELED'
 }
 const cancelled = () => new DOMException('作品请求已取消', 'AbortError')
 
@@ -72,17 +72,17 @@ export function createModelQualityLoader(options: LoaderOptions = {}) {
   const maxBytes = options.maxBytes ?? 32 * 1024 * 1024
   const ttl = options.ttl ?? 5 * 60 * 1000
   const concurrency = options.concurrency ?? 4
-  const cache = new Map<number, CacheEntry>()
-  const versions = new Map<number, string>()
-  const jobs = new Map<number, Job>()
+  const cache = new Map<QualityRunID, CacheEntry>()
+  const versions = new Map<QualityRunID, string>()
+  const jobs = new Map<QualityRunID, Job>()
   const active = new Set<Job>()
-  const listeners = new Set<(id: number | null, reason: Invalidation) => void>()
+  const listeners = new Set<(id: QualityRunID | null, reason: Invalidation) => void>()
   let bytes = 0
   let allowedGroups: Set<number> | undefined
   let timer: ReturnType<typeof setTimeout> | undefined
-  const notify = (id: number | null, reason: Invalidation) =>
+  const notify = (id: QualityRunID | null, reason: Invalidation) =>
     listeners.forEach((fn) => fn(id, reason))
-  function remove(id: number) {
+  function remove(id: QualityRunID) {
     const entry = cache.get(id)
     if (entry) bytes -= entry.bytes
     cache.delete(id)
@@ -96,9 +96,7 @@ export function createModelQualityLoader(options: LoaderOptions = {}) {
       if (Date.parse(entry.run.expires_at) <= now()) notify(id, 'expired')
     }
     if (cache.size) {
-      const next = Math.min(
-        ...Array.from(cache.values(), (entry) => entry.until)
-      )
+      const next = Math.min(...Array.from(cache.values(), (entry) => entry.until))
       timer = setTimeout(sweep, Math.max(1, next - now()))
     }
   }
@@ -107,7 +105,7 @@ export function createModelQualityLoader(options: LoaderOptions = {}) {
     job.controller.abort()
     job.reject(cancelled())
   }
-  function invalidate(id: number, reason: Invalidation = 'changed') {
+  function invalidate(id: QualityRunID, reason: Invalidation = 'changed') {
     remove(id)
     const job = jobs.get(id)
     if (job) cancelJob(job)
@@ -135,8 +133,7 @@ export function createModelQualityLoader(options: LoaderOptions = {}) {
     if (size > maxBytes) return
     cache.set(run.id, { run, until, bytes: size })
     bytes += size
-    while (cache.size > maxEntries || bytes > maxBytes)
-      remove(cache.keys().next().value!)
+    while (cache.size > maxEntries || bytes > maxBytes) remove(cache.keys().next().value!)
     sweep()
   }
   function pump() {
@@ -151,8 +148,7 @@ export function createModelQualityLoader(options: LoaderOptions = {}) {
       void Promise.resolve()
         .then(() => fetchRun(job.id, job.controller.signal))
         .then((run) => {
-          if (jobs.get(job.id) !== job || job.controller.signal.aborted)
-            throw cancelled()
+          if (jobs.get(job.id) !== job || job.controller.signal.aborted) throw cancelled()
           if (
             !Number.isFinite(Date.parse(run.expires_at)) ||
             Date.parse(run.expires_at) <= now() ||
@@ -192,8 +188,7 @@ export function createModelQualityLoader(options: LoaderOptions = {}) {
         done = true
         signal?.removeEventListener('abort', abort)
         job.consumers--
-        if (!job.started && !job.consumers && jobs.get(job.id) === job)
-          cancelJob(job)
+        if (!job.started && !job.consumers && jobs.get(job.id) === job) cancelJob(job)
         return true
       }
       const abort = () => {
@@ -212,7 +207,7 @@ export function createModelQualityLoader(options: LoaderOptions = {}) {
     })
   }
   function load(
-    id: number,
+    id: QualityRunID,
     settings: {
       priority?: Priority
       signal?: AbortSignal
@@ -228,9 +223,7 @@ export function createModelQualityLoader(options: LoaderOptions = {}) {
       return Promise.resolve(entry.run)
     }
     if (settings.force) remove(id)
-    const priority = { detail: 0, visible: 1, prefetch: 2 }[
-      settings.priority ?? 'visible'
-    ]
+    const priority = { detail: 0, visible: 1, prefetch: 2 }[settings.priority ?? 'visible']
     let job = jobs.get(id)
     if (!job) {
       let resolve!: Job['resolve'], reject!: Job['reject']
@@ -261,12 +254,10 @@ export function createModelQualityLoader(options: LoaderOptions = {}) {
       const previous = versions.get(run.id)
       versions.set(run.id, version)
       if (Date.parse(run.expires_at) <= now()) invalidate(run.id, 'expired')
-      else if (previous !== undefined && previous !== version)
-        invalidate(run.id)
+      else if (previous !== undefined && previous !== version) invalidate(run.id)
     }
     for (const id of versions.keys()) {
-      if (!current.has(id) && !cache.has(id) && !jobs.has(id))
-        versions.delete(id)
+      if (!current.has(id) && !cache.has(id) && !jobs.has(id)) versions.delete(id)
     }
   }
   return {
@@ -279,11 +270,11 @@ export function createModelQualityLoader(options: LoaderOptions = {}) {
       for (const [id, entry] of cache)
         if (!allowedGroups.has(entry.run.group_id)) invalidate(id, 'expired')
     },
-    prioritize(id: number) {
+    prioritize(id: QualityRunID) {
       const job = jobs.get(id)
       if (job) job.priority = Math.min(job.priority, 1)
     },
-    subscribe(listener: (id: number | null, reason: Invalidation) => void) {
+    subscribe(listener: (id: QualityRunID | null, reason: Invalidation) => void) {
       listeners.add(listener)
       return () => {
         listeners.delete(listener)

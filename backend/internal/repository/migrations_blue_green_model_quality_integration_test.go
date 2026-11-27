@@ -42,7 +42,7 @@ func TestBlueGreenModelQualityCompleteUpgradeAndReplay(t *testing.T) {
 	names, err := fs.Glob(migrations.FS, "*.sql")
 	require.NoError(t, err)
 	for _, name := range names {
-		if name == blueGreenModelQualityMigration.Filename {
+		if name == blueGreenModelQualityMigration.Filename || name == blueGreenQualityV2Migration.Filename {
 			continue
 		}
 		raw, err := migrations.FS.ReadFile(name)
@@ -54,7 +54,10 @@ func TestBlueGreenModelQualityCompleteUpgradeAndReplay(t *testing.T) {
 	require.NoError(t, err)
 	var before string
 	require.NoError(t, conn.QueryRowContext(context.Background(), "SHOW statement_timeout").Scan(&before))
-	require.NoError(t, applyMigrationsFSWithPolicy(context.Background(), db, migrations.FS,
+	raw246, err := migrations.FS.ReadFile(blueGreenModelQualityMigration.Filename)
+	require.NoError(t, err)
+	old[blueGreenModelQualityMigration.Filename] = &fstest.MapFile{Data: raw246}
+	require.NoError(t, applyMigrationsFSWithPolicy(context.Background(), db, old,
 		&blueGreenMigrationPolicy{Version: 1, Migrations: []blueGreenMigration{blueGreenModelQualityMigration}}))
 	config, err := NewModelQualityRepository(db).Config(context.Background())
 	require.NoError(t, err)

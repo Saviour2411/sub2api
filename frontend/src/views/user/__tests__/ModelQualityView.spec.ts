@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   groups: vi.fn(),
   runs: vi.fn(),
   detail: vi.fn(),
+  rejudge: vi.fn(),
   fetchSettings: vi.fn(),
   copy: vi.fn()
 }))
@@ -24,11 +25,13 @@ vi.mock('@/api/modelQuality', async (original) => ({
   modelQualityAPI: mocks
 }))
 vi.mock('@/stores/auth', () => ({
-  useAuthStore: () => ({ user: { id: 1 }, isAuthenticated: true })
+  useAuthStore: () => ({ user: { id: 1 }, isAuthenticated: true, isAdmin: true })
 }))
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
     fetchPublicSettings: mocks.fetchSettings,
+    showSuccess: vi.fn(),
+    showError: vi.fn(),
     cachedPublicSettings: { model_quality_enabled: true }
   })
 }))
@@ -95,6 +98,7 @@ describe('紧凑画廊与独立详情', () => {
     await wrapper.get('.quality-card-open').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/model-quality/runs/9')
+    await wrapper.findAll('[aria-label="检测题目"] button')[1].trigger('click')
     expect(wrapper.get('pre').text()).toContain('<script>danger()</script>')
     expect(wrapper.find('script').exists()).toBe(false)
     expect(wrapper.text()).toContain('回答正确')
@@ -258,3 +262,14 @@ describe('紧凑画廊与独立详情', () => {
     expect(wrapper.find('quality-preview-stub').exists()).toBe(false)
   })
 })
+
+ it('UUID记录仅重判已存档作品，不再次发起生成', async () => {
+  const id = 'v2-12345678-1234-4234-8234-123456789abc'
+  const run = qualityRun(9, { id, tests: [{ id: '12345678-1234-4234-8234-123456789def', benchmark: 'custom-art', name: '自定义动画', output_type: 'svg', rule_kind: 'model', status: 'failed', verdict: 'unknown', reason: '判题失败', has_html: true, html: '<svg/>', answer: '<svg/>', duration_ms: 100, finished_at: null, generation: { status: 'completed', answer: '<svg/>', attempts: 1, duration_ms: 80 }, judgment: { status: 'failed', reason: '网络中断', attempts: 1, duration_ms: 20 } }] })
+  mocks.detail.mockResolvedValue(run); mocks.rejudge.mockResolvedValue({ queued: true })
+  await view('/model-quality/runs/' + id)
+  expect(wrapper.text()).toContain('自定义动画')
+  await wrapper.findAll('button').find(b => b.text().includes('仅重新判题'))!.trigger('click'); await flushPromises()
+  expect(mocks.rejudge).toHaveBeenCalledWith(run.tests[0].id)
+  expect(mocks.detail).toHaveBeenCalledTimes(2)
+ })

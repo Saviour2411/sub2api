@@ -7,9 +7,7 @@
       <div v-if="loading" class="quality-empty" role="status">正在加载详情</div>
       <div v-else-if="error" class="quality-empty" role="alert">
         <h2>{{ error }}</h2>
-        <button class="quality-inline-button" @click="refresh(true)">
-          重试
-        </button>
+        <button class="quality-inline-button" @click="refresh(true)">重试</button>
       </div>
       <template v-else-if="detail">
         <header class="quality-detail-heading">
@@ -22,83 +20,129 @@
             </h1>
             <p>
               {{ detail.group_name }} · {{ qualityTime(detail.started_at) }} ·
-              推理程度 {{ detail.reasoning_effort }}
+              {{ detail.protocol || '旧版记录' }} · 推理强度
+              {{ detail.reasoning_effort || '默认' }}
             </p>
           </div>
-          <span class="quality-muted"
-            >检测耗时 {{ qualityDuration(detail) }}</span
-          >
+          <span class="quality-muted">检测耗时 {{ qualityDuration(detail) }}</span>
         </header>
-        <div
-          class="quality-detail-layout"
-          :class="{ 'quality-detail-candy': !pelican }"
-        >
-          <section v-if="pelican" class="quality-detail-art">
-            <h3>
-              鹈鹕作品<span
-                class="quality-badge"
-                :data-state="qualityTestState(pelican)"
-                >{{ qualityTestLabel(pelican) }}</span
-              >
-              <button
-                v-if="pelican.html"
-                class="quality-icon-button quality-section-action"
-                :disabled="!canFullscreen"
-                title="全屏查看作品"
-                aria-label="全屏查看作品"
-                @click="fullscreen"
-              >
-                <Icon name="externalLink" size="sm" />
-              </button>
-            </h3>
-            <div ref="artwork" class="quality-detail-artwork">
-              <QualityPreview
-                v-if="pelican.html"
-                :key="detail.id"
-                :run-id="detail.id"
-                :html="pelican.html"
-                :expires-at="detail.expires_at"
-                :version="qualityRunVersion(detail)"
-                interactive
-              />
-              <div v-else class="quality-art-empty">
-                {{ qualityTestLabel(pelican) }}
+        <nav class="quality-result-tabs quality-detail-tabs" aria-label="检测题目">
+          <button
+            v-for="test in detail.tests"
+            :key="test.id || test.benchmark"
+            :class="{ active: activeTest === test }"
+            :aria-pressed="activeTest === test"
+            @click="selected = test.id || test.benchmark"
+          >
+            {{ test.name || qualityMethodName(test.benchmark) }} ·
+            {{ qualityTestLabel(test) }}
+          </button>
+        </nav>
+        <template v-if="activeTest">
+          <div
+            class="quality-detail-layout"
+            :class="{ 'quality-detail-candy': !activeTest.has_html }"
+          >
+            <section v-if="activeTest.has_html" class="quality-detail-art">
+              <h3>
+                {{ activeTest.name || '作品预览'
+                }}<button
+                  class="quality-icon-button quality-section-action"
+                  :disabled="!canFullscreen"
+                  title="全屏查看作品"
+                  aria-label="全屏查看作品"
+                  @click="fullscreen"
+                >
+                  <Icon name="externalLink" size="sm" />
+                </button>
+              </h3>
+              <div ref="artwork" class="quality-detail-artwork">
+                <QualityPreview
+                  :key="activeTest.id || activeTest.benchmark"
+                  :run-id="detail.id"
+                  :test-id="activeTest.id || activeTest.benchmark"
+                  :html="activeTest.html"
+                  :expires-at="detail.expires_at"
+                  :version="qualityRunVersion(detail)"
+                  interactive
+                />
               </div>
-            </div>
-            <p>{{ pelican.reason || '等待判定' }}</p>
-          </section>
-          <section v-if="candy" class="quality-detail-answer">
-            <h3>
-              糖果回答<span
-                class="quality-badge"
-                :data-state="qualityTestState(candy)"
-                >{{ qualityTestLabel(candy) }}</span
-              >
+            </section>
+            <section class="quality-detail-answer">
+              <h3>
+                {{ activeTest.has_html ? '作品源码' : '模型回答'
+                }}<button
+                  class="quality-icon-button quality-section-action"
+                  :disabled="!activeTest.answer && !activeTest.generation?.answer"
+                  title="复制回答"
+                  aria-label="复制回答"
+                  @click="copyToClipboard(activeTest.answer || activeTest.generation?.answer || '')"
+                >
+                  <Icon :name="copied ? 'check' : 'copy'" size="sm" />
+                </button>
+              </h3>
+              <pre>{{ activeTest.answer || activeTest.generation?.answer || '暂无答案' }}</pre>
+              <p>
+                <span class="quality-badge" :data-state="qualityTestState(activeTest)">{{
+                  qualityTestLabel(activeTest)
+                }}</span>
+                {{ activeTest.reason || '等待判定' }}
+              </p>
+            </section>
+          </div>
+          <section v-if="activeTest.judgment" class="quality-judgment">
+            <div class="quality-heading">
+              <h3>判题结果 · {{ activeTest.judge_model }}</h3>
               <button
-                class="quality-icon-button quality-section-action"
-                :disabled="!candy.answer"
-                title="复制回答"
-                aria-label="复制回答"
-                @click="copyToClipboard(candy.answer || '')"
+                v-if="
+                  auth.isAdmin &&
+                  activeTest.rule_kind === 'model' &&
+                  activeTest.generation?.status === 'completed'
+                "
+                class="btn btn-secondary"
+                :disabled="
+                  rejudging.includes(activeTest.id || '') ||
+                  ['pending', 'generating', 'ready_judge', 'judging'].includes(activeTest.status) ||
+                  (activeTest.previous_judgments?.length || 0) >= 3
+                "
+                @click="rejudge(activeTest)"
               >
-                <Icon :name="copied ? 'check' : 'copy'" size="sm" />
+                <Icon name="refresh" size="sm" />仅重新判题
               </button>
-            </h3>
-            <pre>{{ candy.answer || '暂无答案' }}</pre>
-            <p>{{ candy.reason || '等待判定' }}</p>
+            </div>
+            <pre>{{
+              activeTest.judgment.answer ||
+              activeTest.judgment.reason ||
+              qualityLabels[activeTest.judgment.status]
+            }}</pre>
           </section>
-        </div>
+        </template>
         <section class="quality-execution">
           <h3>执行信息</h3>
-          <div v-for="test in detail.tests" :key="test.benchmark">
-            <strong>{{ qualityMethodName(test.benchmark) }}</strong>
-            <span>{{ qualityTestLabel(test) }}</span
-            ><span>{{ (test.duration_ms / 1000).toFixed(1) }} 秒</span>
-            <span>输入 {{ test.input_tokens ?? '—' }}</span
-            ><span>输出 {{ test.output_tokens ?? '—' }}</span>
-            <span>推理 {{ test.reasoning_tokens ?? '—' }}</span
-            ><span>完成时间 {{ qualityTime(test.finished_at) }}</span>
-          </div>
+          <template v-for="test in detail.tests" :key="test.id || test.benchmark"
+            ><div
+              v-for="phase in test.generation
+                ? [
+                    { label: '生成', ...test.generation },
+                    ...(test.previous_judgments || []).map((p, i) => ({
+                      label: '历史判题 ' + (i + 1),
+                      ...p
+                    })),
+                    ...(test.judgment ? [{ label: '判题', ...test.judgment }] : [])
+                  ]
+                : [{ label: '旧版检测', ...test }]"
+              :key="phase.label"
+            >
+              <strong
+                >{{ test.name || qualityMethodName(test.benchmark) }} · {{ phase.label }}</strong
+              ><span>{{ qualityLabels[phase.status] || phase.status }}</span
+              ><span>{{ (phase.duration_ms / 1000).toFixed(1) }} 秒</span
+              ><span>输入 {{ phase.input_tokens ?? '—' }}</span
+              ><span>输出 {{ phase.output_tokens ?? '—' }}</span
+              ><span>推理 {{ phase.reasoning_tokens ?? '—' }}</span
+              ><span>{{ qualityTime(phase.finished_at) }}</span>
+            </div></template
+          >
         </section>
       </template>
     </div>
@@ -115,8 +159,10 @@ import {
   qualityLabels,
   qualityTestState,
   qualityTime,
-  type QualityRun
+  type QualityRun,
+  type QualityTest
 } from '@/api/modelQuality'
+import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import { useModelQualityStore } from '@/stores/modelQuality'
 import { useClipboard } from '@/composables/useClipboard'
@@ -141,19 +187,22 @@ const route = useRoute(),
   app = useAppStore(),
   session = useModelQualityStore()
 const { copied, copyToClipboard } = useClipboard()
-const id = computed(() => Number(route.params.id))
+const auth = useAuthStore()
+const rejudging = ref<string[]>([])
+const id = computed(() =>
+  /^\d+$/.test(String(route.params.id)) ? Number(route.params.id) : String(route.params.id)
+)
 const detail = ref<QualityRun>(),
   error = ref(''),
   loading = ref(true),
   artwork = ref<HTMLElement>()
-const candy = computed(() =>
-  detail.value?.tests.find((test) => test.benchmark === 'candy')
+const selected = ref('')
+const activeTest = computed(
+  () =>
+    detail.value?.tests.find((t) => (t.id || t.benchmark) === selected.value) ||
+    detail.value?.tests[0]
 )
-const pelican = computed(() =>
-  detail.value?.tests.find((test) => test.benchmark === 'pelican')
-)
-const canFullscreen =
-  typeof document.documentElement.requestFullscreen === 'function'
+const canFullscreen = typeof document.documentElement.requestFullscreen === 'function'
 let disposed = false,
   refreshing = false,
   requestGeneration = 0
@@ -173,15 +222,11 @@ function clearDetail(message: string) {
 const unsubscribe = session.loader.subscribe((runId, reason) => {
   if (runId !== null && runId !== id.value) return
   if (reason !== 'changed')
-    clearDetail(
-      reason === 'expired'
-        ? '作品已过期或暂不可用'
-        : '检测记录已失效，请重新加载'
-    )
+    clearDetail(reason === 'expired' ? '作品已过期或暂不可用' : '检测记录已失效，请重新加载')
 })
 async function refresh(force = false) {
   if (refreshing || document.hidden || disposed) return
-  if (!Number.isSafeInteger(id.value) || id.value <= 0) {
+  if (!/^(?:[1-9][0-9]*|v1-[1-9][0-9]*|v2-[0-9a-f-]{36})$/.test(String(id.value))) {
     clearDetail('检测记录不存在')
     return
   }
@@ -193,12 +238,7 @@ async function refresh(force = false) {
   controller = request
   try {
     const groups = await modelQualityAPI.groups(request.signal)
-    if (
-      disposed ||
-      generation !== requestGeneration ||
-      scope !== session.generation
-    )
-      return
+    if (disposed || generation !== requestGeneration || scope !== session.generation) return
     session.loader.setGroups(groups.map((group) => group.group_id))
     if (!groups.length) {
       clearDetail('降智检测已关闭或当前记录不可访问')
@@ -213,12 +253,7 @@ async function refresh(force = false) {
             force
           })
         : detail.value
-    if (
-      disposed ||
-      generation !== requestGeneration ||
-      scope !== session.generation
-    )
-      return
+    if (disposed || generation !== requestGeneration || scope !== session.generation) return
     if (!groups.some((group) => group.group_id === value.group_id)) {
       session.loader.invalidate(id.value, 'expired')
       return
@@ -255,10 +290,23 @@ async function refresh(force = false) {
     }
   }
 }
+async function rejudge(test: QualityTest) {
+  if (!test.id) return
+  rejudging.value.push(test.id)
+  try {
+    await modelQualityAPI.rejudge(test.id)
+    session.loader.invalidate(id.value, 'changed')
+    await refresh(true)
+    app.showSuccess('已加入重新判题队列')
+  } catch (e) {
+    app.showError(extractApiErrorMessage(e, '无法重新判题'))
+  } finally {
+    rejudging.value = rejudging.value.filter((v) => v !== test.id)
+  }
+}
 function back() {
   const filters = qualityFilters(route.query)
-  if (!filters.group_id && detail.value)
-    filters.group_id = detail.value.group_id
+  if (!filters.group_id && detail.value) filters.group_id = detail.value.group_id
   void router.push({
     path: '/model-quality',
     query: qualityFilterQuery(filters)
@@ -295,3 +343,21 @@ onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', wake)
 })
 </script>
+
+<style scoped>
+.quality-detail-tabs {
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.quality-judgment {
+  padding: 24px 0;
+}
+.quality-judgment pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.quality-detail-answer pre {
+  max-height: 640px;
+  overflow: auto;
+}
+</style>

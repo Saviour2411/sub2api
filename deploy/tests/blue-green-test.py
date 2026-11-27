@@ -7,6 +7,7 @@ from pathlib import Path
 import socket
 import subprocess
 import sys
+import os
 import tempfile
 import time
 import unittest
@@ -129,7 +130,7 @@ class FakeDeployment(bg.Deployment):
 
 class BlueGreenTests(unittest.TestCase):
     def setUp(self):
-        cache = ROOT/".cache/tmp"
+        cache = Path(os.environ.get("SUB2API_TEST_TMPDIR", ROOT/".cache/tmp"))
         cache.mkdir(parents=True,exist_ok=True)
         self.temp = tempfile.TemporaryDirectory(prefix="bluegreen-test-",dir=cache)
         self.addCleanup(self.temp.cleanup)

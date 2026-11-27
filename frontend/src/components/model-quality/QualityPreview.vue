@@ -1,9 +1,5 @@
 <template>
-  <div
-    ref="host"
-    class="quality-preview"
-    :class="{ 'quality-preview-interactive': interactive }"
-  >
+  <div ref="host" class="quality-preview" :class="{ 'quality-preview-interactive': interactive }">
     <iframe
       v-if="visible && !failed"
       :key="frameVersion"
@@ -12,13 +8,9 @@
       :style="frameStyle"
       sandbox="allow-scripts"
       referrerpolicy="no-referrer"
-      title="鹈鹕作品动画"
+      title="检测作品预览"
     />
-    <div
-      v-if="failed || !content || !ready"
-      class="quality-preview-placeholder"
-      role="status"
-    >
+    <div v-if="failed || !content || !ready" class="quality-preview-placeholder" role="status">
       <Icon :name="failed ? 'exclamationCircle' : 'refresh'" size="lg" />
       <span>{{ failed ? '作品已过期或暂不可用' : '作品加载中' }}</span>
     </div>
@@ -28,14 +20,13 @@
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { buildApiUrl } from '@/api/url'
 import { useModelQualityStore } from '@/stores/modelQuality'
-import {
-  isQualityAbort,
-  scheduleQualityExpiry
-} from '@/utils/modelQualityLoader'
+import { isQualityAbort, scheduleQualityExpiry } from '@/utils/modelQualityLoader'
+import type { QualityRunID } from '@/api/modelQuality'
 import Icon from '@/components/icons/Icon.vue'
 
 const props = defineProps<{
-  runId: number
+  runId: QualityRunID
+  testId?: string
   html?: string
   expiresAt?: string
   version?: string
@@ -58,8 +49,7 @@ const frameStyle = computed(() => ({
 }))
 let visibilityObserver: IntersectionObserver | undefined,
   preloadObserver: IntersectionObserver | undefined
-let resizeObserver: ResizeObserver | undefined,
-  controller: AbortController | undefined
+let resizeObserver: ResizeObserver | undefined, controller: AbortController | undefined
 let cancelExpiry: (() => void) | undefined
 let inViewport = false,
   nearViewport = false,
@@ -91,9 +81,7 @@ function setExpiry(value?: string) {
     loader.invalidate(props.runId, 'expired')
     return false
   }
-  cancelExpiry = scheduleQualityExpiry(value!, () =>
-    loader.invalidate(props.runId, 'expired')
-  )
+  cancelExpiry = scheduleQualityExpiry(value!, () => loader.invalidate(props.runId, 'expired'))
   return true
 }
 function send() {
@@ -104,25 +92,17 @@ function send() {
     !delivered &&
     (!contentExpires || contentExpires > Date.now())
   ) {
-    frame.value?.contentWindow?.postMessage(
-      { type: 'quality-artwork', html: content.value },
-      '*'
-    )
+    frame.value?.contentWindow?.postMessage({ type: 'quality-artwork', html: content.value }, '*')
     delivered = true
   }
 }
 function receive(event: MessageEvent) {
-  if (
-    event.source !== frame.value?.contentWindow ||
-    event.data?.type !== 'quality-ready'
-  )
-    return
+  if (event.source !== frame.value?.contentWindow || event.data?.type !== 'quality-ready') return
   ready.value = true
   send()
 }
 async function ensureContent() {
-  if (blocked || disposed || document.hidden || (!nearViewport && !inViewport))
-    return
+  if (blocked || disposed || document.hidden || (!nearViewport && !inViewport)) return
   if (content.value) {
     send()
     return
@@ -148,16 +128,14 @@ async function ensureContent() {
   try {
     const run = await loader.load(props.runId, {
       signal: request.signal,
-      priority: props.interactive
-        ? 'detail'
-        : inViewport
-          ? 'visible'
-          : 'prefetch'
+      priority: props.interactive ? 'detail' : inViewport ? 'visible' : 'prefetch'
     })
     if (current !== generation || disposed || request.signal.aborted) return
     if (!setExpiry(run.expires_at)) return
     const html =
-      run.tests.find((test) => test.benchmark === 'pelican')?.html || ''
+      run.tests.find((test) =>
+        props.testId ? test.id === props.testId || test.benchmark === props.testId : test.has_html
+      )?.html || ''
     if (!html || html.length > 5242880) {
       failed.value = true
       return
@@ -189,7 +167,7 @@ const unsubscribe = loader.subscribe((id, reason) => {
   if (reason === 'changed') updateVisibility()
 })
 watch(
-  () => [props.runId, props.version, props.html, props.expiresAt],
+  () => [props.runId, props.testId, props.version, props.html, props.expiresAt],
   () => {
     reset()
     updateVisibility()
