@@ -65,6 +65,7 @@ func TestModelQualityTimeoutStageAndRequestID(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				ids <- r.Header.Get("X-Client-Request-Id")
 				if headers {
+					w.Header().Set("X-Client-Request-Id", "gateway-body-timeout")
 					w.WriteHeader(http.StatusOK)
 					w.(http.Flusher).Flush()
 				}
@@ -84,9 +85,47 @@ func TestModelQualityTimeoutStageAndRequestID(t *testing.T) {
 			require.ErrorContains(t, err, map[bool]string{false: "等待模型响应头超时", true: "接收模型正文超时"}[headers])
 			require.Equal(t, "failed", phase.Status)
 			require.NotEmpty(t, phase.RequestID)
-			require.Equal(t, <-ids, phase.RequestID)
+			sentID := <-ids
+			if headers {
+				require.Equal(t, "gateway-body-timeout", phase.RequestID)
+				require.NotEqual(t, sentID, phase.RequestID)
+			} else {
+				require.Equal(t, sentID, phase.RequestID)
+			}
 			require.NotNil(t, phase.StartedAt)
 			require.NotNil(t, phase.FinishedAt)
+		})
+	}
+}
+
+func TestModelQualityUsesGatewayResponseRequestID(t *testing.T) {
+	for protocol, payload := range map[string]string{
+		"chat_completions": `{"choices":[{"finish_reason":"stop","message":{"content":"21"}}]}`,
+		"responses":        `{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"21"}]}]}`,
+		"messages":         `{"stop_reason":"end_turn","content":[{"type":"text","text":"21"}]}`,
+		"gemini":           `{"candidates":[{"finishReason":"STOP","content":{"parts":[{"text":"21"}]}}]}`,
+	} {
+		t.Run(protocol, func(t *testing.T) {
+			for _, status := range []int{http.StatusOK, http.StatusBadGateway} {
+				ids := make(chan string, 1)
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					ids <- r.Header.Get("X-Client-Request-Id")
+					w.Header().Set("X-Client-Request-Id", "gateway-actual-request-id")
+					w.WriteHeader(status)
+					_, _ = w.Write([]byte(payload))
+				}))
+				defer server.Close()
+				client := &qualityProtocolClient{http: server.Client()}
+				phase, err := client.Call(context.Background(), server.URL, "key", ModelQualityCall{Protocol: protocol, Model: "test", MaxOutputTokens: 128000}, "", "题目")
+				if status == http.StatusOK {
+					require.NoError(t, err)
+					require.Equal(t, "21", phase.Answer)
+				} else {
+					require.Error(t, err)
+				}
+				require.Equal(t, "gateway-actual-request-id", phase.RequestID)
+				require.NotEqual(t, <-ids, phase.RequestID)
+			}
 		})
 	}
 }

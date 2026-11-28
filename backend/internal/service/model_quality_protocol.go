@@ -296,6 +296,10 @@ func (client *qualityProtocolClient) Call(ctx context.Context, endpoint, key str
 		return phase, fmt.Errorf("模型请求连接中断或结果不明确，未自动重发")
 	}
 	defer func() { _ = response.Body.Close() }()
+	// 网关会生成自己的计费关联 ID，必须保存响应标识，不能用发出的标识猜测账号。
+	if gatewayID := strings.TrimSpace(response.Header.Get("X-Client-Request-Id")); gatewayID != "" && len(gatewayID) <= 128 {
+		requestID = gatewayID
+	}
 	if response.StatusCode != http.StatusOK {
 		// 只有网关明确返回未受理的并发/速率限制才允许重试；不依据所有 503 推断未扣费。
 		rejected, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
