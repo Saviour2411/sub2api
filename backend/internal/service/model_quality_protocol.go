@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 )
 
@@ -265,7 +266,10 @@ func parseQualityResponse(protocol string, raw []byte) (ModelQualityPhase, error
 
 func (client *qualityProtocolClient) Call(ctx context.Context, endpoint, key string, call ModelQualityCall, system, prompt string) (phase ModelQualityPhase, err error) {
 	started := time.Now()
+	requestID := uuid.NewString()
 	defer func() {
+		phase.StartedAt = &started
+		phase.RequestID = requestID
 		now := time.Now()
 		phase.DurationMS = now.Sub(started).Milliseconds()
 		phase.FinishedAt = &now
@@ -283,10 +287,11 @@ func (client *qualityProtocolClient) Call(ctx context.Context, endpoint, key str
 		return phase, fmt.Errorf("无法创建模型请求")
 	}
 	request.Header = headers
+	request.Header.Set("X-Client-Request-Id", requestID)
 	response, err := client.http.Do(request)
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return phase, fmt.Errorf("模型请求超时，未自动重发")
+			return phase, fmt.Errorf("等待模型响应头超时（%d 秒），未自动重发", call.TimeoutSeconds)
 		}
 		return phase, fmt.Errorf("模型请求连接中断或结果不明确，未自动重发")
 	}
@@ -304,6 +309,9 @@ func (client *qualityProtocolClient) Call(ctx context.Context, endpoint, key str
 	}
 	payload, err := io.ReadAll(io.LimitReader(response.Body, ModelQualityMaxResponseBytes+1))
 	if err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return phase, fmt.Errorf("接收模型正文超时（%d 秒），未自动重发", call.TimeoutSeconds)
+		}
 		return phase, fmt.Errorf("模型响应接收中断，未自动重发")
 	}
 	if len(payload) > ModelQualityMaxResponseBytes {

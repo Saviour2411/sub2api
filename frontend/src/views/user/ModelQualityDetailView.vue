@@ -1,5 +1,5 @@
 <template>
-  <AppLayout quiet>
+  <AppLayout>
     <div class="quality-page quality-compact-page quality-detail-page">
       <button class="quality-back" @click="back">
         <Icon name="arrowLeft" size="sm" />返回检测画廊
@@ -34,8 +34,10 @@
             :aria-pressed="activeTest === test"
             @click="selected = test.id || test.benchmark"
           >
-            {{ test.name || qualityMethodName(test.benchmark) }} ·
-            {{ qualityTestLabel(test) }}
+            <span>{{ test.name || qualityMethodName(test.benchmark) }}</span>
+            <span class="quality-badge" :data-state="qualityTestState(test)">{{
+              qualityTestLabel(test)
+            }}</span>
           </button>
         </nav>
         <template v-if="activeTest">
@@ -70,7 +72,10 @@
             </section>
             <section class="quality-detail-answer">
               <h3>
-                {{ activeTest.has_html ? '作品源码' : '模型回答'
+                {{
+                  (activeTest.name || qualityMethodName(activeTest.benchmark)) +
+                  ' · ' +
+                  (activeTest.has_html ? '作品源码' : '模型回答')
                 }}<button
                   class="quality-icon-button quality-section-action"
                   :disabled="!activeTest.answer && !activeTest.generation?.answer"
@@ -81,7 +86,29 @@
                   <Icon :name="copied ? 'check' : 'copy'" size="sm" />
                 </button>
               </h3>
-              <pre>{{ activeTest.answer || activeTest.generation?.answer || '暂无答案' }}</pre>
+              <pre v-if="activeAnswer">{{ activeAnswer }}</pre>
+              <div
+                v-else
+                class="quality-answer-empty"
+                role="status"
+                :data-state="activeTest.status"
+              >
+                <Icon
+                  :name="
+                    ['pending', 'generating'].includes(activeTest.status)
+                      ? 'clock'
+                      : 'exclamationTriangle'
+                  "
+                  size="md"
+                />
+                <span>{{
+                  ['pending', 'generating'].includes(activeTest.status)
+                    ? activeTest.status === 'pending'
+                      ? '等待生成'
+                      : '正在生成，等待模型返回正文'
+                    : '本题未取得有效回答'
+                }}</span>
+              </div>
               <p>
                 <span class="quality-badge" :data-state="qualityTestState(activeTest)">{{
                   qualityTestLabel(activeTest)
@@ -90,9 +117,12 @@
               </p>
             </section>
           </div>
-          <section v-if="activeTest.judgment" class="quality-judgment">
+          <section
+            v-if="activeTest.judgment && activeTest.judgment.status !== 'pending'"
+            class="quality-judgment"
+          >
             <div class="quality-heading">
-              <h3>判题结果 · {{ activeTest.judge_model }}</h3>
+              <h3>判题结果 · {{ activeTest.judge_model || detail.model }}</h3>
               <button
                 v-if="
                   auth.isAdmin &&
@@ -136,7 +166,7 @@
               <strong
                 >{{ test.name || qualityMethodName(test.benchmark) }} · {{ phase.label }}</strong
               ><span>{{ qualityLabels[phase.status] || phase.status }}</span
-              ><span>{{ (phase.duration_ms / 1000).toFixed(1) }} 秒</span
+              ><span>{{ phaseDuration(phase) }}</span
               ><span>输入 {{ phase.input_tokens ?? '—' }}</span
               ><span>输出 {{ phase.output_tokens ?? '—' }}</span
               ><span>推理 {{ phase.reasoning_tokens ?? '—' }}</span
@@ -202,6 +232,19 @@ const activeTest = computed(
     detail.value?.tests.find((t) => (t.id || t.benchmark) === selected.value) ||
     detail.value?.tests[0]
 )
+const activeAnswer = computed(
+  () => activeTest.value?.answer || activeTest.value?.generation?.answer || ''
+)
+function phaseDuration(phase: { status: string; duration_ms: number; started_at?: string }) {
+  if (phase.status === 'running') {
+    if (!phase.started_at) return '进行中'
+    return (
+      Math.max(0, (Date.now() - Date.parse(phase.started_at)) / 1000).toFixed(0) + ' 秒 · 进行中'
+    )
+  }
+  if (phase.status === 'pending') return '等待开始'
+  return (phase.duration_ms / 1000).toFixed(1) + ' 秒'
+}
 const canFullscreen = typeof document.documentElement.requestFullscreen === 'function'
 let disposed = false,
   refreshing = false,
@@ -263,6 +306,12 @@ async function refresh(force = false) {
       return
     }
     detail.value = value
+    if (!value.tests.some((test) => (test.id || test.benchmark) === selected.value)) {
+      const requested = value.tests.find((test) => test.benchmark === route.query.method)
+      const answered = value.tests.find((test) => test.answer || test.generation?.answer)
+      const first = requested || answered || value.tests[0]
+      selected.value = first?.id || first?.benchmark || ''
+    }
     error.value = ''
     cancelExpiry?.()
     cancelExpiry = scheduleQualityExpiry(value.expires_at, () =>

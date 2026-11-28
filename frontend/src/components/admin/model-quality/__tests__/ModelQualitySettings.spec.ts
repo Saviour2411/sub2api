@@ -70,12 +70,29 @@ beforeEach(() => {
 })
 afterEach(() => wrapper?.unmount())
 describe('多平台自定义降智检测设置', () => {
-  it('读取全部平台并分别保存被测模型和判题模型', async () => {
+  it('新增模型采用128000输出上限和1200秒超时', async () => {
+    wrapper = mount(ModelQualitySettings)
+    await flushPromises()
+    const add = wrapper.findAll('button').find((button) => button.text() === '添加模型')!
+    await add.trigger('click')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(mocks.save.mock.lastCall?.[0].groups[0].targets[1]).toMatchObject({
+      max_output_tokens: 128000,
+      timeout_seconds: 1200
+    })
+    expect(mocks.save.mock.lastCall?.[0].groups[0].targets[0]).toMatchObject({
+      max_output_tokens: 8192,
+      timeout_seconds: 600
+    })
+  })
+  it('移除旧独立判题配置，只保存待测模型和判题提示词', async () => {
     wrapper = mount(ModelQualitySettings)
     await flushPromises()
     expect(mocks.all).toHaveBeenCalledWith()
     expect(mocks.keys).toHaveBeenCalledWith(7)
-    expect(mocks.keys).toHaveBeenCalledWith(8)
+    expect(mocks.keys).not.toHaveBeenCalledWith(8)
+    expect(wrapper.findAllComponents({ name: 'QualityCallFields' })).toHaveLength(1)
     expect(wrapper.text()).toContain('sk-****abcd')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
@@ -83,12 +100,7 @@ describe('多平台自定义降智检测设置', () => {
       expect.objectContaining({
         questions: [
           expect.objectContaining({
-            rule: expect.objectContaining({
-              judge: expect.objectContaining({
-                group_id: 8,
-                protocol: 'messages'
-              })
-            })
+            rule: { kind: 'model', judge_prompt: '判断' }
           })
         ],
         groups: [

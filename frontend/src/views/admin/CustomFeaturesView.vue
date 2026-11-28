@@ -1,5 +1,5 @@
 <template>
-  <AppLayout :quiet="activeTab === 'model-quality'">
+  <AppLayout>
     <div data-test="custom-features-content" class="mx-auto w-full max-w-[1600px] space-y-4">
       <div class="border-b border-gray-200 dark:border-dark-700">
         <nav class="flex gap-6 overflow-x-auto" role="tablist" :aria-label="t('admin.customFeatures.title')">

@@ -22,7 +22,7 @@ var qualityNumber = regexp.MustCompile(`^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?
 func DefaultModelQualityQuestions() []ModelQualityQuestion {
 	return []ModelQualityQuestion{
 		{ID: "example-candy", Name: "糖果题示例", Prompt: "一袋糖果，依次分给三个人。每次都给出当时袋中糖果数量的一半，再多给两颗；三次分完后袋中剩一颗。最初有多少颗糖果？只输出一个数字，不要解释。", OutputType: "text", Rule: ModelQualityRule{Kind: "number", Expected: "36"}},
-		{ID: "example-svg", Name: "鹈鹕骑自行车 SVG 动画示例", Prompt: "生成一个完整、独立的 SVG 动画，展示一只鹈鹕骑自行车。鹈鹕应有明显的长嘴和喉囊，双脚蹬踏，车轮转动。只输出 SVG 源码，不要 Markdown 代码围栏或说明，不使用外部资源。", OutputType: "svg", Rule: ModelQualityRule{Kind: "model", JudgePrompt: "根据原题和作品源码判断：是否包含可辨认的鹈鹕、自行车、车轮旋转与蹬踏动画，源码是否完整且不依赖外部资源。只从源码判断，不声称已经运行或看到渲染。全部满足时只输出通过，否则只输出不通过。", Judge: &ModelQualityCall{MaxOutputTokens: 8192, TimeoutSeconds: 600}}},
+		{ID: "example-svg", Name: "鹈鹕骑自行车 SVG 动画示例", Prompt: "生成一个完整、独立的 SVG 动画，展示一只鹈鹕骑自行车。鹈鹕应有明显的长嘴和喉囊，双脚蹬踏，车轮转动。只输出 SVG 源码，不要 Markdown 代码围栏或说明，不使用外部资源。", OutputType: "svg", Rule: ModelQualityRule{Kind: "model", JudgePrompt: "根据原题和作品源码判断：是否包含可辨认的鹈鹕、自行车、车轮旋转与蹬踏动画，源码是否完整且不依赖外部资源。只从源码判断，不声称已经运行或看到渲染。全部满足时只输出通过，否则只输出不通过。"}},
 	}
 }
 
@@ -53,11 +53,14 @@ func (s *ModelQualityService) ConfigV2(ctx context.Context) (*ModelQualityV2Conf
 		for _, previous := range old.Groups {
 			g := ModelQualityV2GroupConfig{GroupID: previous.GroupID, IntervalMinutes: previous.IntervalMinutes, Targets: []ModelQualityTarget{}}
 			for i, model := range previous.Models {
-				g.Targets = append(g.Targets, ModelQualityTarget{ID: fmt.Sprintf("legacy-%d-%d", g.GroupID, i), ModelQualityCall: ModelQualityCall{GroupID: g.GroupID, KeyID: previous.KeyID, OwnerID: previous.OwnerID, Model: model, ReasoningEffort: previous.ReasoningEffort, MaxOutputTokens: 8192, TimeoutSeconds: 600}, QuestionIDs: []string{"example-candy", "example-svg"}})
+				g.Targets = append(g.Targets, ModelQualityTarget{ID: fmt.Sprintf("legacy-%d-%d", g.GroupID, i), ModelQualityCall: ModelQualityCall{GroupID: g.GroupID, KeyID: previous.KeyID, OwnerID: previous.OwnerID, Model: model, ReasoningEffort: previous.ReasoningEffort, MaxOutputTokens: ModelQualityDefaultMaxOutputTokens, TimeoutSeconds: ModelQualityDefaultTimeoutSeconds}, QuestionIDs: []string{"example-candy", "example-svg"}})
 			}
 			c.Groups = append(c.Groups, g)
 		}
 		c.Enabled = false
+	}
+	for i := range c.Questions {
+		c.Questions[i].Rule.Judge = nil
 	}
 	c.SchemaVersion = ModelQualitySchemaVersion
 	raw, err := s.settings.settingRepo.GetValue(ctx, SettingKeyAPIBaseURL)
@@ -72,7 +75,7 @@ func (s *ModelQualityService) ConfigV2(ctx context.Context) (*ModelQualityV2Conf
 		c.PauseReason = s.endpointDNSReason(ctx, c.Endpoint)
 	}
 	if c.InitializationRequired && c.PauseReason == "" {
-		c.PauseReason = "升级配置尚未完成，请确认题目、接口和判题模型后保存"
+		c.PauseReason = "升级配置尚未完成，请确认题目、接口和待测模型后保存"
 	}
 	return c, nil
 }
@@ -84,10 +87,10 @@ func qualityInvalid(message string) error {
 func validateQualityCall(c *ModelQualityCall, required bool) error {
 	c.Model = strings.TrimSpace(c.Model)
 	if c.TimeoutSeconds == 0 {
-		c.TimeoutSeconds = 600
+		c.TimeoutSeconds = ModelQualityDefaultTimeoutSeconds
 	}
 	if c.MaxOutputTokens == 0 {
-		c.MaxOutputTokens = 8192
+		c.MaxOutputTokens = ModelQualityDefaultMaxOutputTokens
 	}
 	if c.ChatTokenField == "" {
 		c.ChatTokenField = "max_completion_tokens"
@@ -173,11 +176,8 @@ func validateQualityV2(c *ModelQualityV2Config) error {
 				return qualityInvalid("预期答案必须是完整十进制数字")
 			}
 		}
-		if q.Rule.Kind == "model" && q.Rule.Judge != nil {
-			if err := validateQualityCall(q.Rule.Judge, false); err != nil {
-				return err
-			}
-		}
+		// 判题调用在创建任务时从待测模型冻结；忽略旧客户端提交的独立配置。
+		q.Rule.Judge = nil
 	}
 	groups, targets := map[int64]bool{}, map[string]bool{}
 	used := map[string]bool{}
@@ -217,13 +217,8 @@ func validateQualityV2(c *ModelQualityV2Config) error {
 		if q.Prompt == "" || q.Rule.Kind != "model" && strings.TrimSpace(q.Rule.Expected) == "" {
 			return qualityInvalid("启用前请补齐测试提示词和预期答案")
 		}
-		if q.Rule.Kind == "model" {
-			if q.Rule.Judge == nil || strings.TrimSpace(q.Rule.JudgePrompt) == "" {
-				return qualityInvalid("启用前请补齐判题提示词和模型")
-			}
-			if err := validateQualityCall(q.Rule.Judge, true); err != nil {
-				return err
-			}
+		if q.Rule.Kind == "model" && strings.TrimSpace(q.Rule.JudgePrompt) == "" {
+			return qualityInvalid("启用前请补齐判题提示词")
 		}
 	}
 	if c.Enabled && len(c.Groups) == 0 {
@@ -256,11 +251,7 @@ func qualityCalls(c *ModelQualityV2Config) []*ModelQualityCall {
 			calls = append(calls, &c.Groups[i].Targets[j].ModelQualityCall)
 		}
 	}
-	for i := range c.Questions {
-		if c.Questions[i].Rule.Kind == "model" && c.Questions[i].Rule.Judge != nil {
-			calls = append(calls, c.Questions[i].Rule.Judge)
-		}
-	}
+
 	return calls
 }
 
@@ -353,16 +344,7 @@ func (s *ModelQualityService) qualityV2Readiness(ctx context.Context, c *ModelQu
 		if _, err := s.validQualityCall(ctx, target.ModelQualityCall); err != nil {
 			return group.Name, err.Error()
 		}
-		for _, q := range c.Questions {
-			if slices.Contains(target.QuestionIDs, q.ID) && q.Rule.Kind == "model" {
-				if q.Rule.Judge == nil {
-					return group.Name, "待配置判题模型"
-				}
-				if _, err := s.validQualityCall(ctx, *q.Rule.Judge); err != nil {
-					return group.Name, "判题模型：" + err.Error()
-				}
-			}
-		}
+
 	}
 	return group.Name, ""
 }

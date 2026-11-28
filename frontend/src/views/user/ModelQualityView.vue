@@ -1,5 +1,5 @@
 <template>
-  <AppLayout quiet>
+  <AppLayout>
     <div class="quality-page quality-compact-page">
       <div v-if="disabled" class="quality-empty">
         <Icon name="beaker" size="lg" />

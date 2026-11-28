@@ -137,6 +137,10 @@ func (r *modelQualityRepository) StartQualityV2Round(ctx context.Context, c *ser
 			if !ok {
 				return service.ErrModelQualityInvalid
 			}
+			if q.Rule.Kind == "model" {
+				judge := target.ModelQualityCall
+				q.Rule.Judge = &judge
+			}
 			taskID := uuid.NewString()
 			spec, e := json.Marshal(service.ModelQualitySpecification{Target: target, Question: q, Endpoint: c.Endpoint})
 			if e != nil {
@@ -203,10 +207,12 @@ func (r *modelQualityRepository) ClaimQualityV2Task(ctx context.Context, version
 	if err != nil {
 		return nil, err
 	}
+	now := time.Now()
 	timeout := task.Specification.Target.TimeoutSeconds
 	if task.Status == "pending" {
 		task.Status = "generating"
 		task.Result.Generation.Status = "running"
+		task.Result.Generation.StartedAt = &now
 		task.Result.Generation.Attempts++
 	} else {
 		if task.Specification.Question.Rule.Judge == nil {
@@ -218,6 +224,7 @@ func (r *modelQualityRepository) ClaimQualityV2Task(ctx context.Context, version
 			task.Result.Judgment = &service.ModelQualityPhase{}
 		}
 		task.Result.Judgment.Status = "running"
+		task.Result.Judgment.StartedAt = &now
 		task.Result.Judgment.Attempts++
 	}
 	task.Owner = owner

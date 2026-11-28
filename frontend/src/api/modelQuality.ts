@@ -49,6 +49,8 @@ export interface QualityConfig {
   initialization_required: boolean
 }
 export interface QualityPhase {
+  started_at?: string
+  request_id?: string
   status: string
   answer?: string
   reason?: string
@@ -66,8 +68,8 @@ export const newQualityCall = (group_id = 0): QualityCall => ({
   protocol: '',
   model: '',
   chat_token_field: 'max_completion_tokens',
-  max_output_tokens: 8192,
-  timeout_seconds: 600
+  max_output_tokens: 128000,
+  timeout_seconds: 1200
 })
 export interface QualityGroup {
   group_id: number
@@ -175,7 +177,11 @@ export const modelQualityAPI = {
     ).data
   },
   async detail(id: QualityRunID, signal?: AbortSignal) {
-    const run = (await apiClient.get<QualityRun>(`/model-quality/v2/runs/${id}`, { signal })).data
+    const run = (
+      await apiClient.get<QualityRun>(`/model-quality/v2/runs/${id}`, {
+        signal
+      })
+    ).data
     return { ...run, id }
   }
 }

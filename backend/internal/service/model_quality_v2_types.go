@@ -8,6 +8,8 @@ import (
 
 const ModelQualitySchemaVersion = 2
 const ModelQualityMaxResponseBytes = 5 << 20
+const ModelQualityDefaultMaxOutputTokens = 128000
+const ModelQualityDefaultTimeoutSeconds = 1200
 
 type ModelQualityQuestionSummary struct {
 	ID         string `json:"id"`
@@ -70,6 +72,8 @@ type ModelQualityV2Config struct {
 }
 
 type ModelQualityPhase struct {
+	StartedAt       *time.Time `json:"started_at,omitempty"`
+	RequestID       string     `json:"request_id,omitempty"`
 	Status          string     `json:"status"`
 	Answer          string     `json:"answer,omitempty"`
 	Reason          string     `json:"reason,omitempty"`

@@ -1,12 +1,20 @@
 .quality-page,
 .quality-settings,
 .quality-detail-context {
-  --q-ink: #20313a;
-  --q-muted: #73808a;
-  --q-line: #e2e8ec;
+  --q-ink: #111827;
+  --q-muted: #6b7280;
+  --q-line: #e5e7eb;
   --q-surface: #fff;
-  --q-soft: #f3f6f7;
-  --q-accent: #168477;
+  --q-soft: #eff8ff;
+  --q-accent: #0878d0;
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    'PingFang SC',
+    'Microsoft YaHei',
+    sans-serif;
   color: var(--q-ink);
   letter-spacing: 0;
   width: 100%;
@@ -14,15 +22,19 @@
   margin: 0 auto;
   max-width: 1480px;
 }
+.quality-page {
+  background: var(--q-surface);
+  padding: 20px;
+}
 .dark .quality-page,
 .dark .quality-settings,
 .dark .quality-detail-context {
-  --q-ink: #e2e8e6;
-  --q-muted: #99a6aa;
-  --q-line: #394346;
-  --q-surface: #242c2f;
-  --q-soft: #2c3639;
-  --q-accent: #6cd3bf;
+  --q-ink: #e2e8f0;
+  --q-muted: #94a3b8;
+  --q-line: #334155;
+  --q-surface: #1e293b;
+  --q-soft: #0f172a;
+  --q-accent: #4bb5ff;
 }
 .quality-heading {
   display: flex;
@@ -465,6 +477,25 @@
 }
 .quality-detail-answer h3 {
   margin-top: 0;
+}
+.quality-detail-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.quality-detail-tabs button > span:first-child {
+  overflow-wrap: anywhere;
+}
+.quality-answer-empty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 22px 16px;
+  border: 1px dashed var(--q-line);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--q-muted);
 }
 .quality-detail-answer pre {
   white-space: pre-wrap;

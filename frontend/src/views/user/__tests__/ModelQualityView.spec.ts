@@ -4,11 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import ModelQualityView from '../ModelQualityView.vue'
 import ModelQualityDetailView from '../ModelQualityDetailView.vue'
-import {
-  qualityRun,
-  qualityGroups,
-  deferred
-} from '@/__tests__/fixtures/modelQuality'
+import { qualityRun, qualityGroups, deferred } from '@/__tests__/fixtures/modelQuality'
 import { useModelQualityStore } from '@/stores/modelQuality'
 import type { QualityGroup, QualityPage } from '@/api/modelQuality'
 
@@ -25,7 +21,11 @@ vi.mock('@/api/modelQuality', async (original) => ({
   modelQualityAPI: mocks
 }))
 vi.mock('@/stores/auth', () => ({
-  useAuthStore: () => ({ user: { id: 1 }, isAuthenticated: true, isAdmin: true })
+  useAuthStore: () => ({
+    user: { id: 1 },
+    isAuthenticated: true,
+    isAdmin: true
+  })
 }))
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
@@ -88,6 +88,53 @@ afterEach(() => {
 })
 
 describe('紧凑画廊与独立详情', () => {
+  it('生成中的动画与已通过糖果题分别展示，默认选中已有答案', async () => {
+    const run = qualityRun()
+    run.outcome = 'running'
+    run.tests = [
+      {
+        benchmark: 'art',
+        id: 'art',
+        name: '动画题',
+        status: 'generating',
+        verdict: 'unknown',
+        reason: '',
+        has_html: false,
+        duration_ms: 0,
+        finished_at: null,
+        generation: { status: 'running', duration_ms: 0, attempts: 1 }
+      },
+      {
+        benchmark: 'candy',
+        id: 'candy',
+        name: '糖果题',
+        status: 'completed',
+        verdict: 'normal',
+        reason: '答案与预期相等',
+        answer: '21',
+        has_html: false,
+        duration_ms: 12003,
+        finished_at: new Date().toISOString(),
+        generation: {
+          status: 'completed',
+          answer: '21',
+          duration_ms: 12003,
+          attempts: 1
+        }
+      }
+    ]
+    mocks.detail.mockResolvedValue(run)
+    await view('/model-quality/runs/9')
+    expect(wrapper.get('.quality-detail-answer h3').text()).toContain('糖果题 · 模型回答')
+    expect(wrapper.get('.quality-detail-answer pre').text()).toBe('21')
+    await wrapper.findAll('[aria-label="检测题目"] button')[0].trigger('click')
+    expect(wrapper.get('.quality-detail-answer h3').text()).toContain('动画题 · 模型回答')
+    expect(wrapper.get('.quality-answer-empty').text()).toContain('正在生成，等待模型返回正文')
+    expect(wrapper.find('.quality-detail-answer pre').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('暂无答案')
+    expect(wrapper.get('.quality-execution').text()).toContain('进行中')
+    expect(wrapper.get('.quality-execution').text()).not.toContain('0.0 秒')
+  })
   it('列表只有判定结果，完整答案与原因只在独立详情按纯文本展示', async () => {
     await view()
     expect(wrapper.text()).toContain('鹈鹕 · 通过')
@@ -107,9 +154,7 @@ describe('紧凑画廊与独立详情', () => {
     expect(mocks.copy).toHaveBeenCalledWith(qualityRun().tests[1].answer)
   })
   it('全部筛选写入查询参数，详情往返恢复页码及滚动且复用正文', async () => {
-    await view(
-      '/model-quality?group_id=7&model=model-b&method=candy&outcome=normal&page=2'
-    )
+    await view('/model-quality?group_id=7&model=model-b&method=candy&outcome=normal&page=2')
     vi.spyOn(window, 'scrollY', 'get').mockReturnValue(480)
     await useModelQualityStore().loader.load(9)
     await wrapper.get('.quality-card-open').trigger('click')
@@ -131,7 +176,11 @@ describe('紧凑画廊与独立详情', () => {
       method: 'candy',
       outcome: 'normal'
     })
-    expect(window.scrollTo).toHaveBeenCalledWith({ left: 0, top: 480, behavior: 'instant' })
+    expect(window.scrollTo).toHaveBeenCalledWith({
+      left: 0,
+      top: 480,
+      behavior: 'instant'
+    })
     await wrapper.get('.quality-card-open').trigger('click')
     await flushPromises()
     expect(mocks.detail).toHaveBeenCalledTimes(1)
@@ -238,9 +287,7 @@ describe('紧凑画廊与独立详情', () => {
   it('切换详情时旧请求结束不解除新请求锁', async () => {
     const first = deferred<QualityGroup[]>(),
       second = deferred<QualityGroup[]>()
-    mocks.groups
-      .mockReturnValueOnce(first.promise)
-      .mockReturnValueOnce(second.promise)
+    mocks.groups.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
     await view('/model-quality/runs/9')
     await router.push('/model-quality/runs/10')
     await flushPromises()
@@ -263,13 +310,49 @@ describe('紧凑画廊与独立详情', () => {
   })
 })
 
- it('UUID记录仅重判已存档作品，不再次发起生成', async () => {
+it('UUID记录仅重判已存档作品，不再次发起生成', async () => {
   const id = 'v2-12345678-1234-4234-8234-123456789abc'
-  const run = qualityRun(9, { id, tests: [{ id: '12345678-1234-4234-8234-123456789def', benchmark: 'custom-art', name: '自定义动画', output_type: 'svg', rule_kind: 'model', status: 'failed', verdict: 'unknown', reason: '判题失败', has_html: true, html: '<svg/>', answer: '<svg/>', duration_ms: 100, finished_at: null, generation: { status: 'completed', answer: '<svg/>', attempts: 1, duration_ms: 80 }, judgment: { status: 'failed', reason: '网络中断', attempts: 1, duration_ms: 20 } }] })
-  mocks.detail.mockResolvedValue(run); mocks.rejudge.mockResolvedValue({ queued: true })
+  const run = qualityRun(9, {
+    id,
+    tests: [
+      {
+        id: '12345678-1234-4234-8234-123456789def',
+        benchmark: 'custom-art',
+        name: '自定义动画',
+        output_type: 'svg',
+        rule_kind: 'model',
+        status: 'failed',
+        verdict: 'unknown',
+        reason: '判题失败',
+        has_html: true,
+        html: '<svg/>',
+        answer: '<svg/>',
+        duration_ms: 100,
+        finished_at: null,
+        generation: {
+          status: 'completed',
+          answer: '<svg/>',
+          attempts: 1,
+          duration_ms: 80
+        },
+        judgment: {
+          status: 'failed',
+          reason: '网络中断',
+          attempts: 1,
+          duration_ms: 20
+        }
+      }
+    ]
+  })
+  mocks.detail.mockResolvedValue(run)
+  mocks.rejudge.mockResolvedValue({ queued: true })
   await view('/model-quality/runs/' + id)
   expect(wrapper.text()).toContain('自定义动画')
-  await wrapper.findAll('button').find(b => b.text().includes('仅重新判题'))!.trigger('click'); await flushPromises()
+  await wrapper
+    .findAll('button')
+    .find((b) => b.text().includes('仅重新判题'))!
+    .trigger('click')
+  await flushPromises()
   expect(mocks.rejudge).toHaveBeenCalledWith(run.tests[0].id)
   expect(mocks.detail).toHaveBeenCalledTimes(2)
- })
+})
