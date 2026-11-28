@@ -119,6 +119,15 @@ export interface QualityRun {
   finished_at: string | null
   expires_at: string
   tests: QualityTest[]
+  account_hits?: QualityAccountHit[]
+}
+export interface QualityAccountHit {
+  test_id: string
+  phase: 'generation' | 'judgment' | 'previous_judgment'
+  judgment_index?: number
+  account_id: number
+  account_name: string
+  source: 'usage' | 'error'
 }
 export interface QualityKey {
   id: number

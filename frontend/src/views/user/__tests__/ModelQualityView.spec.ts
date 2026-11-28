@@ -88,6 +88,82 @@ afterEach(() => {
 })
 
 describe('紧凑画廊与独立详情', () => {
+  it('普通结果没有账号区域，管理员私有结果按生成和判题展示', async () => {
+    await view()
+    expect(wrapper.find('.quality-account-summary').exists()).toBe(false)
+    const run = qualityRun()
+    run.tests[0].rule_kind = 'model'
+    run.account_hits = [
+      {
+        test_id: 'art',
+        phase: 'generation',
+        account_id: 740,
+        account_name: '生成渠道',
+        source: 'usage'
+      },
+      {
+        test_id: 'art',
+        phase: 'judgment',
+        account_id: 741,
+        account_name: '判题渠道',
+        source: 'usage'
+      }
+    ]
+    mocks.runs.mockResolvedValue({
+      items: [run],
+      total: 1,
+      page: 1,
+      page_size: 12,
+      pages: 1
+    })
+    await wrapper.get('[aria-label="刷新检测结果"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.quality-account-summary').text()).toContain('生成账号：生成渠道（#740）')
+    expect(wrapper.get('.quality-account-summary').text()).toContain('判题账号：判题渠道（#741）')
+  })
+  it('详情按题目和判题历史分别对应账号，缺失关联不猜测', async () => {
+    const run = qualityRun()
+    const phase = { status: 'completed', duration_ms: 1000, attempts: 1 }
+    run.tests[0] = {
+      ...run.tests[0],
+      id: 'art',
+      generation: phase,
+      judgment: phase,
+      previous_judgments: [phase, phase]
+    }
+    run.account_hits = [
+      {
+        test_id: 'art',
+        phase: 'generation',
+        account_id: 740,
+        account_name: '生成渠道',
+        source: 'usage'
+      },
+      {
+        test_id: 'art',
+        phase: 'judgment',
+        account_id: 741,
+        account_name: '当前判题',
+        source: 'usage'
+      },
+      {
+        test_id: 'art',
+        phase: 'previous_judgment',
+        judgment_index: 1,
+        account_id: 742,
+        account_name: '历史判题',
+        source: 'error'
+      }
+    ]
+    mocks.detail.mockResolvedValue(run)
+    await view('/model-quality/runs/9')
+    const rows = wrapper.findAll('.quality-execution > div')
+    expect(rows[0].text()).toContain('生成渠道（#740）')
+    expect(rows[1].text()).toContain('历史判题（#742）')
+    expect(rows[2].text()).toContain('命中账号：未记录')
+    expect(rows[3].text()).toContain('当前判题（#741）')
+    expect(rows[4].text()).toContain('命中账号：未记录')
+  })
   it('生成中的动画与已通过糖果题分别展示，默认选中已有答案', async () => {
     const run = qualityRun()
     run.outcome = 'running'
@@ -265,6 +341,36 @@ describe('紧凑画廊与独立详情', () => {
     await wrapper.get('.quality-back').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.query.group_id).toBe('8')
+  })
+  it('管理员已完成详情刷新迟到的账号关联，撤权响应不保留账号', async () => {
+    const run = qualityRun(9, { account_hits: [] })
+    run.tests[0].id = 'art'
+    run.tests[0].generation = { status: 'completed', duration_ms: 100, attempts: 1 }
+    mocks.detail
+      .mockResolvedValueOnce(run)
+      .mockResolvedValueOnce({
+        ...run,
+        account_hits: [
+          {
+            test_id: 'art',
+            phase: 'generation',
+            account_id: 740,
+            account_name: '迟到的账号关联',
+            source: 'usage'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ ...run, account_hits: undefined })
+    await view('/model-quality/runs/9')
+    expect(wrapper.text()).toContain('未记录')
+    await vi.advanceTimersByTimeAsync(15000)
+    await flushPromises()
+    expect(wrapper.text()).toContain('迟到的账号关联')
+    await vi.advanceTimersByTimeAsync(15000)
+    await flushPromises()
+    expect(mocks.detail).toHaveBeenCalledTimes(3)
+    expect(wrapper.text()).not.toContain('迟到的账号关联')
+    expect(wrapper.find('.quality-account-hit').exists()).toBe(false)
   })
   it('进行中详情十五秒刷新，到期后立即卸载作品及答案', async () => {
     mocks.detail.mockResolvedValue(

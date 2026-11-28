@@ -313,6 +313,18 @@
   gap: 6px;
   flex-wrap: wrap;
 }
+.quality-account-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--q-muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.quality-execution .quality-account-hit {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .quality-card footer {
   display: flex;
   align-items: center;

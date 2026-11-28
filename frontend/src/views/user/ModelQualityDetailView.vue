@@ -150,19 +150,7 @@
         <section class="quality-execution">
           <h3>执行信息</h3>
           <template v-for="test in detail.tests" :key="test.id || test.benchmark"
-            ><div
-              v-for="phase in test.generation
-                ? [
-                    { label: '生成', ...test.generation },
-                    ...(test.previous_judgments || []).map((p, i) => ({
-                      label: '历史判题 ' + (i + 1),
-                      ...p
-                    })),
-                    ...(test.judgment ? [{ label: '判题', ...test.judgment }] : [])
-                  ]
-                : [{ label: '旧版检测', ...test }]"
-              :key="phase.label"
-            >
+            ><div v-for="phase in executionPhases(test)" :key="phase.label">
               <strong
                 >{{ test.name || qualityMethodName(test.benchmark) }} · {{ phase.label }}</strong
               ><span>{{ qualityLabels[phase.status] || phase.status }}</span
@@ -171,6 +159,13 @@
               ><span>输出 {{ phase.output_tokens ?? '—' }}</span
               ><span>推理 {{ phase.reasoning_tokens ?? '—' }}</span
               ><span>{{ qualityTime(phase.finished_at) }}</span>
+              <span v-if="detail.account_hits" class="quality-account-hit">
+                命中账号：{{
+                  phase.account
+                    ? `${phase.account.account_name}（#${phase.account.account_id}）`
+                    : '未记录'
+                }}
+              </span>
             </div></template
           >
         </section>
@@ -235,6 +230,29 @@ const activeTest = computed(
 const activeAnswer = computed(
   () => activeTest.value?.answer || activeTest.value?.generation?.answer || ''
 )
+function executionPhases(test: QualityTest) {
+  const phases = test.generation
+    ? [
+        { ...test.generation, label: '生成', kind: 'generation', index: 0 },
+        ...(test.previous_judgments || []).map((phase, index) => ({
+          ...phase,
+          label: '历史判题 ' + (index + 1),
+          kind: 'previous_judgment',
+          index: index + 1
+        })),
+        ...(test.judgment ? [{ ...test.judgment, label: '判题', kind: 'judgment', index: 0 }] : [])
+      ]
+    : [{ ...test, label: '旧版检测', kind: 'legacy', index: 0 }]
+  return phases.map((phase) => ({
+    ...phase,
+    account: detail.value?.account_hits?.find(
+      (hit) =>
+        hit.test_id === test.id &&
+        hit.phase === phase.kind &&
+        (hit.judgment_index || 0) === phase.index
+    )
+  }))
+}
 function phaseDuration(phase: { status: string; duration_ms: number; started_at?: string }) {
   if (phase.status === 'running') {
     if (!phase.started_at) return '进行中'
@@ -288,12 +306,13 @@ async function refresh(force = false) {
       return
     }
     if (generation !== requestGeneration) return
+    const refreshPrivate = detail.value?.account_hits !== undefined
     const value =
-      !detail.value || force || detail.value.outcome === 'running'
+      !detail.value || force || refreshPrivate || detail.value.outcome === 'running'
         ? await session.loader.load(id.value, {
             priority: 'detail',
             signal: request.signal,
-            force
+            force: force || refreshPrivate
           })
         : detail.value
     if (disposed || generation !== requestGeneration || scope !== session.generation) return

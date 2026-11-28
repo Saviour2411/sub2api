@@ -164,6 +164,12 @@
                     {{ qualityTestLabel(test) }}</span
                   >
                 </div>
+                <div v-if="run.account_hits" class="quality-account-summary">
+                  <span>生成账号：{{ accountNames(run, 'generation') }}</span>
+                  <span v-if="run.tests.some((test) => test.rule_kind === 'model')">
+                    判题账号：{{ accountNames(run, 'judgment') }}
+                  </span>
+                </div>
               </div>
               <footer>
                 <span>{{ qualityTime(run.started_at) }}</span
@@ -238,6 +244,16 @@ import '@/styles/model-quality.css'
 
 const app = useAppStore(),
   session = useModelQualityStore()
+function accountNames(run: QualityRun, phase: 'generation' | 'judgment') {
+  const hits = (run.account_hits || []).filter((hit) => hit.phase === phase)
+  return (
+    [
+      ...new Map(
+        hits.map((hit) => [hit.account_id, `${hit.account_name}（#${hit.account_id}）`])
+      ).values()
+    ].join('、') || '未记录'
+  )
+}
 const route = useRoute(),
   router = useRouter()
 const filters = computed(() => qualityFilters(route.query))

@@ -24,7 +24,16 @@ export const useModelQualityStore = defineStore('modelQuality', () => {
     gallery.value = null
     generation.value++
   })
-  watch([() => auth.user?.id, () => auth.isAuthenticated], () => loader.clear(), { flush: 'sync' })
+  watch(
+    [
+      () => auth.user?.id,
+      () => auth.user?.role,
+      () => auth.user?.email,
+      () => auth.isAuthenticated
+    ],
+    () => loader.clear(),
+    { flush: 'sync' }
+  )
   watch(
     () => app.cachedPublicSettings?.model_quality_enabled,
     (enabled) => {
