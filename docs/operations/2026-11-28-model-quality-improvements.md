@@ -21,3 +21,26 @@
 生产基线248f681f2ba90835af52a55a7c93063a339a58a6，版本0.1.272。按用户授权跳过CI、Git tag和版本号更新，使用固定提交、当次本地验收日志和不可变镜像ID，走既有蓝绿发布器。上线前核验活动槽、双入口、挂载、配置及实例身份，再依据已有授权回收超过一小时的遗留槽。新切流后的旧槽自然排空，观察超时保留。
 
 保留生产bind mount、两份相同Compose、响应头3600秒、usage任务5秒及全部既有资源参数。验收与发布证据保存在tmp/model-quality-improve-20261128，生产发布目录随最终提交记录。
+
+## 固定提交验收
+
+- 功能提交d90431990c662051366f261e1ca55a86af2b2f8b已快进合入并推送main，提交和推送使用skip ci；版本仍为0.1.272，未创建tag或运行CI/Security Scan。
+- 当前提交的后端service、repository、handler和routes单元测试通过；真实PostgreSQL任务并发、恢复、重判、同模型快照和完整迁移重放通过，专项race通过。
+- 前端类型检查、ESLint、67项测试、前端和Canvas构建通过；Playwright检查桌面1440、手机390及深色页面，无横向溢出。
+- 发布器71项测试、真实Docker强退与Redis归属清理通过；当前二进制HTTP/SSE/WebSocket单次切流回归中，549次普通请求零错误，7次上游调用对应7条用量记录。该验证不代表生产峰值压测。
+- 镜像ID为sha256:46b3ee09ee9abd5394249eb469a300b71a16fc45c55615d4fad59d86126c65b5，二进制vcs.revision与功能提交一致、vcs.modified=false。发布目录为/root/proj/sub2api/deploy/blue-green/releases/local-d90431990-20261128，migration_class为none。
+
+## 遗留槽回收与启动等待
+
+- 北京时间11:53完成上次遗留蓝槽回收，实例if7cd880840f8470ea78de0986e845e90，使用原授权的--retire-pending --window 3600 --force-after-window。强退前各work计数均为0、session_leases为153；退出137、非OOM，clean_exit=false、usage_loss_unknown=true，不宣称强退无损。
+- 回收清除150条旧实例归属；API/direct双入口各80次健康探针零错误，配置摘要不变。本次一次性授权已执行，不扩展至本轮切流后的旧绿槽。
+- 12:05:33启动候选蓝槽；因活动绿槽12:00开始的定时pg_dump备份持有迁移锁694208311321144027，候选等待数据库初始化。首次发布在180秒就绪窗口结束后安全停止，入口继续指向健康绿槽；没有终止备份、业务事务或绕过迁移检查。
+
+## 生产发布结果
+
+- 备份自然释放迁移锁后，12:15:31确认蓝槽进入standby，容器未重启；使用同一固定提交、镜像和发布清单恢复发布。
+- 12:15:33完成切流，耗时1.174秒。活动蓝槽实例为i53989889673a4d11bd960a13acbb21da，功能提交d90431990c662051366f261e1ca55a86af2b2f8b，镜像和版本均与验收记录一致。发布器退出码0，API/direct双入口各117次健康探针零失败。
+- 12:18:19复核时，活动蓝槽ready且状态为active；应用、PostgreSQL、Redis仍使用规定的bind mount，两份Compose完全一致，.env、config.yaml和两份Compose摘要均与发布前一致。253迁移校验值未变，旧检测关闭，新检测保持用户现有启用配置。
+- 切流后自然产生的检测任务037347da-e5f9-47de-80e0-e2a2aaf5de8b正在生成，待测与判题模型均为claude-opus-5-5，完整调用参数快照相等。本轮没有手动触发额外付费检测。
+- 120秒观察窗口结束后保留旧绿槽为drain_pending。12:18:19仍有background=1、http=29、sse=28及2770条会话租约，usage计数均为0；继续自然排空，不使用本次已消耗的遗留槽强退授权。
+- state.json的last_error仍保留首次候选启动等待超时的历史信息，成功恢复时发布器未清除此字段；最终deploy.log、退出码和production-result.json确认本次恢复发布与复核成功。首次失败日志、锁等待证据、重试过程和最终状态均保留在同一发布目录，并下载至本轮本地证据目录。
